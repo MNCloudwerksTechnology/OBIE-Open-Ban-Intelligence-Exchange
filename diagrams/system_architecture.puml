@@ -1,0 +1,16 @@
+@startuml
+package "OBIE Node" {
+    [P2P Mesh Layer (libp2p)] as P2P
+    [Policy Engine (OPA/Rego)] as Policy
+    [Local Storage (RocksDB)] as Storage
+    [Enforcement (nftables/eBPF)] as Enforcement
+}
+
+cloud "P2P Mesh Network" as Mesh
+
+P2P <-> Mesh : GossipSub / RPC
+P2P -> Storage : Persist Signals
+Storage -> Policy : Evaluate
+Policy -> Enforcement : Apply Local Action
+[Local Logs/Honeypots] -> P2P : New Observations
+@enduml

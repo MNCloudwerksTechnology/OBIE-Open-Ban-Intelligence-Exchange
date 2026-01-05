@@ -1,0 +1,14 @@
+@startuml
+actor "Attacker" as Attacker
+participant "Node A (Observer)" as NodeA
+participant "P2P Mesh" as Mesh
+participant "Node B (Subscriber)" as NodeB
+
+Attacker -> NodeA : Malicious Activity
+NodeA -> NodeA : Log Event & Hash
+NodeA -> NodeA : Sign OBIE Event (Ed25519)
+NodeA -> Mesh : GossipSub (obie.v0.ssh)
+Mesh -> NodeB : Receive Event
+NodeB -> NodeB : Verify Signature & Rep
+NodeB -> NodeB : Apply Local Policy
+@enduml

@@ -1,0 +1,24 @@
+@startuml
+skinparam handwritten false
+skinparam packageStyle rect
+skinparam defaultFontName Arial
+
+title Reputation-Weighted Consensus Flow
+
+start
+:Receive OBIE Signal;
+:Verify Cryptographic Signature;
+if (Signature Valid?) then (yes)
+  :Fetch Peer Reputation from Local Store;
+  :Calculate Weighted Score:\nScore = Σ(Peer_Rep * Confidence);
+  if (Score > Local Threshold?) then (yes)
+    :Trigger Local Enforcement;
+    :Update Local Trust Cache;
+  else (no)
+    :Log for Observation;
+  endif
+else (no)
+  :Discard & Penalize Peer Reputation;
+endif
+stop
+@enduml
