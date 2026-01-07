@@ -52,7 +52,7 @@ The design of OBIE is governed by ten core principles that ensure the system rem
 
 OBIE is designed as a lightweight overlay network that integrates with existing security tooling.
 
-![system_architecture.png](diagrams/system_architecture.png)
+![system_architecture.png](documentation/diagrams/system_architecture.png)
 
 #### 3.1 P2P Mesh Layer
 
@@ -68,7 +68,7 @@ The foundation of OBIE is a leaderless P2P mesh built on `libp2p`.
 
 Events are normalized JSON objects (or CBOR/COSE for efficiency) containing indicators, evidence, and verdicts.
 
-![data_model.png](diagrams/data_model.png)
+![data_model.png](documentation/diagrams/data_model.png)
 
 ##### 3.2.1 Technical Schema
 
@@ -115,7 +115,7 @@ OBIE supports a broad range of indicators beyond simple IP addresses, and events
 
 The reference implementation utilizes:
 
-- **Language:** Go (for static binaries and `libp2p` maturity).
+- **Language:** Go (see [ADR 0001](documentation/adr/0001-choice-of-go.md) for details).
 - **Storage:** RocksDB/BadgerDB for local state; CRDTs for distributed reputation consistency.
 - **Policy Engine:** OPA (Open Policy Agent) using Rego to map network signals to local actions.
 - **Enforcement:** `nftables` (Linux), `eBPF` for high-rate drops, or shims for `Fail2Ban`.
@@ -137,7 +137,7 @@ A node's reputation is computed locally by its peers based on:
 
 Nodes do not blindly follow signals. Instead, they calculate a weighted confidence score locally to determine if an enforcement action is warranted. This prevents a single malicious or compromised node from poisoning the local firewall.
 
-![weighted_consensus.png](diagrams/weighted_consensus.png)
+![weighted_consensus.png](documentation/diagrams/weighted_consensus.png)
 
 The consensus algorithm follows a Bayesian-inspired weighting:
 `Local_Score = Σ (Peer_Reputation_i * Signal_Confidence_i)`
