@@ -12,6 +12,14 @@ coverage.*
 go.work
 go.work.sum
 
+# Website (website/): npm packages, Angular and Maven build output, tools
+/website/bin/
+/website/frontend/node_modules/
+/website/frontend/dist/
+/website/frontend/.angular/
+/website/frontend/coverage/
+/website/backend/target/
+
 # Editors and OS
 .idea/
 .vscode/
