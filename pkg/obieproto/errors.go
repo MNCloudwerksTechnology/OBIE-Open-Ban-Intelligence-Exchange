@@ -43,6 +43,9 @@ type FieldError struct {
 }
 
 func (e *FieldError) Error() string {
+	if e.Field == "" {
+		return fmt.Sprintf("%v: %s", e.Err, e.Detail)
+	}
 	return fmt.Sprintf("%v: %s: %s", e.Err, e.Field, e.Detail)
 }
 
