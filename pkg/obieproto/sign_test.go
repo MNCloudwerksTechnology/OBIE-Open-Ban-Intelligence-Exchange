@@ -311,8 +311,8 @@ func TestVerifyDetectsTampering(t *testing.T) {
 	run(validRevoke, revokeTampers)
 }
 
-// FuzzVerify feeds arbitrary bytes through JSON decoding into Verify, which
-// must never panic.
+// FuzzVerify checks that Verify never panics on arbitrary input, whether the
+// bytes are only JSON-unmarshalled into an Event or also pass Decode.
 func FuzzVerify(f *testing.F) {
 	for _, build := range []func() *Event{validVerdict, validRevoke} {
 		data, err := json.Marshal(signedBy(f, build(), testSeedA))
