@@ -30,7 +30,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers ≥ quorum (default 2) — local verdicts count with `local_weight`. Allow-list always wins. Mode `observe` (default) or `enforce`.
 - **Enforcement:** pluggable enforcer; `dryrun` and `nftables` (own table `inet obie`, timeout sets) backends; reconcile loop.
 - **Ops:** Prometheus `/metrics`, `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); JSON decision audit log.
-- **Testing:** table-driven unit tests, fuzz tests on all decoders, in-process multi-node integration tests; privileged tests behind the `privileged` build tag.
+- **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests; privileged tests behind the `privileged` build tag.
 
 ## Repository layout
 
