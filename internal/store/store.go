@@ -28,6 +28,8 @@ var (
 	ErrClosed = errors.New("store is not open")
 	// ErrInvalid is returned for events or overrides the store cannot hold.
 	ErrInvalid = errors.New("invalid")
+	// errCorrupt marks a stored value that cannot be decoded.
+	errCorrupt = errors.New("corrupt value")
 )
 
 // Store is the node's local state, shared by the mesh, the admin API and the
@@ -37,7 +39,10 @@ type Store interface {
 	// Put stores ev and reports whether it was accepted. Duplicates, expired
 	// events, verdicts not newer than the publisher's current one on the
 	// indicator and revocations by anyone but the verdict's publisher are
-	// ignored (accepted is false, err is nil).
+	// ignored (accepted is false, err is nil). A revocation of a verdict the
+	// store has not seen yet is accepted and held until it expires; it takes
+	// effect only if the verdict arrives from the same publisher for the same
+	// indicator, and is counted as ignored otherwise.
 	Put(ev *obieproto.Event) (accepted bool, err error)
 	// Get returns the stored, unexpired event with the given ID or
 	// ErrNotFound.
@@ -153,7 +158,10 @@ func (o *Override) Active(now time.Time) bool {
 	return o.ExpiresAt.IsZero() || now.Before(o.ExpiresAt)
 }
 
-// Stats counts the outcomes of Put since the database was created.
+// Stats counts the outcomes of Put since the DB was started; the counts are
+// not persisted. Early revocations found to be ignored when their verdict
+// arrives are counted in ForeignRevoke or InvalidRevoke although Put had
+// accepted them.
 type Stats struct {
 	Accepted      uint64
 	Duplicate     uint64

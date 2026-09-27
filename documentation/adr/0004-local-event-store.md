@@ -29,6 +29,9 @@ stay bounded on a small VPS (≤ 1 vCPU, 512 MB RAM, 100k active indicators).
   `obieproto.Indicator.Key()`, which never contains `0x00`):
   - `e/<event id>` → the event (JSON). Kept until the event expires (Badger
     TTL); it serves `Get` and is the seen-ID set for deduplication.
+  - `s/<event id>` → seen marker of an ignored event (stale verdict, ignored
+    revocation), kept until the event would expire, so replays count as
+    duplicates without the event being retrievable.
   - `v/<indicator>\x00<publisher>` → the publisher's latest verdict on the
     indicator and whether it was revoked. Kept until the verdict expires.
   - `x/<expiry, 8-byte big-endian Unix seconds><verdict or override key>` →
@@ -48,8 +51,11 @@ stay bounded on a small VPS (≤ 1 vCPU, 512 MB RAM, 100k active indicators).
   event ID) than the publisher's current verdict on the indicator. A revocation
   deactivates the referenced verdict only if it comes from the verdict's
   publisher and names the same indicator; other revocations are ignored and
-  counted (also when a revocation that arrived first turns out to be by
-  another publisher once the verdict arrives). All writes are serialized by one mutex and applied in a single
+  counted. A revocation of a verdict not seen yet cannot be attributed and is
+  accepted and held until it expires; once the verdict arrives it applies only
+  if publisher and indicator match, and is counted as ignored otherwise. The
+  mesh therefore must not treat `accepted` as proof that a revocation is
+  legitimate. All writes are serialized by one mutex and applied in a single
   Badger transaction, so each `Put` is atomic.
 - **Change notifications:** subscribers registered with `Subscribe` receive a
   `Change` (indicator and reason: verdict, revoke, expiry, override) after the
@@ -59,7 +65,10 @@ stay bounded on a small VPS (≤ 1 vCPU, 512 MB RAM, 100k active indicators).
 - **Expiry:** every entry with a lifetime gets a Badger TTL, so expired data
   disappears from reads and compaction reclaims it. A sweep (every minute)
   walks the expiry index up to now, deletes what expired and notifies the
-  affected indicators. The value-log GC runs every ten minutes until it has
+  affected indicators, so an expiry is notified within one sweep interval
+  (reads stop returning the verdict at its expiry already). An index entry
+  whose value cannot be decoded is logged and dropped rather than stalling
+  the sweep. The value-log GC runs every ten minutes until it has
   nothing left to rewrite.
 - **Memory budget:** Badger's defaults are sized for servers with gigabytes of
   RAM. The store uses 16 MiB memtables (at most 2), a 32 MiB block cache, a

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
@@ -29,9 +30,9 @@ type outcome struct {
 	result result
 	// change is the notification to send; empty Key for none.
 	change Change
-	// foreignRevokes counts revocations of the event by other publishers
-	// that arrived before it and are now known to be ignored.
-	foreignRevokes int
+	// foreignRevokes and invalidRevokes count revocations of a verdict that
+	// arrived before it and are now known to be ignored.
+	foreignRevokes, invalidRevokes int
 }
 
 // Put stores ev; see Store.
@@ -61,6 +62,9 @@ func (s *DB) Put(ev *obieproto.Event) (bool, error) {
 	for range out.foreignRevokes {
 		s.counters.add(resultForeignRevoke)
 	}
+	for range out.invalidRevokes {
+		s.counters.add(resultInvalidRevoke)
+	}
 	if out.change.Key != "" {
 		s.notify([]Change{out.change})
 	}
@@ -75,6 +79,8 @@ func checkEvent(ev *obieproto.Event) error {
 		return fmt.Errorf("%w event: nil", ErrInvalid)
 	case ev.ID == "" || ev.Publisher.PeerID == "" || ev.Indicator.Kind == "" || ev.Indicator.Value == "":
 		return fmt.Errorf("%w event: missing id, publisher or indicator", ErrInvalid)
+	case strings.ContainsRune(ev.ID+ev.Publisher.PeerID+ev.Indicator.Kind+ev.Indicator.Value+ev.Revokes, 0):
+		return fmt.Errorf("%w event: NUL byte in a key field", ErrInvalid)
 	case ev.Type == obieproto.TypeVerdict && ev.Verdict == nil:
 		return fmt.Errorf("%w event %s: verdict without verdict body", ErrInvalid, ev.ID)
 	case ev.Type == obieproto.TypeRevoke && ev.Revokes == "":
@@ -86,17 +92,28 @@ func checkEvent(ev *obieproto.Event) error {
 }
 
 func (s *DB) put(txn *badger.Txn, ev *obieproto.Event, now time.Time) (outcome, error) {
-	_, err := txn.Get(eventKey(ev.ID))
-	switch {
-	case err == nil:
-		return outcome{result: resultDuplicate}, nil
-	case !errors.Is(err, badger.ErrKeyNotFound):
-		return outcome{}, err
+	for _, key := range [][]byte{eventKey(ev.ID), seenKey(ev.ID)} {
+		_, err := txn.Get(key)
+		switch {
+		case err == nil:
+			return outcome{result: resultDuplicate}, nil
+		case !errors.Is(err, badger.ErrKeyNotFound):
+			return outcome{}, err
+		}
 	}
+	apply := s.putVerdict
 	if ev.Type == obieproto.TypeRevoke {
-		return s.putRevoke(txn, ev, now)
+		apply = s.putRevoke
 	}
-	return s.putVerdict(txn, ev, now)
+	out, err := apply(txn, ev, now)
+	if err != nil || out.result == resultAccepted {
+		return out, err
+	}
+	// Remember the ignored event's ID until it expires, so replays are
+	// duplicates.
+	seen := badger.NewEntry(seenKey(ev.ID), nil)
+	seen.ExpiresAt = badgerExpiry(ev.ExpiresAt())
+	return out, txn.SetEntry(seen)
 }
 
 // putVerdict stores ev if it is newer than the publisher's current verdict
@@ -112,8 +129,8 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 	}
 
 	rec := record{Event: ev}
-	var foreign int
-	rec.Revoked, foreign, err = earlyRevocations(txn, ev)
+	var foreign, invalid int
+	rec.Revoked, foreign, invalid, err = earlyRevocations(txn, ev)
 	if err != nil {
 		return outcome{}, err
 	}
@@ -129,7 +146,7 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 		return outcome{}, err
 	}
 
-	out := outcome{result: resultAccepted, foreignRevokes: foreign}
+	out := outcome{result: resultAccepted, foreignRevokes: foreign, invalidRevokes: invalid}
 	if !rec.Revoked || (cur != nil && cur.active(now)) {
 		out.change = Change{Key: ev.Key(), Reason: ReasonVerdict}
 	}
@@ -137,9 +154,10 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 }
 
 // earlyRevocations looks up revocations of verdict ev that arrived before
-// it. It reports whether its own publisher revoked it (for the same
-// indicator) and how many other publishers tried to.
-func earlyRevocations(txn *badger.Txn, ev *obieproto.Event) (revoked bool, foreign int, err error) {
+// it. It reports whether its own publisher revoked it for the same
+// indicator, how many other publishers tried to, and whether its publisher
+// named another indicator (invalid).
+func earlyRevocations(txn *badger.Txn, ev *obieproto.Event) (revoked bool, foreign, invalid int, err error) {
 	own := revokeKey(ev.ID, ev.Publisher.PeerID)
 	it := txn.NewIterator(badger.IteratorOptions{Prefix: revokeKey(ev.ID, "")})
 	defer it.Close()
@@ -154,10 +172,13 @@ func earlyRevocations(txn *badger.Txn, ev *obieproto.Event) (revoked bool, forei
 			return nil
 		})
 		if err != nil {
-			return false, 0, err
+			return false, 0, 0, err
+		}
+		if !revoked {
+			invalid++
 		}
 	}
-	return revoked, foreign, nil
+	return revoked, foreign, invalid, nil
 }
 
 // newer reports whether verdict a supersedes verdict b of the same publisher:
@@ -282,7 +303,7 @@ func getJSON(txn *badger.Txn, key []byte, v any) error {
 	}
 	return item.Value(func(data []byte) error {
 		if err := json.Unmarshal(data, v); err != nil {
-			return fmt.Errorf("decode %q: %w", key, err)
+			return fmt.Errorf("%w: decode %q: %w", errCorrupt, key, err)
 		}
 		return nil
 	})

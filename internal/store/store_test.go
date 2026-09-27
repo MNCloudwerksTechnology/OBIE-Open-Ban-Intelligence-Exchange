@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dgraph-io/badger/v4"
+
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -540,5 +542,121 @@ func TestValueLogGC(t *testing.T) {
 	mem := newMemDB(t, clk)
 	if err := mem.runValueLogGC(); err != nil {
 		t.Errorf("runValueLogGC in memory: %v", err)
+	}
+}
+
+func TestIgnoredEventsReplayAsDuplicates(t *testing.T) {
+	clk := newClock()
+	db := newMemDB(t, clk)
+	ind := ipv4("11.0.0.1")
+	cur := verdict(pubA, ind, clk.Now(), time.Hour)
+	stale := verdict(pubA, ind, clk.Now().Add(-time.Minute), time.Hour)
+	foreign := revoke(pubB, cur, clk.Now())
+	mustPut(t, db, cur, true)
+	for range 3 {
+		mustPut(t, db, stale, false)
+		mustPut(t, db, foreign, false)
+	}
+	if st := db.Stats(); st.Stale != 1 || st.ForeignRevoke != 1 || st.Duplicate != 4 {
+		t.Errorf("Stats = %+v", st)
+	}
+	if _, err := db.Get(stale.ID); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Get ignored event = %v, want ErrNotFound", err)
+	}
+}
+
+func TestEarlyRevokeForOtherIndicatorIsCounted(t *testing.T) {
+	clk := newClock()
+	db := newMemDB(t, clk)
+	v := verdict(pubA, ipv4("11.0.0.1"), clk.Now(), time.Hour)
+	r := revoke(pubA, v, clk.Now())
+	r.Indicator = ipv4("11.0.0.2")
+	mustPut(t, db, r, true)
+	mustPut(t, db, v, true)
+	if got := activeIDs(t, db, v.Key(), clk.Now()); !slices.Equal(got, []string{v.ID}) {
+		t.Errorf("active = %v, want [%s]", got, v.ID)
+	}
+	if st := db.Stats(); st.InvalidRevoke != 1 {
+		t.Errorf("Stats = %+v", st)
+	}
+}
+
+func TestPutRejectsNULInKeyFields(t *testing.T) {
+	clk := newClock()
+	db := newMemDB(t, clk)
+	v := verdict(pubA, ipv4("11.0.0.1\x00x"), clk.Now(), time.Hour)
+	if _, err := db.Put(v); !errors.Is(err, ErrInvalid) {
+		t.Errorf("Put = %v, want ErrInvalid", err)
+	}
+}
+
+// TestExpiryAfterBadgerTTL covers production timing: Badger has already
+// hidden the expired entries by wall clock when the sweep runs.
+func TestExpiryAfterBadgerTTL(t *testing.T) {
+	db := startDB(t, NewMemory(discardLogger(), Options{}))
+	rec := watch(db)
+	now := time.Now()
+	ind := ipv4("11.0.0.1")
+	v := verdict(pubA, ind, now.Add(-(time.Minute - 2*time.Second)), time.Minute)
+	mustPut(t, db, v, true)
+	over := ipv4("11.0.0.2")
+	if err := db.SetOverride(Override{Indicator: over, Action: ForceBlock, ExpiresAt: now.Add(3 * time.Second)}); err != nil {
+		t.Fatal(err)
+	}
+	rec.take()
+
+	time.Sleep(3 * time.Second)
+	if _, err := db.Get(v.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get after TTL = %v, want ErrNotFound", err)
+	}
+	if err := db.Sweep(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	want := []Change{{ind.Key(), ReasonExpiry}, {over.Key(), ReasonExpiry}}
+	if got := rec.take(); !slices.Equal(got, want) {
+		t.Errorf("changes = %v, want %v", got, want)
+	}
+}
+
+func TestSweepDropsUndecodableEntries(t *testing.T) {
+	clk := newClock()
+	db := newMemDB(t, clk)
+	rec := watch(db)
+	ind := ipv4("11.0.0.2")
+	mustPut(t, db, verdict(pubA, ind, clk.Now(), time.Hour), true)
+	bad := verdictKey("ipv4:11.0.0.1", pubA)
+	err := db.db.Update(func(txn *badger.Txn) error {
+		if err := txn.Set(bad, []byte("{not json")); err != nil {
+			return err
+		}
+		return txn.Set(expiryKey(clk.Now().Add(time.Minute), bad), nil)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec.take()
+
+	clk.Advance(time.Hour)
+	if err := db.Sweep(clk.Now()); err != nil {
+		t.Fatalf("Sweep = %v", err)
+	}
+	if got := rec.take(); !slices.Equal(got, []Change{{ind.Key(), ReasonExpiry}}) {
+		t.Errorf("changes = %v", got)
+	}
+}
+
+func TestConcurrentStop(t *testing.T) {
+	db := NewMemory(discardLogger(), Options{})
+	if err := db.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	errs := make(chan error, 2)
+	for range 2 {
+		go func() { errs <- db.Stop(context.Background()) }()
+	}
+	for range 2 {
+		if err := <-errs; err != nil {
+			t.Errorf("Stop: %v", err)
+		}
 	}
 }

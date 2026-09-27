@@ -119,11 +119,11 @@ func (s *DB) Start(context.Context) error {
 // before a running sweep finished, the database is still closed once the
 // sweep's current step has.
 func (s *DB) Stop(ctx context.Context) error {
-	s.mu.RLock()
+	s.mu.Lock()
 	stop, done := s.stop, s.done
-	open := s.db != nil
-	s.mu.RUnlock()
-	if !open {
+	s.stop = nil // a concurrent Stop returns right away
+	s.mu.Unlock()
+	if stop == nil {
 		return nil
 	}
 	close(stop)
@@ -135,6 +135,9 @@ func (s *DB) Stop(ctx context.Context) error {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.db == nil {
+		return nil
+	}
 	err := s.db.Close()
 	s.db = nil
 	if err != nil {
@@ -227,6 +230,11 @@ func (s *DB) loop(stop <-chan struct{}, done chan<- struct{}) {
 			return
 		case <-sweep.C:
 			err := s.Sweep(s.opts.Now())
+			select {
+			case <-stop:
+				return // stopping: the result no longer reflects readiness
+			default:
+			}
 			if err != nil {
 				s.log.Error("expiry sweep failed", "error", err)
 				err = fmt.Errorf("expiry sweep: %w", err)

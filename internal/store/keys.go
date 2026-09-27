@@ -13,6 +13,7 @@ var (
 	prefixExpiry    = []byte("x/")
 	prefixRevoke    = []byte("r/")
 	prefixOverride  = []byte("o/")
+	prefixSeen      = []byte("s/")
 	keySeparator    = []byte{0}
 	expiryKeyHeader = len(prefixExpiry) + 8
 )
@@ -24,6 +25,12 @@ func join(parts ...[]byte) []byte {
 // eventKey is the key of a stored event and its seen-ID marker.
 func eventKey(id string) []byte {
 	return join(prefixEvent, []byte(id))
+}
+
+// seenKey marks the ID of an ignored event, so that its replays count as
+// duplicates.
+func seenKey(id string) []byte {
+	return join(prefixSeen, []byte(id))
 }
 
 // verdictPrefix is the common prefix of all verdict records on an indicator.

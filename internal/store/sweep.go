@@ -37,6 +37,11 @@ func (s *DB) sweepBatch(now time.Time) (changes []Change, more bool, err error) 
 		seen := make(map[string]bool)
 		for _, key := range due {
 			c, err := expire(txn, key)
+			if errors.Is(err, errCorrupt) {
+				// Drop the index entry, so one bad value cannot stall expiry.
+				s.log.Error("dropping expiry of undecodable entry", "key", string(key[expiryKeyHeader:]), "error", err)
+				continue
+			}
 			if err != nil {
 				return err
 			}
