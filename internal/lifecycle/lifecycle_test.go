@@ -250,6 +250,31 @@ func TestStatusReadiness(t *testing.T) {
 	}
 }
 
+type detailFake struct {
+	*fake
+	detail string
+}
+
+func (f detailFake) Detail() string { return f.detail }
+
+func TestStatusDetail(t *testing.T) {
+	rec := &recorder{}
+	m := newManager(Options{}, &fake{name: "a", rec: rec}, detailFake{&fake{name: "b", rec: rec}, "degraded: 0 peers"})
+	if got := m.Status()[1].Detail; got != "" {
+		t.Errorf("detail before Start = %q, want none", got)
+	}
+	if err := m.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := []Status{
+		{Name: "a", State: StateRunning, Ready: true},
+		{Name: "b", State: StateRunning, Ready: true, Detail: "degraded: 0 peers"},
+	}
+	if got := m.Status(); !reflect.DeepEqual(got, want) {
+		t.Errorf("Status = %+v, want %+v", got, want)
+	}
+}
+
 func TestMisuse(t *testing.T) {
 	rec := &recorder{}
 	m := newManager(Options{}, &fake{name: "a", rec: rec})
