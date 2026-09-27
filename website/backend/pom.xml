@@ -79,6 +79,28 @@
       <artifactId>postgresql</artifactId>
       <scope>test</scope>
     </dependency>
+    <!-- Browser end-to-end test: Chromium in a container drives the real
+         site (InquiryFormBrowserTest); versions from the Spring Boot BOMs. -->
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>selenium</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.seleniumhq.selenium</groupId>
+      <artifactId>selenium-remote-driver</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.seleniumhq.selenium</groupId>
+      <artifactId>selenium-chrome-driver</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.seleniumhq.selenium</groupId>
+      <artifactId>selenium-support</artifactId>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <groupId>com.icegreen</groupId>
       <artifactId>greenmail-junit5</artifactId>
