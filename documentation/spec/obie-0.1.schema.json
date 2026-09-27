@@ -1,0 +1,290 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MNCloudwerksTechnology/obie/documentation/spec/obie-0.1.schema.json",
+  "title": "obie/0.1 event",
+  "description": "Structure of an obie/0.1 event, as specified in documentation/spec/obie-0.1.md. The schema is necessary but not sufficient: the rules in the section 'Rules beyond the schema' of the specification (size limit, duplicate keys, integer literals, calendar dates, clock skew, canonical and public addresses, scope/prefix agreement, revokes != id, negative zero) and signature verification are checked by code only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "spec",
+    "type",
+    "issued_at",
+    "indicator",
+    "publisher"
+  ],
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/uuidv7",
+      "description": "Event ID: UUIDv7, canonical lower-case form."
+    },
+    "spec": {
+      "const": "obie/0.1"
+    },
+    "type": {
+      "enum": [
+        "indicator.verdict",
+        "indicator.revoke"
+      ]
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 in UTC with second precision.",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$"
+    },
+    "indicator": {
+      "$ref": "#/$defs/indicator"
+    },
+    "protocol": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,32}$",
+      "description": "Attacked service (verdicts only)."
+    },
+    "evidence": {
+      "$ref": "#/$defs/evidence"
+    },
+    "verdict": {
+      "$ref": "#/$defs/verdict"
+    },
+    "mitre": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^T[0-9]{4}(\\.[0-9]{3})?$"
+      },
+      "description": "MITRE ATT&CK technique IDs (verdicts only)."
+    },
+    "revokes": {
+      "$ref": "#/$defs/uuidv7",
+      "description": "ID of the withdrawn verdict (revocations only)."
+    },
+    "reason": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]{1,64}$",
+      "description": "Why the verdict is withdrawn (revocations only)."
+    },
+    "publisher": {
+      "$ref": "#/$defs/publisher"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "indicator.verdict"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "protocol",
+          "evidence",
+          "verdict"
+        ],
+        "properties": {
+          "revokes": false,
+          "reason": false
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": {
+            "const": "indicator.revoke"
+          }
+        },
+        "required": [
+          "type"
+        ]
+      },
+      "then": {
+        "required": [
+          "revokes",
+          "reason"
+        ],
+        "properties": {
+          "protocol": false,
+          "evidence": false,
+          "verdict": false,
+          "mitre": false
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "uuidv7": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "indicator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "value",
+        "scope"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "ipv4",
+            "ipv6",
+            "cidr"
+          ]
+        },
+        "value": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ipv4"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "pattern": "^(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}$"
+              },
+              "scope": {
+                "const": "/32"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "ipv6"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "pattern": "^[23][0-9a-f]{3}(:(0|[1-9a-f][0-9a-f]{0,3})?){1,7}$"
+              },
+              "scope": {
+                "const": "/128"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "cidr"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "pattern": "^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(\\.(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}/(1[6-9]|2[0-9]|3[01])|[23][0-9a-f]{3}(:(0|[1-9a-f][0-9a-f]{0,3})?){1,7}/(3[2-9]|[4-9][0-9]|1[01][0-9]|12[0-7]))$"
+              },
+              "scope": {
+                "pattern": "^/((1[6-9]|2[0-9]|3[01])|(3[2-9]|[4-9][0-9]|1[01][0-9]|12[0-7]))$"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "events",
+        "reason",
+        "honeypot"
+      ],
+      "properties": {
+        "events": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "reason": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]{1,64}$"
+        },
+        "log_hash": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "honeypot": {
+          "type": "boolean"
+        }
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "suggested_action",
+        "confidence",
+        "ttl_seconds"
+      ],
+      "properties": {
+        "suggested_action": {
+          "enum": [
+            "ban",
+            "watch"
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "ttl_seconds": {
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 2592000
+        }
+      }
+    },
+    "publisher": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "peer_id",
+        "signature"
+      ],
+      "properties": {
+        "peer_id": {
+          "type": "string",
+          "pattern": "^[1-9A-HJ-NP-Za-km-z]{32,128}$",
+          "description": "libp2p peer ID of the signing Ed25519 key, base58btc (12D3KooW...)."
+        },
+        "asn": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "signature": {
+          "type": "string",
+          "pattern": "^(ed25519:[A-Za-z0-9_-]{85}[AQgw])?$",
+          "description": "ed25519: + 64-byte signature in unpadded base64url; empty only for an event that is not yet signed."
+        }
+      }
+    }
+  }
+}

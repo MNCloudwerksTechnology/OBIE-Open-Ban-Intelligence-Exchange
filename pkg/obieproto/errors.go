@@ -6,7 +6,8 @@ import (
 )
 
 // Sentinel errors. Every error returned by [Decode], [Event.Validate],
-// [CanonicalBytes] and [Verify] matches exactly one of them via [errors.Is].
+// [CanonicalBytes], [Verify] and [Receive] matches exactly one of them via
+// [errors.Is].
 var (
 	// ErrMalformed reports input that is not a single well-formed JSON object
 	// of the expected shape.
@@ -34,8 +35,12 @@ var (
 	ErrInvalidSignature = errors.New("obieproto: invalid signature")
 	// ErrPublisherMismatch reports a publisher.peer_id that is not the peer
 	// ID of the signing key: when signing, the key does not belong to the
-	// peer ID; when verifying, the peer ID embeds no Ed25519 key.
+	// peer ID; when verifying, the peer ID embeds no Ed25519 key; when
+	// receiving, the message was not published by that peer.
 	ErrPublisherMismatch = errors.New("obieproto: publisher does not match the signing key")
+	// ErrExpired reports a received event that is no longer relevant: a
+	// verdict past its TTL or a revocation older than MaxTTLSeconds.
+	ErrExpired = errors.New("obieproto: event expired")
 )
 
 // FieldError describes which field of an event failed validation. It
