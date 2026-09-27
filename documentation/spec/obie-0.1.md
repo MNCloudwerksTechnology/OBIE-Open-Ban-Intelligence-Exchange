@@ -394,6 +394,12 @@ Nodes form a libp2p mesh and exchange events with GossipSub (v1.1).
 as its data, without framing, batching, compression or any other envelope,
 and within the size limit of [ENC-1].
 
+**[TRN-3]** The GossipSub message ID of a message MUST be the `id` member
+of its event, so that every node deduplicates, announces (`IHAVE`) and
+requests (`IWANT`) an event under the same ID. A message whose data is not
+a JSON object with a string `id` of at most 4096 bytes is invalid anyway;
+its message ID is implementation-defined.
+
 Recommendations for the libp2p layer:
 
 - Nodes SHOULD register a topic validator that runs the checks of section
@@ -653,7 +659,9 @@ normative statement has no tag, a tag is missing here, or a test named here
 does not exist. For [SEM-1] to [SEM-4] the tests check the rules as the
 reference implementation states them (`Event.Supersedes`,
 `Event.Withdraws`, `Event.Expired`); the node's event store applies them.
-For [TRN-1] the test pins the topic constant that the mesh layer uses.
+For [TRN-1] the test pins the topic constant that the mesh layer uses;
+[ID-3] and [TRN-3] are tested in the node's gossip layer
+(`internal/gossip`).
 
 | Requirement | Tests |
 |-------------|-------|
@@ -683,6 +691,7 @@ For [TRN-1] the test pins the topic constant that the mesh layer uses.
 | ID-3   | `TestReceive` |
 | TRN-1  | `TestTopic` |
 | TRN-2  | `TestDecodeInvalid`, `TestReceive` |
+| TRN-3  | `TestMessageID` |
 | RCV-1  | `TestReceive`, `TestReceiveVectors` |
 | RCV-2  | `TestReceive` |
 | RCV-3  | `TestValidateDoesNotModify`, `TestIndicatorValidate`, `TestDecodeRoundTripIsByteIdentical` |

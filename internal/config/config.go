@@ -71,7 +71,7 @@ type Mesh struct {
 }
 
 // RateLimit configures the token buckets that bound the events accepted
-// from the mesh. Events beyond a limit are dropped without penalising the
+// from the mesh. Events beyond a limit are dropped without penalizing the
 // forwarding peer.
 type RateLimit struct {
 	// Publisher bounds the events of each publisher.
