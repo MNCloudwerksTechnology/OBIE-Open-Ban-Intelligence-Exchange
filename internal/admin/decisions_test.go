@@ -42,7 +42,7 @@ func testExplain(ind obieproto.Indicator) (DecisionResponse, error) {
 		PeerID: testPeers[0].PeerID, Name: "seed", EventID: "01900000-0000-7000-8000-000000000001", Action: obieproto.ActionBan,
 		Weight: 1, Confidence: 0.9, Score: 0.9, Contributes: true, IssuedAt: started, ExpiresAt: blockedUntil,
 	}}
-	d.Sovereignty = &SovereigntyResponse{Note: "allow-list and operator overrides are not applied yet"}
+	d.Sovereignty = &SovereigntyResponse{Applied: true, Note: "no allow-list entry or override applies"}
 	return d, nil
 }
 
@@ -52,6 +52,8 @@ func testDecisions(state string) []DecisionResponse {
 		return []DecisionResponse{testBlocked}
 	case StateNone:
 		return []DecisionResponse{testWatched}
+	case StateAllowed:
+		return nil
 	}
 	return []DecisionResponse{testBlocked, testWatched}
 }
@@ -108,7 +110,7 @@ func TestDecisionHandler(t *testing.T) {
 			body: `"publishers":[{"peer_id":"12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd","name":"seed","local":false,` +
 				`"event_id":"01900000-0000-7000-8000-000000000001","action":"ban","weight":1,"confidence":0.9,"score":0.9,"contributes":true,` +
 				`"issued_at":"2026-09-27T10:00:00Z","expires_at":"2026-09-27T11:00:00Z"}],` +
-				`"sovereignty":{"applied":false,"note":"allow-list and operator overrides are not applied yet"}`},
+				`"sovereignty":{"applied":true,"note":"no allow-list entry or override applies"}`},
 		{name: "invalid indicator", path: "/v1/decisions/not-an-ip", code: http.StatusBadRequest, body: "invalid indicator"},
 		{name: "internal range", path: "/v1/decisions/10.0.0.0/8", code: http.StatusBadRequest, body: "invalid indicator"},
 		{name: "engine failure", path: "/v1/decisions/" + failingIndicator, code: http.StatusInternalServerError, body: "see the obied log"},
@@ -148,7 +150,8 @@ func TestDecisionsHandler(t *testing.T) {
 		{name: "all", code: http.StatusOK, body: `{"decisions":[` + blocked + `,` + watched + `]}` + "\n"},
 		{name: "block", query: "?state=block", code: http.StatusOK, body: `{"decisions":[` + blocked + `]}` + "\n"},
 		{name: "none", query: "?state=none", code: http.StatusOK, body: `{"decisions":[` + watched + `]}` + "\n"},
-		{name: "invalid state", query: "?state=blocked", code: http.StatusBadRequest, body: `invalid state "blocked": want block or none` + "\n"},
+		{name: "allowed", query: "?state=allowed", code: http.StatusOK, body: `{"decisions":[]}` + "\n"},
+		{name: "invalid state", query: "?state=blocked", code: http.StatusBadRequest, body: `invalid state "blocked": want block, none or allowed` + "\n"},
 		{name: "no engine", info: func(i *Info) { i.Decisions = nil }, code: http.StatusOK, body: `{"decisions":[]}` + "\n"},
 	}
 	for _, tt := range tests {

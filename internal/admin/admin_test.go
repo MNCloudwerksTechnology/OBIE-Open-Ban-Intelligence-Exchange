@@ -57,13 +57,14 @@ func testInfo(statuses ...lifecycle.Status) Info {
 	return Info{
 		Peers:     func() []PeerResponse { return testPeers },
 		Version:   "v0.1.0",
-		Mode:      "observe",
+		Mode:      func() string { return "observe" },
 		StartedAt: started,
 		Identity:  testIdentity,
 		Status:    func() []lifecycle.Status { return statuses },
 		Now:       func() time.Time { return started.Add(90 * time.Second) },
 		Explain:   testExplain,
 		Decisions: testDecisions,
+		Overrides: newFakeOverrides(),
 	}
 }
 

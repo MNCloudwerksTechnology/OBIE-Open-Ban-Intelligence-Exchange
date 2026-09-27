@@ -65,7 +65,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 	mgr.Register(m)
 	mgr.Register(admin.New(cfg.Admin.Socket, cfg.Admin.SocketGroup, admin.Info{
 		Version:   version.Version,
-		Mode:      string(cfg.Node.Mode),
+		Mode:      func() string { return string(cfg.Node.Mode) },
 		StartedAt: startedAt,
 		Identity:  admin.NewIdentityResponse(id),
 		Status:    mgr.Status,
@@ -85,6 +85,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 			}
 			return out
 		},
+		Overrides: storeOverrides{store: db, now: time.Now},
 	}, logs.Logger(admin.Name)))
 
 	if err := mgr.Start(ctx); err != nil {
@@ -144,13 +145,6 @@ func peerResponses(peers []mesh.Peer) []admin.PeerResponse {
 	return out
 }
 
-// sovereigntyPending is the explanation's sovereignty section until the
-// allow-list and overrides are applied (WP #1660).
-var sovereigntyPending = admin.SovereigntyResponse{
-	Applied: false,
-	Note:    "allow-list and operator overrides are not applied yet",
-}
-
 // decisionResponse converts a decision into its admin API summary.
 func decisionResponse(d *decision.Decision) admin.DecisionResponse {
 	resp := admin.DecisionResponse{
@@ -191,7 +185,6 @@ func explanationResponse(d decision.Decision) admin.DecisionResponse {
 			ExpiresAt:   c.ExpiresAt.UTC(),
 		}
 	}
-	sovereignty := sovereigntyPending
-	resp.Sovereignty = &sovereignty
+	resp.Sovereignty = sovereigntyResponse(&d)
 	return resp
 }

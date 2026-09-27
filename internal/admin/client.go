@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -65,10 +66,41 @@ func (c *Client) Peers(ctx context.Context) (*PeersResponse, error) {
 }
 
 func (c *Client) get(ctx context.Context, path string, out any) error {
+	return c.do(ctx, http.MethodGet, path, nil, out)
+}
+
+// StatusError is an admin API answer other than 200 OK.
+type StatusError struct {
+	Method, Path string
+	// Code is the HTTP status code, Status its text.
+	Code   int
+	Status string
+	// Body is the start of the response body.
+	Body string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("%s %s: %s: %s", e.Method, e.Path, e.Status, e.Body)
+}
+
+// do sends a request with body (as JSON, if not nil) and decodes the
+// response into out.
+func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	var reqBody io.Reader
+	if body != nil {
+		data, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reqBody = bytes.NewReader(data)
+	}
 	// The host is ignored: the transport always dials the socket.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://obied"+path, nil)
+	req, err := http.NewRequestWithContext(ctx, method, "http://obied"+path, reqBody)
 	if err != nil {
 		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -76,11 +108,11 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-		return fmt.Errorf("GET %s: %s: %s", path, resp.Status, body)
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+		return &StatusError{Method: method, Path: path, Code: resp.StatusCode, Status: resp.Status, Body: string(data)}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("GET %s: decode response: %w", path, err)
+		return fmt.Errorf("%s %s: decode response: %w", method, path, err)
 	}
 	return nil
 }

@@ -20,8 +20,9 @@ const DecisionsPath = "/v1/decisions"
 
 // Decision states accepted by the state filter of GET /v1/decisions.
 const (
-	StateBlock = "block"
-	StateNone  = "none"
+	StateBlock   = "block"
+	StateNone    = "none"
+	StateAllowed = "allowed"
 )
 
 // DecisionResponse is the decision on one indicator: the JSON body of
@@ -29,7 +30,7 @@ const (
 // without Publishers and Sovereignty).
 type DecisionResponse struct {
 	Indicator obieproto.Indicator `json:"indicator"`
-	// State is StateBlock or StateNone.
+	// State is StateBlock, StateNone or StateAllowed.
 	State string `json:"state"`
 	// Score is the sum of weight × confidence over the contributing
 	// publishers.
@@ -72,9 +73,25 @@ type ContributionResponse struct {
 // SovereigntyResponse reports how the allow-list and operator overrides
 // affect a decision.
 type SovereigntyResponse struct {
-	// Applied is false while they are not evaluated.
-	Applied bool   `json:"applied"`
-	Note    string `json:"note"`
+	// Applied is true once they are evaluated.
+	Applied bool `json:"applied"`
+	// Effect is "allow" or "block"; empty when no rule applies.
+	Effect string `json:"effect,omitempty"`
+	// Rule is "force_allow", "allowlist" or "force_block".
+	Rule string `json:"rule,omitempty"`
+	// Source is where the rule comes from: "builtin", "self", "bootstrap",
+	// "config", "file" or "override".
+	Source string `json:"source,omitempty"`
+	// Match is the allow-listed range or the override's indicator key.
+	Match string `json:"match,omitempty"`
+	// Label describes an allow-list entry, e.g. "loopback" or a file:line.
+	Label string `json:"label,omitempty"`
+	// OverrideNote is the operator's note on the override.
+	OverrideNote string `json:"override_note,omitempty"`
+	// ExpiresAt is when the override ends; omitted if it does not.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	// Note explains the effect in one line.
+	Note string `json:"note"`
 }
 
 // DecisionsResponse is the JSON body of GET /v1/decisions.
@@ -126,8 +143,8 @@ func indicatorOf(s string) (obieproto.Indicator, error) {
 func handleDecisions(mux *http.ServeMux, info Info, log *slog.Logger) {
 	mux.HandleFunc("GET "+DecisionsPath, func(w http.ResponseWriter, r *http.Request) {
 		state := r.URL.Query().Get("state")
-		if state != "" && state != StateBlock && state != StateNone {
-			http.Error(w, fmt.Sprintf("invalid state %q: want %s or %s", state, StateBlock, StateNone), http.StatusBadRequest)
+		if state != "" && state != StateBlock && state != StateNone && state != StateAllowed {
+			http.Error(w, fmt.Sprintf("invalid state %q: want %s, %s or %s", state, StateBlock, StateNone, StateAllowed), http.StatusBadRequest)
 			return
 		}
 		resp := DecisionsResponse{Decisions: []DecisionResponse{}}
