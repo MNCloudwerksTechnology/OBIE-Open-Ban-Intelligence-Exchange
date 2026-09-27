@@ -152,11 +152,13 @@ func Load(path string) (*Config, error) {
 // Parse decodes YAML data over Default and validates the result.
 func Parse(data []byte) (*Config, error) {
 	cfg := Default()
-	lines, err := decode(data, &cfg)
+	lines, decodeProblems, err := decode(data, &cfg)
 	if err != nil {
 		return nil, err
 	}
-	if err := cfg.validate(lines); err != nil {
+	// Values that failed to decode keep their defaults, so validation still
+	// runs and every problem is reported in one pass.
+	if err := cfg.validate(lines, decodeProblems); err != nil {
 		return nil, err
 	}
 	return &cfg, nil

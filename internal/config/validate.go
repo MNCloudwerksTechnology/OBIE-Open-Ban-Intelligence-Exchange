@@ -15,21 +15,30 @@ import (
 
 // Validate checks every value of c and reports all problems as *Error.
 func (c *Config) Validate() error {
-	return c.validate(nil)
+	return c.validate(nil, nil)
 }
 
-// validator records problems, locating them through the decoded lines.
+// validator records problems, locating them through the decoded lines. It
+// adds nothing for a path that already has a decoding problem.
 type validator struct {
 	problems problems
 	lines    lineMap
+	reported map[string]bool
 }
 
 func (v *validator) addf(path, format string, args ...any) {
-	v.problems.addf(path, v.lines[path], format, args...)
+	if !v.reported[path] {
+		v.problems.addf(path, v.lines[path], format, args...)
+	}
 }
 
-func (c *Config) validate(lines lineMap) error {
-	v := &validator{lines: lines}
+// validate checks c after decoding produced lines and decodeProblems, and
+// reports those problems together with its own.
+func (c *Config) validate(lines lineMap, decodeProblems problems) error {
+	v := &validator{lines: lines, problems: decodeProblems, reported: make(map[string]bool, len(decodeProblems))}
+	for _, p := range decodeProblems {
+		v.reported[p.Path] = true
+	}
 
 	v.absPath("node.state_dir", c.Node.StateDir, false)
 	v.oneOf("node.mode", string(c.Node.Mode), string(ModeObserve), string(ModeEnforce))

@@ -18,9 +18,9 @@ func TestExampleDocumentsDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	var cfg Config
-	lines, err := decode(data, &cfg)
-	if err != nil {
-		t.Fatalf("decode example: %v", err)
+	lines, ps, err := decode(data, &cfg)
+	if err != nil || len(ps) > 0 {
+		t.Fatalf("decode example: %v %v", err, ps)
 	}
 	if want := Default(); !reflect.DeepEqual(cfg, want) {
 		t.Errorf("example values = %+v, want the defaults %+v", cfg, want)

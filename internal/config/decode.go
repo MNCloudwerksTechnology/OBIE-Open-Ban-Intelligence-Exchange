@@ -18,22 +18,23 @@ type lineMap map[string]int
 
 // decode strictly decodes YAML data over cfg. Unlike yaml.Unmarshal it
 // rejects unknown and duplicate keys and values of the wrong YAML type, and
-// reports every such problem with its key path.
-func decode(data []byte, cfg *Config) (lineMap, error) {
+// returns every such problem with its key path; values with a problem keep
+// what cfg held. err is only set when the file cannot be parsed at all.
+func decode(data []byte, cfg *Config) (lines lineMap, ps problems, err error) {
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
 	var doc yaml.Node
 	if err := dec.Decode(&doc); err != nil {
 		if errors.Is(err, io.EOF) {
-			return lineMap{}, nil // empty file: all defaults
+			return lineMap{}, nil, nil // empty file: all defaults
 		}
-		return nil, fmt.Errorf("parse config: %w", err)
+		return nil, nil, fmt.Errorf("parse config: %w", err)
 	}
 	var extra yaml.Node
 	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
 		if err != nil {
-			return nil, fmt.Errorf("parse config: %w", err)
+			return nil, nil, fmt.Errorf("parse config: %w", err)
 		}
-		return nil, &Error{Problems: []Problem{{Path: "(document)", Line: extra.Line, Message: "the file must contain exactly one YAML document"}}}
+		return nil, nil, &Error{Problems: []Problem{{Path: "(document)", Line: extra.Line, Message: "the file must contain exactly one YAML document"}}}
 	}
 
 	d := &decoder{lines: lineMap{}}
@@ -42,7 +43,7 @@ func decode(data []byte, cfg *Config) (lineMap, error) {
 		root = root.Content[0]
 	}
 	d.value(root, "", reflect.ValueOf(cfg).Elem())
-	return d.lines, d.problems.err()
+	return d.lines, d.problems, nil
 }
 
 type decoder struct {

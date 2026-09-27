@@ -214,28 +214,33 @@ func TestParseYAML11BooleanIsAString(t *testing.T) {
 }
 
 func TestParseReportsAllProblemsWithLines(t *testing.T) {
+	// Decoding and validation problems are reported together.
 	input := "node:\n  mode: fast\nbogus: 1\ndecision:\n  quorum: 0\n"
 	_, err := Parse([]byte(input))
-	var cfgErr *Error
-	if !errors.As(err, &cfgErr) {
-		t.Fatalf("error = %v, want *Error", err)
+	if got := len(problemsOf(t, err)); got != 3 {
+		t.Errorf("got %d problems, want 3: %v", got, err)
 	}
-	// Decoding problems are reported before validation runs.
-	p := wantProblem(t, err, "bogus", "unknown key")
-	if p.Line != 3 {
+	if p := wantProblem(t, err, "bogus", "unknown key"); p.Line != 3 {
 		t.Errorf("bogus line = %d, want 3", p.Line)
 	}
-
-	_, err = Parse([]byte("node:\n  mode: fast\ndecision:\n  quorum: 0\n"))
-	if got := len(problemsOf(t, err)); got != 2 {
-		t.Errorf("got %d problems, want 2: %v", got, err)
-	}
-	if p := wantProblem(t, err, "decision.quorum", "at least 1"); p.Line != 4 {
-		t.Errorf("decision.quorum line = %d, want 4", p.Line)
+	if p := wantProblem(t, err, "decision.quorum", "at least 1"); p.Line != 5 {
+		t.Errorf("decision.quorum line = %d, want 5", p.Line)
 	}
 	if !strings.Contains(err.Error(), "node.mode (line 2): must be one of") {
 		t.Errorf("Error() = %q, want it to name path and line", err.Error())
 	}
+}
+
+func TestParseReportsEachPathOnce(t *testing.T) {
+	// A value that failed to decode is not reported again by validation.
+	input := "trust:\n  publishers:\n    - {name: a, weight: 1}\nallowlist:\n  cidrs: [42]\n"
+	_, err := Parse([]byte(input))
+	ps := problemsOf(t, err)
+	if len(ps) != 2 {
+		t.Fatalf("got %d problems, want 2: %v", len(ps), ps)
+	}
+	wantProblem(t, err, "trust.publishers[0].peer_id", "required key is missing")
+	wantProblem(t, err, "allowlist.cidrs[0]", "must be a string")
 }
 
 func TestParseSyntaxError(t *testing.T) {
