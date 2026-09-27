@@ -1,0 +1,139 @@
+.hero {
+  padding-block: var(--space-7) var(--space-8);
+  overflow: hidden;
+}
+
+.layout {
+  display: grid;
+  gap: var(--space-8);
+  align-items: center;
+}
+
+h1 {
+  max-width: 18ch;
+  font-size: var(--text-display);
+  letter-spacing: -0.035em;
+}
+
+.lead {
+  max-width: 56ch;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+}
+
+.challenge {
+  margin-top: var(--space-5);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.no-tokens {
+  margin-top: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-accent);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.report {
+  position: relative;
+  margin: 0;
+  max-width: 26rem;
+}
+
+.backdrop {
+  position: absolute;
+  inset: -20% -25% auto auto;
+  width: 22rem;
+  height: 22rem;
+  opacity: 0.18;
+}
+
+.report-card {
+  position: relative;
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-top: 4px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.report-title {
+  color: var(--color-accent-text);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+dl {
+  margin: var(--space-4) 0;
+
+  div {
+    display: grid;
+    grid-template-columns: 7.5rem 1fr;
+    gap: var(--space-2);
+    padding-block: var(--space-2);
+    border-bottom: 1px dashed var(--color-border);
+  }
+}
+
+dt {
+  color: var(--color-text-muted);
+}
+
+dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.signature {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  font-weight: 700;
+}
+
+.seal {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  }
+}
+
+figcaption {
+  position: relative;
+  margin-top: var(--space-3);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+@media (min-width: 60rem) {
+  .hero {
+    padding-block: var(--space-9);
+  }
+
+  .layout {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+
+  .report {
+    justify-self: end;
+  }
+}

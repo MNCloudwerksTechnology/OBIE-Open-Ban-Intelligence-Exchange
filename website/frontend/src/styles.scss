@@ -267,20 +267,21 @@ code {
 }
 
 .next-step {
-  display: inline-flex;
-  gap: var(--space-2);
-  align-items: center;
+  display: inline-block;
   margin-top: var(--space-7);
   font-weight: 600;
 }
 
+// Chevron after the last word, so it stays with the text when it wraps.
 .next-step::after {
   content: '';
+  display: inline-block;
   width: 0.5em;
   height: 0.5em;
+  margin-left: var(--space-2);
   border-top: 2px solid currentColor;
   border-right: 2px solid currentColor;
-  transform: rotate(45deg);
+  transform: translateY(-0.1em) rotate(45deg);
 }
 
 .card-grid {
