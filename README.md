@@ -18,9 +18,10 @@ A node is configured with one YAML file (default `/etc/obie/obie.yaml`);
 [documentation/examples/obie.yaml](documentation/examples/obie.yaml) documents
 every key and its default.
 
-Requires Go 1.23 or newer. See [ARCHITECTURE.md](ARCHITECTURE.md) for the
-technical baseline and [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute.
-The whitepaper follows below.
+Requires Go 1.23 or newer. Every pull request is gated by the same `make ci` in
+CI. See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical baseline and
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute. The whitepaper
+follows below.
 
 ---
 
