@@ -26,6 +26,15 @@ func TCP(addr string) ListenFunc {
 	}
 }
 
+// Option configures the http.Server of a Server.
+type Option func(*http.Server)
+
+// ConnContext sets http.Server.ConnContext: fn derives the context of every
+// request on a connection, e.g. to attach the peer's credentials.
+func ConnContext(fn func(ctx context.Context, c net.Conn) context.Context) Option {
+	return func(srv *http.Server) { srv.ConnContext = fn }
+}
+
 // Server serves handler on the listener returned by listen. It implements
 // lifecycle.Subsystem and lifecycle.ReadinessChecker.
 type Server struct {
@@ -33,6 +42,7 @@ type Server struct {
 	listen  ListenFunc
 	handler http.Handler
 	log     *slog.Logger
+	opts    []Option
 
 	mu       sync.Mutex
 	srv      *http.Server
@@ -42,8 +52,8 @@ type Server struct {
 }
 
 // New returns a Server named name.
-func New(name string, listen ListenFunc, handler http.Handler, log *slog.Logger) *Server {
-	return &Server{name: name, listen: listen, handler: handler, log: log}
+func New(name string, listen ListenFunc, handler http.Handler, log *slog.Logger, opts ...Option) *Server {
+	return &Server{name: name, listen: listen, handler: handler, log: log, opts: opts}
 }
 
 // Name returns the subsystem name.
@@ -59,6 +69,9 @@ func (s *Server) Start(ctx context.Context) error {
 		Handler:           s.handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
+	}
+	for _, opt := range s.opts {
+		opt(srv)
 	}
 	done := make(chan struct{})
 

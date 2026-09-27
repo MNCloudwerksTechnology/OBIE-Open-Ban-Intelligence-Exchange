@@ -66,6 +66,7 @@ internal/           all non-public code (one package per concern listed above)
   mesh/             go-libp2p host, bootstrap peers with backoff, peer view
   ops/              /healthz, /readyz and Prometheus /metrics
   store/            BadgerDB event and indicator state: dedupe, expiry, overrides
+  verdicts/         this node's own verdicts: report (hash evidence, coalesce), revoke, list
   version/          build version, injected via -ldflags
 pkg/
   obieproto/        public protocol types + sign/verify (importable by third parties)
@@ -164,6 +165,23 @@ Only the packages that exist today are listed in detail; the remaining
   count vs quorum and the final decision; `obiectl decisions`
   (`GET /v1/decisions?state=block`) lists them. The allow-list and overrides
   are shown as not applied until WP #1660 (ADR 0011).
+- **Local verdicts.** `internal/verdicts` turns a local detection into a
+  signed `indicator.verdict` (`obiectl report`, `POST /v1/reports`): defaults
+  confidence 0.8, action `ban` and TTL `decision.default_ttl`, capped at
+  `decision.max_ttl`. `evidence_lines` are hashed (`sha256` over the lines
+  joined with `\n`) into `evidence.log_hash` and dropped — never stored,
+  published or logged. Allow-listed (`allowlist.cidrs`) and non-public
+  indicators are refused with 422. A report on an indicator this node already
+  has an active verdict on refreshes it (new ID and expiry, cumulative
+  counts); within 60 s of the last verdict a report is coalesced into the
+  next refresh. `obiectl revoke` (`POST /v1/revocations`) withdraws this
+  node's own active verdict by event ID or indicator (404 if there is none);
+  `obiectl indicators` and `obiectl show` (`GET /v1/indicators[/{indicator}]`)
+  list the active verdicts. Events are signed through the node identity
+  (`obieproto.SignWith`) and published with `Mesh.Publish`. Every admin API
+  request is checked against the peer's `SO_PEERCRED` credentials: only
+  root, obied's own user and members of `admin.socket_group` get past 403
+  (ADR 0012).
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
   before every commit. Tool versions are pinned in the `Makefile`. The CI

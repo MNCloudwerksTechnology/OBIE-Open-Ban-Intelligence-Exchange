@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"path/filepath"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/mesh"
 	"github.com/MNCloudwerksTechnology/obie/internal/ops"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
+	"github.com/MNCloudwerksTechnology/obie/internal/verdicts"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -63,6 +65,18 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 	mgr.Register(engine)
 	mgr.Register(ops.New(cfg.Metrics.Listen, mgr.Status, logs.Logger(ops.Name)))
 	mgr.Register(m)
+	allowlist, err := parsePrefixes(cfg.Allowlist.CIDRs)
+	if err != nil {
+		return fmt.Errorf("allowlist: %w", err)
+	}
+	reporter := verdicts.New(verdicts.Options{
+		Store:      db,
+		Publisher:  m,
+		Signer:     id,
+		DefaultTTL: cfg.Decision.DefaultTTL.Std(),
+		MaxTTL:     cfg.Decision.MaxTTL.Std(),
+		Allowlist:  allowlist,
+	}, logs.Logger(verdicts.Name))
 	mgr.Register(admin.New(cfg.Admin.Socket, cfg.Admin.SocketGroup, admin.Info{
 		Version:   version.Version,
 		Mode:      string(cfg.Node.Mode),
@@ -85,6 +99,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 			}
 			return out
 		},
+		Verdicts: reporter,
 	}, logs.Logger(admin.Name)))
 
 	if err := mgr.Start(ctx); err != nil {
@@ -124,6 +139,19 @@ func loadIdentity(stateDir string, log *slog.Logger) (identity.Identity, error) 
 	log.Info(msg, "peer_id", key.PeerID(), "fingerprint", identity.Fingerprint(key.PublicKey()),
 		"key_file", identity.Path(stateDir))
 	return key, nil
+}
+
+// parsePrefixes parses CIDR ranges that configuration validation accepted.
+func parsePrefixes(cidrs []string) ([]netip.Prefix, error) {
+	out := make([]netip.Prefix, len(cidrs))
+	for i, c := range cidrs {
+		p, err := netip.ParsePrefix(c)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = p
+	}
+	return out, nil
 }
 
 // peerResponses converts the mesh's peer view into admin API wire types,

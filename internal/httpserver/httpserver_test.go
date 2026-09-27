@@ -85,3 +85,27 @@ func TestNotReadyWhenServingFails(t *testing.T) {
 		t.Errorf("Ready = %v, want not serving", err)
 	}
 }
+
+func TestConnContext(t *testing.T) {
+	type key struct{}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		addr, _ := r.Context().Value(key{}).(string)
+		_, _ = io.WriteString(w, addr) // #nosec G705 -- a test server echoing its own address.
+	})
+	s := New("web", TCP("127.0.0.1:0"), handler, discardLogger(), ConnContext(func(ctx context.Context, c net.Conn) context.Context {
+		return context.WithValue(ctx, key{}, c.LocalAddr().String())
+	}))
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Stop(context.Background()) }()
+	resp, err := http.Get("http://" + s.Addr().String() + "/") // #nosec G107 -- test server URL.
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if string(body) != s.Addr().String() {
+		t.Errorf("connection context value = %q, want %q", body, s.Addr().String())
+	}
+}

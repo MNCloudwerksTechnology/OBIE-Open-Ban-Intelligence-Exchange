@@ -359,3 +359,47 @@ func BenchmarkSign(b *testing.B) {
 		}
 	}
 }
+
+// keySigner is a Signer for a private key, with an optionally wrong peer ID.
+type keySigner struct {
+	key    ed25519.PrivateKey
+	peerID string
+}
+
+func (s keySigner) PeerID() string         { return s.peerID }
+func (s keySigner) Sign(msg []byte) []byte { return ed25519.Sign(s.key, msg) }
+
+func TestSignWith(t *testing.T) {
+	key := testKey(t, testSeedA)
+	peerID, err := PeerIDFromPublicKey(key.Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := validVerdict()
+	e.Publisher.PeerID = ""
+	if err := SignWith(e, keySigner{key: key, peerID: peerID}); err != nil {
+		t.Fatalf("SignWith() error = %v", err)
+	}
+	if e.Publisher.PeerID != peerID {
+		t.Errorf("publisher.peer_id = %q, want %q", e.Publisher.PeerID, peerID)
+	}
+	if want := signedBy(t, validVerdict(), testSeedA); e.Publisher.Signature != want.Publisher.Signature {
+		t.Errorf("SignWith signature %q differs from Sign %q", e.Publisher.Signature, want.Publisher.Signature)
+	}
+
+	otherID, err := PeerIDFromPublicKey(testKey(t, testSeedB).Public().(ed25519.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unsigned := validVerdict()
+	before := *unsigned
+	if err := SignWith(unsigned, keySigner{key: key, peerID: otherID}); !errors.Is(err, ErrInvalidSignature) {
+		t.Errorf("SignWith() with a foreign peer ID error = %v, want ErrInvalidSignature", err)
+	}
+	if !reflect.DeepEqual(*unsigned, before) {
+		t.Error("SignWith() modified the event on error")
+	}
+	if err := SignWith(nil, keySigner{key: key, peerID: peerID}); !errors.Is(err, ErrMalformed) {
+		t.Errorf("SignWith(nil) error = %v, want ErrMalformed", err)
+	}
+}

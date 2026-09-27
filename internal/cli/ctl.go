@@ -25,11 +25,15 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"status":    {summary: "show the node status", run: runStatus},
-	"identity":  {summary: "show the node's peer ID and key fingerprint", run: runCtlIdentity},
-	"peers":     {summary: "list the connected mesh peers", run: runPeers},
-	"explain":   {summary: "explain the decision on an address or CIDR range", run: runExplain},
-	"decisions": {summary: "list the decisions (--state block for the blocked indicators)", run: runDecisions},
+	"status":     {summary: "show the node status", run: runStatus},
+	"identity":   {summary: "show the node's peer ID and key fingerprint", run: runCtlIdentity},
+	"peers":      {summary: "list the connected mesh peers", run: runPeers},
+	"explain":    {summary: "explain the decision on an address or CIDR range", run: runExplain},
+	"decisions":  {summary: "list the decisions (--state block for the blocked indicators)", run: runDecisions},
+	"report":     {summary: "publish a signed verdict on an attacking address or CIDR range", run: runReport},
+	"revoke":     {summary: "revoke this node's verdict by event ID, address or CIDR range", run: runRevoke},
+	"indicators": {summary: "list the indicators with active verdicts", run: runIndicators},
+	"show":       {summary: "show every active verdict on an address or CIDR range", run: runShow},
 }
 
 // RunCtl runs obiectl with args and returns the process exit code.
@@ -108,6 +112,14 @@ func runStatus(ctx context.Context, client *admin.Client, args []string, stdout,
 
 // reportClientError explains a failed admin API call.
 func reportClientError(stderr io.Writer, err error) {
+	var apiErr *admin.APIError
+	if errors.As(err, &apiErr) {
+		_, _ = fmt.Fprintf(stderr, "obiectl: %s (obied answered %s)\n", apiErr.Message, apiErr.Status)
+		if hint := apiErrorHint(apiErr); hint != "" {
+			_, _ = fmt.Fprintf(stderr, "obiectl: %s\n", hint)
+		}
+		return
+	}
 	_, _ = fmt.Fprintf(stderr, "obiectl: %v\n", err)
 	if errors.Is(err, admin.ErrDaemonNotRunning) {
 		_, _ = fmt.Fprintln(stderr, "obiectl: start obied, or point --socket at its admin.socket")

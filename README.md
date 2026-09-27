@@ -12,7 +12,9 @@ peers and gossips signed verdicts and revocations with them, relaying only
 valid events within per-publisher and per-peer rate limits. It keeps a
 trust-weighted decision (`block` or `none`) for every indicator it holds
 verdicts on and explains it on request. `obiectl`, the operator CLI, queries
-it over the local admin socket. Enforcement, the allow-list and operator
+it over the local admin socket and turns local detections into signed
+verdicts: log lines given as evidence are hashed on the node, and only the
+hash and the counts are published. Enforcement, the allow-list and operator
 overrides follow in later work packages.
 
 ```sh
@@ -27,6 +29,11 @@ make build           # static binaries in ./bin/
 ./bin/obiectl --socket /run/obie/obie.sock peers [--json]      # connected mesh peers
 ./bin/obiectl --socket /run/obie/obie.sock explain [--json] 203.0.113.7   # why (not) blocked
 ./bin/obiectl --socket /run/obie/obie.sock decisions [--state block] [--json]
+./bin/obiectl report --protocol ssh --reason password_bruteforce --events 5 \
+    [--evidence-file auth.log] [--ttl 12h] [--action watch] [--json] <ip | cidr>  # publish a verdict
+./bin/obiectl revoke [--reason false_positive] <ip | cidr | event-id>             # withdraw it
+./bin/obiectl indicators [--mine | --publisher <peer-id>] [--json]                # active verdicts
+./bin/obiectl show [--json] <ip | cidr>                                            # verdicts on one
 make ci              # every check a change must pass
 ```
 

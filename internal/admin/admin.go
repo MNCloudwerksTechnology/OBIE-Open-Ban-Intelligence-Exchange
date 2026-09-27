@@ -110,14 +110,25 @@ type Info struct {
 	// Decisions lists the decisions in a state, or all for ""; none when
 	// nil.
 	Decisions func(state string) []DecisionResponse
+	// Verdicts reports, revokes and lists verdicts; those endpoints answer
+	// 503 when nil.
+	Verdicts VerdictService
 	// Now returns the current time; time.Now when nil.
 	Now func() time.Time
 }
 
 // New returns the admin API subsystem serving on the Unix socket at path,
-// owned by group if that group exists (see ListenUnix).
+// owned by group if that group exists (see ListenUnix). Beyond the socket's
+// file mode, every request is checked against the connecting process's
+// credentials (SO_PEERCRED): only root, the user obied runs as and members
+// of group are served; others get 403.
 func New(path, group string, info Info, log *slog.Logger) *httpserver.Server {
-	return httpserver.New(Name, ListenUnix(path, group, log), Handler(info, log), log)
+	return newServer(path, group, newAccessPolicy(group, log), info, log)
+}
+
+func newServer(path, group string, policy accessPolicy, info Info, log *slog.Logger) *httpserver.Server {
+	return httpserver.New(Name, ListenUnix(path, group, log), authorize(policy, Handler(info, log), log), log,
+		httpserver.ConnContext(withPeerCred))
 }
 
 // Handler returns the admin API endpoints.
@@ -153,6 +164,7 @@ func Handler(info Info, log *slog.Logger) http.Handler {
 		writeJSON(w, resp, log)
 	})
 	handleDecisions(mux, info, log)
+	handleVerdicts(mux, info, log)
 	return mux
 }
 
