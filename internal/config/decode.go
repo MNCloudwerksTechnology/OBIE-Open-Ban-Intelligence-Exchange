@@ -91,6 +91,10 @@ func (d *decoder) value(n *yaml.Node, path string, v reflect.Value) {
 		if d.expectScalar(n, name, "!!int") {
 			d.scalar(n, name, v)
 		}
+	case reflect.Bool:
+		if d.expectScalar(n, name, "!!bool") {
+			d.scalar(n, name, v)
+		}
 	case reflect.Float64:
 		if d.expectScalar(n, name, "!!int", "!!float") {
 			d.scalar(n, name, v)

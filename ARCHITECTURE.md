@@ -18,7 +18,9 @@ specification, its JSON Schema and how both are kept in step with the code in
 [ADR 0006](documentation/adr/0006-protocol-specification-and-schema.md); the
 mesh host and static bootstrap peers in
 [ADR 0007](documentation/adr/0007-mesh-host-and-bootstrap.md); the local event
-store in [ADR 0008](documentation/adr/0008-local-event-store.md).
+store in [ADR 0008](documentation/adr/0008-local-event-store.md); the
+trust-weighted decision engine in
+[ADR 0009](documentation/adr/0009-trust-weighted-decision.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
@@ -34,7 +36,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Identity:** one Ed25519 key per node; the libp2p peer ID is derived from it (same key for mesh and event signing).
 - **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0008).
 - **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts`, static bootstrap peers in v0.1.
-- **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers ≥ quorum (default 2) — local verdicts count with `local_weight`. Allow-list always wins. Mode `observe` (default) or `enforce`.
+- **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0009). Allow-list always wins. Mode `observe` (default) or `enforce`.
 - **Enforcement:** pluggable enforcer; `dryrun` and `nftables` (own table `inet obie`, timeout sets) backends; reconcile loop.
 - **Ops:** Prometheus `/metrics`, `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); JSON decision audit log.
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests; privileged tests behind the `privileged` build tag.
@@ -50,6 +52,7 @@ internal/           all non-public code (one package per concern listed above)
   cli/              flag handling and commands of both binaries
   config/           YAML configuration schema, defaults, strict decoding, validation
   daemon/           wires the obied subsystems together and runs them
+  decision/         trust-weighted consensus per indicator, explanations, block change stream
   httpserver/       HTTP server as a lifecycle subsystem
   identity/         persistent Ed25519 node key (<state_dir>/node.key); peer ID, signing
   lifecycle/        ordered subsystem start/stop with timeouts; status and readiness

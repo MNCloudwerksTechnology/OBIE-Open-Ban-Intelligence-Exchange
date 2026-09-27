@@ -59,12 +59,18 @@ trust:
 
 decision:
   # An address is blocked when its score — the sum of weight x confidence
-  # over the distinct publishers' latest active verdicts — reaches threshold
-  # (> 0) AND at least quorum (>= 1) distinct publishers reported it.
-  # The allowlist always wins.
+  # over the distinct publishers' latest active "ban" verdicts — reaches
+  # threshold (> 0) AND at least quorum (>= 1) distinct publishers with a
+  # weight above 0 reported it. "watch" verdicts are shown by
+  # `obiectl explain` but never count. The allowlist always wins.
   threshold: 1.8
   quorum: 2
-  # Longest time a block may last, whatever a verdict requests.
+  # true: this node's own ban verdicts block on their own, without threshold
+  # and quorum, so local detections protect this host immediately (only
+  # while trust.local_weight > 0).
+  local_autoblock: true
+  # Longest time a block may last from the moment it is decided, whatever
+  # the verdicts request.
   max_ttl: 30d
   # Block duration when a verdict requests none; must not exceed max_ttl.
   default_ttl: 7d

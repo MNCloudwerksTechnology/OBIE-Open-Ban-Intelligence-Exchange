@@ -78,6 +78,7 @@ func TestDefaults(t *testing.T) {
 		{"decision.quorum", d.Decision.Quorum, 2},
 		{"decision.max_ttl", d.Decision.MaxTTL.Std(), 30 * 24 * time.Hour},
 		{"decision.default_ttl", d.Decision.DefaultTTL.Std(), 7 * 24 * time.Hour},
+		{"decision.local_autoblock", d.Decision.LocalAutoblock, true},
 		{"allowlist.cidrs", d.Allowlist.CIDRs, []string{}},
 		{"enforce.backend", d.Enforce.Backend, BackendDryRun},
 		{"enforce.max_entries", d.Enforce.MaxEntries, 100000},
@@ -112,6 +113,7 @@ trust:
 decision:
   quorum: 3
   default_ttl: 36h
+  local_autoblock: false
 enforce:
   max_entries: 0x10
 `
@@ -129,7 +131,7 @@ enforce:
 	if !reflect.DeepEqual(cfg.Trust.Publishers, wantPubs) {
 		t.Errorf("publishers = %+v, want %+v", cfg.Trust.Publishers, wantPubs)
 	}
-	if cfg.Decision.Quorum != 3 || cfg.Decision.DefaultTTL.Std() != 36*time.Hour || cfg.Decision.Threshold != 1.8 {
+	if cfg.Decision.Quorum != 3 || cfg.Decision.DefaultTTL.Std() != 36*time.Hour || cfg.Decision.Threshold != 1.8 || cfg.Decision.LocalAutoblock {
 		t.Errorf("decision = %+v", cfg.Decision)
 	}
 	if cfg.Enforce.MaxEntries != 16 {
@@ -189,6 +191,8 @@ func TestParseDecodeErrors(t *testing.T) {
 		{"int out of range", "enforce:\n  max_entries: 99999999999999999999\n", "enforce.max_entries", "out of range"},
 		{"number expected got string", "decision:\n  threshold: high\n", "decision.threshold", "must be an integer or a number, got a string"},
 		{"number expected got bool", "trust:\n  local_weight: true\n", "trust.local_weight", "must be an integer or a number, got a boolean"},
+		{"bool expected got string", "decision:\n  local_autoblock: \"false\"\n", "decision.local_autoblock", "must be a boolean, got a string"},
+		{"bool expected got int", "decision:\n  local_autoblock: 0\n", "decision.local_autoblock", "must be a boolean, got an integer"},
 		{"list item wrong type", "allowlist:\n  cidrs: [10.0.0.0/8, 42]\n", "allowlist.cidrs[1]", "must be a string, got an integer"},
 		{"duration not a string", "decision:\n  max_ttl: 30\n", "decision.max_ttl", "must be a string, got an integer"},
 		{"duration syntax", "enforce:\n  reconcile_interval: ten seconds\n", "enforce.reconcile_interval", "invalid duration"},
