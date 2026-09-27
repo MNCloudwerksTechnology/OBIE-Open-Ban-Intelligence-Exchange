@@ -36,10 +36,14 @@ the start/stop contract has to exist before those subsystems do.
   module's Go 1.23 baseline.
 - **Admin API** (`internal/admin`): HTTP/JSON on the Unix socket
   `admin.socket`, versioned under `/v1/`. At start a stale socket file is
-  removed — but only if nothing answers on it, so a second `obied` refuses to
-  start instead of hijacking a running node's socket, and a non-socket file is
-  never deleted. The socket is chmod'ed to 0660 and chgrp'ed to
-  `admin.socket_group` if that group exists (a warning is logged otherwise;
+  removed — but only if connecting to it is refused, so a second `obied`
+  refuses to start instead of hijacking a running node's socket (any other
+  probe failure also refuses), and a non-socket file is never deleted. The
+  socket's directory is not created by `obied`; it must exist and admit only
+  the service user and group (e.g. systemd `RuntimeDirectory=obie`,
+  `RuntimeDirectoryMode=0750`), because the socket carries the umask
+  permissions until it is chmod'ed. The socket is chmod'ed to 0660 and
+  chgrp'ed to `admin.socket_group` if that group exists (a warning is logged otherwise;
   failing to chgrp an existing group is a start failure, because the socket
   would otherwise be accessible to the wrong group). The same package holds
   the client used by `obiectl`, so the wire types exist exactly once.

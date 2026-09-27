@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/user"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/httpserver"
@@ -24,8 +25,12 @@ const staleProbeTimeout = time.Second
 
 // ListenUnix returns a ListenFunc for the admin socket at path. It removes a
 // stale socket file left by a previous run, refusing to start when another
-// process still answers on it or when path is not a socket. The socket gets
+// process may still answer on it or when path is not a socket. The socket gets
 // SocketMode and, if the group exists, is owned by group.
+//
+// The parent directory must exist. Until the chmod, the socket carries the
+// permissions of the process umask, so the directory should admit only the
+// service user and group (e.g. systemd RuntimeDirectoryMode=0750).
 func ListenUnix(path, group string, log *slog.Logger) httpserver.ListenFunc {
 	return func(ctx context.Context) (net.Listener, error) {
 		if err := removeStaleSocket(ctx, path); err != nil {
@@ -58,9 +63,15 @@ func removeStaleSocket(ctx context.Context, path string) error {
 	ctx, cancel := context.WithTimeout(ctx, staleProbeTimeout)
 	defer cancel()
 	var d net.Dialer
-	if conn, err := d.DialContext(ctx, "unix", path); err == nil {
+	conn, err := d.DialContext(ctx, "unix", path)
+	if err == nil {
 		_ = conn.Close()
 		return fmt.Errorf("%s is in use; is another obied running?", path)
+	}
+	// Only a refused connection proves nobody listens; any other failure
+	// (permissions, full backlog, timeout) may hide a live daemon.
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		return fmt.Errorf("cannot tell whether %s is stale, refusing to replace it: %w", path, err)
 	}
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("remove stale socket: %w", err)

@@ -169,6 +169,29 @@ func TestRefusesSocketInUse(t *testing.T) {
 	}
 }
 
+func TestRefusesSocketItCannotProbe(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root bypasses socket permissions")
+	}
+	path := socketPath(t)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	// A daemon we may not connect to must not lose its socket.
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	err = New(path, "obie", testInfo(), discardLogger()).Start(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "cannot tell whether") {
+		t.Fatalf("Start = %v, want a refusal", err)
+	}
+	if _, err := os.Lstat(path); err != nil {
+		t.Errorf("socket of the other process was removed: %v", err)
+	}
+}
+
 func TestRefusesNonSocketFile(t *testing.T) {
 	path := socketPath(t)
 	if err := os.WriteFile(path, []byte("important"), 0o600); err != nil {

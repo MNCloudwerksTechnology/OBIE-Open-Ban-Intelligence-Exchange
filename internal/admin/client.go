@@ -27,6 +27,8 @@ type Client struct {
 // NewClient returns a client for the admin socket at socket.
 func NewClient(socket string) *Client {
 	transport := &http.Transport{
+		// obiectl makes one request per run; keep no idle connections.
+		DisableKeepAlives: true,
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			var d net.Dialer
 			return d.DialContext(ctx, "unix", socket)
