@@ -21,6 +21,9 @@ linters:
   settings:
     misspell:
       locale: US
+      # MITRE (ATT&CK) is a proper noun, not a misspelling of "miter".
+      ignore-rules:
+        - mitre
     revive:
       rules:
         - name: exported
