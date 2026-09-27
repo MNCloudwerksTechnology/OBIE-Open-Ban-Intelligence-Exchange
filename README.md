@@ -1,5 +1,23 @@
 # OBIE: Open Ban Intelligence Exchange
 
+## Status & building
+
+OBIE is in early development: the v0.1 reference implementation in Go is being
+built on top of this whitepaper. The binaries (`obied`, the node daemon, and
+`obiectl`, the operator CLI) currently only report their version.
+
+```sh
+make build           # static binaries in ./bin/
+./bin/obied --version
+make ci              # every check a change must pass
+```
+
+Requires Go 1.23 or newer. See [ARCHITECTURE.md](ARCHITECTURE.md) for the
+technical baseline and [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute.
+The whitepaper follows below.
+
+---
+
 ## A Decentralized, Federated Security Mesh for the Modern Internet
 
 ### Abstract
