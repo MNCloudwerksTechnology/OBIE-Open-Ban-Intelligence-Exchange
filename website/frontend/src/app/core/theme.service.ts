@@ -7,7 +7,7 @@ const DARK_QUERY = '(prefers-color-scheme: dark)';
 /**
  * The colour theme. It follows the system setting (`prefers-color-scheme`)
  * until the visitor picks the other theme with the header toggle; the pick
- * lasts for this visit only and is never stored (ADR 0010). The CSS applies
+ * lasts for this visit only and is never stored (ADR 0012). The CSS applies
  * the system theme on its own, so the page is themed correctly before this
  * service runs, when prerendering and without JavaScript.
  */

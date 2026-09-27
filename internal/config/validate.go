@@ -53,6 +53,8 @@ func (c *Config) validate(lines lineMap, decodeProblems problems) error {
 	for i, addr := range c.Mesh.Bootstrap {
 		v.bootstrapAddr(fmt.Sprintf("mesh.bootstrap[%d]", i), addr)
 	}
+	v.tokenBucket("mesh.rate_limit.publisher", c.Mesh.RateLimit.Publisher)
+	v.tokenBucket("mesh.rate_limit.peer", c.Mesh.RateLimit.Peer)
 
 	v.publishers(c.Trust.Publishers)
 	v.weight("trust.default_weight", c.Trust.DefaultWeight)
@@ -128,6 +130,15 @@ func (v *validator) positive(path string, d Duration) bool {
 		return false
 	}
 	return true
+}
+
+func (v *validator) tokenBucket(path string, b TokenBucket) {
+	if !(b.EventsPerSecond > 0) || math.IsInf(b.EventsPerSecond, 0) {
+		v.addf(path+".events_per_second", "must be a number greater than 0, got %v", b.EventsPerSecond)
+	}
+	if b.Burst < 1 {
+		v.addf(path+".burst", "must be at least 1, got %d", b.Burst)
+	}
 }
 
 func (v *validator) publishers(pubs []Publisher) {

@@ -1,7 +1,7 @@
 /**
  * Shape of the landing page copy. Templates hold no user-visible text: every
  * string comes from an object of this type, so a German version is a second
- * object of the same type (ADR 0010).
+ * object of the same type (ADR 0012).
  */
 export interface LandingContent {
   readonly meta: { readonly title: string; readonly description: string };

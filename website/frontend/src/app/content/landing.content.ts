@@ -2,7 +2,7 @@ import { InjectionToken } from '@angular/core';
 
 import { LandingContent } from './landing-content.model';
 
-// All landing page copy (ADR 0010). Facts come from README.md,
+// All landing page copy (ADR 0012). Facts come from README.md,
 // ARCHITECTURE.md and documentation/spec/obie-0.1.md; anything the code does
 // not do yet is labelled "in progress" or "planned". Write for readers
 // without a security background: short sentences, explain terms on first use.

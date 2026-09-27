@@ -369,11 +369,12 @@ form of the same peer ID and peer IDs of other key types.
 `publisher.peer_id` and from nowhere else. An event signed by any key other
 than the one embedded in `publisher.peer_id` fails verification.
 
-**[ID-3]** Receivers MUST drop a message whose GossipSub author (the
-message's `from` field, not the peer that forwarded it) differs from
-`publisher.peer_id`. A node therefore publishes its events from the libp2p
-host whose peer ID is `publisher.peer_id`: only a publisher can inject its
-own events into the mesh, other peers can only forward them.
+**[ID-3]** A GossipSub message MUST NOT carry author information: no
+`from`, `seqno`, `signature` or `key` field (the GossipSub `StrictNoSign`
+message signature policy). Receivers MUST drop a message that carries any
+of them. The event signature is the only authentication of the publisher:
+any peer can forward, and re-send, a publisher's signed event, but no peer
+can alter or forge one.
 
 `publisher.asn` is self-declared and unverified in obie/0.1. Receivers
 SHOULD NOT base trust decisions on it without verifying it by other means.
@@ -393,17 +394,29 @@ Nodes form a libp2p mesh and exchange events with GossipSub (v1.1).
 as its data, without framing, batching, compression or any other envelope,
 and within the size limit of [ENC-1].
 
+**[TRN-3]** The GossipSub message ID of a message MUST be the `id` member
+of its event, so that every node deduplicates, announces (`IHAVE`) and
+requests (`IWANT`) an event under the same ID. A message whose data is not
+a JSON object with a string `id` of at most 4096 bytes is invalid anyway;
+its message ID is implementation-defined.
+
 Recommendations for the libp2p layer:
 
-- Nodes SHOULD keep the GossipSub defaults for message signing
-  (`StrictSign`), which authenticate the `from` field that [ID-3] relies
-  on, and for message IDs.
 - Nodes SHOULD register a topic validator that runs the checks of section
   10 and reports failures as `Reject`, so that GossipSub peer scoring
   penalises peers that forward invalid messages. Failures that depend on
   the local clock (an expired event, an `issued_at` too far in the future)
   SHOULD be reported as `Ignore` instead: an honest peer with a slightly
-  different clock may have forwarded the message in good faith.
+  different clock may have forwarded the message in good faith. An event
+  that expired more than 300 seconds (`MaxClockSkew`) before it was
+  received MAY be reported as `Reject`: no clock within the tolerance of
+  [ENV-4] would have forwarded it.
+- Because the message ID is chosen by the publisher, a peer that learns an
+  event's `id` can send a forged message with that ID ahead of the genuine
+  one; the receiver rejects the forgery and, as GossipSub remembers the ID
+  of every message it has seen, drops the genuine message while it
+  remembers the ID, from whichever peer it arrives. Nodes SHOULD therefore
+  enable GossipSub peer scoring so that such peers are quickly pruned.
 - Nodes SHOULD listen on TCP with the Noise security protocol and the yamux
   multiplexer, and MAY additionally offer QUIC. Peer discovery in obie/0.1
   uses statically configured bootstrap peers; DHT discovery is planned.
@@ -411,19 +424,22 @@ Recommendations for the libp2p layer:
 ## 10. Validation and drop rules
 
 A node processes every message it receives on the topic with the following
-checks. The reference implementation performs them in this order (cheap
-checks first) in `obieproto.Receive`; the order is otherwise free.
+checks. The reference implementation performs them in this order in
+`obieproto.Receive`: cheap checks first, except that the checks against the
+local clock come after the signature, so that a clock failure (which
+section 9 reports as `Ignore`) is only ever reported for an authentic
+event. The order is otherwise free.
 
 1. Size: at most 4096 bytes ([ENC-1]).
 2. Version and type: `spec` is `obie/0.1` and `type` is known ([VER-1],
    [VER-2]).
 3. Structure: one JSON object with only defined, non-duplicate, non-null
    members of the right JSON type ([ENC-1] to [ENC-4], [ENV-1]).
-4. Field rules: Table 1, canonical and public indicator, clock skew
-   ([ENV-2] to [ENV-4], [IND-1] to [IND-5]).
-5. Author: the message author is `publisher.peer_id` ([ID-3]).
-6. Expiry: the event has not expired (section 5.3).
-7. Signature: [SIG-1] to [SIG-4], [ID-1], [ID-2].
+4. Field rules: Table 1, canonical and public indicator ([ENV-2], [ENV-3],
+   [IND-1] to [IND-5]).
+5. Signature: [SIG-1] to [SIG-4], [ID-1], [ID-2].
+6. Clock skew: `issued_at` is not too far in the future ([ENV-4]).
+7. Expiry: the event has not expired (section 5.3).
 
 **[RCV-1]** A node MUST run all of these checks on a message before it acts
 on the event or forwards the message, and MUST drop a message that fails
@@ -444,12 +460,11 @@ C) so that operators can see signature failures and malformed traffic.
 
 ## 11. Rate limits
 
-obie/0.1 does not carry rate limits in events, and the reference
-implementation v0.1 does not enforce them yet (planned). The following
-expectations let publishers stay within what receivers will tolerate:
+obie/0.1 does not carry rate limits in events. The following expectations
+let publishers stay within what receivers will tolerate:
 
 - A publisher SHOULD NOT publish more than 10 events per second averaged
-  over one minute, nor more than 100 events in a burst.
+  over one minute, nor more than 50 events in a burst.
 - A publisher SHOULD NOT republish a verdict that is still in effect
   unchanged; it SHOULD issue a new verdict only when the action, the
   confidence or the lifetime changes, or when less than half of the
@@ -457,9 +472,16 @@ expectations let publishers stay within what receivers will tolerate:
 - A publisher SHOULD aggregate many hostile addresses of one network into a
   CIDR verdict rather than publishing one verdict per address.
 - Receivers SHOULD limit the events they accept per publisher (a token
-  bucket with the rates above is RECOMMENDED) and MAY drop events beyond
-  the limit. Such drops SHOULD be reported to GossipSub as `Ignore`, not
-  `Reject`, because the forwarding peer is not at fault.
+  bucket with the rates above is RECOMMENDED) and MAY also limit the events
+  they accept per forwarding peer; they MAY drop events beyond the limits.
+  Such drops SHOULD be reported to GossipSub as `Ignore`, not `Reject`,
+  because the forwarding peer is not necessarily at fault. A per-peer
+  limit SHOULD be well above the per-publisher limit: a relay forwards the
+  events of every publisher, and a flooding publisher's admitted events
+  alone reach the per-publisher limit. The reference implementation admits
+  an event only if both limits do, and counts it against both; by default
+  the per-publisher bucket holds 50 events refilled at 10 per second, the
+  per-peer bucket 250 events refilled at 50 per second.
 
 ## 12. Versioning and forward compatibility
 
@@ -640,7 +662,9 @@ normative statement has no tag, a tag is missing here, or a test named here
 does not exist. For [SEM-1] to [SEM-4] the tests check the rules as the
 reference implementation states them (`Event.Supersedes`,
 `Event.Withdraws`, `Event.Expired`); the node's event store applies them.
-For [TRN-1] the test pins the topic constant that the mesh layer uses.
+For [TRN-1] the test pins the topic constant that the mesh layer uses;
+[ID-3] and [TRN-3] are tested in the node's gossip layer
+(`internal/gossip`).
 
 | Requirement | Tests |
 |-------------|-------|
@@ -667,9 +691,10 @@ For [TRN-1] the test pins the topic constant that the mesh layer uses.
 | SIG-4  | `TestWeakPublicKeysAreRejected`, `TestVerifyRejectsWeakKeyForgery`, `TestVectorFiles` |
 | ID-1   | `TestPeerIDRoundTrip`, `TestPublicKeyFromPeerIDRejects`, `TestVerifyRejects` |
 | ID-2   | `TestVerifyRejects`, `TestSignRejects`, `TestVectorFiles` |
-| ID-3   | `TestReceive` |
+| ID-3   | `TestReceive`, `TestGossipDropsAuthoredMessages` |
 | TRN-1  | `TestTopic` |
 | TRN-2  | `TestDecodeInvalid`, `TestReceive` |
+| TRN-3  | `TestMessageID` |
 | RCV-1  | `TestReceive`, `TestReceiveVectors` |
 | RCV-2  | `TestReceive` |
 | RCV-3  | `TestValidateDoesNotModify`, `TestIndicatorValidate`, `TestDecodeRoundTripIsByteIdentical` |
@@ -740,6 +765,7 @@ names, but distinguishing the classes helps operators and metrics.
 | `unsupported_indicator` | `indicator.kind` is not an obie/0.1 kind                                |
 | `non_public_indicator`  | indicator in a special-purpose range                                    |
 | `invalid_field`         | any other violation of Table 1 or section 6                             |
-| `publisher_mismatch`    | peer ID without a usable Ed25519 key, or message author ≠ publisher     |
+| `publisher_mismatch`    | peer ID without a usable Ed25519 key                                    |
+| `clock_skew`            | `issued_at` more than 300 seconds ahead of the receiver's clock         |
 | `expired`               | the event expired before it was received                                |
 | `invalid_signature`     | signature missing, malformed or not matching                            |

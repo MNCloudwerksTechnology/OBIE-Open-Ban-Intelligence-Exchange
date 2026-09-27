@@ -12,6 +12,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/httpserver"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
+	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
 // Name is the subsystem name of the admin API server.
@@ -103,6 +104,12 @@ type Info struct {
 	Status func() []lifecycle.Status
 	// Peers lists the connected mesh peers; no peers when nil.
 	Peers func() []PeerResponse
+	// Explain explains the decision on a normalized indicator; the
+	// explanation endpoint answers 503 when nil.
+	Explain func(obieproto.Indicator) (DecisionResponse, error)
+	// Decisions lists the decisions in a state, or all for ""; none when
+	// nil.
+	Decisions func(state string) []DecisionResponse
 	// Now returns the current time; time.Now when nil.
 	Now func() time.Time
 }
@@ -145,6 +152,7 @@ func Handler(info Info, log *slog.Logger) http.Handler {
 		}
 		writeJSON(w, resp, log)
 	})
+	handleDecisions(mux, info, log)
 	return mux
 }
 

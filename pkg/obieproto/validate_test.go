@@ -65,7 +65,7 @@ func TestValidate(t *testing.T) {
 		})},
 		{name: "issued_at beyond max skew", event: verdict(func(e *Event) {
 			e.IssuedAt = NewTimestamp(testNow.Add(MaxClockSkew + time.Second))
-		}), wantErr: ErrInvalidField},
+		}), wantErr: ErrClockSkew},
 		{name: "issued_at in the past", event: verdict(func(e *Event) {
 			e.IssuedAt = NewTimestamp(testNow.Add(-365 * 24 * time.Hour))
 		})},
@@ -206,8 +206,8 @@ func TestValidate(t *testing.T) {
 func TestValidateDefaultClock(t *testing.T) {
 	e := validVerdict()
 	e.IssuedAt = NewTimestamp(time.Now().Add(time.Hour))
-	if err := e.Validate(); !errors.Is(err, ErrInvalidField) {
-		t.Errorf("Validate() with default clock error = %v, want %v", err, ErrInvalidField)
+	if err := e.Validate(); !errors.Is(err, ErrClockSkew) {
+		t.Errorf("Validate() with default clock error = %v, want %v", err, ErrClockSkew)
 	}
 }
 

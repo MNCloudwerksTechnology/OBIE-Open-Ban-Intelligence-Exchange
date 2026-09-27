@@ -1,6 +1,7 @@
 // Package mesh runs the node's libp2p host: an encrypted, authenticated
 // connection to every configured bootstrap peer, kept alive with
-// exponential backoff (ADR 0007).
+// exponential backoff (ADR 0007), over which events are gossiped
+// (internal/gossip, ADR 0009).
 //
 // The host uses the node identity, listens on TCP and QUIC, secures
 // connections with Noise (QUIC with its libp2p TLS handshake) and has no
@@ -30,7 +31,10 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
+	"github.com/MNCloudwerksTechnology/obie/internal/store"
+	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
 // Name is the subsystem name of the mesh.
@@ -65,6 +69,15 @@ type Options struct {
 	Trust config.Trust
 	// UserAgent is announced to peers.
 	UserAgent string
+	// Store holds the events received from and published to the mesh; it
+	// must be started before the mesh.
+	Store store.Store
+	// RateLimit bounds the events accepted per publisher and per peer
+	// (mesh.rate_limit); zero buckets take the defaults.
+	RateLimit config.RateLimit
+	// GossipMetrics observes the outcome of every received event; nil for
+	// none.
+	GossipMetrics gossip.Metrics
 
 	// InitialBackoff and MaxBackoff bound the delay between dials of a
 	// disconnected bootstrap peer.
@@ -88,6 +101,7 @@ type Mesh struct {
 
 	mu     sync.Mutex
 	host   host.Host
+	gossip *gossip.Gossip
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
@@ -96,6 +110,9 @@ type Mesh struct {
 // address or peer ID in opts is invalid; config validation already rules
 // that out for a loaded configuration.
 func New(id identity.Identity, opts Options, log *slog.Logger) (*Mesh, error) {
+	if opts.Store == nil {
+		return nil, errors.New("no store")
+	}
 	opts = withDefaults(opts)
 	m := &Mesh{id: id, opts: opts, log: log, publishers: make(map[peer.ID]config.Publisher)}
 
@@ -167,22 +184,33 @@ func bootstrapPeers(addrs []string) ([]peer.AddrInfo, error) {
 // Name returns the subsystem name.
 func (m *Mesh) Name() string { return Name }
 
-// Start creates the host, which listens once Start returns, and starts
-// dialing the bootstrap peers in the background.
+// Start creates the host, which listens once Start returns, joins the
+// gossip topic and starts dialing the bootstrap peers in the background.
 func (m *Mesh) Start(context.Context) error {
 	h, err := m.newHost()
 	if err != nil {
 		return err
 	}
+	g, err := gossip.New(h, gossip.Options{
+		Store:          m.opts.Store,
+		PublisherLimit: m.opts.RateLimit.Publisher,
+		PeerLimit:      m.opts.RateLimit.Peer,
+		Metrics:        m.opts.GossipMetrics,
+	}, m.log)
+	if err != nil {
+		_ = h.Close()
+		return fmt.Errorf("gossip: %w", err)
+	}
 	sub, err := h.EventBus().Subscribe(new(event.EvtPeerConnectednessChanged))
 	if err != nil {
+		g.Close()
 		_ = h.Close()
 		return fmt.Errorf("subscribe to connection events: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.mu.Lock()
-	m.host, m.cancel = h, cancel
+	m.host, m.gossip, m.cancel = h, g, cancel
 	m.mu.Unlock()
 
 	changed := make(map[peer.ID]chan struct{}, len(m.bootstrap))
@@ -251,16 +279,18 @@ func (m *Mesh) newHost() (host.Host, error) {
 	return h, nil
 }
 
-// Stop stops dialing and closes the host with all its connections.
+// Stop leaves the gossip topic, stops dialing and closes the host with all
+// its connections.
 func (m *Mesh) Stop(ctx context.Context) error {
 	m.mu.Lock()
-	h, cancel := m.host, m.cancel
-	m.host, m.cancel = nil, nil
+	h, g, cancel := m.host, m.gossip, m.cancel
+	m.host, m.gossip, m.cancel = nil, nil, nil
 	m.mu.Unlock()
 	if h == nil {
 		return nil
 	}
 	cancel()
+	g.Close()
 	err := h.Close()
 
 	done := make(chan struct{})
@@ -310,6 +340,18 @@ func (m *Mesh) Detail() string {
 		return "degraded: " + summary
 	}
 	return summary
+}
+
+// Publish stores ev, an event signed by this node, and sends it to the
+// mesh; see gossip.Gossip.Publish. It fails while the mesh is not started.
+func (m *Mesh) Publish(ctx context.Context, ev *obieproto.Event) error {
+	m.mu.Lock()
+	g := m.gossip
+	m.mu.Unlock()
+	if g == nil {
+		return errors.New("mesh not started")
+	}
+	return g.Publish(ctx, ev)
 }
 
 // ListenAddrs returns the addresses the host listens on, with the ports

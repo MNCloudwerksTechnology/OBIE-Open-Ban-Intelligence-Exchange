@@ -18,11 +18,14 @@ specification, its JSON Schema and how both are kept in step with the code in
 [ADR 0006](documentation/adr/0006-protocol-specification-and-schema.md); the
 mesh host and static bootstrap peers in
 [ADR 0007](documentation/adr/0007-mesh-host-and-bootstrap.md); the local event
-store in [ADR 0008](documentation/adr/0008-local-event-store.md); the website
+store in [ADR 0008](documentation/adr/0008-local-event-store.md); the gossip
+of events in [ADR 0009](documentation/adr/0009-gossip-of-events.md); the
+trust-weighted decision engine in
+[ADR 0011](documentation/adr/0011-trust-weighted-decision.md); the website
 stack and build in
-[ADR 0009](documentation/adr/0009-website-stack-and-build.md); the landing
+[ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
-[ADR 0010](documentation/adr/0010-landing-page-content-and-design-system.md).
+[ADR 0012](documentation/adr/0012-landing-page-content-and-design-system.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
@@ -37,8 +40,8 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Events:** obie/0.1 JSON; signatures are Ed25519 over the RFC 8785 (JCS) canonical form of the event with `publisher.signature` removed; `signature` = `"ed25519:" + base64url(no padding)`. IDs are UUIDv7.
 - **Identity:** one Ed25519 key per node; the libp2p peer ID is derived from it (same key for mesh and event signing).
 - **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0008).
-- **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts`, static bootstrap peers in v0.1.
-- **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers ≥ quorum (default 2) — local verdicts count with `local_weight`. Allow-list always wins. Mode `observe` (default) or `enforce`.
+- **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts` (no pubsub signatures, message ID = event ID, validation before relay, per-publisher and per-peer rate limits, peer scoring), static bootstrap peers in v0.1.
+- **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins. Mode `observe` (default) or `enforce`.
 - **Enforcement:** pluggable enforcer; `dryrun` and `nftables` (own table `inet obie`, timeout sets) backends; reconcile loop.
 - **Ops:** Prometheus `/metrics`, `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); JSON decision audit log.
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests; privileged tests behind the `privileged` build tag.
@@ -54,6 +57,8 @@ internal/           all non-public code (one package per concern listed above)
   cli/              flag handling and commands of both binaries
   config/           YAML configuration schema, defaults, strict decoding, validation
   daemon/           wires the obied subsystems together and runs them
+  decision/         trust-weighted consensus per indicator, explanations, block change stream
+  gossip/           GossipSub topic: validation, dedupe, rate limits, Publish, metrics hook
   httpserver/       HTTP server as a lifecycle subsystem
   identity/         persistent Ed25519 node key (<state_dir>/node.key); peer ID, signing
   lifecycle/        ordered subsystem start/stop with timeouts; status and readiness
@@ -104,7 +109,7 @@ Only the packages that exist today are listed in detail; the remaining
   `documentation/spec/test-vectors/` are generated and compared by the tests;
   regenerate them with `go generate ./pkg/obieproto` only for an intended
   change of the signed format. Messages from the mesh go through
-  `obieproto.Receive` (decode, author = publisher, not expired, verify);
+  `obieproto.Receive` (decode, verify, then clock skew and expiry);
   which verdicts are in effect follows `Event.Supersedes` and
   `Event.Withdraws`. The specification
   [`documentation/spec/obie-0.1.md`](documentation/spec/obie-0.1.md) is
@@ -133,6 +138,32 @@ Only the packages that exist today are listed in detail; the remaining
   connected-since and ping latency. DHT, mDNS, relay, hole punching, NAT port
   mapping and the AutoNAT service are explicitly disabled (ADR 0007). The admin package
   does not import `internal/mesh`: `obiectl` stays free of go-libp2p.
+- **Gossip.** The mesh joins the GossipSub topic `obie/0.1/verdicts` through
+  `internal/gossip`: messages carry no author or pubsub signature
+  (`StrictNoSign`) and their ID is the event ID. A topic validator checks
+  size, format, signature, clock, duplicates (`store.Seen`) and the
+  `mesh.rate_limit` token buckets per publisher and per forwarding peer, in
+  that order; invalid events are rejected (and penalise the forwarder
+  through peer scoring), duplicates and rate-limited events are ignored,
+  accepted ones are stored and relayed. `Mesh.Publish` stores an event of
+  the node first, then publishes it. Outcomes are reported through the
+  `gossip.Metrics` interface (ADR 0009).
+- **Decision.** The `decision` subsystem (registered right after `store`)
+  subscribes to the store's change notifications, re-evaluates changed
+  indicators on one worker goroutine and keeps the decision of every
+  indicator with active verdicts. Evaluation is a pure, deterministic
+  function (`decision.Evaluate`): only active `ban` verdicts of publishers
+  with weight > 0 contribute; `block` iff score ≥ `decision.threshold` and
+  contributors ≥ `decision.quorum`, or — with `decision.local_autoblock` —
+  when this node itself reported a ban. A block expires with the latest
+  contributing verdict, capped at `decision.max_ttl` from evaluation and
+  refreshed while its verdicts live. `Engine.Subscribe` streams
+  added/updated/removed block changes with their cause for the enforcer.
+  `obiectl explain <ip>` (`GET /v1/decisions/{indicator}`) shows every
+  publisher's weight, confidence and contribution, score vs threshold,
+  count vs quorum and the final decision; `obiectl decisions`
+  (`GET /v1/decisions?state=block`) lists them. The allow-list and overrides
+  are shown as not applied until WP #1660 (ADR 0011).
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
   before every commit. Tool versions are pinned in the `Makefile`. The CI
@@ -146,14 +177,14 @@ Only the packages that exist today are listed in detail; the remaining
 pages). It is a separate product from the node: no Go code imports it, it
 has its own build (`website/Makefile`) and gate (`make -C website ci`, the
 `website` CI job), and the root `make ci` does not touch it
-([ADR 0009](documentation/adr/0009-website-stack-and-build.md)).
+([ADR 0010](documentation/adr/0010-website-stack-and-build.md)).
 
 - **Front end:** Angular (standalone components, strict TypeScript, SCSS) in
   `website/frontend/`, prerendered to static HTML at build time; no Node
   runtime in production and no third-party requests from the browser.
   Landing page copy lives in one typed content file; fonts are self-hosted;
   colours, spacing and type come from design tokens with light and dark
-  themes ([ADR 0010](documentation/adr/0010-landing-page-content-and-design-system.md)).
+  themes ([ADR 0012](documentation/adr/0012-landing-page-content-and-design-system.md)).
 - **Back end:** Spring Boot 3 on Java 21 in `website/backend/` (package
   `org.obie.website`, Maven wrapper). It serves the prerendered pages as
   static resources, the API under `/api/**` and Actuator health at

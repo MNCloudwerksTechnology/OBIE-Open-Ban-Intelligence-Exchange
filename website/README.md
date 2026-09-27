@@ -4,7 +4,7 @@ The public website of OBIE: an Angular front end, prerendered to static HTML
 at build time, served together with a small API by a Spring Boot back end. The
 production build is a single jar. The website is independent of the OBIE node;
 design decisions are recorded in
-[ADR 0009](../documentation/adr/0009-website-stack-and-build.md).
+[ADR 0010](../documentation/adr/0010-website-stack-and-build.md).
 
 ```text
 website/
@@ -60,7 +60,7 @@ and `./mvnw spotless:apply` (back end).
   properties in `src/styles.scss` (colour tokens for a light and a dark theme,
   a 4-pt spacing scale) and no component library. Inter and Source Code Pro
   are self-hosted from `@fontsource` packages, so the browser makes no
-  third-party requests ([ADR 0010](../documentation/adr/0010-landing-page-content-and-design-system.md)).
+  third-party requests ([ADR 0012](../documentation/adr/0012-landing-page-content-and-design-system.md)).
 - **Landing page copy.** Every user-visible string of the landing page lives
   in `src/app/content/landing.content.ts`; templates only bind to it. Edit
   copy there. A German version is a second `LandingContent` object provided

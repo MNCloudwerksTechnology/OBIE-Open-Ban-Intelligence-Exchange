@@ -1,4 +1,4 @@
-# ADR 0010: Landing page content file and design system
+# ADR 0012: Landing page content file and design system
 
 - **Status:** Accepted
 - **Date:** 2026-09-28
@@ -10,7 +10,7 @@ The landing page (epic #1671) explains OBIE to non-specialists. It must be
 English now and translatable to German later without touching templates,
 follow the OBIE brand (Cloudwerks visual system: Inter and Source Code Pro,
 primary orange `#e59631`), offer light and dark themes, meet WCAG 2.1 AA and
-make no request to any third-party origin. [ADR 0009](0009-website-stack-and-build.md)
+make no request to any third-party origin. [ADR 0010](0010-website-stack-and-build.md)
 chose "system fonts only"; the brand now asks for two named typefaces.
 
 ## Decision
@@ -29,7 +29,7 @@ chose "system fonts only"; the brand now asks for two named typefaces.
   self-hosted from the `@fontsource/*` npm packages (SIL Open Font License).
   Only the Latin subset is included; the files are bundled by the Angular
   build and served by the jar from the site's own origin. This supersedes the
-  "system fonts only" clause of ADR 0009; the no-third-party-request rule is
+  "system fonts only" clause of ADR 0010; the no-third-party-request rule is
   unchanged.
 - **Design tokens.** Colours, type sizes, spacing (a 4-pt base scale:
   4, 8, 12, 16, 24, 32, 48, 64, 96 px), radii and motion are CSS custom
