@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"sort"
 	"syscall"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
@@ -27,10 +28,12 @@ const (
 	ExitIOError       = 3
 )
 
-// RunDaemon runs obied with args and returns the process exit code. It loads
-// and validates the configuration file; with --check-config it stops there.
-// Otherwise it runs the node until SIGTERM or SIGINT and then shuts down
-// gracefully; a second signal terminates the process immediately.
+// RunDaemon runs obied with args and returns the process exit code. If the
+// first argument names an offline command (keygen, identity), it runs that
+// command. Otherwise it loads and validates the configuration file; with
+// --check-config it stops there. Otherwise it runs the node until SIGTERM or
+// SIGINT and then shuts down gracefully; a second signal terminates the
+// process immediately.
 func RunDaemon(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
@@ -44,9 +47,15 @@ func RunDaemon(args []string, stdout, stderr io.Writer) int {
 // runDaemon is RunDaemon with the shutdown signal delivered as ctx.
 func runDaemon(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	const program = "obied"
+	if len(args) > 0 {
+		if cmd, ok := daemonCommands[args[0]]; ok {
+			return cmd.run(args[1:], stdout, stderr)
+		}
+	}
 	fs := newFlagSet(program, stderr)
 	configPath := fs.String("config", config.DefaultPath, "path to the YAML configuration `file`")
 	checkOnly := fs.Bool("check-config", false, "validate the configuration and exit 0 (valid) or 1 (invalid)")
+	fs.Usage = func() { daemonUsage(fs) }
 	if code, done := parse(fs, program, args, false, stdout, stderr); done {
 		return code
 	}
@@ -74,6 +83,21 @@ func runDaemon(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		return ExitFailure
 	}
 	return ExitOK
+}
+
+func daemonUsage(fs *flag.FlagSet) {
+	out := fs.Output()
+	_, _ = fmt.Fprintf(out, "Usage: obied [flags]\n       obied <command> [command flags]\n\nCommands (offline):\n")
+	names := make([]string, 0, len(daemonCommands))
+	for name := range daemonCommands {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		_, _ = fmt.Fprintf(out, "  %-10s %s\n", name, daemonCommands[name].summary)
+	}
+	_, _ = fmt.Fprintf(out, "\nFlags:\n")
+	fs.PrintDefaults()
 }
 
 func newFlagSet(program string, stderr io.Writer) *flag.FlagSet {

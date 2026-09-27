@@ -11,7 +11,9 @@ loading and logging are detailed in
 lifecycle, ops endpoints and admin API in
 [ADR 0003](documentation/adr/0003-daemon-lifecycle-and-admin-api.md); event
 canonicalization and signing in
-[ADR 0004](documentation/adr/0004-event-canonicalization-and-signing.md).
+[ADR 0004](documentation/adr/0004-event-canonicalization-and-signing.md); the
+node identity key in
+[ADR 0005](documentation/adr/0005-node-identity-key.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
@@ -44,6 +46,7 @@ internal/           all non-public code (one package per concern listed above)
   config/           YAML configuration schema, defaults, strict decoding, validation
   daemon/           wires the obied subsystems together and runs them
   httpserver/       HTTP server as a lifecycle subsystem
+  identity/         persistent Ed25519 node key (<state_dir>/node.key); peer ID, signing
   lifecycle/        ordered subsystem start/stop with timeouts; status and readiness
   logging/          slog JSON handler; per-component loggers
   ops/              /healthz, /readyz and Prometheus /metrics
@@ -89,12 +92,34 @@ Only the packages that exist today are listed in detail; the remaining
   `documentation/spec/test-vectors/` are generated and compared by the tests;
   regenerate them with `go generate ./pkg/obieproto` only for an intended
   change of the signed format.
+- **Node identity.** `obied` loads `<state_dir>/node.key` (the libp2p
+  marshaled Ed25519 private key) before any subsystem starts and generates it
+  atomically on the first start; `obied keygen [--force]` creates it offline
+  and `obied identity` / `obiectl identity` (`GET /v1/identity`) show the peer
+  ID and the key fingerprint. A key file that is not a regular file, is
+  accessible by group or others, or is owned by another user, and a state
+  directory writable by group or others, stop `obied` with an error naming
+  the fix. Subsystems receive an `identity.Identity`
+  (`PeerID`, `PublicKey`, `Sign`) and never the private key (ADR 0005).
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
   before every commit. Tool versions are pinned in the `Makefile`. The CI
   pipeline (`.gitea/workflows/ci.yml`, mirrored byte-identical to
   `.github/workflows/ci.yml`) runs the same `make ci` on every pull request and
   every push to `develop`/`main`, plus a linux/amd64 + arm64 build matrix.
+
+## Future work
+
+Deliberately out of scope for v0.1, recorded here so the current design does
+not preclude them:
+
+- **Key rotation statements.** A node can only replace its key
+  (`obied keygen --force`), which gives it a new peer ID that every trusting
+  peer must re-enter. A later release adds a statement signed by the old key
+  that vouches for the new one, so peers can carry trust weights over.
+- **Organisational identity.** v0.1 knows only per-node peer IDs. Binding
+  nodes to an organisation (for example by a DNS domain challenge), and
+  quorum rules over distinct organisations, follow in a later release.
 
 ## Deviations from the whitepaper
 
