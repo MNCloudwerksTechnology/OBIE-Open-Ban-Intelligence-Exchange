@@ -153,7 +153,8 @@ func messageID(msg *pb.Message) string {
 
 // Publish sends ev, an event signed by this node, to the mesh. The event is
 // checked like a received one and stored locally first, so it takes effect
-// on this node even without peers.
+// on this node even without peers. If sending fails after the event was
+// stored, calling Publish again sends it.
 func (g *Gossip) Publish(ctx context.Context, ev *obieproto.Event) error {
 	if ev.Publisher.PeerID != g.self.String() {
 		return fmt.Errorf("publish event %s by %s: %w", ev.ID, ev.Publisher.PeerID, ErrNotLocal)
@@ -175,7 +176,8 @@ func (g *Gossip) Publish(ctx context.Context, ev *obieproto.Event) error {
 	return nil
 }
 
-// Close stops GossipSub and waits for its goroutines.
+// Close stops GossipSub and waits for the subscription reader. Validations
+// already running finish on their own; stop the store after the host.
 func (g *Gossip) Close() {
 	g.cancel()
 	g.wg.Wait()

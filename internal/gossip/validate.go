@@ -70,7 +70,7 @@ func (v *validator) check(from peer.ID, data []byte) (Outcome, pubsub.Validation
 
 	// The event is valid whatever the store makes of it (e.g. a verdict
 	// older than the publisher's current one): it is relayed either way.
-	if _, err := v.store.Put(ev); err != nil {
+	if _, err := v.store.Put(ev); err != nil && !errors.Is(err, store.ErrClosed) {
 		v.log.Error("storing received event failed", "event", ev.ID, "err", err)
 	}
 	return Accepted, pubsub.ValidationAccept

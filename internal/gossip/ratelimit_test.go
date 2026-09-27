@@ -83,3 +83,12 @@ func TestTakeBoth(t *testing.T) {
 		}
 	}
 }
+
+func TestLimiterSweepIntervalIsBounded(t *testing.T) {
+	if l := newLimiter(1e-12, 250); l.fill != maxSweepInterval {
+		t.Errorf("fill = %s, want %s", l.fill, maxSweepInterval)
+	}
+	if l := newLimiter(10, 50); l.fill != 5*time.Second {
+		t.Errorf("fill = %s, want 5s", l.fill)
+	}
+}

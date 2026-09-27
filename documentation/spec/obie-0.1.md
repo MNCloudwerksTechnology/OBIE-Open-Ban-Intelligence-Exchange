@@ -413,11 +413,10 @@ Recommendations for the libp2p layer:
   [ENV-4] would have forwarded it.
 - Because the message ID is chosen by the publisher, a peer that learns an
   event's `id` can send a forged message with that ID ahead of the genuine
-  one; the receiver rejects the forgery and, as GossipSub remembers the ID,
-  also drops the genuine message if it arrives from the same direction
-  while the ID is remembered. Nodes SHOULD therefore enable GossipSub peer
-  scoring so that such peers are quickly pruned, and SHOULD be connected to
-  more than one peer.
+  one; the receiver rejects the forgery and, as GossipSub remembers the ID
+  of every message it has seen, drops the genuine message while it
+  remembers the ID, from whichever peer it arrives. Nodes SHOULD therefore
+  enable GossipSub peer scoring so that such peers are quickly pruned.
 - Nodes SHOULD listen on TCP with the Noise security protocol and the yamux
   multiplexer, and MAY additionally offer QUIC. Peer discovery in obie/0.1
   uses statically configured bootstrap peers; DHT discovery is planned.

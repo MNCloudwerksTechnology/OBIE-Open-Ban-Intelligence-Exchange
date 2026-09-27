@@ -13,8 +13,8 @@ import (
 type limiter struct {
 	limit rate.Limit
 	burst int
-	// fill is the time an empty bucket takes to refill, and how often full
-	// buckets are dropped.
+	// fill is the time an empty bucket takes to refill, at most
+	// maxSweepInterval, and how often full buckets are dropped.
 	fill time.Duration
 
 	mu        sync.Mutex
@@ -22,11 +22,15 @@ type limiter struct {
 	lastSweep time.Time
 }
 
+// maxSweepInterval bounds the sweep interval of very slow buckets.
+const maxSweepInterval = time.Hour
+
 func newLimiter(eventsPerSecond float64, burst int) *limiter {
+	fill := min(float64(burst)/eventsPerSecond, maxSweepInterval.Seconds())
 	return &limiter{
 		limit:   rate.Limit(eventsPerSecond),
 		burst:   burst,
-		fill:    time.Duration(float64(burst) / eventsPerSecond * float64(time.Second)),
+		fill:    time.Duration(fill * float64(time.Second)),
 		buckets: make(map[string]*rate.Limiter),
 	}
 }

@@ -33,12 +33,16 @@ is throttled without starving the others.
 - **Message ID = event ID** ([TRN-3]), so every node deduplicates and
   requests (`IWANT`) an event under the same ID. Data that is not a JSON
   object with an `id` of at most 4 KiB gets its SHA-256 as ID; it is invalid
-  anyway. Consequence: a peer that learns an event's ID can send a forged
-  message with that ID ahead of the genuine one; the receiver rejects the
-  forgery, penalises the sender, and drops the genuine copy from that
-  direction while GossipSub remembers the ID (2 minutes). Peer scoring and
-  more than one peer limit the impact; content-hash IDs would avoid it at
-  the cost of nodes disagreeing on IDs for re-serialized events.
+  anyway. Consequence: GossipSub remembers an ID as seen before it
+  validates the message, whatever the result. A mesh member that receives
+  an event can send forged messages with its ID to its other neighbours
+  ahead of the genuine one: they reject the forgery and penalise the sender,
+  but then drop the genuine event from every peer while they remember the
+  ID (2 minutes), and v0.1 has no later sync, so they miss the event. Each
+  peer identity can do this about five times before it is graylisted.
+  Message IDs bound to the content (event ID plus a hash of the signed
+  form) would close this at the cost of a protocol change; they are
+  candidates for obie/0.2.
 - **Validator order** (topic validator, runs before a message is stored or
   relayed): size ≤ 4 KiB → decode → field rules → signature → clock
   (`issued_at` at most `MaxClockSkew` ahead, not expired) → duplicate
