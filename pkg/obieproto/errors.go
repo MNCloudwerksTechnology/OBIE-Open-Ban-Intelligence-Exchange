@@ -5,8 +5,8 @@ import (
 	"fmt"
 )
 
-// Sentinel errors. Every error returned by [Decode] and [Event.Validate]
-// matches exactly one of them via [errors.Is].
+// Sentinel errors. Every error returned by [Decode], [Event.Validate],
+// [CanonicalBytes] and [Verify] matches exactly one of them via [errors.Is].
 var (
 	// ErrMalformed reports input that is not a single well-formed JSON object
 	// of the expected shape.
@@ -29,6 +29,13 @@ var (
 	ErrNonPublicIndicator = errors.New("obieproto: indicator is not a public address")
 	// ErrInvalidField reports a field value that violates an obie/0.1 rule.
 	ErrInvalidField = errors.New("obieproto: invalid field")
+	// ErrInvalidSignature reports a publisher.signature that is missing,
+	// malformed, or does not match the event and the publisher's key.
+	ErrInvalidSignature = errors.New("obieproto: invalid signature")
+	// ErrPublisherMismatch reports a publisher.peer_id that is not the peer
+	// ID of the signing key: when signing, the key does not belong to the
+	// peer ID; when verifying, the peer ID embeds no Ed25519 key.
+	ErrPublisherMismatch = errors.New("obieproto: publisher does not match the signing key")
 )
 
 // FieldError describes which field of an event failed validation. It
