@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"path/filepath"
 
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -47,39 +48,52 @@ type Identity interface {
 }
 
 // Key is the node's Ed25519 key pair. It implements Identity; formatting it
-// with fmt or a logger prints only its peer ID.
+// with fmt or logging it with slog shows only its peer ID.
 type Key struct {
+	// k is a pointer so that fmt prints an address rather than the private
+	// key for verbs that bypass String, such as %d: fmt cannot call methods
+	// of unexported fields.
+	k *keyPair
+}
+
+type keyPair struct {
 	priv   ed25519.PrivateKey
 	peerID string
 }
 
-var _ Identity = (*Key)(nil)
+var (
+	_ Identity       = Key{}
+	_ slog.LogValuer = Key{}
+)
 
 func newKey(priv ed25519.PrivateKey) (*Key, error) {
 	peerID, err := obieproto.PeerIDFromPublicKey(priv.Public().(ed25519.PublicKey))
 	if err != nil {
 		return nil, err
 	}
-	return &Key{priv: priv, peerID: peerID}, nil
+	return &Key{k: &keyPair{priv: priv, peerID: peerID}}, nil
 }
 
 // PeerID implements Identity.
-func (k *Key) PeerID() string { return k.peerID }
+func (k Key) PeerID() string { return k.k.peerID }
 
 // PublicKey implements Identity. The result is a copy.
-func (k *Key) PublicKey() ed25519.PublicKey {
-	return append(ed25519.PublicKey(nil), k.priv.Public().(ed25519.PublicKey)...)
+func (k Key) PublicKey() ed25519.PublicKey {
+	return append(ed25519.PublicKey(nil), k.k.priv.Public().(ed25519.PublicKey)...)
 }
 
 // Sign implements Identity.
-func (k *Key) Sign(msg []byte) []byte { return ed25519.Sign(k.priv, msg) }
+func (k Key) Sign(msg []byte) []byte { return ed25519.Sign(k.k.priv, msg) }
 
 // String returns the peer ID, so that printing a Key never reveals the
 // private key.
-func (k *Key) String() string { return k.peerID }
+func (k Key) String() string { return k.k.peerID }
 
 // GoString is like String, for the %#v verb.
-func (k *Key) GoString() string { return "identity.Key(" + k.peerID + ")" }
+func (k Key) GoString() string { return "identity.Key(" + k.k.peerID + ")" }
+
+// LogValue logs a Key as its peer ID.
+func (k Key) LogValue() slog.Value { return slog.StringValue(k.k.peerID) }
 
 // Fingerprint returns the fingerprint of an Ed25519 public key: "SHA256:"
 // and the unpadded base64 SHA-256 hash of the raw key, as OpenSSH shows it.
@@ -91,11 +105,14 @@ func Fingerprint(pub ed25519.PublicKey) string {
 // Path returns the path of the key file in stateDir.
 func Path(stateDir string) string { return filepath.Join(stateDir, FileName) }
 
-// Load reads the key file in stateDir. A missing file yields an error
-// matching fs.ErrNotExist; a file that another user could access, or that
-// the current user does not own, yields ErrInsecure; an unreadable key
-// yields ErrCorrupt.
+// Load reads the key file in stateDir. A missing file or directory yields
+// an error matching fs.ErrNotExist; a key file that another user could
+// access, replace or delete yields ErrInsecure; an unreadable key yields
+// ErrCorrupt.
 func Load(stateDir string) (*Key, error) {
+	if err := checkDir(stateDir); err != nil {
+		return nil, err
+	}
 	path := Path(stateDir)
 	data, err := readKeyFile(path)
 	if err != nil {
@@ -103,13 +120,15 @@ func Load(stateDir string) (*Key, error) {
 	}
 	priv, err := decodeKey(data)
 	if err != nil {
-		return nil, fmt.Errorf("%w %s: %w", ErrCorrupt, path, err)
+		return nil, fmt.Errorf("%w %s: %w; restore it from a backup, or create a new key with "+
+			"obied keygen --force (this changes the peer ID)", ErrCorrupt, path, err)
 	}
 	return newKey(priv)
 }
 
 // Create generates a new key and writes it atomically to the key file in
-// stateDir, creating stateDir with mode 0700 if it is missing. An existing
+// stateDir, creating stateDir with mode 0700 if it is missing; an existing
+// stateDir that group or others can write to yields ErrInsecure. An existing
 // key file is replaced only if replace is set; otherwise the result matches
 // ErrKeyExists and the file is left untouched.
 func Create(stateDir string, replace bool) (*Key, error) {

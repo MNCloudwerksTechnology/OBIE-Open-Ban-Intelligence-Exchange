@@ -52,7 +52,8 @@ func readKeyFile(path string) ([]byte, error) {
 	case errors.Is(err, syscall.ELOOP):
 		return nil, fmt.Errorf("%w: %s is a symbolic link; replace it with the key file itself", ErrInsecure, path)
 	case errors.Is(err, fs.ErrPermission):
-		return nil, fmt.Errorf("read key file: %w; it must be owned by the user running obied (%s)", err, currentUser())
+		return nil, fmt.Errorf("read key file: %w; the key file and the state directory must belong to the user running obied (%s)",
+			err, currentUser())
 	case err != nil:
 		return nil, fmt.Errorf("read key file: %w", err)
 	}
@@ -95,6 +96,24 @@ func checkFile(path string, info fs.FileInfo, euid int) error {
 	return nil
 }
 
+// checkDir refuses a state directory that group or others can write to:
+// they could delete the key file, and obied would then silently generate a
+// new identity. A missing directory yields an error matching fs.ErrNotExist.
+func checkDir(dir string) error {
+	info, err := os.Stat(dir)
+	if err != nil {
+		return fmt.Errorf("state directory: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("state directory %s is not a directory", dir)
+	}
+	if perm := info.Mode().Perm(); perm&0o022 != 0 {
+		return fmt.Errorf("%w: state directory %s has mode %04o and is writable by group or others; fix with: chmod 700 %s",
+			ErrInsecure, dir, perm, dir)
+	}
+	return nil
+}
+
 func currentUser() string { return userName(strconv.Itoa(os.Geteuid())) }
 
 // userName returns the name of the user with the given uid, or the uid if
@@ -111,23 +130,23 @@ func userName(uid string) string {
 // the same directory first, which is then renamed over path (replace) or
 // hard-linked to it, so that an existing file is never overwritten unless
 // replace is set — not even by a concurrent writer.
-func writeKeyFile(path string, data []byte, replace bool) (err error) {
+func writeKeyFile(path string, data []byte, replace bool) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create state directory: %w", err)
+	}
+	if err := checkDir(dir); err != nil {
+		return err
 	}
 	// CreateTemp creates the file with mode 0600.
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("write key file: %w", err)
 	}
-	defer func() {
-		// After a successful rename the temporary name no longer exists;
-		// after a hard link it must go in any case.
-		if rmErr := os.Remove(tmp.Name()); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) && err == nil {
-			err = fmt.Errorf("write key file: %w", rmErr)
-		}
-	}()
+	// After a rename the temporary name is gone; after a hard link or a
+	// failure it must go. Failing to remove it does not undo a key that is
+	// already in place, so the error is ignored.
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("write key file: %w", err)
@@ -147,6 +166,8 @@ func writeKeyFile(path string, data []byte, replace bool) (err error) {
 	switch {
 	case errors.Is(err, fs.ErrExist):
 		return fmt.Errorf("%w: %s", ErrKeyExists, path)
+	case !replace && (errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.ENOTSUP)):
+		return fmt.Errorf("write key file: %w (the file system of the state directory must support hard links)", err)
 	case err != nil:
 		return fmt.Errorf("write key file: %w", err)
 	}

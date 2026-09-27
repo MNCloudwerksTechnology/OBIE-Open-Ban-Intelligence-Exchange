@@ -28,17 +28,23 @@ later work package and must be able to use the same key file unchanged.
   any other length or key type, and a public half that does not match the
   seed, is reported as a corrupted key file — never repaired.
 - **Permissions:** the key file is written with mode 0600; a missing state
-  directory is created with mode 0700 (an existing one is left alone). On
-  load, `obied` refuses a key file that is not a regular file (symlinks are
-  not followed), that grants any permission to group or others, or that is
-  not owned by the effective user; the error names the fix (`chmod 600`,
-  `chown`). Keys created with `obied keygen` must therefore be created as the
-  service user.
+  directory is created with mode 0700. An existing state directory keeps its
+  mode but must not be writable by group or others (e.g. 0700, 0750), since
+  they could delete the key and `obied` would then silently generate a new
+  identity. On load, `obied` refuses such a directory, and a key file that
+  is not a regular file (symlinks are not followed), that grants any
+  permission to group or others, or that is not owned by the effective user;
+  the error names the fix (`chmod 700`, `chmod 600`, `chown`). Type, mode
+  and owner are checked on the opened file, so the file cannot be swapped
+  between check and read. Keys created with `obied keygen` must therefore be
+  created as the service user.
 - **Atomic write:** the key is written to a temporary file in the same
   directory, synced, and then moved into place — with a hard link when an
   existing key must not be replaced (so a concurrent writer cannot be
   overwritten either), with a rename for `--force` — and the directory is
-  synced. A crash never leaves a partial `node.key`.
+  synced. A crash never leaves a partial `node.key`. The state directory's
+  file system must therefore support hard links (every local Linux file
+  system does); otherwise creating the key fails with an error saying so.
 - **Fingerprint:** `SHA256:` followed by the unpadded standard base64 of the
   SHA-256 hash of the raw 32-byte public key, in the style of OpenSSH. It is
   shown next to the peer ID so operators can compare keys at a glance.
@@ -56,5 +62,9 @@ later work package and must be able to use the same key file unchanged.
   peer that assigned a trust weight to the old one must update it.
 - The file stays readable by go-libp2p's `crypto.UnmarshalPrivateKey`, so the
   mesh can adopt it without a migration.
+- `obieproto.Sign` (ADR 0004) takes an `ed25519.PrivateKey`, which
+  `Identity` withholds. The work package that publishes events adds a
+  variant of `Sign` that takes a signer offering `PeerID()` and `Sign()`,
+  instead of reaching for the private key.
 - Key rotation statements and organisational identity are out of scope for
   v0.1 and listed as future work in `ARCHITECTURE.md`.

@@ -8,9 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -33,10 +35,21 @@ var (
 	goldenPeerID = "12D3KooWJ1TsijH7H5F74hfAD5XishQz3sxrmAtVY37GtNd9CqYf"
 )
 
+// newStateDir returns a new empty directory with mode 0700: t.TempDir applies
+// the umask, which may leave it group-writable.
+func newStateDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- a directory needs the x bit.
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // writeKey writes content as the key file in a new state directory.
 func writeKey(t *testing.T, content []byte, perm os.FileMode) string {
 	t.Helper()
-	dir := t.TempDir()
+	dir := newStateDir(t)
 	path := Path(dir)
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatal(err)
@@ -72,13 +85,14 @@ func dirEntries(t *testing.T, dir string) []string {
 }
 
 func TestCreateLoadRoundtrip(t *testing.T) {
-	stateDir := filepath.Join(t.TempDir(), "state")
+	parent := filepath.Join(t.TempDir(), "var")
+	stateDir := filepath.Join(parent, "state")
 	created, err := Create(stateDir, false)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for path, want := range map[string]os.FileMode{stateDir: 0o700, Path(stateDir): 0o600} {
+	for path, want := range map[string]os.FileMode{parent: 0o700, stateDir: 0o700, Path(stateDir): 0o600} {
 		info, err := os.Stat(path)
 		if err != nil {
 			t.Fatal(err)
@@ -113,7 +127,7 @@ func TestKeyFileMatchesLibp2p(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := hex.EncodeToString(encodeKey(key.priv)); got != goldenKeyFile {
+	if got := hex.EncodeToString(encodeKey(key.k.priv)); got != goldenKeyFile {
 		t.Errorf("encoded key = %s, want %s", got, goldenKeyFile)
 	}
 
@@ -128,7 +142,7 @@ func TestKeyFileMatchesLibp2p(t *testing.T) {
 }
 
 func TestLoadOrCreate(t *testing.T) {
-	stateDir := t.TempDir()
+	stateDir := newStateDir(t)
 	first, created, err := LoadOrCreate(stateDir)
 	if err != nil || !created {
 		t.Fatalf("first LoadOrCreate: created=%v, err=%v", created, err)
@@ -153,7 +167,7 @@ func TestLoadOrCreateDoesNotReplaceBadKey(t *testing.T) {
 }
 
 func TestCreateReplace(t *testing.T) {
-	stateDir := t.TempDir()
+	stateDir := newStateDir(t)
 	first, err := Create(stateDir, false)
 	if err != nil {
 		t.Fatal(err)
@@ -186,10 +200,89 @@ func TestCreateReplace(t *testing.T) {
 	}
 }
 
+func TestConcurrentCreateKeepsOneKey(t *testing.T) {
+	stateDir := newStateDir(t)
+	const writers = 8
+	keys := make([]*Key, writers)
+	errs := make([]error, writers)
+	var wg sync.WaitGroup
+	for i := range writers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			keys[i], errs[i] = Create(stateDir, false)
+		}()
+	}
+	wg.Wait()
+
+	var winner *Key
+	for i, err := range errs {
+		switch {
+		case err == nil && winner == nil:
+			winner = keys[i]
+		case err == nil:
+			t.Errorf("two writers created a key: %s and %s", winner, keys[i])
+		case !errors.Is(err, ErrKeyExists):
+			t.Errorf("writer %d: %v", i, err)
+		}
+	}
+	loaded, err := Load(stateDir)
+	if err != nil || winner == nil || loaded.PeerID() != winner.PeerID() {
+		t.Fatalf("loaded %v (%v), winner %v", loaded, err, winner)
+	}
+	if names := dirEntries(t, stateDir); len(names) != 1 {
+		t.Errorf("state directory holds %v, want only %s", names, FileName)
+	}
+}
+
+func TestInsecureStateDirectory(t *testing.T) {
+	stateDir := writeKey(t, mustDecodeHex(t, goldenKeyFile), 0o600)
+	if err := os.Chmod(stateDir, 0o770); err != nil { // #nosec G302 -- the insecure mode under test.
+		t.Fatal(err)
+	}
+	want := "fix with: chmod 700 " + stateDir
+	if _, err := Load(stateDir); !errors.Is(err, ErrInsecure) || !strings.Contains(err.Error(), want) {
+		t.Errorf("Load: err = %v, want ErrInsecure with %q", err, want)
+	}
+	if _, err := Create(stateDir, true); !errors.Is(err, ErrInsecure) {
+		t.Errorf("Create: err = %v, want ErrInsecure", err)
+	}
+	if got := hex.EncodeToString(mustReadFile(t, Path(stateDir))); got != goldenKeyFile {
+		t.Error("Create replaced the key in an insecure directory")
+	}
+	for _, perm := range []os.FileMode{0o700, 0o750, 0o755} {
+		if err := os.Chmod(stateDir, perm); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(stateDir); err != nil {
+			t.Errorf("directory mode %04o: %v", perm, err)
+		}
+	}
+}
+
+func TestLoadStateDirNotADirectory(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(file); err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path) // #nosec G304 -- test file.
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
 func TestAtomicWriteFailureLeavesNoTrace(t *testing.T) {
 	// A non-empty directory where the key file should be makes the final
 	// rename or link fail after the temporary file was written.
-	stateDir := t.TempDir()
+	stateDir := newStateDir(t)
 	if err := os.MkdirAll(filepath.Join(Path(stateDir), "keep"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +300,7 @@ func TestAtomicWriteFailureLeavesNoTrace(t *testing.T) {
 }
 
 func TestLoadMissing(t *testing.T) {
-	if _, err := Load(t.TempDir()); !errors.Is(err, fs.ErrNotExist) {
+	if _, err := Load(newStateDir(t)); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("err = %v, want fs.ErrNotExist", err)
 	}
 }
@@ -251,7 +344,7 @@ func TestCheckFileRefusesForeignOwner(t *testing.T) {
 
 func TestLoadRefusesSymlink(t *testing.T) {
 	target := writeKey(t, mustDecodeHex(t, goldenKeyFile), 0o600)
-	stateDir := t.TempDir()
+	stateDir := newStateDir(t)
 	if err := os.Symlink(Path(target), Path(stateDir)); err != nil {
 		t.Fatal(err)
 	}
@@ -261,7 +354,7 @@ func TestLoadRefusesSymlink(t *testing.T) {
 }
 
 func TestLoadRefusesDirectory(t *testing.T) {
-	stateDir := t.TempDir()
+	stateDir := newStateDir(t)
 	if err := os.Mkdir(Path(stateDir), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -294,8 +387,8 @@ func TestLoadCorrupted(t *testing.T) {
 			if !errors.Is(err, ErrCorrupt) {
 				t.Fatalf("err = %v, want ErrCorrupt", err)
 			}
-			if !strings.Contains(err.Error(), Path(stateDir)) {
-				t.Errorf("error %q does not name the file", err)
+			if !strings.Contains(err.Error(), Path(stateDir)) || !strings.Contains(err.Error(), "obied keygen --force") {
+				t.Errorf("error %q does not name the file and the fix", err)
 			}
 		})
 	}
@@ -307,9 +400,14 @@ func TestKeyNeverPrintsPrivateKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	var id Identity = key
+	var textLog, jsonLog bytes.Buffer
+	slog.New(slog.NewTextHandler(&textLog, nil)).Info("key", "ptr", key, "value", *key, "id", id)
+	slog.New(slog.NewJSONHandler(&jsonLog, nil)).Info("key", "ptr", key, "value", *key, "id", id)
 	outputs := []string{
-		fmt.Sprint(key), fmt.Sprintf("%+v", key), fmt.Sprintf("%#v", key),
-		fmt.Sprintf("%x", key), fmt.Sprintf("%+v", id), fmt.Sprintf("%#v", id),
+		textLog.String(), jsonLog.String(), fmt.Sprintf("%v %v", []*Key{key}, map[string]Key{"k": *key}),
+	}
+	for _, verb := range []string{"%v", "%+v", "%#v", "%s", "%x", "%X", "%d", "%q", "%p", "%T"} {
+		outputs = append(outputs, fmt.Sprintf(verb, key), fmt.Sprintf(verb, *key), fmt.Sprintf(verb, id))
 	}
 	secrets := []string{
 		hex.EncodeToString(goldenSeed), base64.StdEncoding.EncodeToString(goldenSeed),
@@ -324,6 +422,9 @@ func TestKeyNeverPrintsPrivateKey(t *testing.T) {
 	}
 	if key.String() != goldenPeerID {
 		t.Errorf("String() = %q, want the peer ID", key.String())
+	}
+	if !strings.Contains(textLog.String(), "ptr="+goldenPeerID+" value="+goldenPeerID+" id="+goldenPeerID) {
+		t.Errorf("slog output %q does not show the peer ID", textLog.String())
 	}
 }
 

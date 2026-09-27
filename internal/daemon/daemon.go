@@ -42,7 +42,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 		Version:   version.Version,
 		Mode:      string(cfg.Node.Mode),
 		StartedAt: startedAt,
-		Identity:  admin.IdentityResponse{PeerID: id.PeerID(), Fingerprint: identity.Fingerprint(id.PublicKey())},
+		Identity:  admin.NewIdentityResponse(id),
 		Status:    mgr.Status,
 	}, logs.Logger(admin.Name)))
 

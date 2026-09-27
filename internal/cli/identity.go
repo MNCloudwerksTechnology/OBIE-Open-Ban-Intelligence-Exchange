@@ -88,7 +88,10 @@ func runKeygen(args []string, stdout, stderr io.Writer) int {
 		return ExitFailure
 	}
 	_, _ = fmt.Fprintf(stderr, "%s: wrote a new node key to %s\n", program, identity.Path(stateDir))
-	return printIdentity(stdout, stderr, program, identityResponse(key), false)
+	if *force {
+		_, _ = fmt.Fprintf(stderr, "%s: a running obied keeps its old key until it is restarted\n", program)
+	}
+	return printIdentity(stdout, stderr, program, admin.NewIdentityResponse(key), false)
 }
 
 func runIdentity(args []string, stdout, stderr io.Writer) int {
@@ -113,7 +116,7 @@ func runIdentity(args []string, stdout, stderr io.Writer) int {
 		}
 		return ExitFailure
 	}
-	return printIdentity(stdout, stderr, program, identityResponse(key), *asJSON)
+	return printIdentity(stdout, stderr, program, admin.NewIdentityResponse(key), *asJSON)
 }
 
 func runCtlIdentity(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
@@ -129,10 +132,6 @@ func runCtlIdentity(ctx context.Context, client *admin.Client, args []string, st
 		return ExitFailure
 	}
 	return printIdentity(stdout, stderr, "obiectl", *id, *asJSON)
-}
-
-func identityResponse(id identity.Identity) admin.IdentityResponse {
-	return admin.IdentityResponse{PeerID: id.PeerID(), Fingerprint: identity.Fingerprint(id.PublicKey())}
 }
 
 // printIdentity prints the peer ID and fingerprint — never the private key.

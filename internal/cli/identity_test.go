@@ -14,6 +14,17 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 )
 
+// newStateDir returns a new empty directory with mode 0700: t.TempDir
+// applies the umask, which may leave it group-writable.
+func newStateDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Chmod(dir, 0o700); err != nil { // #nosec G302 -- a directory needs the x bit.
+		t.Fatal(err)
+	}
+	return dir
+}
+
 // runObied runs obied with args and returns exit code, stdout and stderr.
 func runObied(t *testing.T, args ...string) (code int, stdout, stderr string) {
 	t.Helper()
@@ -99,7 +110,7 @@ func TestKeygenAndIdentity(t *testing.T) {
 }
 
 func TestKeygenRefusesOverwrite(t *testing.T) {
-	stateDir := t.TempDir()
+	stateDir := newStateDir(t)
 	if code, _, stderr := runObied(t, "keygen", "--state-dir", stateDir); code != ExitOK {
 		t.Fatalf("keygen: exit code = %d, stderr %q", code, stderr)
 	}
@@ -120,6 +131,9 @@ func TestKeygenRefusesOverwrite(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("keygen --force: exit code = %d, stderr %q", code, stderr)
 	}
+	if !strings.Contains(stderr, "a running obied keeps its old key until it is restarted") {
+		t.Errorf("keygen --force stderr = %q", stderr)
+	}
 	if bytes.Equal(before, readKeyFile(t, stateDir)) {
 		t.Error("keygen --force kept the old key")
 	}
@@ -137,7 +151,7 @@ func TestKeygenUsesConfiguredStateDir(t *testing.T) {
 }
 
 func TestIdentityCommandErrors(t *testing.T) {
-	insecure := t.TempDir()
+	insecure := newStateDir(t)
 	if code, _, stderr := runObied(t, "keygen", "--state-dir", insecure); code != ExitOK {
 		t.Fatalf("keygen: %q", stderr)
 	}
@@ -152,7 +166,7 @@ func TestIdentityCommandErrors(t *testing.T) {
 		wantCode   int
 		wantStderr []string
 	}{
-		{name: "missing key", args: []string{"identity", "--state-dir", t.TempDir()}, wantCode: ExitFailure,
+		{name: "missing key", args: []string{"identity", "--state-dir", newStateDir(t)}, wantCode: ExitFailure,
 			wantStderr: []string{"no such file", "create the key with obied keygen, or start obied once"}},
 		{name: "insecure key", args: []string{"identity", "--state-dir", insecure}, wantCode: ExitFailure,
 			wantStderr: []string{"insecure key file", "chmod 600 " + filepath.Join(insecure, "node.key")}},
@@ -185,7 +199,7 @@ func TestIdentityCommandErrors(t *testing.T) {
 }
 
 func TestIdentityWriteError(t *testing.T) {
-	stateDir := t.TempDir()
+	stateDir := newStateDir(t)
 	if code, _, stderr := runObied(t, "keygen", "--state-dir", stateDir); code != ExitOK {
 		t.Fatalf("keygen: %q", stderr)
 	}

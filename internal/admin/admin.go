@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/httpserver"
+	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
 )
 
@@ -53,6 +54,11 @@ type IdentityResponse struct {
 	PeerID string `json:"peer_id"`
 	// Fingerprint is the public key fingerprint (identity.Fingerprint).
 	Fingerprint string `json:"fingerprint"`
+}
+
+// NewIdentityResponse describes id.
+func NewIdentityResponse(id identity.Identity) IdentityResponse {
+	return IdentityResponse{PeerID: id.PeerID(), Fingerprint: identity.Fingerprint(id.PublicKey())}
 }
 
 // Info is what the admin API reports about the node.

@@ -97,8 +97,9 @@ Only the packages that exist today are listed in detail; the remaining
   atomically on the first start; `obied keygen [--force]` creates it offline
   and `obied identity` / `obiectl identity` (`GET /v1/identity`) show the peer
   ID and the key fingerprint. A key file that is not a regular file, is
-  accessible by group or others, or is owned by another user stops `obied`
-  with an error naming the fix. Subsystems receive an `identity.Identity`
+  accessible by group or others, or is owned by another user, and a state
+  directory writable by group or others, stop `obied` with an error naming
+  the fix. Subsystems receive an `identity.Identity`
   (`PeerID`, `PublicKey`, `Sign`) and never the private key (ADR 0005).
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
