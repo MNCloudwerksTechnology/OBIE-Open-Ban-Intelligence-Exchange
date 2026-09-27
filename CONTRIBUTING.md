@@ -46,6 +46,9 @@ is a byte-identical copy for the public GitHub mirror — change both together;
   from `go.mod`.
 - **build linux/amd64, linux/arm64** — static `obied` and `obiectl` binaries,
   uploaded as build artifacts.
+- **website** — `make -C website ci` for the website in `website/` (see
+  [`website/README.md`](website/README.md)); its steps are skipped when
+  nothing under `website/` changed.
 - **privileged tests** — never part of the default run. Start it manually
   ("Run workflow" with the `privileged` input checked) to run the tests behind
   the `privileged` build tag as root.

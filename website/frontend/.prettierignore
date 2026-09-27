@@ -1,0 +1,4 @@
+# Build output and caches (ignored by git in the root .gitignore)
+/dist/
+/.angular/
+/coverage/
