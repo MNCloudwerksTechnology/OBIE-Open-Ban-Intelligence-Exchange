@@ -19,6 +19,7 @@ func TestValidateRules(t *testing.T) {
 		{"state_dir relative", func(c *Config) { c.Node.StateDir = "var/lib/obie" }, "node.state_dir", "absolute path"},
 		{"mode enforce", func(c *Config) { c.Node.Mode = ModeEnforce }, "", ""},
 		{"mode unknown", func(c *Config) { c.Node.Mode = "block" }, "node.mode", `must be one of ["observe" "enforce"], got "block"`},
+		{"shutdown_timeout zero", func(c *Config) { c.Node.ShutdownTimeout = 0 }, "node.shutdown_timeout", "greater than 0"},
 		{"mode wrong case", func(c *Config) { c.Node.Mode = "Observe" }, "node.mode", "must be one of"},
 
 		// admin

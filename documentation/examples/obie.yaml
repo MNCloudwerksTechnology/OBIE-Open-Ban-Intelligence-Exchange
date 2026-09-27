@@ -19,6 +19,9 @@ node:
   # observe: decide and record verdicts, but never block anything.
   # enforce: additionally push blocks to the enforcement backend.
   mode: observe
+  # Longest time a graceful shutdown (SIGTERM/SIGINT) may take before obied
+  # gives up waiting for its subsystems and exits non-zero (> 0).
+  shutdown_timeout: 10s
 
 admin:
   # Unix socket of the local admin API used by obiectl.
