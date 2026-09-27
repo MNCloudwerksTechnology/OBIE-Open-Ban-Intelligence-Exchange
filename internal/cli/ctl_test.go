@@ -11,6 +11,7 @@ import (
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
+	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
 
@@ -97,7 +98,7 @@ func TestObiectlStatusAgainstInProcessDaemon(t *testing.T) {
 		if got.UptimeSeconds < 0 || time.Since(got.StartedAt) > time.Minute {
 			t.Errorf("implausible uptime %v / start %v", got.UptimeSeconds, got.StartedAt)
 		}
-		for _, name := range []string{admin.Name, "ops", "mesh"} {
+		for _, name := range []string{store.Name, admin.Name, "ops", "mesh"} {
 			if s := got.Subsystems[name]; s.State != lifecycle.StateRunning || !s.Ready {
 				t.Errorf("subsystem %s = %+v, want running and ready", name, s)
 			}
@@ -110,7 +111,8 @@ func TestObiectlStatusAgainstInProcessDaemon(t *testing.T) {
 		}
 		for _, want := range []string{"Version:  dev\n", "Mode:     enforce\n", "Ready:    yes\n",
 			"admin      running  yes    -      -\n", "ops        running  yes    -      -\n",
-			"mesh       running  yes    -      degraded: 0 peers connected (0/0 bootstrap peers)\n"} {
+			"mesh       running  yes    -      degraded: 0 peers connected (0/0 bootstrap peers)\n",
+			"store      running  yes    -      -\n"} {
 			if !strings.Contains(stdout.String(), want) {
 				t.Errorf("table lacks %q:\n%s", want, stdout.String())
 			}

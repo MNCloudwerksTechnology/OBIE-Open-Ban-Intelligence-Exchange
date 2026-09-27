@@ -17,7 +17,8 @@ node identity key in
 specification, its JSON Schema and how both are kept in step with the code in
 [ADR 0006](documentation/adr/0006-protocol-specification-and-schema.md); the
 mesh host and static bootstrap peers in
-[ADR 0007](documentation/adr/0007-mesh-host-and-bootstrap.md).
+[ADR 0007](documentation/adr/0007-mesh-host-and-bootstrap.md); the local event
+store in [ADR 0008](documentation/adr/0008-local-event-store.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
@@ -31,7 +32,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Logging:** `log/slog` JSON to stderr.
 - **Events:** obie/0.1 JSON; signatures are Ed25519 over the RFC 8785 (JCS) canonical form of the event with `publisher.signature` removed; `signature` = `"ed25519:" + base64url(no padding)`. IDs are UUIDv7.
 - **Identity:** one Ed25519 key per node; the libp2p peer ID is derived from it (same key for mesh and event signing).
-- **Storage:** BadgerDB v4 in the state dir.
+- **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0008).
 - **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts`, static bootstrap peers in v0.1.
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers ≥ quorum (default 2) — local verdicts count with `local_weight`. Allow-list always wins. Mode `observe` (default) or `enforce`.
 - **Enforcement:** pluggable enforcer; `dryrun` and `nftables` (own table `inet obie`, timeout sets) backends; reconcile loop.
@@ -55,6 +56,7 @@ internal/           all non-public code (one package per concern listed above)
   logging/          slog JSON handler; per-component loggers
   mesh/             go-libp2p host, bootstrap peers with backoff, peer view
   ops/              /healthz, /readyz and Prometheus /metrics
+  store/            BadgerDB event and indicator state: dedupe, expiry, overrides
   version/          build version, injected via -ldflags
 pkg/
   obieproto/        public protocol types + sign/verify (importable by third parties)
