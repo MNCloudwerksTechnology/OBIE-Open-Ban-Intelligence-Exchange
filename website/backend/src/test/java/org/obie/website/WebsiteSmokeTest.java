@@ -20,6 +20,9 @@ import org.springframework.http.ResponseEntity;
 @SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
 class WebsiteSmokeTest {
 
+  /** The landing page's h1, from the front end's content file. */
+  private static final String HOME_HEADING = "A neighbourhood watch for servers.";
+
   /** Marker Angular writes into pages rendered at build time (static site generation). */
   private static final String PRERENDERED = "ng-server-context=\"ssg\"";
 
@@ -35,7 +38,7 @@ class WebsiteSmokeTest {
         .isTrue();
     // Only prerendered output contains the rendered heading; the client-side
     // shell would contain just an empty <app-root>.
-    assertThat(response.getBody()).containsPattern(heading("OBIE")).contains(PRERENDERED);
+    assertThat(response.getBody()).containsPattern(heading(HOME_HEADING)).contains(PRERENDERED);
   }
 
   @Test
@@ -53,7 +56,7 @@ class WebsiteSmokeTest {
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
     assertThat(response.getBody())
         .containsPattern(heading("Page not found"))
-        .doesNotContainPattern(heading("OBIE"));
+        .doesNotContainPattern(heading(HOME_HEADING));
   }
 
   @Test
@@ -66,8 +69,11 @@ class WebsiteSmokeTest {
 
   @Test
   void staticAssetsAreServed() {
-    assertThat(http.getForEntity("/favicon.ico", byte[].class).getStatusCode())
-        .isEqualTo(HttpStatus.OK);
+    for (String path : List.of("/favicon.ico", "/brand/obie-logo-solo.svg")) {
+      assertThat(http.getForEntity(path, byte[].class).getStatusCode())
+          .as(path)
+          .isEqualTo(HttpStatus.OK);
+    }
   }
 
   @Test
