@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"syscall"
 )
 
@@ -64,23 +66,59 @@ func (c *Client) Peers(ctx context.Context) (*PeersResponse, error) {
 	return &resp, nil
 }
 
+// APIError is an error response of the admin API.
+type APIError struct {
+	Method, Path string
+	// StatusCode is the HTTP status, e.g. http.StatusUnprocessableEntity.
+	StatusCode int
+	Status     string
+	// Message is the (possibly truncated) explanation obied sent.
+	Message string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("%s %s: %s: %s", e.Method, e.Path, e.Status, e.Message)
+}
+
 func (c *Client) get(ctx context.Context, path string, out any) error {
+	return c.do(ctx, http.MethodGet, path, nil, out)
+}
+
+func (c *Client) post(ctx context.Context, path string, in, out any) error {
+	body, err := json.Marshal(in)
+	if err != nil {
+		return fmt.Errorf("POST %s: encode request: %w", path, err)
+	}
+	return c.do(ctx, http.MethodPost, path, body, out)
+}
+
+// do sends a request with an optional JSON body and decodes a 2xx JSON
+// response into out; other responses yield an *APIError.
+func (c *Client) do(ctx context.Context, method, path string, body []byte, out any) error {
+	var reader io.Reader
+	if body != nil {
+		reader = bytes.NewReader(body)
+	}
 	// The host is ignored: the transport always dials the socket.
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://obied"+path, nil)
+	req, err := http.NewRequestWithContext(ctx, method, "http://obied"+path, reader)
 	if err != nil {
 		return err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return c.dialError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-		return fmt.Errorf("GET %s: %s: %s", path, resp.Status, body)
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+		return &APIError{Method: method, Path: path, StatusCode: resp.StatusCode, Status: resp.Status,
+			Message: strings.TrimSpace(string(msg))}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("GET %s: decode response: %w", path, err)
+		return fmt.Errorf("%s %s: decode response: %w", method, path, err)
 	}
 	return nil
 }

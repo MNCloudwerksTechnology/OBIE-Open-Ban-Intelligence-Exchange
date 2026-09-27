@@ -110,6 +110,9 @@ type Info struct {
 	// Decisions lists the decisions in a state, or all for ""; none when
 	// nil.
 	Decisions func(state string) []DecisionResponse
+	// Verdicts reports, revokes and lists verdicts; those endpoints answer
+	// 503 when nil.
+	Verdicts VerdictService
 	// Now returns the current time; time.Now when nil.
 	Now func() time.Time
 }
@@ -153,6 +156,7 @@ func Handler(info Info, log *slog.Logger) http.Handler {
 		writeJSON(w, resp, log)
 	})
 	handleDecisions(mux, info, log)
+	handleVerdicts(mux, info, log)
 	return mux
 }
 
