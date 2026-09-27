@@ -72,7 +72,7 @@ func TestStatusWriteError(t *testing.T) {
 // TestObiectlStatusAgainstInProcessDaemon starts obied in-process on a
 // temporary socket and queries it through the obiectl code path.
 func TestObiectlStatusAgainstInProcessDaemon(t *testing.T) {
-	n := newTestNode(t, "node:\n  mode: enforce\n")
+	n := newTestNode(t, "  mode: enforce\n")
 	var stderr bytes.Buffer
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

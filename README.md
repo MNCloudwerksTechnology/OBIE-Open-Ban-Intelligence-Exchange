@@ -5,16 +5,20 @@
 OBIE is in early development: the v0.1 reference implementation in Go is being
 built on top of this whitepaper. `obied`, the node daemon, validates its
 configuration, runs until SIGTERM/SIGINT and serves health endpoints
-(`/healthz`, `/readyz`, `/metrics`); `obiectl`, the operator CLI, queries it
-over the local admin socket. The security functions follow in later work
-packages.
+(`/healthz`, `/readyz`, `/metrics`); on its first start it generates the
+node's Ed25519 identity key in `<state_dir>/node.key`. `obiectl`, the operator
+CLI, queries it over the local admin socket. The security functions follow in
+later work packages.
 
 ```sh
 make build           # static binaries in ./bin/
 ./bin/obied --version
 ./bin/obied --config documentation/examples/obie.yaml --check-config
 ./bin/obied --config /etc/obie/obie.yaml
+./bin/obied keygen [--force] [--config file | --state-dir dir]   # offline, as the service user
+./bin/obied identity [--json] [--config file | --state-dir dir]  # offline: peer ID + fingerprint
 ./bin/obiectl --socket /run/obie/obie.sock status [--json]
+./bin/obiectl --socket /run/obie/obie.sock identity [--json]
 make ci              # every check a change must pass
 ```
 

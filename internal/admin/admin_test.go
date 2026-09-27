@@ -38,11 +38,17 @@ func socketPath(t *testing.T) string {
 
 var started = time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
 
+var testIdentity = IdentityResponse{
+	PeerID:      "12D3KooWJ1TsijH7H5F74hfAD5XishQz3sxrmAtVY37GtNd9CqYf",
+	Fingerprint: "SHA256:ZbYGc9btiEvwHCwiLYKtoHQPKawzVdapJcgfF/R6J7g",
+}
+
 func testInfo(statuses ...lifecycle.Status) Info {
 	return Info{
 		Version:   "v0.1.0",
 		Mode:      "observe",
 		StartedAt: started,
+		Identity:  testIdentity,
 		Status:    func() []lifecycle.Status { return statuses },
 		Now:       func() time.Time { return started.Add(90 * time.Second) },
 	}
@@ -69,6 +75,20 @@ func TestStatusHandler(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, StatusPath, nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST %s = %d, want 405", StatusPath, rec.Code)
+	}
+}
+
+func TestIdentityHandler(t *testing.T) {
+	h := Handler(testInfo(), discardLogger())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, IdentityPath, nil))
+	if rec.Code != http.StatusOK || rec.Header().Get("Content-Type") != "application/json" {
+		t.Fatalf("GET %s = %d %q", IdentityPath, rec.Code, rec.Header().Get("Content-Type"))
+	}
+	want := `{"peer_id":"12D3KooWJ1TsijH7H5F74hfAD5XishQz3sxrmAtVY37GtNd9CqYf",` +
+		`"fingerprint":"SHA256:ZbYGc9btiEvwHCwiLYKtoHQPKawzVdapJcgfF/R6J7g"}` + "\n"
+	if rec.Body.String() != want {
+		t.Errorf("body =\n%s\nwant\n%s", rec.Body.String(), want)
 	}
 }
 
@@ -99,6 +119,19 @@ func TestClientStatusOverSocket(t *testing.T) {
 	}
 	if got.Uptime() != 90*time.Second {
 		t.Errorf("Uptime = %v", got.Uptime())
+	}
+}
+
+func TestClientIdentityOverSocket(t *testing.T) {
+	path := socketPath(t)
+	startServer(t, path, "obie-no-such-group", discardLogger())
+
+	got, err := NewClient(path).Identity(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *got != testIdentity {
+		t.Errorf("Identity = %+v, want %+v", got, testIdentity)
 	}
 }
 
