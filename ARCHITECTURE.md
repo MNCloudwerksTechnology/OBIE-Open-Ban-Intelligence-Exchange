@@ -20,7 +20,9 @@ mesh host and static bootstrap peers in
 [ADR 0007](documentation/adr/0007-mesh-host-and-bootstrap.md); the local event
 store in [ADR 0008](documentation/adr/0008-local-event-store.md); the gossip
 of events in [ADR 0009](documentation/adr/0009-gossip-of-events.md); the
-website stack and build in
+trust-weighted decision engine in
+[ADR 0011](documentation/adr/0011-trust-weighted-decision.md); the website
+stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
@@ -37,7 +39,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Identity:** one Ed25519 key per node; the libp2p peer ID is derived from it (same key for mesh and event signing).
 - **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0008).
 - **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts` (no pubsub signatures, message ID = event ID, validation before relay, per-publisher and per-peer rate limits, peer scoring), static bootstrap peers in v0.1.
-- **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers ≥ quorum (default 2) — local verdicts count with `local_weight`. Allow-list always wins. Mode `observe` (default) or `enforce`.
+- **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins. Mode `observe` (default) or `enforce`.
 - **Enforcement:** pluggable enforcer; `dryrun` and `nftables` (own table `inet obie`, timeout sets) backends; reconcile loop.
 - **Ops:** Prometheus `/metrics`, `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); JSON decision audit log.
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests; privileged tests behind the `privileged` build tag.
@@ -53,6 +55,7 @@ internal/           all non-public code (one package per concern listed above)
   cli/              flag handling and commands of both binaries
   config/           YAML configuration schema, defaults, strict decoding, validation
   daemon/           wires the obied subsystems together and runs them
+  decision/         trust-weighted consensus per indicator, explanations, block change stream
   gossip/           GossipSub topic: validation, dedupe, rate limits, Publish, metrics hook
   httpserver/       HTTP server as a lifecycle subsystem
   identity/         persistent Ed25519 node key (<state_dir>/node.key); peer ID, signing
@@ -143,6 +146,22 @@ Only the packages that exist today are listed in detail; the remaining
   accepted ones are stored and relayed. `Mesh.Publish` stores an event of
   the node first, then publishes it. Outcomes are reported through the
   `gossip.Metrics` interface (ADR 0009).
+- **Decision.** The `decision` subsystem (registered right after `store`)
+  subscribes to the store's change notifications, re-evaluates changed
+  indicators on one worker goroutine and keeps the decision of every
+  indicator with active verdicts. Evaluation is a pure, deterministic
+  function (`decision.Evaluate`): only active `ban` verdicts of publishers
+  with weight > 0 contribute; `block` iff score ≥ `decision.threshold` and
+  contributors ≥ `decision.quorum`, or — with `decision.local_autoblock` —
+  when this node itself reported a ban. A block expires with the latest
+  contributing verdict, capped at `decision.max_ttl` from evaluation and
+  refreshed while its verdicts live. `Engine.Subscribe` streams
+  added/updated/removed block changes with their cause for the enforcer.
+  `obiectl explain <ip>` (`GET /v1/decisions/{indicator}`) shows every
+  publisher's weight, confidence and contribution, score vs threshold,
+  count vs quorum and the final decision; `obiectl decisions`
+  (`GET /v1/decisions?state=block`) lists them. The allow-list and overrides
+  are shown as not applied until WP #1660 (ADR 0011).
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
   before every commit. Tool versions are pinned in the `Makefile`. The CI

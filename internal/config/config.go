@@ -109,6 +109,9 @@ type Decision struct {
 	Quorum     int      `yaml:"quorum"`
 	MaxTTL     Duration `yaml:"max_ttl"`
 	DefaultTTL Duration `yaml:"default_ttl"`
+	// LocalAutoblock lets this node's own ban verdicts block on their own,
+	// without threshold and quorum.
+	LocalAutoblock bool `yaml:"local_autoblock"`
 }
 
 // Allowlist lists networks that are never blocked.
@@ -159,7 +162,7 @@ func Default() Config {
 			},
 		},
 		Trust:     Trust{Publishers: []Publisher{}, DefaultWeight: 0, LocalWeight: 1.0},
-		Decision:  Decision{Threshold: 1.8, Quorum: 2, MaxTTL: Duration(30 * day), DefaultTTL: Duration(7 * day)},
+		Decision:  Decision{Threshold: 1.8, Quorum: 2, MaxTTL: Duration(30 * day), DefaultTTL: Duration(7 * day), LocalAutoblock: true},
 		Allowlist: Allowlist{CIDRs: []string{}},
 		Enforce:   Enforce{Backend: BackendDryRun, MaxEntries: 100000, ReconcileInterval: Duration(10 * time.Second)},
 		Metrics:   Metrics{Listen: "127.0.0.1:9464"},

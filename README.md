@@ -9,9 +9,11 @@ configuration, runs until SIGTERM/SIGINT and serves health endpoints
 node's Ed25519 identity key in `<state_dir>/node.key`. It joins the libp2p mesh
 under that identity, stays connected to the configured `mesh.bootstrap`
 peers and gossips signed verdicts and revocations with them, relaying only
-valid events within per-publisher and per-peer rate limits. `obiectl`, the
-operator CLI, queries it over the local admin socket. The security functions
-follow in later work packages.
+valid events within per-publisher and per-peer rate limits. It keeps a
+trust-weighted decision (`block` or `none`) for every indicator it holds
+verdicts on and explains it on request. `obiectl`, the operator CLI, queries
+it over the local admin socket. Enforcement, the allow-list and operator
+overrides follow in later work packages.
 
 ```sh
 make build           # static binaries in ./bin/
@@ -23,6 +25,8 @@ make build           # static binaries in ./bin/
 ./bin/obiectl --socket /run/obie/obie.sock status [--json]
 ./bin/obiectl --socket /run/obie/obie.sock identity [--json]
 ./bin/obiectl --socket /run/obie/obie.sock peers [--json]      # connected mesh peers
+./bin/obiectl --socket /run/obie/obie.sock explain [--json] 203.0.113.7   # why (not) blocked
+./bin/obiectl --socket /run/obie/obie.sock decisions [--state block] [--json]
 make ci              # every check a change must pass
 ```
 
