@@ -25,7 +25,7 @@
 // Nodes exchange events on the GossipSub topic [Topic], one event per
 // message. [Receive] is the complete check for a received message: it
 // decodes, binds the message author to publisher.peer_id, drops expired
-// events and verifies the signature. [Supersedes] and [Event.Withdraws]
+// events and verifies the signature. [Event.Supersedes] and [Event.Withdraws]
 // state the rules that decide which verdicts are in effect.
 //
 // documentation/spec/obie-0.1.md is the protocol specification and

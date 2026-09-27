@@ -1,9 +1,6 @@
 package obieproto
 
-import (
-	"fmt"
-	"time"
-)
+import "fmt"
 
 // Receive is the complete check a node applies to a message received on
 // [Topic] before it acts on the event or forwards it. data is the message
@@ -15,7 +12,9 @@ import (
 // must not have expired at the clock of opts ([ErrExpired]) and must carry a
 // valid signature ([Verify]). The cheap checks run before the signature is
 // verified. Any error means the message is dropped and not forwarded.
+// [AllowDocumentationRanges] has no effect: the mesh never accepts them.
 func Receive(data []byte, from string, opts ...Option) (*Event, error) {
+	opts = append(opts, func(o *options) { o.allowDocumentation = false })
 	e, err := Decode(data, opts...)
 	if err != nil {
 		return nil, err
@@ -26,7 +25,7 @@ func Receive(data []byte, from string, opts ...Option) (*Event, error) {
 	}
 	if now := newOptions(opts).now(); e.Expired(now) {
 		return nil, &FieldError{Field: "issued_at", Err: ErrExpired,
-			Detail: fmt.Sprintf("expired at %s", e.ExpiresAt().Format(time.RFC3339))}
+			Detail: fmt.Sprintf("expired at %s", e.ExpiresAt().UTC().Format(TimestampLayout))}
 	}
 	if err := Verify(e); err != nil {
 		return nil, err

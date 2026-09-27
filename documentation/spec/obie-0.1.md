@@ -98,6 +98,12 @@ allowed value for any optional member.
 a fraction or exponent (`47`, not `47.0` or `4.7e1`) and MUST lie within
 ±(2^53−1), the range that RFC 8785 serializes exactly.
 
+Numbers are interpreted as IEEE 754 binary64 values, as I-JSON ([RFC 7493])
+requires, except that range constraints apply to the number as written: a
+`confidence` of `1.0000000000000001` is out of range although it rounds
+to 1. Publishers that format numbers as RFC 8785 does never write such
+literals.
+
 The order of members and insignificant whitespace are free; they do not
 affect the signature (section 7).
 
@@ -111,7 +117,7 @@ Table 1 lists every member. Column "V" is for verdicts, "R" for revocations:
 | `id`                          | req | req | string  | UUIDv7 ([RFC 9562]) in lower-case canonical form, `^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$` |
 | `spec`                        | req | req | string  | exactly `obie/0.1`                                                                                          |
 | `type`                        | req | req | string  | `indicator.verdict` or `indicator.revoke`                                                                   |
-| `issued_at`                   | req | req | string  | creation time, `YYYY-MM-DDTHH:MM:SSZ` (RFC 3339, UTC, whole seconds), a valid calendar date                  |
+| `issued_at`                   | req | req | string  | creation time, `YYYY-MM-DDTHH:MM:SSZ` (RFC 3339, UTC, whole seconds), a valid calendar date after `0001-01-01T00:00:00Z` |
 | `indicator`                   | req | req | object  | section 6                                                                                                   |
 | `indicator.kind`              | req | req | string  | `ipv4`, `ipv6` or `cidr`                                                                                    |
 | `indicator.value`             | req | req | string  | canonical address or network (section 6.2)                                                                  |
@@ -182,7 +188,15 @@ CIDR range and one about an address inside it are independent.
 
 A later verdict replaces an earlier one in every respect: a publisher lowers
 its confidence, changes the action or extends the lifetime by issuing a new
-verdict.
+verdict. To end a verdict early, a publisher SHOULD revoke it (section 5.2)
+rather than rely on a newer verdict with a short lifetime: once that newer
+verdict has expired, a receiver that has forgotten it cannot tell that an
+older, still unexpired verdict was superseded.
+
+Receivers SHOULD therefore remember the `issued_at` and `id` of the latest
+verdict per publisher and indicator until `issued_at` + 2592000 seconds,
+the longest lifetime of any verdict it can have superseded, even after the
+latest verdict itself has expired.
 
 ### 5.2 Revocation (`indicator.revoke`)
 
@@ -198,7 +212,9 @@ verdict can revoke it.
 
 Revoking a verdict does not restore the verdict it superseded: after the
 revocation the publisher has no verdict in effect on that indicator until it
-issues a new one.
+issues a new one. Publishers SHOULD NOT date a revocation earlier than the
+verdict it revokes; section 5.3 relies on revocations outliving their
+verdicts.
 
 GossipSub does not preserve order, so a revocation can arrive before its
 verdict. Receivers SHOULD remember a revocation whose verdict they have not
@@ -213,7 +229,8 @@ can revoke may have.
 
 **[SEM-4]** A verdict MUST NOT be in effect at or after its expiry time.
 
-Receivers MAY forget expired events. Section 10 drops events that have
+Receivers MAY forget expired events, subject to the recommendations of
+sections 5.1 and 5.2 on what to remember. Section 10 drops events that have
 already expired on arrival.
 
 ## 6. Indicators
@@ -291,7 +308,8 @@ the following ranges MUST be rejected, as MUST an address inside one.
   `2001:db8::/32`, `3fff::/20`.
 
 The reference implementation offers an option to accept documentation
-ranges in tests and examples; it is not available on the mesh.
+ranges in tests and examples; `Receive`, the check for messages from the
+mesh, ignores it.
 
 ## 7. Canonicalisation and signing
 
@@ -351,11 +369,11 @@ form of the same peer ID and peer IDs of other key types.
 `publisher.peer_id` and from nowhere else. An event signed by any key other
 than the one embedded in `publisher.peer_id` fails verification.
 
-**[ID-3]** A node MUST publish its events from the libp2p host whose peer ID
-is `publisher.peer_id`, and receivers MUST drop a message whose GossipSub
-author (the message's `from` field, not the peer that forwarded it) differs
-from `publisher.peer_id`. Only a publisher can inject its own events into
-the mesh; other peers can only forward them.
+**[ID-3]** Receivers MUST drop a message whose GossipSub author (the
+message's `from` field, not the peer that forwarded it) differs from
+`publisher.peer_id`. A node therefore publishes its events from the libp2p
+host whose peer ID is `publisher.peer_id`: only a publisher can inject its
+own events into the mesh, other peers can only forward them.
 
 `publisher.asn` is self-declared and unverified in obie/0.1. Receivers
 SHOULD NOT base trust decisions on it without verifying it by other means.
@@ -382,7 +400,10 @@ Recommendations for the libp2p layer:
   on, and for message IDs.
 - Nodes SHOULD register a topic validator that runs the checks of section
   10 and reports failures as `Reject`, so that GossipSub peer scoring
-  penalises peers that forward invalid messages.
+  penalises peers that forward invalid messages. Failures that depend on
+  the local clock (an expired event, an `issued_at` too far in the future)
+  SHOULD be reported as `Ignore` instead: an honest peer with a slightly
+  different clock may have forwarded the message in good faith.
 - Nodes SHOULD listen on TCP with the Noise security protocol and the yamux
   multiplexer, and MAY additionally offer QUIC. Peer discovery in obie/0.1
   uses statically configured bootstrap peers; DHT discovery is planned.
@@ -452,7 +473,7 @@ extension points inside obie/0.1.
 has members or types obie/0.1 does not know.
 
 **[VER-2]** A receiver MUST reject an event whose `type` is not one of the
-obie/0.1 types (for example `indicator.observation` or `indicator.appeal`,
+obie/0.1 types (for example `indicator.observed` or `indicator.appeal`,
 planned for later versions), classifying it as an unsupported type even if
 it also has unknown members.
 
@@ -500,10 +521,15 @@ Further guidance:
   of duplicate and unknown members ([ENC-2]) and of non-canonical values
   ([IND-3]) ensure that one event has exactly one signed form, so two
   implementations cannot disagree about what a signature covers.
-- **Replay.** A replayed event is a duplicate (same `id`) and has no effect.
-  An old event cannot be replayed after it expired ([RCV-2]); a verdict
-  cannot be revived after its revocation because the revocation outlives
-  every verdict it can revoke (section 5.3).
+- **Replay.** Anyone can re-send a publisher's original GossipSub message
+  while its event is unexpired. A receiver that still knows the event treats
+  it as a duplicate (same `id`); one that does not must not let it undo a
+  later decision of the publisher. An expired event is dropped ([RCV-2]); a
+  revoked verdict stays withdrawn because a revocation that is not dated
+  before its verdict outlives it (sections 5.2, 5.3); and a superseded
+  verdict stays superseded as long as the receiver remembers the latest
+  verdict as section 5.1 recommends. Publishers end verdicts early by
+  revocation for this reason.
 - **Clock skew.** Events dated more than five minutes ahead are rejected
   ([ENV-4]), so a publisher cannot make a verdict supersede later ones by
   dating it in the future. Nodes SHOULD keep their clocks synchronised
@@ -548,7 +574,8 @@ JSON Schema cannot express these rules; implementations check them in code:
 3. Integers written with a fraction or exponent, such as `47.0` ([ENC-4]);
    JSON Schema treats them as integers.
 4. Negative zero as confidence ([ENV-2]).
-5. Calendar validity of `issued_at`, e.g. `2026-02-30T00:00:00Z` ([ENV-2]).
+5. Calendar validity of `issued_at`, e.g. `2026-02-30T00:00:00Z`, and the
+   excluded value `0001-01-01T00:00:00Z` ([ENV-2]).
 6. The clock-skew limit of `issued_at` ([ENV-4]).
 7. `revokes` differing from `id` ([ENV-3]).
 8. The complete canonical form of IPv6 addresses (RFC 5952: shortest form,
@@ -610,7 +637,10 @@ test keys; they are public and for tests only.
 Every tagged requirement and the tests of the reference implementation
 (`pkg/obieproto`) that check it. `TestSpecRequirementsAreTested` fails if a
 normative statement has no tag, a tag is missing here, or a test named here
-does not exist.
+does not exist. For [SEM-1] to [SEM-4] the tests check the rules as the
+reference implementation states them (`Event.Supersedes`,
+`Event.Withdraws`, `Event.Expired`); the node's event store applies them.
+For [TRN-1] the test pins the topic constant that the mesh layer uses.
 
 | Requirement | Tests |
 |-------------|-------|

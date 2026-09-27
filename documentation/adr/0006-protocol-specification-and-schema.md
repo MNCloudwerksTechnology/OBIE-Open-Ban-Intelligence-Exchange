@@ -30,7 +30,10 @@ could share.
   before the mesh exists, or rate limits) are written as SHOULD.
 - **JSON Schema** (2020-12) in `documentation/spec/obie-0.1.schema.json`
   describes what `Decode` accepts, including unsigned events (empty
-  `publisher.signature`), because it mirrors the decoder. The tests validate
+  `publisher.signature`), because it mirrors the decoder. Range constraints
+  apply to numbers as written, as schema validators compare them, so
+  `Decode` rejects a confidence literal such as `1.0000000000000001` that
+  only its binary64 rounding brings into range. The tests validate
   every test vector and a list of valid and invalid samples against the
   schema and require `Decode` to agree on each. Rules the schema cannot
   express are listed in the specification and covered by
@@ -44,10 +47,12 @@ could share.
 - **Protocol rules as code** in `pkg/obieproto`: `Topic`
   (`obie/0.1/verdicts`); `Receive(data, from, opts…)`, the complete check a
   node applies before acting on or forwarding a message (`Decode`, author
-  equals `publisher.peer_id`, not expired → `ErrExpired`, `Verify`);
-  `Supersedes(a, b)` (later `issued_at`, ties broken by the greater ID) and
+  equals `publisher.peer_id`, not expired → `ErrExpired`, `Verify`; it
+  never accepts documentation ranges); `Event.Supersedes(old)` (later `issued_at`, ties broken by the greater ID) and
   `Event.Withdraws(v)` (same publisher, same indicator, `revokes` = ID). The
-  store and the mesh use these instead of re-implementing the rules.
+  mesh and the store are to use these instead of re-implementing the rules;
+  the store of WP-1654, developed in parallel, applies equivalent rules of
+  its own and should switch to these functions once both are merged.
 
 ## Consequences
 

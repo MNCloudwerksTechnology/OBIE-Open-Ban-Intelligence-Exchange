@@ -41,10 +41,15 @@ func TestReceive(t *testing.T) {
 			from: testPeerIDA, now: testNow, wantErr: ErrInvalidSignature},
 		{name: "fails decoding", data: []byte(`{"spec":"obie/0.2"}`), from: testPeerIDA, now: testNow, wantErr: ErrUnsupportedSpec},
 		{name: "future issued_at", data: signedJSON(validVerdict()), from: testPeerIDA, now: testNow.Add(-MaxClockSkew - time.Second), wantErr: ErrInvalidField},
+		{name: "documentation range", data: signedJSON(func() *Event {
+			e := validVerdict()
+			e.Indicator = Indicator{Kind: KindIPv4, Value: "203.0.113.7", Scope: "/32"}
+			return e
+		}()), from: testPeerIDA, now: testNow, wantErr: ErrNonPublicIndicator},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e, err := Receive(tt.data, tt.from, WithClock(func() time.Time { return tt.now }))
+			e, err := Receive(tt.data, tt.from, WithClock(func() time.Time { return tt.now }), AllowDocumentationRanges())
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("Receive() error = %v, want %v", err, tt.wantErr)
 			}

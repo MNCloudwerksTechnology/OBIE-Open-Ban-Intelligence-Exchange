@@ -26,15 +26,16 @@ func TestSupersedes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			a, b := validVerdict(), validVerdict()
 			tt.mutate(a)
-			if got := Supersedes(a, b); got != tt.want {
+			if got := a.Supersedes(b); got != tt.want {
 				t.Errorf("Supersedes() = %v, want %v", got, tt.want)
 			}
-			if tt.want && Supersedes(b, a) {
+			if tt.want && b.Supersedes(a) {
 				t.Error("Supersedes() holds in both directions")
 			}
 		})
 	}
-	if Supersedes(nil, validVerdict()) || Supersedes(validVerdict(), nil) {
+	var nilEvent *Event
+	if nilEvent.Supersedes(validVerdict()) || validVerdict().Supersedes(nil) {
 		t.Error("Supersedes() with nil = true")
 	}
 }

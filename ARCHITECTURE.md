@@ -93,7 +93,7 @@ Only the packages that exist today are listed in detail; the remaining
   regenerate them with `go generate ./pkg/obieproto` only for an intended
   change of the signed format. Messages from the mesh go through
   `obieproto.Receive` (decode, author = publisher, not expired, verify);
-  which verdicts are in effect follows `obieproto.Supersedes` and
+  which verdicts are in effect follows `Event.Supersedes` and
   `Event.Withdraws`. The specification
   [`documentation/spec/obie-0.1.md`](documentation/spec/obie-0.1.md) is
   normative for third parties; every MUST in it is tagged and mapped to a

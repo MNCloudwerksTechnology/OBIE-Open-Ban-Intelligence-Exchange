@@ -209,7 +209,7 @@ As a defensive tool, OBIE must resist being weaponized.
 #### 5.1 Poisoning and Sybil Resistance
 
 - **Identity Barriers:** Anonymous publishing is rejected. Cryptographic identity (verified via domain/ACME *(planned)*) is required
-  to participate in the reputation pool.
+  to participate in the reputation pool *(planned)*.
 - **Rate Limiting:** Strict quotas are applied per-identity and per-ASN to prevent flood-based DoS *(planned)*; the
   specification states the expected rates.
 - **Reputation Warm-up:** New nodes have limited influence until they prove value over time *(planned)*.
