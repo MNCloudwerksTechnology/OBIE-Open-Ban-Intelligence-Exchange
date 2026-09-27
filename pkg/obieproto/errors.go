@@ -47,3 +47,7 @@ func (e *FieldError) Error() string {
 }
 
 func (e *FieldError) Unwrap() error { return e.Err }
+
+func invalid(field, format string, args ...any) error {
+	return &FieldError{Field: field, Err: ErrInvalidField, Detail: fmt.Sprintf(format, args...)}
+}
