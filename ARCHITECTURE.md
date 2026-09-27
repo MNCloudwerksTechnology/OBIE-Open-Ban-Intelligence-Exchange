@@ -23,7 +23,9 @@ of events in [ADR 0009](documentation/adr/0009-gossip-of-events.md); the
 trust-weighted decision engine in
 [ADR 0011](documentation/adr/0011-trust-weighted-decision.md); the website
 stack and build in
-[ADR 0010](documentation/adr/0010-website-stack-and-build.md).
+[ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
+page content file and design system in
+[ADR 0012](documentation/adr/0012-landing-page-content-and-design-system.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
@@ -180,6 +182,9 @@ has its own build (`website/Makefile`) and gate (`make -C website ci`, the
 - **Front end:** Angular (standalone components, strict TypeScript, SCSS) in
   `website/frontend/`, prerendered to static HTML at build time; no Node
   runtime in production and no third-party requests from the browser.
+  Landing page copy lives in one typed content file; fonts are self-hosted;
+  colours, spacing and type come from design tokens with light and dark
+  themes ([ADR 0012](documentation/adr/0012-landing-page-content-and-design-system.md)).
 - **Back end:** Spring Boot 3 on Java 21 in `website/backend/` (package
   `org.obie.website`, Maven wrapper). It serves the prerendered pages as
   static resources, the API under `/api/**` and Actuator health at

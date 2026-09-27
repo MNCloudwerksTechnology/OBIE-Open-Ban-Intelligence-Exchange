@@ -1,0 +1,96 @@
+header {
+  border-bottom: 1px solid var(--color-border);
+  background: color-mix(in srgb, var(--color-bg) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+// Phones: brand and actions on the first row, the navigation wraps below.
+.bar {
+  display: grid;
+  grid-template-areas:
+    'brand actions'
+    'nav nav';
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2) var(--space-4);
+  align-items: center;
+  padding-block: var(--space-3);
+}
+
+.brand {
+  display: inline-flex;
+  grid-area: brand;
+  gap: var(--space-2);
+  align-items: center;
+  justify-self: start;
+  color: var(--color-text);
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+
+  app-obie-mark {
+    width: 2rem;
+    height: 2rem;
+  }
+}
+
+nav {
+  grid-area: nav;
+}
+
+ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+nav a {
+  display: inline-block;
+  padding-block: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  text-decoration: none;
+
+  &:hover {
+    color: var(--color-text);
+    text-decoration: underline;
+  }
+}
+
+.actions {
+  display: flex;
+  grid-area: actions;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.github {
+  min-height: 2.75rem;
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+}
+
+// Wide screens: one sticky row.
+@media (min-width: 64rem) {
+  :host {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .bar {
+    grid-template-areas: 'brand nav actions';
+    grid-template-columns: auto 1fr auto;
+    min-height: var(--header-height);
+    padding-block: var(--space-2);
+  }
+
+  nav ul {
+    justify-content: center;
+    gap: var(--space-5);
+  }
+}

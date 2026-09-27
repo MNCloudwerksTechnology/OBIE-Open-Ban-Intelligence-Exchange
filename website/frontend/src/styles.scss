@@ -1,33 +1,99 @@
-// Global design tokens and base styles. The site uses a small hand-built
-// design system instead of a component library: every colour, size and
-// spacing value comes from the custom properties below. Only system fonts are
-// used so the browser makes no third-party requests.
+// Global design tokens and base styles (ADR 0012). The site uses a small
+// hand-built design system instead of a component library: every colour,
+// size and spacing value comes from the custom properties below. Fonts are
+// self-hosted (angular.json "styles"), so the browser makes no third-party
+// requests.
 
-:root {
-  --color-bg: #ffffff;
-  --color-text: #1b1f24;
-  --color-muted: #57606a;
-  --color-accent: #0b5cad;
-
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --font-size-base: 1rem;
-  --font-size-display: clamp(3rem, 12vw, 7rem);
-
-  --space-1: 0.5rem;
-  --space-2: 1rem;
-  --space-3: 2rem;
-  --space-4: 4rem;
-
-  --content-width: 64rem;
+// Light theme. Text colours are checked for WCAG AA contrast against every
+// background they are used on (styles.spec.ts).
+@mixin light-theme {
+  color-scheme: light;
+  --color-bg: #faf8f5;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f2eee8;
+  --color-text: #1a1a1a;
+  --color-text-muted: #57524b;
+  --color-border: #d8d1c6;
+  --color-border-strong: #1a1a1a;
+  --color-accent: #e59631;
+  --color-accent-hover: #f1a94e;
+  --color-accent-active: #c87d1a;
+  --color-on-accent: #1a1a1a;
+  --color-accent-text: #955700;
+  --color-mark: #fe8a07;
+  --color-mesh: #8a8a8a;
+  --color-code-bg: #1a1a1a;
+  --color-code-text: #f5f5f5;
+  --shadow-card: 0 1px 2px rgb(26 26 26 / 6%), 0 8px 24px rgb(26 26 26 / 6%);
 }
 
+@mixin dark-theme {
+  color-scheme: dark;
+  --color-bg: #121212;
+  --color-surface: #1c1c1c;
+  --color-surface-alt: #181818;
+  --color-text: #f5f5f5;
+  --color-text-muted: #ababab;
+  --color-border: #333333;
+  --color-border-strong: #f5f5f5;
+  --color-accent: #e59631;
+  --color-accent-hover: #f1a94e;
+  --color-accent-active: #c87d1a;
+  --color-on-accent: #1a1a1a;
+  --color-accent-text: #f1a94e;
+  --color-mark: #fe8a07;
+  --color-mesh: #8a8a8a;
+  --color-code-bg: #0a0a0a;
+  --color-code-text: #f5f5f5;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
+}
+
+:root {
+  @include light-theme;
+
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-mono: 'Source Code Pro', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  // Type scale (fluid between a 360 px phone and a wide desktop).
+  --text-xs: 0.8125rem;
+  --text-sm: 0.9375rem;
+  --text-base: 1.0625rem;
+  --text-lg: clamp(1.125rem, 1rem + 0.5vw, 1.3125rem);
+  --text-xl: clamp(1.375rem, 1.2rem + 0.8vw, 1.75rem);
+  --text-2xl: clamp(1.75rem, 1.3rem + 2vw, 2.75rem);
+  --text-display: clamp(2.25rem, 1.2rem + 4.6vw, 4.75rem);
+
+  // Spacing on a 4-pt grid: 4, 8, 12, 16, 24, 32, 48, 64, 96 px.
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
+  --space-9: 6rem;
+
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 1rem;
+
+  --content-width: 72rem;
+  --header-height: 4rem;
+  --focus-ring: 0 0 0 3px var(--color-bg), 0 0 0 6px var(--color-accent-text);
+  --duration: 160ms;
+}
+
+// The system theme applies unless the visitor picked the other one with the
+// header toggle for this visit (data-theme on <html>, ThemeService).
 @media (prefers-color-scheme: dark) {
-  :root {
-    --color-bg: #0d1117;
-    --color-text: #e6edf3;
-    --color-muted: #9da7b3;
-    --color-accent: #58a6ff;
+  :root:not([data-theme='light']) {
+    @include dark-theme;
   }
+}
+
+:root[data-theme='dark'] {
+  @include dark-theme;
 }
 
 *,
@@ -37,18 +103,238 @@
 }
 
 html {
-  color-scheme: light dark;
+  scroll-padding-top: calc(var(--header-height) + var(--space-4));
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 body {
   margin: 0;
+  overflow-x: clip;
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-sans);
-  font-size: var(--font-size-base);
-  line-height: 1.5;
+  font-size: var(--text-base);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+p {
+  margin: 0;
 }
 
 a {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  // The transparent outline shows in forced-colors mode, where shadows do not.
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--radius-sm);
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+
+// Shared building blocks used by several page sections.
+
+.container {
+  width: 100%;
+  max-width: var(--content-width);
+  margin-inline: auto;
+  padding-inline: var(--space-5);
+}
+
+.section {
+  padding-block: var(--space-8);
+}
+
+.section--alt {
+  background: var(--color-surface-alt);
+}
+
+@media (min-width: 48rem) {
+  .container {
+    padding-inline: var(--space-6);
+  }
+
+  .section {
+    padding-block: var(--space-9);
+  }
+}
+
+.eyebrow {
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  margin-bottom: var(--space-4);
+  color: var(--color-accent-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.section-heading {
+  max-width: 24ch;
+  font-size: var(--text-2xl);
+}
+
+.lead {
+  max-width: 62ch;
+  margin-top: var(--space-5);
+  color: var(--color-text-muted);
+  font-size: var(--text-lg);
+}
+
+.button {
+  display: inline-flex;
+  gap: var(--space-2);
+  align-items: center;
+  justify-content: center;
+  min-height: 3rem;
+  padding: var(--space-3) var(--space-5);
+  border: 2px solid transparent;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  text-decoration: none;
+  transition:
+    background-color var(--duration),
+    border-color var(--duration),
+    transform var(--duration);
+}
+
+.button--primary {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.button--primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.button--primary:active {
+  background: var(--color-accent-active);
+}
+
+.button--secondary {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.button--secondary:hover {
+  background: var(--color-surface);
+}
+
+.button svg {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.next-step {
+  display: inline-block;
+  margin-top: var(--space-7);
+  font-weight: 600;
+}
+
+// Chevron after the last word, so it stays with the text when it wraps.
+.next-step::after {
+  content: '';
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: var(--space-2);
+  border-top: 2px solid currentColor;
+  border-right: 2px solid currentColor;
+  transform: translateY(-0.1em) rotate(45deg);
+}
+
+.card-grid {
+  display: grid;
+  gap: var(--space-5);
+  margin: var(--space-7) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 40rem) {
+  .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 64rem) {
+  .card-grid--3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.card {
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.card h3 {
+  font-size: var(--text-lg);
+}
+
+.card p {
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.index {
+  color: var(--color-accent-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }

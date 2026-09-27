@@ -1,6 +1,6 @@
 # ADR 0010: Website stack and single-artefact build
 
-- **Status:** Accepted
+- **Status:** Accepted (font clause superseded by [ADR 0012](0012-landing-page-content-and-design-system.md))
 - **Date:** 2026-09-28
 - **Work package:** [#1672](https://openproject.niew.dev/work_packages/1672)
 

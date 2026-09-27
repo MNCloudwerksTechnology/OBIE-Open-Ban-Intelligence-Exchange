@@ -12,7 +12,9 @@ describe('App routing', () => {
 
   it('renders the home page at /', async () => {
     const harness = await RouterTestingHarness.create('/');
-    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toBe('OBIE');
+    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toBe(
+      'A neighbourhood watch for servers.',
+    );
   });
 
   it('renders the not-found page for unknown URLs', async () => {
@@ -25,9 +27,27 @@ describe('App routing', () => {
     expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toBe('Page not found');
   });
 
-  it('wraps pages in a main landmark', () => {
+  it('wraps pages in banner, main and content-info landmarks', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
-    expect((fixture.nativeElement as HTMLElement).querySelector('main')).not.toBeNull();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('header')).not.toBeNull();
+    expect(root.querySelector('main')).not.toBeNull();
+    expect(root.querySelector('footer')).not.toBeNull();
+  });
+
+  it('starts with a skip link that moves focus to the main landmark', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    document.body.appendChild(root);
+
+    const skipLink = root.querySelector('a') as HTMLAnchorElement;
+    expect(skipLink.classList).toContain('skip-link');
+    expect(skipLink.getAttribute('href')).toBe('#main');
+
+    skipLink.click();
+    expect(document.activeElement).toBe(root.querySelector('main#main'));
+    root.remove();
   });
 });

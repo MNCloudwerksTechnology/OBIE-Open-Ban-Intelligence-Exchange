@@ -57,8 +57,15 @@ and `./mvnw spotless:apply` (back end).
   in `src/app/app.routes.server.ts` with `RenderMode.Prerender` is rendered to
   `<route>/index.html` at build time and hydrated in the browser. There is no
   Node server in production. Styling uses a small design system of CSS custom
-  properties in `src/styles.scss`, system fonts only, no component library,
-  so the browser makes no third-party requests.
+  properties in `src/styles.scss` (colour tokens for a light and a dark theme,
+  a 4-pt spacing scale) and no component library. Inter and Source Code Pro
+  are self-hosted from `@fontsource` packages, so the browser makes no
+  third-party requests ([ADR 0012](../documentation/adr/0012-landing-page-content-and-design-system.md)).
+- **Landing page copy.** Every user-visible string of the landing page lives
+  in `src/app/content/landing.content.ts`; templates only bind to it. Edit
+  copy there. A German version is a second `LandingContent` object provided
+  through the `LANDING_CONTENT` token. Describe only what the code does;
+  label everything else "in progress" or "planned".
 - **Back end.** Maven copies `frontend/dist/frontend/browser` into the jar as
   `classpath:/static/`. `StaticSiteConfig` serves files and prerendered
   routes; `NotFoundPageResolver` renders the 404 page. API endpoints live
