@@ -5,7 +5,9 @@ implementation. Every work package builds on it; any change to the baseline
 must update this file **and** be recorded as a new ADR in
 [`documentation/adr/`](documentation/adr/). The decision record for the
 initial baseline is
-[ADR 0001](documentation/adr/0001-architecture-baseline.md).
+[ADR 0001](documentation/adr/0001-architecture-baseline.md); configuration
+loading and logging are detailed in
+[ADR 0002](documentation/adr/0002-configuration-and-logging.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
@@ -34,11 +36,14 @@ cmd/
   obiectl/          operator CLI entry point
 internal/           all non-public code (one package per concern listed above)
   cli/              shared flag handling for the binaries
+  config/           YAML configuration schema, defaults, strict decoding, validation
+  logging/          slog JSON handler; per-component loggers
   version/          build version, injected via -ldflags
 pkg/
   obieproto/        public protocol types + sign/verify (importable by third parties)
 documentation/
   adr/              architecture decision records
+  examples/         commented example configuration (tested against the schema)
   spec/             obie/0.1 protocol specification
 diagrams/           whitepaper diagrams (PlantUML sources + PNG)
 ```
