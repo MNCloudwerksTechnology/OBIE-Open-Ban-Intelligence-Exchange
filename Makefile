@@ -44,7 +44,7 @@ vet: ## Run go vet
 
 .PHONY: fmt-check
 fmt-check: ## Fail if any Go file is not gofmt-formatted
-	@unformatted="$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go'))"; \
+	@unformatted="$$(gofmt -l .)"; \
 	if [ -n "$$unformatted" ]; then \
 		echo "gofmt needed for:"; echo "$$unformatted"; exit 1; \
 	fi
