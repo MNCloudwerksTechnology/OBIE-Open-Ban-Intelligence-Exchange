@@ -14,9 +14,7 @@ import { LANDING_CONTENT } from '../content/landing.content';
         <div class="items">
           @for (item of faq.items; track item.question) {
             <details>
-              <summary>
-                <h3>{{ item.question }}</h3>
-              </summary>
+              <summary>{{ item.question }}</summary>
               <p>{{ item.answer }}</p>
             </details>
           }
@@ -42,6 +40,9 @@ import { LANDING_CONTENT } from '../content/landing.content';
       align-items: center;
       justify-content: space-between;
       padding-block: var(--space-4);
+      font-size: var(--text-lg);
+      font-weight: 600;
+      line-height: 1.35;
       cursor: pointer;
       list-style: none;
     }
@@ -64,11 +65,6 @@ import { LANDING_CONTENT } from '../content/landing.content';
 
     details[open] summary::after {
       transform: rotate(-135deg);
-    }
-
-    h3 {
-      font-size: var(--text-lg);
-      font-weight: 600;
     }
 
     details p {

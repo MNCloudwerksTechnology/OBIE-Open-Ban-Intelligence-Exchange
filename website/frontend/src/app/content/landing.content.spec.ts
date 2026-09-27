@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { LandingContent } from './landing-content.model';
 import { LANDING_CONTENT_EN, LINKS, REPOSITORY_URL } from './landing.content';
 
@@ -140,6 +143,18 @@ describe('Landing page content', () => {
       if (/^(https?:|\/|#)/.test(text) && !text.includes(' ')) {
         expect(text).toMatch(/^(https:\/\/|\/[a-z]|#[a-z])/);
       }
+    }
+  });
+
+  it('links only to repository files that exist', () => {
+    const repoRoot = resolve(process.cwd(), '../..');
+    const prefix = `${REPOSITORY_URL}/blob/develop/`;
+    const files = Object.values(LINKS)
+      .filter((href) => href.startsWith(prefix))
+      .map((href) => href.slice(prefix.length).split('#')[0]);
+    expect(files).toContain('SECURITY.md');
+    for (const file of files) {
+      expect(existsSync(resolve(repoRoot, file)), file).toBe(true);
     }
   });
 });

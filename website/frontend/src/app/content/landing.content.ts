@@ -24,7 +24,7 @@ export const LINKS = {
   exampleConfig: `${DOCS_URL}/documentation/examples/obie.yaml`,
   licence: `${DOCS_URL}/LICENSE.md`,
   issues: `${REPOSITORY_URL}/issues`,
-  securityPolicy: `${REPOSITORY_URL}/security/policy`,
+  securityPolicy: `${DOCS_URL}/SECURITY.md`,
   impressum: '/impressum',
   privacy: '/privacy',
   cloudwerks: 'https://cloudwerks.de',
@@ -57,7 +57,8 @@ export const LANDING_CONTENT_EN: LandingContent = {
     challenge: { label: 'Read the spec and try to break it', href: LINKS.spec },
     noTokens: 'No tokens. No coin. Incentives come from mutual defence, not speculation.',
     report: {
-      caption: 'What a server shares: a short, signed report. Never logs, never user data.',
+      caption:
+        'What a server shares under the version 0.1 specification: a short, signed report. Never logs, never user data.',
       title: 'signed report',
       rows: [
         { key: 'address', value: '203.0.113.7' },
@@ -117,7 +118,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
       },
       {
         title: 'Each server decides for itself',
-        text: 'No report is an order. Every server weighs what it receives by how much it trusts the sender. By default it only acts when at least two trusted peers report the same address.',
+        text: 'No report is an order. Every server weighs what it receives by how much it trusts the sender. By default it only acts when at least two trusted sources report the same address (your own server counts as one) and their combined confidence is high enough.',
       },
       {
         title: 'The safety list always wins',
@@ -226,7 +227,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
           },
           {
             title: 'Local decisions',
-            text: 'Trust weights per peer, the two-peer minimum, the safety list and observe-only mode.',
+            text: 'Trust weights per peer, the two-source minimum, the safety list and observe-only mode.',
           },
           {
             title: 'Blocking that expires',
@@ -277,21 +278,21 @@ export const LANDING_CONTENT_EN: LandingContent = {
     steps: [
       {
         title: 'Install',
-        text: 'Build the node from source. One command produces two programs: obied, the node, and obiectl, the tool to control it.',
+        text: 'Build the node from source. One command produces two programs in ./bin: obied, the node, and obiectl, the tool to control it.',
         code: 'make build',
       },
       {
         title: 'Observe only',
-        text: 'Start in observe-only mode, the default. The node records what it would block but blocks nothing, so you can check its judgement first.',
-        code: 'obied --config /etc/obie/obie.yaml',
+        text: 'Start in observe-only mode, the default. Once decisions land, the node will record what it would block but block nothing, so you can check its judgement first.',
+        code: './bin/obied --config /etc/obie/obie.yaml',
       },
       {
         title: 'Connect peers',
-        text: 'List the peers you trust, and how much, in the configuration file. Switch to enforce mode once you are confident.',
-        code: 'obiectl --socket /run/obie/obie.sock peers',
+        text: 'List the peers you trust, and how much, in the configuration file. Once blocking lands, switch to enforce mode when you are confident.',
+        code: './bin/obiectl --socket /run/obie/obie.sock peers',
       },
     ],
-    note: 'Version 0.1 is still in development: observe-only mode and blocking become useful once decisions and blocking land (see Status).',
+    note: 'Version 0.1 is still in development. Until decisions and blocking land (see Status), a node connects to its peers and stores reports, but decides and blocks nothing.',
     quickStart: { label: 'Example configuration with every option', href: LINKS.exampleConfig },
     nextStep: { label: 'Open the quick start on GitHub', href: LINKS.quickStart },
   },
@@ -317,12 +318,12 @@ export const LANDING_CONTENT_EN: LandingContent = {
       {
         question: 'Can a malicious peer get an address blocked on my server?',
         answer:
-          'Not on its own. Your server only acts on reports from peers you chose to trust, by default only when at least two of them report the same address, and never against your safety list. Addresses in private and internal networks are rejected outright. Peers you trust could still agree on a wrong report, which is why you choose them carefully and can start in observe-only mode. Trust that is earned automatically is planned.',
+          'Not on its own. As designed for version 0.1, your server only acts on reports from sources you chose to trust, by default only when at least two of them report the same address (your own server counts as one) with enough combined confidence, and never against your safety list. Reports about private and internal network addresses are rejected outright. Peers you trust could still agree on a wrong report, which is why you choose them carefully and can start in observe-only mode. Trust that is earned automatically is planned.',
       },
       {
         question: 'What data leaves my server?',
         answer:
-          'Only signed reports: the attacking address, the attacked service, how many events were seen, a reason code, the suggested action, a confidence value and how long the action should last. Two fields are optional: a fingerprint of the log lines, which proves what you saw without revealing it, and the number of your network (its ASN). The format has no room for logs, user names, passwords or free text. Like any network connection, your peers see your server’s address and its public OBIE ID.',
+          'Once sharing is built (in progress for version 0.1), only signed reports in the format the specification defines: the attacking address, the attacked service, how many events were seen, a reason code, whether a honeypot saw it, the suggested action, a confidence value and how long the action should last. Optional are a fingerprint of the log lines, which proves what you saw without revealing it, codes for the attack technique (MITRE ATT&CK IDs) and the number of your network (its ASN). A server can also withdraw its own report with a signed revocation that carries a reason code. The format has no room for logs, user names, passwords or free text. Like any network connection, your peers see your server’s address and its public OBIE ID.',
       },
       {
         question: 'Do I need Fail2Ban?',

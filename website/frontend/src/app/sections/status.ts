@@ -14,8 +14,8 @@ import { LANDING_CONTENT } from '../content/landing.content';
         <p class="lead">{{ status.intro }}</p>
         <div class="groups">
           @for (group of status.groups; track group.state) {
-            <section class="group" [attr.aria-labelledby]="'status-' + group.state">
-              <h3 [id]="'status-' + group.state">
+            <div class="group">
+              <h3>
                 <span class="badge badge--{{ group.state }}">{{ group.label }}</span>
                 <span class="summary">{{ group.summary }}</span>
               </h3>
@@ -27,7 +27,7 @@ import { LANDING_CONTENT } from '../content/landing.content';
                   </li>
                 }
               </ul>
-            </section>
+            </div>
           }
         </div>
         <p class="details">

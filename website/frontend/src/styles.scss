@@ -159,7 +159,9 @@ a:hover {
 }
 
 :focus-visible {
-  outline: none;
+  // The transparent outline shows in forced-colors mode, where shadows do not.
+  outline: 2px solid transparent;
+  outline-offset: 2px;
   box-shadow: var(--focus-ring);
   border-radius: var(--radius-sm);
 }
