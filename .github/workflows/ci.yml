@@ -1,0 +1,112 @@
+# OBIE CI gate. This file lives in .gitea/workflows/ (Gitea Actions) and, byte
+# for byte, in .github/workflows/ (public GitHub mirror); `make lint-workflows`
+# fails if the two copies differ. The local `make ci` is the source of truth —
+# this pipeline only runs it.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      privileged:
+        description: Also run the tests behind the `privileged` build tag (as root)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # go.mod sets the minimum Go version; the pinned tools (golangci-lint,
+  # govulncheck) need a newer one, which `auto` downloads on demand.
+  GOTOOLCHAIN: auto
+
+jobs:
+  check:
+    name: make ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # Caches the Go module and build caches. There is no go.sum while
+          # the module has no dependencies, so key on go.mod instead.
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: Cache pinned tools
+        uses: actions/cache@v4
+        with:
+          path: bin/tools
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: make ci
+        run: make ci
+
+  build:
+    name: build linux/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `git describe` can embed the version.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make build
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: make build BIN_DIR="$PWD/dist/linux-$GOARCH"
+
+      - name: Verify static binaries
+        run: |
+          for bin in dist/linux-${{ matrix.goarch }}/*; do
+            info="$(go version -m "$bin")"
+            grep -E 'GOARCH=|CGO_ENABLED=' <<<"$info"
+            grep -q 'CGO_ENABLED=0' <<<"$info" || { echo "$bin is not static"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: obie-linux-${{ matrix.goarch }}
+          path: dist/linux-${{ matrix.goarch }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  privileged:
+    name: privileged tests
+    # Never part of the default gate; only on a manual run with the input set.
+    if: github.event_name == 'workflow_dispatch' && inputs.privileged
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make test-privileged
+        run: sudo env "PATH=$PATH" "GOTOOLCHAIN=$GOTOOLCHAIN" make test-privileged
