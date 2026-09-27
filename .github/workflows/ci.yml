@@ -1,7 +1,7 @@
 # OBIE CI gate. This file lives in .gitea/workflows/ (Gitea Actions) and, byte
 # for byte, in .github/workflows/ (public GitHub mirror); `make lint-workflows`
 # fails if the two copies differ. The local `make ci` is the source of truth —
-# this pipeline only runs it.
+# this pipeline only runs it (and `make -C website ci` for the website).
 name: ci
 
 on:
@@ -94,6 +94,75 @@ jobs:
           path: dist/linux-${{ matrix.goarch }}/
           if-no-files-found: error
           retention-days: 7
+
+  website:
+    name: website
+    # The website (website/) is independent of the node and has its own gate,
+    # `make -C website ci`. The job always runs so it can be a required check,
+    # but its steps are skipped unless something under website/ changed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # History is needed to diff against the base of the change.
+          fetch-depth: 0
+
+      - name: Detect changes under website/
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="" ;;
+          esac
+          # Manual runs, new branches and unknown bases check everything.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            changed=true
+          elif git diff --quiet "$base" HEAD -- website/; then
+            changed=false
+          else
+            changed=true
+          fi
+          echo "website changed: $changed"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      - if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: website/backend/pom.xml
+
+      # Go is only needed to install the pinned osv-scanner.
+      - if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - if: steps.changes.outputs.changed == 'true'
+        name: Cache pinned website tools
+        uses: actions/cache@v4
+        with:
+          path: website/bin/tools
+          key: website-tools-${{ runner.os }}-${{ hashFiles('website/Makefile') }}
+
+      - if: steps.changes.outputs.changed == 'true'
+        name: make -C website ci
+        run: make -C website ci
 
   privileged:
     name: privileged tests
