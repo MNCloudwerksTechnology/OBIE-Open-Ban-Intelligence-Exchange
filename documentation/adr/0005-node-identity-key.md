@@ -19,7 +19,7 @@ later work package and must be able to use the same key file unchanged.
   starts; if the key cannot be loaded, `obied` does not start.
   `obied keygen [--force]` creates it offline; `obied identity` shows it
   offline.
-- **File format:** the libp2p marshalled private key, i.e. exactly the bytes
+- **File format:** the libp2p marshaled private key, i.e. exactly the bytes
   `crypto.MarshalPrivateKey` of go-libp2p writes for an Ed25519 key: the
   protobuf message `PrivateKey {Type: Ed25519 (1), Data: seed ‖ public key}`
   (68 bytes, no text encoding). It is encoded and decoded in-house in
