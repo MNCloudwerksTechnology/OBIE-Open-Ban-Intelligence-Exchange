@@ -7,9 +7,11 @@ must update this file **and** be recorded as a new ADR in
 initial baseline is
 [ADR 0001](documentation/adr/0001-architecture-baseline.md); configuration
 loading and logging are detailed in
-[ADR 0002](documentation/adr/0002-configuration-and-logging.md); event
+[ADR 0002](documentation/adr/0002-configuration-and-logging.md); the daemon
+lifecycle, ops endpoints and admin API in
+[ADR 0003](documentation/adr/0003-daemon-lifecycle-and-admin-api.md); event
 canonicalization and signing in
-[ADR 0003](documentation/adr/0003-event-canonicalization-and-signing.md).
+[ADR 0004](documentation/adr/0004-event-canonicalization-and-signing.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
@@ -37,9 +39,14 @@ cmd/
   obied/            node daemon entry point
   obiectl/          operator CLI entry point
 internal/           all non-public code (one package per concern listed above)
-  cli/              shared flag handling for the binaries
+  admin/            admin API on the Unix socket (server, wire types, obiectl client)
+  cli/              flag handling and commands of both binaries
   config/           YAML configuration schema, defaults, strict decoding, validation
+  daemon/           wires the obied subsystems together and runs them
+  httpserver/       HTTP server as a lifecycle subsystem
+  lifecycle/        ordered subsystem start/stop with timeouts; status and readiness
   logging/          slog JSON handler; per-component loggers
+  ops/              /healthz, /readyz and Prometheus /metrics
   version/          build version, injected via -ldflags
 pkg/
   obieproto/        public protocol types + sign/verify (importable by third parties)
@@ -59,6 +66,10 @@ Only the packages that exist today are listed in detail; the remaining
 
 - **Entry points stay thin.** `main()` only wires `os.Args`, stdio and the exit
   code into testable code under `internal/`.
+- **Subsystems.** Every long-running part of `obied` implements
+  `lifecycle.Subsystem` and is registered in `internal/daemon`: subsystems
+  start in registration order and stop in reverse order within
+  `node.shutdown_timeout` (ADR 0003).
 - **Versioning.** Both binaries share `internal/version.Version`, which defaults
   to `dev` and is set at build time with
   `-ldflags "-X github.com/MNCloudwerksTechnology/obie/internal/version.Version=<v>"`

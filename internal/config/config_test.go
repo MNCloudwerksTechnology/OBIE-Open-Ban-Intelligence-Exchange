@@ -66,6 +66,7 @@ func TestDefaults(t *testing.T) {
 	}{
 		{"node.state_dir", d.Node.StateDir, "/var/lib/obie"},
 		{"node.mode", d.Node.Mode, ModeObserve},
+		{"node.shutdown_timeout", d.Node.ShutdownTimeout.Std(), 10 * time.Second},
 		{"admin.socket", d.Admin.Socket, "/run/obie/obie.sock"},
 		{"admin.socket_group", d.Admin.SocketGroup, "obie"},
 		{"mesh.listen", d.Mesh.Listen, []string{"/ip4/0.0.0.0/tcp/4001", "/ip4/0.0.0.0/udp/4001/quic-v1", "/ip6/::/tcp/4001"}},
@@ -172,7 +173,7 @@ func TestParseDecodeErrors(t *testing.T) {
 		msg   string
 	}{
 		{"unknown top-level key", "nodes:\n  mode: observe\n", "nodes", "unknown key (valid keys: admin, allowlist,"},
-		{"unknown nested key", "node:\n  sate_dir: /x\n", "node.sate_dir", "unknown key (valid keys: mode, state_dir)"},
+		{"unknown nested key", "node:\n  sate_dir: /x\n", "node.sate_dir", "unknown key (valid keys: mode, shutdown_timeout, state_dir)"},
 		{"unknown publisher key", "trust:\n  publishers:\n    - {peer_id: " + peerA + ", name: a, weight: 1, wieght: 1}\n", "trust.publishers[0].wieght", "unknown key"},
 		{"duplicate key", "node:\n  mode: observe\n  mode: enforce\n", "node.mode", "duplicate key"},
 		{"non-string key", "node:\n  1: x\n", "node.1", "keys must be strings, got an integer"},

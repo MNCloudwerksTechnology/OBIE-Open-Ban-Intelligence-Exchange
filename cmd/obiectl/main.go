@@ -8,5 +8,5 @@ import (
 )
 
 func main() {
-	os.Exit(cli.Run("obiectl", os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(cli.RunCtl(os.Args[1:], os.Stdout, os.Stderr))
 }

@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"bufio"
 	"bytes"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -71,32 +69,5 @@ func TestRunDaemonCheckConfigWriteError(t *testing.T) {
 	var stderr bytes.Buffer
 	if code := RunDaemon([]string{"--config", path, "--check-config"}, failingWriter{}, &stderr); code != ExitIOError {
 		t.Errorf("exit code = %d, want %d", code, ExitIOError)
-	}
-}
-
-func TestRunDaemonLogsJSONWithComponent(t *testing.T) {
-	path := writeConfig(t, "log:\n  level: warn\n")
-	var stdout, stderr bytes.Buffer
-	code := RunDaemon([]string{"--config", path}, &stdout, &stderr)
-	if code != ExitNotImplemented {
-		t.Errorf("exit code = %d, want %d", code, ExitNotImplemented)
-	}
-
-	var lines []map[string]any
-	sc := bufio.NewScanner(&stderr)
-	for sc.Scan() {
-		var m map[string]any
-		if err := json.Unmarshal(sc.Bytes(), &m); err != nil {
-			t.Fatalf("stderr line %q is not JSON: %v", sc.Text(), err)
-		}
-		lines = append(lines, m)
-	}
-	// log.level warn suppresses the info line.
-	if len(lines) != 1 {
-		t.Fatalf("got %d log lines, want 1: %v", len(lines), lines)
-	}
-	if lines[0]["component"] != "obied" || lines[0]["level"] != "ERROR" ||
-		!strings.Contains(lines[0]["msg"].(string), "not implemented yet") {
-		t.Errorf("unexpected log line: %v", lines[0])
 	}
 }

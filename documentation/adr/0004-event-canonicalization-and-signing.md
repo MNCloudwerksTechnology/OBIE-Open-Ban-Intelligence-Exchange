@@ -1,4 +1,4 @@
-# ADR 0003: Event canonicalization and signing
+# ADR 0004: Event canonicalization and signing
 
 - **Status:** Accepted
 - **Date:** 2026-09-27

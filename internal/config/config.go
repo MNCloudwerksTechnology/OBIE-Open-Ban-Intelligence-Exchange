@@ -50,6 +50,8 @@ type Config struct {
 type Node struct {
 	StateDir string `yaml:"state_dir"`
 	Mode     Mode   `yaml:"mode"`
+	// ShutdownTimeout bounds the graceful shutdown on SIGTERM/SIGINT.
+	ShutdownTimeout Duration `yaml:"shutdown_timeout"`
 }
 
 // Admin configures the local admin API used by obiectl.
@@ -119,7 +121,7 @@ type Log struct {
 // Default returns the configuration used for every key the file omits.
 func Default() Config {
 	return Config{
-		Node:  Node{StateDir: "/var/lib/obie", Mode: ModeObserve},
+		Node:  Node{StateDir: "/var/lib/obie", Mode: ModeObserve, ShutdownTimeout: Duration(10 * time.Second)},
 		Admin: Admin{Socket: "/run/obie/obie.sock", SocketGroup: "obie"},
 		Mesh: Mesh{
 			Listen: []string{
