@@ -34,6 +34,9 @@ configured, and stay connected when those peers go away and come back.
   scaled to the machine's memory and file descriptors. A listen address that
   cannot be bound is skipped with a log line (e.g. IPv6 disabled on the
   host); if none can be bound the subsystem fails to start.
+- **Logging:** go-libp2p's own log records at warn level and above go
+  through `obied`'s JSON handler with `component` `libp2p`, so all output
+  stays one JSON stream.
 - **Explicitly disabled in v0.1:** DHT (no routing), mDNS, circuit relay
   (client and service), AutoRelay, hole punching, NAT port mapping and
   AutoNAT. go-libp2p's black-hole detectors are disabled too: they suppress
@@ -65,8 +68,8 @@ configured, and stay connected when those peers go away and come back.
   `trust.publishers`, else `trust.default_weight`), remote addresses,
   connected-since (the oldest open connection), latency and whether the peer
   is a bootstrap peer. The admin package defines the wire types and does not
-  import `internal/mesh`, so `obiectl` does not link go-libp2p; the daemon
-  converts between them.
+  import `internal/mesh`, so the admin API and its client stay free of
+  go-libp2p types; the daemon converts between them.
 
 ## Consequences
 

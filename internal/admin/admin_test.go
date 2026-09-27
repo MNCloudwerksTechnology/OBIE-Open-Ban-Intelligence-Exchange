@@ -43,8 +43,19 @@ var testIdentity = IdentityResponse{
 	Fingerprint: "SHA256:ZbYGc9btiEvwHCwiLYKtoHQPKawzVdapJcgfF/R6J7g",
 }
 
+var testPeers = []PeerResponse{{
+	PeerID:         "12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd",
+	Name:           "seed",
+	Addresses:      []string{"/ip4/192.0.2.1/tcp/4001"},
+	ConnectedSince: started.Add(time.Minute),
+	LatencySeconds: 0.0125,
+	TrustWeight:    0.8,
+	Bootstrap:      true,
+}}
+
 func testInfo(statuses ...lifecycle.Status) Info {
 	return Info{
+		Peers:     func() []PeerResponse { return testPeers },
 		Version:   "v0.1.0",
 		Mode:      "observe",
 		StartedAt: started,
@@ -58,6 +69,7 @@ func TestStatusHandler(t *testing.T) {
 	h := Handler(testInfo(
 		lifecycle.Status{Name: "ops", State: lifecycle.StateRunning, Ready: true},
 		lifecycle.Status{Name: "admin", State: lifecycle.StateStarting},
+		lifecycle.Status{Name: "mesh", State: lifecycle.StateRunning, Ready: true, Detail: "degraded: 0 peers connected"},
 	), discardLogger())
 
 	rec := httptest.NewRecorder()
@@ -66,7 +78,8 @@ func TestStatusHandler(t *testing.T) {
 		t.Fatalf("GET %s = %d %q", StatusPath, rec.Code, rec.Header().Get("Content-Type"))
 	}
 	want := `{"version":"v0.1.0","mode":"observe","started_at":"2026-09-27T10:00:00Z","uptime_seconds":90,"ready":false,` +
-		`"subsystems":{"admin":{"state":"starting","ready":false},"ops":{"state":"running","ready":true}}}` + "\n"
+		`"subsystems":{"admin":{"state":"starting","ready":false},` +
+		`"mesh":{"state":"running","ready":true,"detail":"degraded: 0 peers connected"},"ops":{"state":"running","ready":true}}}` + "\n"
 	if rec.Body.String() != want {
 		t.Errorf("body =\n%s\nwant\n%s", rec.Body.String(), want)
 	}
@@ -75,6 +88,45 @@ func TestStatusHandler(t *testing.T) {
 	h.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, StatusPath, nil))
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("POST %s = %d, want 405", StatusPath, rec.Code)
+	}
+}
+
+func TestPeersHandler(t *testing.T) {
+	for name, tc := range map[string]struct {
+		peers func() []PeerResponse
+		want  string
+	}{
+		"peers": {func() []PeerResponse { return testPeers }, `{"peers":[{"peer_id":"12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd",` +
+			`"name":"seed","addresses":["/ip4/192.0.2.1/tcp/4001"],"connected_since":"2026-09-27T10:01:00Z",` +
+			`"latency_seconds":0.0125,"trust_weight":0.8,"bootstrap":true}]}` + "\n"},
+		"none":    {func() []PeerResponse { return nil }, `{"peers":[]}` + "\n"},
+		"no mesh": {nil, `{"peers":[]}` + "\n"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			info := testInfo()
+			info.Peers = tc.peers
+			rec := httptest.NewRecorder()
+			Handler(info, discardLogger()).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, PeersPath, nil))
+			if rec.Code != http.StatusOK || rec.Body.String() != tc.want {
+				t.Errorf("GET %s = %d\n%s\nwant\n%s", PeersPath, rec.Code, rec.Body.String(), tc.want)
+			}
+		})
+	}
+}
+
+func TestClientPeersOverSocket(t *testing.T) {
+	path := socketPath(t)
+	startServer(t, path, "obie-no-such-group", discardLogger())
+
+	got, err := NewClient(path).Peers(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got.Peers, testPeers) {
+		t.Errorf("Peers = %+v, want %+v", got.Peers, testPeers)
+	}
+	if got.Peers[0].Latency() != 12500*time.Microsecond {
+		t.Errorf("Latency = %v", got.Peers[0].Latency())
 	}
 }
 
