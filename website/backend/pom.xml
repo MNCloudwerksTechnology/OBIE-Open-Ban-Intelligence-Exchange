@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.5.16</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>org.obie</groupId>
+  <artifactId>obie-website</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>OBIE website</name>
+  <description>Public OBIE website: serves the prerendered Angular front end and the API.</description>
+
+  <properties>
+    <java.version>21</java.version>
+    <!-- Prerendered Angular output (`npm run build` in ../frontend). It is
+         packaged as static resources, so the jar is the only artefact. -->
+    <frontend.dist>${project.basedir}/../frontend/dist/frontend/browser</frontend.dist>
+    <!-- Security overrides of versions managed by Spring Boot 3.5.16; the
+         dependency scan (make -C website vuln) fails on these otherwise.
+         Remove each one once Spring Boot manages an equal or newer version. -->
+    <tomcat.version>10.1.60</tomcat.version>
+    <jackson-bom.version>2.21.7</jackson-bom.version>
+    <log4j2.version>2.25.5</log4j2.version>
+    <spotless.version>3.10.3</spotless.version>
+    <google-java-format.version>1.36.1</google-java-format.version>
+    <spotbugs-maven-plugin.version>4.10.4.1</spotbugs-maven-plugin.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>obie-website</finalName>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <resource>
+        <targetPath>static</targetPath>
+        <directory>${frontend.dist}</directory>
+      </resource>
+    </resources>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <executions>
+          <execution>
+            <!-- Fail early with a clear message instead of packaging a jar
+                 without the site (the enforcer's file rule rejects paths
+                 containing "..", so this uses Ant). -->
+            <id>require-frontend-build</id>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <phase>validate</phase>
+            <configuration>
+              <target>
+                <fail message="The prerendered front end is missing in ${frontend.dist}. Build it first: make -C website frontend">
+                  <condition>
+                    <not>
+                      <and>
+                        <available file="${frontend.dist}/index.html"/>
+                        <available file="${frontend.dist}/404/index.html"/>
+                      </and>
+                    </not>
+                  </condition>
+                </fail>
+              </target>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+
+      <plugin>
+        <!-- Configured by the Spring Boot parent: writes the runtime
+             dependency SBOM to META-INF/sbom/application.cdx.json, which the
+             vulnerability scan (osv-scanner) checks. -->
+        <groupId>org.cyclonedx</groupId>
+        <artifactId>cyclonedx-maven-plugin</artifactId>
+      </plugin>
+
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.version}</version>
+        <configuration>
+          <java>
+            <googleJavaFormat>
+              <version>${google-java-format.version}</version>
+            </googleJavaFormat>
+            <removeUnusedImports/>
+          </java>
+          <pom>
+            <sortPom>
+              <expandEmptyElements>false</expandEmptyElements>
+              <spaceBeforeCloseEmptyElement>false</spaceBeforeCloseEmptyElement>
+            </sortPom>
+          </pom>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>com.github.spotbugs</groupId>
+        <artifactId>spotbugs-maven-plugin</artifactId>
+        <version>${spotbugs-maven-plugin.version}</version>
+        <configuration>
+          <effort>Max</effort>
+          <threshold>Low</threshold>
+          <includeTests>true</includeTests>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

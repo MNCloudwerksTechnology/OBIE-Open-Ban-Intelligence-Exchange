@@ -4,6 +4,10 @@ go 1.26.0
 
 toolchain go1.26.7
 
+// The website (website/) is not Go; keep its npm packages, some of which ship
+// Go files, out of ./... patterns.
+ignore ./website
+
 require (
 	filippo.io/edwards25519 v1.1.1
 	github.com/dgraph-io/badger/v4 v4.8.0
