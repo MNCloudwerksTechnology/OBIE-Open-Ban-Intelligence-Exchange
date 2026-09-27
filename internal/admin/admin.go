@@ -16,8 +16,13 @@ import (
 // Name is the subsystem name of the admin API server.
 const Name = "admin"
 
-// StatusPath is the endpoint reporting the node status.
-const StatusPath = "/v1/status"
+// Endpoints of the admin API.
+const (
+	// StatusPath reports the node status.
+	StatusPath = "/v1/status"
+	// IdentityPath reports the node identity.
+	IdentityPath = "/v1/identity"
+)
 
 // StatusResponse is the JSON body of GET /v1/status.
 type StatusResponse struct {
@@ -42,11 +47,20 @@ type SubsystemStatus struct {
 	Error string          `json:"error,omitempty"`
 }
 
+// IdentityResponse is the JSON body of GET /v1/identity. It never carries
+// the private key.
+type IdentityResponse struct {
+	PeerID string `json:"peer_id"`
+	// Fingerprint is the public key fingerprint (identity.Fingerprint).
+	Fingerprint string `json:"fingerprint"`
+}
+
 // Info is what the admin API reports about the node.
 type Info struct {
 	Version   string
 	Mode      string
 	StartedAt time.Time
+	Identity  IdentityResponse
 	// Status reports the current status of every subsystem.
 	Status func() []lifecycle.Status
 	// Now returns the current time; time.Now when nil.
@@ -79,10 +93,17 @@ func Handler(info Info, log *slog.Logger) http.Handler {
 		for _, s := range statuses {
 			resp.Subsystems[s.Name] = SubsystemStatus{State: s.State, Ready: s.Ready, Error: s.Error}
 		}
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			log.Debug("writing status response", "error", err)
-		}
+		writeJSON(w, resp, log)
+	})
+	mux.HandleFunc("GET "+IdentityPath, func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, info.Identity, log)
 	})
 	return mux
+}
+
+func writeJSON(w http.ResponseWriter, v any, log *slog.Logger) {
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Debug("writing response", "error", err)
+	}
 }

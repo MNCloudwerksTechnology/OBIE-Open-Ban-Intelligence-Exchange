@@ -20,14 +20,16 @@ import (
 
 // testNode describes the listeners of a daemon started by a test.
 type testNode struct {
-	config  string // path of the configuration file
-	socket  string // admin socket
-	metrics string // ops listen address
+	config   string // path of the configuration file
+	stateDir string // node.state_dir
+	socket   string // admin socket
+	metrics  string // ops listen address
 }
 
-// newTestNode writes a configuration with a temporary admin socket and a
-// free ops port; extra is appended to the YAML.
-func newTestNode(t *testing.T, extra string) testNode {
+// newTestNode writes a configuration with a temporary state directory and
+// admin socket and a free ops port; nodeKeys are further YAML lines of the
+// node section, indented by two spaces.
+func newTestNode(t *testing.T, nodeKeys string) testNode {
 	t.Helper()
 	// Unix socket paths are limited to about 100 bytes; t.TempDir can exceed that.
 	dir, err := os.MkdirTemp("", "obie")
@@ -35,10 +37,10 @@ func newTestNode(t *testing.T, extra string) testNode {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	n := testNode{socket: filepath.Join(dir, "obie.sock"), metrics: freeAddr(t)}
+	n := testNode{stateDir: filepath.Join(dir, "state"), socket: filepath.Join(dir, "obie.sock"), metrics: freeAddr(t)}
 	n.config = writeConfig(t, fmt.Sprintf(
-		"admin:\n  socket: %s\n  socket_group: obie-test-no-such-group\nmetrics:\n  listen: %s\n%s",
-		n.socket, n.metrics, extra))
+		"node:\n  state_dir: %s\n%sadmin:\n  socket: %s\n  socket_group: obie-test-no-such-group\nmetrics:\n  listen: %s\n",
+		n.stateDir, nodeKeys, n.socket, n.metrics))
 	return n
 }
 
@@ -151,7 +153,7 @@ func TestRunDaemonGracefulShutdown(t *testing.T) {
 }
 
 func TestRunDaemonStopsOnSIGTERM(t *testing.T) {
-	n := newTestNode(t, "node:\n  shutdown_timeout: 5s\n")
+	n := newTestNode(t, "  shutdown_timeout: 5s\n")
 	var stdout, stderr bytes.Buffer
 	exit := startDaemon(context.Background(), t, n, &stderr, func(_ context.Context, args []string) int {
 		return RunDaemon(args, &stdout, &stderr)
@@ -177,8 +179,8 @@ func TestRunDaemonStartFailure(t *testing.T) {
 	}
 	defer func() { _ = taken.Close() }()
 	n := newTestNode(t, "")
-	n.config = writeConfig(t, fmt.Sprintf("admin:\n  socket: %s\nmetrics:\n  listen: %s\nlog:\n  level: warn\n",
-		n.socket, taken.Addr()))
+	n.config = writeConfig(t, fmt.Sprintf("node:\n  state_dir: %s\nadmin:\n  socket: %s\nmetrics:\n  listen: %s\nlog:\n  level: warn\n",
+		n.stateDir, n.socket, taken.Addr()))
 
 	var stdout, stderr bytes.Buffer
 	if code := runDaemon(context.Background(), []string{"--config", n.config}, &stdout, &stderr); code != ExitFailure {
@@ -235,5 +237,62 @@ func TestRunDaemonCanceledDuringStartup(t *testing.T) {
 	}
 	if findLog(logLines(t, &stderr), "obied", "shutdown requested during startup") == nil {
 		t.Errorf("no startup-interrupted line:\n%s", stderr.String())
+	}
+}
+
+func TestRunDaemonPersistsIdentity(t *testing.T) {
+	n := newTestNode(t, "")
+	var peerIDs []any
+	for i, msg := range []string{"node identity generated", "node identity loaded"} {
+		var stderr bytes.Buffer
+		ctx, cancel := context.WithCancel(context.Background())
+		exit := startDaemon(ctx, t, n, &stderr, func(ctx context.Context, args []string) int {
+			return runDaemon(ctx, args, &bytes.Buffer{}, &stderr)
+		})
+		cancel()
+		if code := waitExit(t, exit, &stderr); code != ExitOK {
+			t.Fatalf("run %d: exit code = %d:\n%s", i, code, stderr.String())
+		}
+		l := findLog(logLines(t, &stderr), "obied", msg)
+		if l == nil {
+			t.Fatalf("run %d: no %q line:\n%s", i, msg, stderr.String())
+		}
+		if l["key_file"] != filepath.Join(n.stateDir, "node.key") || l["fingerprint"] == nil {
+			t.Errorf("run %d: identity line = %v", i, l)
+		}
+		peerIDs = append(peerIDs, l["peer_id"])
+	}
+	if peerIDs[0] != peerIDs[1] {
+		t.Errorf("peer ID changed across restarts: %v", peerIDs)
+	}
+	info, err := os.Stat(filepath.Join(n.stateDir, "node.key"))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("key file: %v, mode %v", err, info.Mode())
+	}
+}
+
+func TestRunDaemonRefusesInsecureKey(t *testing.T) {
+	n := newTestNode(t, "")
+	if err := os.MkdirAll(n.stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	keyFile := filepath.Join(n.stateDir, "node.key")
+	if err := os.WriteFile(keyFile, []byte("key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(keyFile, 0o644); err != nil { // #nosec G302 -- the insecure mode under test.
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	if code := runDaemon(context.Background(), []string{"--config", n.config}, &bytes.Buffer{}, &stderr); code != ExitFailure {
+		t.Fatalf("exit code = %d, want %d:\n%s", code, ExitFailure, stderr.String())
+	}
+	l := findLog(logLines(t, &stderr), "obied", "obied failed")
+	if msg, _ := l["error"].(string); !strings.Contains(msg, "node identity: insecure key file") ||
+		!strings.Contains(msg, "chmod 600 "+keyFile) {
+		t.Errorf("failure line = %v", l)
+	}
+	if _, err := os.Lstat(n.socket); !os.IsNotExist(err) {
+		t.Errorf("admin socket created although the identity failed: %v", err)
 	}
 }
