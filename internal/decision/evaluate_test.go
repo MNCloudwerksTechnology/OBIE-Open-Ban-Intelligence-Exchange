@@ -267,7 +267,7 @@ func TestEvaluateDeterministic(t *testing.T) {
 	want := Evaluate(target, verdicts, p, t0)
 	for range 50 {
 		shuffled := append([]*obieproto.Event(nil), verdicts...)
-		rand.Shuffle(len(shuffled), func(i, j int) { shuffled[i], shuffled[j] = shuffled[j], shuffled[i] })
+		rand.Shuffle(len(shuffled), func(i, j int) { shuffled[i], shuffled[j] = shuffled[j], shuffled[i] }) // #nosec G404 -- test input order only.
 		if got := Evaluate(target, shuffled, p, t0); !reflect.DeepEqual(got, want) {
 			t.Fatalf("Evaluate depends on order:\n%+v\nwant\n%+v", got, want)
 		}

@@ -62,8 +62,9 @@ an address is or is not blocked.
   `ipv4:203.0.113.7`; an indicator without verdicts yields decision `none`);
   `GET /v1/decisions?state=block|none` lists the kept summaries. As for
   peers, the wire types live in `internal/admin` and `internal/daemon`
-  converts, so `obiectl` does not link the store. `obiectl explain <ip>`
-  prints the explanation.
+  converts, so the admin API contract does not depend on the engine's
+  internal types. `obiectl explain <ip>`
+  prints the explanation, `obiectl decisions [--state block]` the list.
 - **Mode:** the engine decides in both `observe` and `enforce` mode; whether
   a block is enforced is the enforcer's concern.
 

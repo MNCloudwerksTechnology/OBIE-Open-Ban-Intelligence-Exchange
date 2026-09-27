@@ -131,6 +131,22 @@ Only the packages that exist today are listed in detail; the remaining
   connected-since and ping latency. DHT, mDNS, relay, hole punching, NAT port
   mapping and the AutoNAT service are explicitly disabled (ADR 0007). The admin package
   does not import `internal/mesh`: `obiectl` stays free of go-libp2p.
+- **Decision.** The `decision` subsystem (registered right after `store`)
+  subscribes to the store's change notifications, re-evaluates changed
+  indicators on one worker goroutine and keeps the decision of every
+  indicator with active verdicts. Evaluation is a pure, deterministic
+  function (`decision.Evaluate`): only active `ban` verdicts of publishers
+  with weight > 0 contribute; `block` iff score ≥ `decision.threshold` and
+  contributors ≥ `decision.quorum`, or — with `decision.local_autoblock` —
+  when this node itself reported a ban. A block expires with the latest
+  contributing verdict, capped at `decision.max_ttl` from evaluation and
+  refreshed while its verdicts live. `Engine.Subscribe` streams
+  added/updated/removed block changes with their cause for the enforcer.
+  `obiectl explain <ip>` (`GET /v1/decisions/{indicator}`) shows every
+  publisher's weight, confidence and contribution, score vs threshold,
+  count vs quorum and the final decision; `obiectl decisions`
+  (`GET /v1/decisions?state=block`) lists them. The allow-list and overrides
+  are shown as not applied until WP #1660 (ADR 0009).
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
   before every commit. Tool versions are pinned in the `Makefile`. The CI
