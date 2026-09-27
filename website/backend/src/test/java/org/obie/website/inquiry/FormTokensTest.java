@@ -35,6 +35,7 @@ class FormTokensTest {
             "b@example.org",
             "another-secret-0123456789abcdefghijkl",
             TestProperties.defaults().minFillTime(),
+            TestProperties.defaults().formTokenMaxAge(),
             TestProperties.defaults().rateLimit(),
             TestProperties.defaults().mail(),
             TestProperties.defaults().retention());

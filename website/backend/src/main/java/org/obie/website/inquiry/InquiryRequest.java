@@ -39,13 +39,30 @@ public record InquiryRequest(
         Integer audienceSize,
     @NotBlank(message = "Please enter a message.")
         @Size(min = 20, max = 5000, message = "Please write between 20 and 5000 characters.")
+        @Pattern(regexp = TEXT, message = "Please remove special control characters.")
         String message,
     @NotNull(message = "Please accept the privacy notice.")
         @AssertTrue(message = "Please accept the privacy notice.")
         Boolean consent,
     String website,
-    @NotBlank(message = "The form is out of date. Please reload the page.") String formToken) {
+    @NotBlank(message = InquiryService.FORM_OUT_OF_DATE) String formToken) {
 
   /** No control characters (such as line breaks), which have no place in names or headers. */
   static final String SINGLE_LINE = "[^\\p{Cntrl}]*";
+
+  /** Multi-line text: tabs and line breaks, but no other control characters (such as NUL). */
+  static final String TEXT = "[\\P{Cntrl}\\t\\n\\r]*";
+
+  /** Text fields without surrounding whitespace, so length rules apply to what is stored. */
+  public InquiryRequest {
+    name = strip(name);
+    email = strip(email);
+    organisation = strip(organisation);
+    eventLocation = strip(eventLocation);
+    message = strip(message);
+  }
+
+  private static String strip(String value) {
+    return value == null ? null : value.strip();
+  }
 }

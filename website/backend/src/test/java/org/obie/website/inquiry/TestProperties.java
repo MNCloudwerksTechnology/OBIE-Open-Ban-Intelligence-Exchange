@@ -20,6 +20,7 @@ final class TestProperties {
         "website@obie.example",
         SECRET,
         Duration.ofSeconds(3),
+        Duration.ofDays(1),
         new InquiryProperties.RateLimit(capacity, period),
         new InquiryProperties.Mail(
             Duration.ofSeconds(5), 4, Duration.ofMinutes(1), Duration.ofMinutes(5)),

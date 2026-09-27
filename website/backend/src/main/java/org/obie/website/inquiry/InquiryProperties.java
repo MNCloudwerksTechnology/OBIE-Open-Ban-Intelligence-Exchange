@@ -20,6 +20,7 @@ import org.springframework.validation.annotation.Validated;
  * @param mailFrom sender address of all mails the website sends
  * @param secret server-side secret for hashing client IPs and signing form tokens
  * @param minFillTime submissions faster than this after the form was rendered count as bots
+ * @param formTokenMaxAge older form tokens are rejected; the visitor is asked to reload the page
  * @param rateLimit per-IP limit of submissions
  * @param mail delivery and retry of the notification and confirmation mails
  * @param retention how long inquiries are kept
@@ -31,6 +32,7 @@ public record InquiryProperties(
     @NotBlank @Email String mailFrom,
     @NotBlank @Size(min = 32) String secret,
     @NotNull Duration minFillTime,
+    @NotNull Duration formTokenMaxAge,
     @NotNull @Valid RateLimit rateLimit,
     @NotNull @Valid Mail mail,
     @NotNull @Valid Retention retention) {

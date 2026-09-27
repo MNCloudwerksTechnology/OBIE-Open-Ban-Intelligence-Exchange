@@ -1,7 +1,10 @@
 package org.obie.website.inquiry;
 
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.HexFormat;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
@@ -56,6 +59,26 @@ public class ClientRateLimiter {
     long start = Math.max(fullAt, now);
     long wait = start - now - burstMillis;
     return wait > 0 ? new Bucket(fullAt, wait) : new Bucket(start + refillMillis, 0);
+  }
+
+  /**
+   * The rate-limited unit for a client address: the address itself for IPv4, the /64 network for
+   * IPv6, because a single subscriber usually gets a whole /64 and could rotate through it.
+   */
+  public static String networkOf(String clientIp) {
+    if (clientIp.indexOf(':') < 0) {
+      return clientIp;
+    }
+    try {
+      // A numeric literal: no name lookup happens.
+      byte[] address = InetAddress.getByName(clientIp).getAddress();
+      if (address.length != 16) {
+        return clientIp;
+      }
+      return HexFormat.of().formatHex(address, 0, 8) + "::/64";
+    } catch (UnknownHostException e) {
+      return clientIp;
+    }
   }
 
   /** Drops buckets that are full again; they behave exactly like a new one. */

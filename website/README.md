@@ -88,9 +88,10 @@ Durations use ISO-8601 (`PT3S` = 3 seconds, `PT1H` = 1 hour), periods too
 | `OBIE_SMTP_SSL` | no | `false` | Connect with TLS from the start (port 465). |
 | `OBIE_MAIL_FROM` | yes | – | Sender address of all mails, e.g. `website@obie.example`. It must be allowed to send through the SMTP server. |
 | `OBIE_INQUIRY_RECIPIENT` | yes | – | Address that receives every inquiry. |
-| `OBIE_INQUIRY_SECRET` | yes | – | Server-side secret, at least 32 characters (e.g. `openssl rand -base64 32`). It salts the hashes of client IPs and signs form tokens. Changing it invalidates open forms and makes old IP hashes unrelated to new ones. |
+| `OBIE_INQUIRY_SECRET` | yes | – | Server-side secret, at least 32 characters (e.g. `openssl rand -base64 32`). It salts the hashes of client IPs and signs form tokens. Keep it stable: after a change, forms that were already open are treated as bots (fake `202`, nothing stored), and old IP hashes no longer match new ones. |
 | `OBIE_SITE_ORIGIN` | yes | – | The site's own origin, e.g. `https://obie.example`; the only origin allowed to call the API from a browser (CORS). |
 | `OBIE_INQUIRY_MIN_FILL_TIME` | no | `PT3S` | Submissions sent faster than this after the form was rendered count as bots. |
+| `OBIE_INQUIRY_FORM_TOKEN_MAX_AGE` | no | `P1D` | Forms rendered longer ago than this are rejected with 400 ("please reload the page"), so one token cannot be reused forever. |
 | `OBIE_INQUIRY_RATE_LIMIT` | no | `5` | Inquiries allowed per client IP within `OBIE_INQUIRY_RATE_LIMIT_PERIOD`. |
 | `OBIE_INQUIRY_RATE_LIMIT_PERIOD` | no | `PT1H` | Time in which a client's allowance refills completely. |
 | `OBIE_INQUIRY_RETENTION` | no | `P12M` | Inquiries older than this are deleted (daily at 03:30 UTC). |
@@ -131,7 +132,8 @@ The inquiry form talks to two endpoints. Errors are
    - `400` with `errors: [{"field": "email", "message": "…"}]`: show each
      message next to its field. Unknown fields are errors, too.
    - `413`: body larger than 16 KiB. `429` with `Retry-After` (seconds): too
-     many inquiries from this IP.
+     many inquiries from this IP (IPv6: from this /64 network). Every
+     request counts, including rejected ones.
 
 An accepted inquiry is stored first (PostgreSQL, table `inquiry`; the client
 IP only as a salted hash) and mailed afterwards: the operator gets

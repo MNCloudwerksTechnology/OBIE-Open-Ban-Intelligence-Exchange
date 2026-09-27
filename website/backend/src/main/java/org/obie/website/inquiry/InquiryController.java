@@ -43,7 +43,7 @@ public class InquiryController {
   @PostMapping(consumes = MediaType.APPLICATION_JSON_VALUE)
   public ResponseEntity<?> submit(@RequestBody InquiryRequest request, HttpServletRequest http) {
     String clientIp = http.getRemoteAddr();
-    Duration wait = rateLimiter.acquire(clientIp);
+    Duration wait = rateLimiter.acquire(ClientRateLimiter.networkOf(clientIp));
     if (!wait.isZero()) {
       return tooManyRequests(wait);
     }

@@ -3,6 +3,7 @@ package org.obie.website.inquiry;
 import jakarta.mail.internet.InternetAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import org.springframework.boot.autoconfigure.mail.MailProperties;
 import org.springframework.mail.MailException;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -10,7 +11,7 @@ import org.springframework.stereotype.Component;
 
 /** Writes and sends the two plain-text mails of an inquiry. */
 @Component
-public class InquiryMailer {
+public final class InquiryMailer {
 
   static final String CONFIRMATION_SUBJECT = "Your inquiry to OBIE has been received";
 
@@ -34,7 +35,12 @@ public class InquiryMailer {
   private final JavaMailSender mailSender;
   private final InquiryProperties properties;
 
-  public InquiryMailer(JavaMailSender mailSender, InquiryProperties properties) {
+  public InquiryMailer(
+      JavaMailSender mailSender, MailProperties mailProperties, InquiryProperties properties) {
+    // Without a host every mail would fail only later, one retry at a time; fail at startup.
+    if (mailProperties.getHost() == null || mailProperties.getHost().isBlank()) {
+      throw new IllegalStateException("No SMTP host configured: set OBIE_SMTP_HOST");
+    }
     this.mailSender = mailSender;
     this.properties = properties;
   }

@@ -7,6 +7,8 @@ import static org.obie.website.inquiry.InquiryFixtures.validInquiry;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
@@ -173,6 +175,14 @@ class InquiryApiTest extends IntegrationTest {
         Arguments.of("message", ABSENT, "Please enter a message."),
         Arguments.of("message", "x".repeat(19), "Please write between 20 and 5000 characters."),
         Arguments.of("message", "x".repeat(5001), "Please write between 20 and 5000 characters."),
+        Arguments.of(
+            "message",
+            "Twenty characters and a NUL" + '\0',
+            "Please remove special control characters."),
+        Arguments.of(
+            "message",
+            "x".repeat(15) + " ".repeat(10),
+            "Please write between 20 and 5000 characters."),
         Arguments.of("consent", ABSENT, "Please accept the privacy notice."),
         Arguments.of("consent", false, "Please accept the privacy notice."),
         Arguments.of("consent", "true", "This value has the wrong format."),
@@ -239,6 +249,35 @@ class InquiryApiTest extends IntegrationTest {
     fields.put("formToken", "1000.forged");
 
     assertFakeAcceptance(fields);
+  }
+
+  @Test
+  void expiredFormTokenAsksToReload() throws JsonProcessingException {
+    Map<String, Object> fields = validInquiry(properties);
+    Clock twoDaysAgo = Clock.offset(Clock.systemUTC(), Duration.ofDays(-2));
+    fields.put("formToken", new FormTokens(properties, twoDaysAgo).issue());
+
+    ResponseEntity<String> response = post(http, fields);
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    JsonNode error = json.readTree(response.getBody()).get("errors").get(0);
+    assertThat(error.get("field").asText()).isEqualTo("formToken");
+    assertThat(error.get("message").asText()).isEqualTo(InquiryService.FORM_OUT_OF_DATE);
+    assertNothingStoredFor(fields);
+  }
+
+  @Test
+  void multiLineMessageIsKeptAndSurroundingWhitespaceIsTrimmed() throws JsonProcessingException {
+    Map<String, Object> fields = validInquiry(properties);
+    String message = "First line of the inquiry,\r\n\tand an indented second line.";
+    fields.put("message", "  " + message + "\n\n");
+    fields.put("name", "  " + fields.get("name") + " ");
+
+    ResponseEntity<String> response = post(http, fields);
+
+    Inquiry stored = repository.findById(idOf(response)).orElseThrow();
+    assertThat(stored.getMessage()).isEqualTo(message);
+    assertThat(stored.getName()).isEqualTo(((String) fields.get("name")).strip());
   }
 
   @Test

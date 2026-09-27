@@ -83,6 +83,20 @@ class ClientRateLimiterTest {
     assertThat(limiter.acquire("203.0.113.7")).isPositive();
   }
 
+  @Test
+  void ipv4AddressesAreLimitedIndividually() {
+    assertThat(ClientRateLimiter.networkOf("203.0.113.7")).isEqualTo("203.0.113.7");
+  }
+
+  @Test
+  void ipv6AddressesAreLimitedPerSlash64() {
+    String network = ClientRateLimiter.networkOf("2001:db8:1:2:aaaa::1");
+
+    assertThat(network).isEqualTo("20010db800010002::/64");
+    assertThat(ClientRateLimiter.networkOf("2001:db8:1:2:ffff:ffff:ffff:ffff")).isEqualTo(network);
+    assertThat(ClientRateLimiter.networkOf("2001:db8:1:3::1")).isNotEqualTo(network);
+  }
+
   /** A clock tests can move forward. */
   static final class MutableClock extends Clock {
     private Instant now = Instant.parse("2026-09-28T10:00:00Z");

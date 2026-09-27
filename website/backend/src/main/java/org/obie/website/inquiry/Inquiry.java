@@ -76,13 +76,13 @@ public class Inquiry {
     inquiry.id = UUID.randomUUID();
     inquiry.createdAt = now;
     inquiry.type = request.type();
-    inquiry.name = request.name().strip();
-    inquiry.email = request.email().strip();
+    inquiry.name = request.name();
+    inquiry.email = request.email();
     inquiry.organisation = blankToNull(request.organisation());
     inquiry.eventDate = request.eventDate();
     inquiry.eventLocation = blankToNull(request.eventLocation());
     inquiry.audienceSize = request.audienceSize();
-    inquiry.message = request.message().strip();
+    inquiry.message = request.message();
     inquiry.status = InquiryStatus.NEW;
     inquiry.clientIpHash = clientIpHash;
     inquiry.nextMailAttemptAt = now;
@@ -90,7 +90,7 @@ public class Inquiry {
   }
 
   private static String blankToNull(String value) {
-    return value == null || value.isBlank() ? null : value.strip();
+    return value == null || value.isEmpty() ? null : value;
   }
 
   void markNotificationSent(Instant now) {
