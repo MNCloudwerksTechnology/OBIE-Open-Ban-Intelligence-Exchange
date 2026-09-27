@@ -58,7 +58,12 @@ var eventSchema = schema{
 //
 // The spec and type are checked before the rest of the structure, so an
 // event of a newer spec or an unknown type reports [ErrUnsupportedSpec] or
-// [ErrUnsupportedType] rather than [ErrUnknownField].
+// [ErrUnsupportedType] rather than [ErrUnknownField]. A spec key that is
+// missing, not a string or not spelled exactly "spec" also reports
+// [ErrUnsupportedSpec]: the input cannot be identified as obie/0.1.
+//
+// Decode checks the signature's format only. Receivers must verify the
+// signature before acting on an event.
 func Decode(data []byte, opts ...Option) (*Event, error) {
 	if len(data) > MaxEventSize {
 		return nil, &FieldError{Err: ErrTooLarge, Detail: fmt.Sprintf("%d bytes exceeds %d", len(data), MaxEventSize)}

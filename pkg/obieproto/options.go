@@ -19,9 +19,13 @@ func newOptions(opts []Option) options {
 }
 
 // WithClock sets the clock that issued_at is checked against. The default is
-// [time.Now].
+// [time.Now]; a nil clock keeps the default.
 func WithClock(now func() time.Time) Option {
-	return func(o *options) { o.now = now }
+	return func(o *options) {
+		if now != nil {
+			o.now = now
+		}
+	}
 }
 
 // AllowDocumentationRanges accepts indicators in the documentation ranges

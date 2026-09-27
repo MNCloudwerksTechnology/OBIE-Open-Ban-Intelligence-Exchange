@@ -217,3 +217,11 @@ func TestValidateDoesNotModify(t *testing.T) {
 		t.Errorf("Validate() modified indicator: %+v -> %+v", before, e.Indicator)
 	}
 }
+
+func TestWithNilClockKeepsDefault(t *testing.T) {
+	e := validVerdict()
+	e.IssuedAt = NewTimestamp(time.Now())
+	if err := e.Validate(WithClock(nil)); err != nil {
+		t.Errorf("Validate(WithClock(nil)) error = %v", err)
+	}
+}

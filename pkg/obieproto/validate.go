@@ -14,7 +14,9 @@ var (
 	reasonPattern   = regexp.MustCompile(`^[a-z0-9_]{1,64}$`)
 	logHashPattern  = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 	mitrePattern    = regexp.MustCompile(`^T[0-9]{4}(\.[0-9]{3})?$`)
-	// peerIDPattern accepts a base58btc-encoded libp2p peer ID.
+	// peerIDPattern accepts a libp2p peer ID in its legacy base58btc text
+	// form ("12D3KooW..." for Ed25519 keys), the only form obie/0.1 uses. The
+	// CIDv1 form ("bafz...") is deliberately not accepted.
 	peerIDPattern = regexp.MustCompile(`^[1-9A-HJ-NP-Za-km-z]{32,128}$`)
 )
 

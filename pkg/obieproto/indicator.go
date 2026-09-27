@@ -13,9 +13,16 @@ const (
 	MinIPv6Prefix = 32
 )
 
+// globalUnicastIPv6 is the only IPv6 space an indicator may come from. An
+// allow-list is used because IPv6 has many encodings of internal addresses
+// outside it (IPv4-compatible, IPv4-mapped/translated, NAT64 of private
+// space, ULA, link-local, multicast, unallocated space).
+var globalUnicastIPv6 = netip.MustParsePrefix("2000::/3")
+
 // nonPublicRanges are special-purpose ranges that a node must never publish:
-// unspecified/"this network", private (RFC 1918, ULA), shared address space,
-// loopback, link-local, multicast, reserved and IPv4-mapped/translated space.
+// for IPv4 unspecified/"this network", private (RFC 1918), shared address
+// space, loopback, link-local, multicast and reserved space; for IPv6 the
+// special-purpose blocks inside [globalUnicastIPv6].
 var nonPublicRanges = mustPrefixes(
 	"0.0.0.0/8",      // this network, includes unspecified
 	"10.0.0.0/8",     // RFC 1918
@@ -24,19 +31,13 @@ var nonPublicRanges = mustPrefixes(
 	"169.254.0.0/16", // link-local
 	"172.16.0.0/12",  // RFC 1918
 	"192.0.0.0/24",   // IETF protocol assignments
+	"192.88.99.0/24", // deprecated 6to4 relay anycast
 	"192.168.0.0/16", // RFC 1918
 	"198.18.0.0/15",  // benchmarking
 	"224.0.0.0/4",    // multicast
 	"240.0.0.0/4",    // reserved, includes limited broadcast
-	"::/128",         // unspecified
-	"::1/128",        // loopback
-	"::ffff:0:0/96",  // IPv4-mapped; publish the IPv4 address instead
-	"64:ff9b:1::/48", // local-use IPv4/IPv6 translation
-	"100::/64",       // discard-only
-	"fc00::/7",       // unique local (ULA)
-	"fe80::/10",      // link-local
-	"fec0::/10",      // deprecated site-local
-	"ff00::/8",       // multicast
+	"2001::/23",      // IETF protocol assignments (Teredo, benchmarking, ...)
+	"2002::/16",      // 6to4, may wrap private IPv4 addresses
 )
 
 // documentationRanges are rejected unless [AllowDocumentationRanges] is set.
@@ -150,9 +151,12 @@ func scopeOf(prefix netip.Prefix) string {
 // range that merely contains such a range is rejected too, because acting on
 // it would affect internal addresses.
 func checkPublic(prefix netip.Prefix, o options) error {
+	if prefix.Addr().Is6() && !globalUnicastIPv6.Contains(prefix.Addr()) {
+		return nonPublic(prefix, globalUnicastIPv6, "lies outside global unicast space")
+	}
 	for _, r := range nonPublicRanges {
 		if prefix.Overlaps(r) {
-			return nonPublic(prefix, r)
+			return nonPublic(prefix, r, "overlaps special-purpose range")
 		}
 	}
 	if o.allowDocumentation {
@@ -160,16 +164,16 @@ func checkPublic(prefix netip.Prefix, o options) error {
 	}
 	for _, r := range documentationRanges {
 		if prefix.Overlaps(r) {
-			return nonPublic(prefix, r)
+			return nonPublic(prefix, r, "overlaps special-purpose range")
 		}
 	}
 	return nil
 }
 
-func nonPublic(prefix, r netip.Prefix) error {
+func nonPublic(prefix, r netip.Prefix, reason string) error {
 	return &FieldError{
 		Field:  "indicator.value",
 		Err:    ErrNonPublicIndicator,
-		Detail: fmt.Sprintf("%s overlaps special-purpose range %s", prefix, r),
+		Detail: fmt.Sprintf("%s %s %s", prefix, reason, r),
 	}
 }
