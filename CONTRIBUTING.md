@@ -8,8 +8,11 @@ first — it is the binding technical baseline.
 
 - Go 1.23 or newer
 - GNU Make, Git
-- Network access on the first run: `make lint` and `make vuln` install the
-  pinned golangci-lint and govulncheck versions into `./bin/tools/`.
+- Network access on the first run: `make lint`, `make lint-workflows` and
+  `make vuln` install the pinned golangci-lint, actionlint and govulncheck
+  versions into `./bin/tools/`. These tools need a newer Go than `go.mod`
+  requires; with the default `GOTOOLCHAIN=auto` the `go` command downloads it
+  automatically (do not set `GOTOOLCHAIN=local` on an older Go).
 
 ## Build and test
 

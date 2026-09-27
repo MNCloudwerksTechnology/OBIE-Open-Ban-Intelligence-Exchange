@@ -18,9 +18,11 @@ on:
 permissions:
   contents: read
 
+# A new push to a pull request supersedes its running pipeline; runs on
+# develop/main are never cancelled so every commit there gets a result.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # go.mod sets the minimum Go version; the pinned tools (golangci-lint,
