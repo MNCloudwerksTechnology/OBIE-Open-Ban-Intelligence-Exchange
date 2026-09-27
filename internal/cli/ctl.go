@@ -25,9 +25,11 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"status":   {summary: "show the node status", run: runStatus},
-	"identity": {summary: "show the node's peer ID and key fingerprint", run: runCtlIdentity},
-	"peers":    {summary: "list the connected mesh peers", run: runPeers},
+	"status":    {summary: "show the node status", run: runStatus},
+	"identity":  {summary: "show the node's peer ID and key fingerprint", run: runCtlIdentity},
+	"peers":     {summary: "list the connected mesh peers", run: runPeers},
+	"explain":   {summary: "explain the decision on an address or CIDR range", run: runExplain},
+	"decisions": {summary: "list the decisions (--state block for the blocked indicators)", run: runDecisions},
 }
 
 // RunCtl runs obiectl with args and returns the process exit code.
