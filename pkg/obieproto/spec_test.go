@@ -30,7 +30,7 @@ var (
 	// row or a heading.
 	unitStart = regexp.MustCompile(`^\s*([-*]|[0-9]+\.|\||#)\s?`)
 	// appendixRow is a row of the requirement table in appendix A.
-	appendixRow = regexp.MustCompile("^\\|\\s*([A-Z]+-[0-9]+)\\s*\\|(.*)\\|\\s*$")
+	appendixRow = regexp.MustCompile(`^\|\s*([A-Z]+-[0-9]+)\s*\|(.*)\|\s*$`)
 	// testName is a test function named in appendix A.
 	testName    = regexp.MustCompile("`(Test[A-Za-z0-9_]+)`")
 	testFuncDef = regexp.MustCompile(`(?m)^func (Test[A-Za-z0-9_]+)\(t \*testing\.T\)`)
@@ -173,6 +173,25 @@ func TestSpecRequirementsAreTested(t *testing.T) {
 	for req := range defined {
 		if !mapped[req] {
 			t.Errorf("requirement %s is missing from appendix A", req)
+		}
+	}
+}
+
+// TestReadmeLinksSpec checks that the whitepaper's technical schema section
+// points to the specification and the schema.
+func TestReadmeLinksSpec(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot, "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, section, found := strings.Cut(string(data), "##### 3.2.1 Technical Schema")
+	section, _, _ = strings.Cut(section, "\n#### ")
+	if !found {
+		t.Fatal("README has no technical schema section")
+	}
+	for _, link := range []string{"(documentation/spec/obie-0.1.md)", "(documentation/spec/obie-0.1.schema.json)"} {
+		if !strings.Contains(section, link) {
+			t.Errorf("technical schema section does not link %s", link)
 		}
 	}
 }
