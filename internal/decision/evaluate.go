@@ -3,7 +3,7 @@
 // distinct publishers' active ban verdicts, a quorum of publishers and a
 // threshold, plus local autoblock. The Engine keeps the decision of every
 // indicator with active verdicts up to date from the store's change
-// notifications and streams block changes to subscribers. See ADR 0009.
+// notifications and streams block changes to subscribers. See ADR 0011.
 package decision
 
 import (

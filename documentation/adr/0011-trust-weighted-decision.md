@@ -1,4 +1,4 @@
-# ADR 0009: Trust-weighted decision engine
+# ADR 0011: Trust-weighted decision engine
 
 - **Status:** Accepted
 - **Date:** 2026-09-28

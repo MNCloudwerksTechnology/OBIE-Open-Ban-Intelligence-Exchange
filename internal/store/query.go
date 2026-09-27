@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -25,6 +26,25 @@ func (s *DB) Get(id string) (*obieproto.Event, error) {
 		return nil, ErrNotFound
 	}
 	return ev, nil
+}
+
+// Seen reports whether an event ID was already put; see Store.
+func (s *DB) Seen(id string) (bool, error) {
+	seen := false
+	err := s.view(func(txn *badger.Txn) error {
+		for _, key := range [][]byte{eventKey(id), seenKey(id)} {
+			_, err := txn.Get(key)
+			switch {
+			case err == nil:
+				seen = true
+				return nil
+			case !errors.Is(err, badger.ErrKeyNotFound):
+				return err
+			}
+		}
+		return nil
+	})
+	return seen, err
 }
 
 // ActiveVerdicts returns the active verdicts on an indicator; see Store.

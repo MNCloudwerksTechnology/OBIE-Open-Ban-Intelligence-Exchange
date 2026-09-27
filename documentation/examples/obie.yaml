@@ -43,6 +43,22 @@ mesh:
   # peer's ID, so the connection is authenticated. For example:
   #   - /dns4/seed.example.org/tcp/4001/p2p/12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd
   bootstrap: []
+  # Token buckets that bound the gossiped events the node accepts: on
+  # average events_per_second, at most burst at once. Events beyond a limit
+  # are dropped and not relayed; the peer that forwarded them is not
+  # penalized. An event counts against both limits only if both admit it.
+  rate_limit:
+    # Events signed by one publisher.
+    publisher:
+      events_per_second: 10
+      burst: 50
+    # Events forwarded by one directly connected peer. A peer relays the
+    # events of every publisher, each up to the publisher limit, so keep
+    # this well above it: a relay that forwards a flooding publisher's
+    # admitted events must not use up the room for everyone else's.
+    peer:
+      events_per_second: 50
+      burst: 250
 
 trust:
   # Publishers whose verdicts count towards a decision, each with a weight

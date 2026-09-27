@@ -47,6 +47,10 @@ type Store interface {
 	// Get returns the stored, unexpired event with the given ID or
 	// ErrNotFound.
 	Get(id string) (*obieproto.Event, error)
+	// Seen reports whether Put already saw an event with the given ID that
+	// has not expired, whether it was accepted or ignored; a Put of that ID
+	// would be a duplicate.
+	Seen(id string) (bool, error)
 	// ActiveVerdicts returns the unrevoked verdicts on the indicator (by
 	// obieproto.Indicator.Key) that are active at now, at most one per
 	// publisher, ordered by publisher.

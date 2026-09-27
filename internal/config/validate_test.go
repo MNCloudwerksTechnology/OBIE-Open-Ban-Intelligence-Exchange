@@ -48,6 +48,18 @@ func TestValidateRules(t *testing.T) {
 		{"bootstrap invalid peer id", func(c *Config) { c.Mesh.Bootstrap = []string{"/ip4/192.0.2.1/tcp/4001/p2p/not-a-peer"} }, "mesh.bootstrap[0]", "invalid multiaddr"},
 		{"bootstrap garbage", func(c *Config) { c.Mesh.Bootstrap = []string{"seed.example.org:4001"} }, "mesh.bootstrap[0]", "invalid multiaddr"},
 
+		// mesh.rate_limit
+		{"rate limit fractional rate", func(c *Config) { c.Mesh.RateLimit.Publisher.EventsPerSecond = 0.5 }, "", ""},
+		{"rate limit burst 1", func(c *Config) { c.Mesh.RateLimit.Peer.Burst = 1 }, "", ""},
+		{"publisher rate zero", func(c *Config) { c.Mesh.RateLimit.Publisher.EventsPerSecond = 0 }, "mesh.rate_limit.publisher.events_per_second", "greater than 0"},
+		{"peer rate negative", func(c *Config) { c.Mesh.RateLimit.Peer.EventsPerSecond = -1 }, "mesh.rate_limit.peer.events_per_second", "greater than 0"},
+		{"peer rate NaN", func(c *Config) { c.Mesh.RateLimit.Peer.EventsPerSecond = math.NaN() }, "mesh.rate_limit.peer.events_per_second", "greater than 0"},
+		{"publisher rate infinite", func(c *Config) {
+			c.Mesh.RateLimit.Publisher.EventsPerSecond = math.Inf(1)
+		}, "mesh.rate_limit.publisher.events_per_second", "greater than 0"},
+		{"publisher burst zero", func(c *Config) { c.Mesh.RateLimit.Publisher.Burst = 0 }, "mesh.rate_limit.publisher.burst", "at least 1"},
+		{"peer burst negative", func(c *Config) { c.Mesh.RateLimit.Peer.Burst = -5 }, "mesh.rate_limit.peer.burst", "at least 1"},
+
 		// trust.publishers
 		{"publishers valid", func(c *Config) {
 			c.Trust.Publishers = []Publisher{pub(peerA, "a", 0), pub(peerB, "b", 1)}

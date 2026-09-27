@@ -66,6 +66,27 @@ type Mesh struct {
 	Listen []string `yaml:"listen"`
 	// Bootstrap are static peers to dial; each ends in /p2p/<peer-id>.
 	Bootstrap []string `yaml:"bootstrap"`
+	// RateLimit bounds the events the node accepts from the mesh.
+	RateLimit RateLimit `yaml:"rate_limit"`
+}
+
+// RateLimit configures the token buckets that bound the events accepted
+// from the mesh. Events beyond a limit are dropped without penalizing the
+// forwarding peer.
+type RateLimit struct {
+	// Publisher bounds the events of each publisher.
+	Publisher TokenBucket `yaml:"publisher"`
+	// Peer bounds the events each directly connected peer forwards. It must
+	// exceed Publisher: a peer relays the events of every publisher, up to
+	// Publisher each.
+	Peer TokenBucket `yaml:"peer"`
+}
+
+// TokenBucket is a rate limit: EventsPerSecond on average, at most Burst at
+// once.
+type TokenBucket struct {
+	EventsPerSecond float64 `yaml:"events_per_second"`
+	Burst           int     `yaml:"burst"`
 }
 
 // Trust assigns trust weights to verdict publishers.
@@ -134,6 +155,11 @@ func Default() Config {
 				"/ip6/::/udp/4001/quic-v1",
 			},
 			Bootstrap: []string{},
+			RateLimit: RateLimit{
+				Publisher: TokenBucket{EventsPerSecond: 10, Burst: 50},
+				// A peer relays the events of many publishers.
+				Peer: TokenBucket{EventsPerSecond: 50, Burst: 250},
+			},
 		},
 		Trust:     Trust{Publishers: []Publisher{}, DefaultWeight: 0, LocalWeight: 1.0},
 		Decision:  Decision{Threshold: 1.8, Quorum: 2, MaxTTL: Duration(30 * day), DefaultTTL: Duration(7 * day), LocalAutoblock: true},
