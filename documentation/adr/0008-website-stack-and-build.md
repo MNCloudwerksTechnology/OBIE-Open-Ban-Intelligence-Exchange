@@ -17,7 +17,8 @@ must not change how the node is built or checked.
 
 - **Location:** everything lives in `website/` (`frontend/`, `backend/`,
   `Makefile`, `README.md`). Nothing in the node's Go module, root `Makefile`
-  or root `make ci` depends on it.
+  or root `make ci` depends on it; `go.mod` ignores `./website` so npm
+  packages that ship Go files never reach `./...` (lint, vet, tests).
 - **Front end:** Angular 22 (standalone components, strict TypeScript, SCSS),
   built with `@angular/build:application` in **`outputMode: "static"`**:
   every public route is prerendered at build time (SSG) and hydrated in the
