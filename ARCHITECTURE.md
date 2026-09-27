@@ -57,8 +57,11 @@ Only the packages that exist today are listed in detail; the remaining
 - **Static binaries.** Builds use `CGO_ENABLED=0`; the target platforms are
   Linux amd64 and arm64.
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
-  race-enabled tests, govulncheck) must pass before every commit. Tool versions
-  are pinned in the `Makefile`.
+  race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
+  before every commit. Tool versions are pinned in the `Makefile`. The CI
+  pipeline (`.gitea/workflows/ci.yml`, mirrored byte-identical to
+  `.github/workflows/ci.yml`) runs the same `make ci` on every pull request and
+  every push to `develop`/`main`, plus a linux/amd64 + arm64 build matrix.
 
 ## Deviations from the whitepaper
 

@@ -12,9 +12,10 @@ make build           # static binaries in ./bin/
 make ci              # every check a change must pass
 ```
 
-Requires Go 1.23 or newer. See [ARCHITECTURE.md](ARCHITECTURE.md) for the
-technical baseline and [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute.
-The whitepaper follows below.
+Requires Go 1.23 or newer. Every pull request is gated by the same `make ci` in
+CI. See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical baseline and
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute. The whitepaper
+follows below.
 
 ---
 

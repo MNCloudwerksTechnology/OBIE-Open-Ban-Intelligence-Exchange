@@ -14,9 +14,14 @@ TOOLS_DIR := $(BIN_DIR)/tools
 # ./bin/tools, so bumping a version here reinstalls it automatically.
 GOLANGCI_LINT_VERSION := v2.14.0
 GOVULNCHECK_VERSION   := v1.8.0
+ACTIONLINT_VERSION    := v1.7.12
 
 GOLANGCI_LINT := $(TOOLS_DIR)/golangci-lint-$(GOLANGCI_LINT_VERSION)/golangci-lint
 GOVULNCHECK   := $(TOOLS_DIR)/govulncheck-$(GOVULNCHECK_VERSION)/govulncheck
+ACTIONLINT    := $(TOOLS_DIR)/actionlint-$(ACTIONLINT_VERSION)/actionlint
+
+# The Gitea workflow is the source; the GitHub mirror must be byte-identical.
+WORKFLOWS := .gitea/workflows/ci.yml .github/workflows/ci.yml
 
 .DEFAULT_GOAL := build
 
@@ -38,6 +43,10 @@ build: ## Build static binaries into ./bin/
 test: ## Run all tests with the race detector
 	$(GO) test -race -count=1 ./...
 
+.PHONY: test-privileged
+test-privileged: ## Run all tests including the `privileged` build tag (needs root)
+	$(GO) test -race -count=1 -tags privileged ./...
+
 .PHONY: vet
 vet: ## Run go vet
 	$(GO) vet ./...
@@ -57,8 +66,16 @@ lint: $(GOLANGCI_LINT) ## Run golangci-lint (pinned version, .golangci.yml)
 vuln: $(GOVULNCHECK) ## Scan for known vulnerabilities with govulncheck
 	$(GOVULNCHECK) ./...
 
+.PHONY: lint-workflows
+lint-workflows: $(ACTIONLINT) ## Validate the CI workflows with actionlint and check they are identical
+	$(ACTIONLINT) $(WORKFLOWS)
+	@cmp -s $(WORKFLOWS) || { \
+		echo "$(word 1,$(WORKFLOWS)) and $(word 2,$(WORKFLOWS)) differ; keep them identical"; \
+		exit 1; \
+	}
+
 .PHONY: ci
-ci: fmt-check vet lint test vuln ## Run every check the CI gate runs
+ci: fmt-check vet lint lint-workflows test vuln ## Run every check the CI gate runs
 
 .PHONY: clean
 clean: ## Remove build output and installed tools
@@ -69,3 +86,6 @@ $(GOLANGCI_LINT):
 
 $(GOVULNCHECK):
 	GOBIN=$(dir $@) $(GO) install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+
+$(ACTIONLINT):
+	GOBIN=$(dir $@) $(GO) install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
