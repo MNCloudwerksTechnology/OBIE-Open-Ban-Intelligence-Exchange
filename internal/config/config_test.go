@@ -80,6 +80,7 @@ func TestDefaults(t *testing.T) {
 		{"decision.default_ttl", d.Decision.DefaultTTL.Std(), 7 * 24 * time.Hour},
 		{"decision.local_autoblock", d.Decision.LocalAutoblock, true},
 		{"allowlist.cidrs", d.Allowlist.CIDRs, []string{}},
+		{"allowlist.files", d.Allowlist.Files, []string{}},
 		{"enforce.backend", d.Enforce.Backend, BackendDryRun},
 		{"enforce.max_entries", d.Enforce.MaxEntries, 100000},
 		{"enforce.reconcile_interval", d.Enforce.ReconcileInterval.Std(), 10 * time.Second},

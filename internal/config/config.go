@@ -114,9 +114,13 @@ type Decision struct {
 	LocalAutoblock bool `yaml:"local_autoblock"`
 }
 
-// Allowlist lists networks that are never blocked.
+// Allowlist lists networks that are never blocked, in addition to the
+// built-in ranges, the node's own addresses and its bootstrap peers.
 type Allowlist struct {
 	CIDRs []string `yaml:"cidrs"`
+	// Files are absolute paths of files with one IP address or CIDR range
+	// per line; they are read at start and on every reload (SIGHUP).
+	Files []string `yaml:"files"`
 }
 
 // Enforce configures the enforcement backend.
@@ -163,7 +167,7 @@ func Default() Config {
 		},
 		Trust:     Trust{Publishers: []Publisher{}, DefaultWeight: 0, LocalWeight: 1.0},
 		Decision:  Decision{Threshold: 1.8, Quorum: 2, MaxTTL: Duration(30 * day), DefaultTTL: Duration(7 * day), LocalAutoblock: true},
-		Allowlist: Allowlist{CIDRs: []string{}},
+		Allowlist: Allowlist{CIDRs: []string{}, Files: []string{}},
 		Enforce:   Enforce{Backend: BackendDryRun, MaxEntries: 100000, ReconcileInterval: Duration(10 * time.Second)},
 		Metrics:   Metrics{Listen: "127.0.0.1:9464"},
 		Audit:     Audit{Path: ""},
