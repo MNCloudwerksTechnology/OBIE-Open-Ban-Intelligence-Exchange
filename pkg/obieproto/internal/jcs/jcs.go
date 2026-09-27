@@ -9,6 +9,7 @@ package jcs
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -187,30 +188,54 @@ func writeArray(buf *bytes.Buffer, arr []any) error {
 // writeObject writes the members sorted by the UTF-16 code units of their
 // keys (RFC 8785 section 3.2.3).
 func writeObject(buf *bytes.Buffer, obj map[string]any) error {
-	type member struct {
-		key   string
-		units []uint16
-	}
-	members := make([]member, 0, len(obj))
+	keys := make([]string, 0, len(obj))
 	for k := range obj {
-		members = append(members, member{key: k, units: utf16.Encode([]rune(k))})
+		keys = append(keys, k)
 	}
-	slices.SortFunc(members, func(a, b member) int { return slices.Compare(a.units, b.units) })
+	slices.SortFunc(keys, compareUTF16)
 	buf.WriteByte('{')
-	for i, m := range members {
+	for i, k := range keys {
 		if i > 0 {
 			buf.WriteByte(',')
 		}
-		if err := writeString(buf, m.key); err != nil {
+		if err := writeString(buf, k); err != nil {
 			return err
 		}
 		buf.WriteByte(':')
-		if err := encode(buf, obj[m.key]); err != nil {
+		if err := encode(buf, obj[k]); err != nil {
 			return err
 		}
 	}
 	buf.WriteByte('}')
 	return nil
+}
+
+// compareUTF16 orders strings by their UTF-16 code units without converting
+// them. Code point order, which UTF-8 byte order follows, differs from UTF-16
+// order only where a supplementary character (encoded with a leading
+// surrogate 0xd800-0xdbff) meets a character in 0xe000-0xffff.
+func compareUTF16(a, b string) int {
+	for a != "" && b != "" {
+		ra, na := utf8.DecodeRuneInString(a)
+		rb, nb := utf8.DecodeRuneInString(b)
+		if ra != rb {
+			if c := cmp.Compare(firstUnit(ra), firstUnit(rb)); c != 0 {
+				return c
+			}
+			return cmp.Compare(ra, rb) // same leading surrogate: order of the trailing one
+		}
+		a, b = a[na:], b[nb:]
+	}
+	return cmp.Compare(len(a), len(b))
+}
+
+// firstUnit returns the first UTF-16 code unit of r.
+func firstUnit(r rune) rune {
+	if r < 0x10000 {
+		return r
+	}
+	high, _ := utf16.EncodeRune(r)
+	return high
 }
 
 // writeString escapes only what RFC 8785 section 3.2.2.2 requires: the

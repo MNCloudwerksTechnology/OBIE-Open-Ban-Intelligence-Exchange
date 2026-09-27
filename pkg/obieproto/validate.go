@@ -1,11 +1,9 @@
 package obieproto
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strings"
 )
 
 var (
@@ -181,13 +179,8 @@ func (p *Publisher) validate() error {
 	if p.Signature == "" {
 		return nil
 	}
-	encoded, ok := strings.CutPrefix(p.Signature, signaturePrefix)
-	if !ok {
-		return invalid("publisher.signature", "must start with %q", signaturePrefix)
-	}
-	sig, err := base64.RawURLEncoding.Strict().DecodeString(encoded)
-	if err != nil || len(sig) != 64 {
-		return invalid("publisher.signature", "must be 64 bytes of unpadded base64url")
+	if _, err := decodeSignature(p.Signature); err != nil {
+		return invalid("publisher.signature", "%v", err)
 	}
 	return nil
 }
