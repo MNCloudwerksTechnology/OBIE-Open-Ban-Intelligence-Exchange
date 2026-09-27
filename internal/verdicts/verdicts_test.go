@@ -256,7 +256,13 @@ func TestRepeatedReportRefreshesVerdict(t *testing.T) {
 	f := newFixture(t)
 	first := f.report(t, sshReport(attacker, 5)).Event
 	f.clock.Advance(CoalesceWindow)
-	res := f.report(t, sshReport(attacker, 3))
+	// issued_at has whole seconds: a verdict issued at x.9 s has issued_at
+	// x s, so a report 60 s after issued_at is still coalesced.
+	if res := f.report(t, sshReport(attacker, 1)); !res.Coalesced {
+		t.Fatalf("report 60 s after issued_at = %+v, want coalesced", res)
+	}
+	f.clock.Advance(time.Second)
+	res := f.report(t, sshReport(attacker, 2))
 	second := res.Event
 	if res.Coalesced || res.Supersedes != first.ID || second.ID == first.ID {
 		t.Fatalf("refresh = %+v", res)
@@ -289,7 +295,7 @@ func TestReportsWithinWindowAreCoalesced(t *testing.T) {
 		t.Fatalf("published %d events within the window, want 1", f.pub.count())
 	}
 
-	f.clock.Advance(10 * time.Second)
+	f.clock.Advance(11 * time.Second)
 	refreshed := f.report(t, sshReport(attacker, 1))
 	if refreshed.Coalesced || refreshed.Supersedes != first.ID || refreshed.Event.Evidence.Events != 5+3+4+1 {
 		t.Errorf("refresh after window = %+v, events %d, want 13", refreshed, refreshed.Event.Evidence.Events)
@@ -299,7 +305,7 @@ func TestReportsWithinWindowAreCoalesced(t *testing.T) {
 	}
 
 	// The pending counts were consumed by the refresh.
-	f.clock.Advance(CoalesceWindow)
+	f.clock.Advance(CoalesceWindow + time.Second)
 	if again := f.report(t, sshReport(attacker, 1)); again.Event.Evidence.Events != 14 {
 		t.Errorf("second refresh events = %d, want 14", again.Event.Evidence.Events)
 	}
@@ -386,7 +392,7 @@ func TestInvalidReportDoesNotCoalesce(t *testing.T) {
 	if _, err := f.svc.Report(context.Background(), bad); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("invalid report error = %v", err)
 	}
-	f.clock.Advance(CoalesceWindow)
+	f.clock.Advance(CoalesceWindow + time.Second)
 	if ev := f.report(t, sshReport(attacker, 1)).Event; ev.Evidence.Events != 6 {
 		t.Errorf("refresh counted the invalid report: events %d, want 6", ev.Evidence.Events)
 	}
@@ -449,7 +455,7 @@ func TestRevokeByIndicator(t *testing.T) {
 func TestRevokeErrors(t *testing.T) {
 	f := newFixture(t)
 	first := f.report(t, sshReport(attacker, 5)).Event
-	f.clock.Advance(CoalesceWindow)
+	f.clock.Advance(CoalesceWindow + time.Second)
 	f.report(t, sshReport(attacker, 1))
 
 	// A verdict of another publisher, stored as the mesh would.

@@ -18,9 +18,9 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
-// maxEvidence bounds the evidence file obiectl reads; obied rejects larger
-// requests anyway.
-const maxEvidence = 1 << 20
+// maxEvidence bounds the evidence file obiectl reads, well below obied's
+// request body limit so that the JSON-encoded request still fits.
+const maxEvidence = 512 << 10
 
 // eventIDPattern matches an event ID, as opposed to an address or range.
 var eventIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)

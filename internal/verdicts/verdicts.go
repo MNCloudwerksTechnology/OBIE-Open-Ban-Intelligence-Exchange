@@ -27,8 +27,12 @@ import (
 const Name = "verdicts"
 
 // CoalesceWindow is the shortest time between two verdicts of this node on
-// the same indicator; reports within it are coalesced.
+// the same indicator; reports within it are coalesced: only their event
+// counts are kept, for the next refresh.
 const CoalesceWindow = 60 * time.Second
+
+// publishTimeout bounds handing an event to the publisher.
+const publishTimeout = 10 * time.Second
 
 // DefaultConfidence is the confidence of a report that sets none.
 const DefaultConfidence = 0.8
@@ -205,7 +209,9 @@ func (s *Service) Report(ctx context.Context, r Report) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if prev != nil && now.Before(prev.IssuedAt.Add(CoalesceWindow)) {
+	// issued_at is truncated to whole seconds, so the window is extended by
+	// one second to never let two verdicts be less than CoalesceWindow apart.
+	if prev != nil && now.Before(prev.IssuedAt.Add(CoalesceWindow+time.Second)) {
 		s.coalesce(prev, r.Events)
 		s.log.Info("report coalesced into the current verdict", "event", prev.ID, "indicator", ind.Key(),
 			"events", r.Events)
@@ -407,6 +413,10 @@ func (s *Service) publish(ctx context.Context, ev *obieproto.Event) error {
 	if err := obieproto.SignWith(ev, s.opts.Signer); err != nil {
 		return fmt.Errorf("sign event %s: %w", ev.ID, err)
 	}
+	// A client that disconnects must not interrupt a publish that may
+	// already have stored the event locally.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), publishTimeout)
+	defer cancel()
 	if err := s.opts.Publisher.Publish(ctx, ev); err != nil {
 		return fmt.Errorf("publish event %s: %w", ev.ID, err)
 	}

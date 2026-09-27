@@ -39,11 +39,15 @@ already hold and spread events.
   verdict of this node issues a refreshed verdict (new ID, new expiry,
   cumulative `evidence.events`) that supersedes the old one — never a
   second verdict. At most one verdict per indicator is issued per 60 s,
-  measured from the active verdict's `issued_at`: a report inside that
-  window is *coalesced* — it issues nothing, its events are added to the
-  next refresh, and the response carries the current verdict with
+  measured from the active verdict's `issued_at` (plus one second, because
+  `issued_at` is truncated to whole seconds): a report inside that window
+  is *coalesced* — it issues nothing, only its event count is kept for the
+  next refresh (its action, confidence, TTL, MITRE IDs and evidence hash
+  are dropped), and the response carries the current verdict with
   `coalesced: true`. Pending counts live in memory until the verdict they
   belong to expires or is refreshed or revoked.
+- **Publishing** is not interrupted by a client that disconnects: the
+  event may already be stored locally when it is sent to the mesh.
 - **Revocations** name a verdict ID or an indicator and apply only to this
   node's own *active* verdicts; nothing to revoke is HTTP 404.
 - **Endpoints:** `POST /v1/reports`, `POST /v1/revocations`,
