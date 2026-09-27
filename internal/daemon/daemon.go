@@ -39,6 +39,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 		return err
 	}
 
+	db := store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{})
 	// go-libp2p's own logs join ours; below warn they are too chatty.
 	mesh.UseLogHandler(logs.Logger("libp2p").Handler(), slog.LevelWarn)
 	m, err := mesh.New(id, mesh.Options{
@@ -46,6 +47,8 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 		Bootstrap: cfg.Mesh.Bootstrap,
 		Trust:     cfg.Trust,
 		UserAgent: "obied/" + version.Version,
+		Store:     db,
+		RateLimit: cfg.Mesh.RateLimit,
 	}, logs.Logger(mesh.Name))
 	if err != nil {
 		return fmt.Errorf("mesh: %w", err)
@@ -53,7 +56,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 
 	mgr := lifecycle.New(logs.Logger("lifecycle"), lifecycle.Options{StopTimeout: cfg.Node.ShutdownTimeout.Std()})
 	// The store starts first and stops last: every other subsystem may use it.
-	mgr.Register(store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{}))
+	mgr.Register(db)
 	mgr.Register(ops.New(cfg.Metrics.Listen, mgr.Status, logs.Logger(ops.Name)))
 	mgr.Register(m)
 	mgr.Register(admin.New(cfg.Admin.Socket, cfg.Admin.SocketGroup, admin.Info{

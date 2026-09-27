@@ -16,6 +16,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
+	"github.com/MNCloudwerksTechnology/obie/internal/store"
 )
 
 // Compile-time checks of the lifecycle interfaces the daemon relies on.
@@ -26,6 +27,22 @@ var (
 )
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
+
+// newStore returns a started in-memory store that is stopped when the test
+// ends.
+func newStore(t *testing.T) *store.DB {
+	t.Helper()
+	db := store.NewMemory(discardLogger(), store.Options{})
+	if err := db.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := db.Stop(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+	return db
+}
 
 func newIdentity(t *testing.T) *identity.Key {
 	t.Helper()
@@ -103,7 +120,8 @@ func TestBackoff(t *testing.T) {
 func TestNew(t *testing.T) {
 	self := newIdentity(t)
 	other := newIdentity(t)
-	m, err := New(self, Options{Bootstrap: []string{
+	st := newStore(t)
+	m, err := New(self, Options{Store: st, Bootstrap: []string{
 		"/ip4/192.0.2.1/tcp/4001/p2p/" + other.PeerID(),
 		"/ip4/192.0.2.1/udp/4001/quic-v1/p2p/" + other.PeerID(),
 		"/ip4/192.0.2.2/tcp/4001/p2p/" + self.PeerID(),
@@ -119,9 +137,10 @@ func TestNew(t *testing.T) {
 	}
 
 	for name, opts := range map[string]Options{
-		"listen":    {Listen: []string{"/ip4/1.2.3/tcp/1"}},
-		"bootstrap": {Bootstrap: []string{"/ip4/192.0.2.1/tcp/4001"}},
-		"publisher": {Trust: config.Trust{Publishers: []config.Publisher{{PeerID: "nope", Name: "x"}}}},
+		"listen":    {Store: st, Listen: []string{"/ip4/1.2.3/tcp/1"}},
+		"bootstrap": {Store: st, Bootstrap: []string{"/ip4/192.0.2.1/tcp/4001"}},
+		"publisher": {Store: st, Trust: config.Trust{Publishers: []config.Publisher{{PeerID: "nope", Name: "x"}}}},
+		"store":     {},
 	} {
 		if _, err := New(self, opts, discardLogger()); err == nil {
 			t.Errorf("%s: New accepted an invalid value", name)
@@ -131,7 +150,7 @@ func TestNew(t *testing.T) {
 
 func TestStartFailsWhenNothingCanBeBound(t *testing.T) {
 	// 192.0.2.0/24 (TEST-NET-1) is not assigned to any local interface.
-	m, err := New(newIdentity(t), Options{Listen: []string{"/ip4/192.0.2.1/tcp/0"}}, discardLogger())
+	m, err := New(newIdentity(t), Options{Store: newStore(t), Listen: []string{"/ip4/192.0.2.1/tcp/0"}}, discardLogger())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,9 +176,13 @@ func TestReadyWithoutPeers(t *testing.T) {
 	}
 }
 
-// startMesh starts a mesh and stops it at the end of the test.
+// startMesh starts a mesh, with a new store unless opts has one, and stops
+// it at the end of the test.
 func startMesh(t *testing.T, id identity.Identity, opts Options) *Mesh {
 	t.Helper()
+	if opts.Store == nil {
+		opts.Store = newStore(t)
+	}
 	m, err := New(id, opts, discardLogger())
 	if err != nil {
 		t.Fatal(err)

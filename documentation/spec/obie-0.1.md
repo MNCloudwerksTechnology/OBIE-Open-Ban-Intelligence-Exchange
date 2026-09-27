@@ -692,7 +692,7 @@ For [TRN-1] the test pins the topic constant that the mesh layer uses;
 | SIG-4  | `TestWeakPublicKeysAreRejected`, `TestVerifyRejectsWeakKeyForgery`, `TestVectorFiles` |
 | ID-1   | `TestPeerIDRoundTrip`, `TestPublicKeyFromPeerIDRejects`, `TestVerifyRejects` |
 | ID-2   | `TestVerifyRejects`, `TestSignRejects`, `TestVectorFiles` |
-| ID-3   | `TestReceive` |
+| ID-3   | `TestReceive`, `TestGossipDropsAuthoredMessages` |
 | TRN-1  | `TestTopic` |
 | TRN-2  | `TestDecodeInvalid`, `TestReceive` |
 | TRN-3  | `TestMessageID` |

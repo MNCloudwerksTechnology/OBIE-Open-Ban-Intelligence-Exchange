@@ -36,7 +36,8 @@ type Options struct {
 	// Store receives every accepted event and answers the duplicate check.
 	Store store.Store
 	// PublisherLimit and PeerLimit bound the events accepted per publisher
-	// and per forwarding peer (mesh.rate_limit).
+	// and per forwarding peer (mesh.rate_limit); unusable (e.g. zero)
+	// buckets take the defaults of config.Default.
 	PublisherLimit, PeerLimit config.TokenBucket
 	// Metrics observes the outcome of every received message; nil for none.
 	Metrics Metrics
@@ -66,6 +67,9 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 	if opts.Metrics == nil {
 		opts.Metrics = nopMetrics{}
 	}
+	defaults := config.Default().Mesh.RateLimit
+	opts.PublisherLimit = bucketOrDefault(opts.PublisherLimit, defaults.Publisher)
+	opts.PeerLimit = bucketOrDefault(opts.PeerLimit, defaults.Peer)
 	v := &validator{
 		self:       h.ID(),
 		store:      opts.Store,
@@ -93,6 +97,14 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 		}
 	})
 	return g, nil
+}
+
+// bucketOrDefault returns b, or def if b is not a usable rate limit.
+func bucketOrDefault(b, def config.TokenBucket) config.TokenBucket {
+	if !(b.EventsPerSecond > 0) || b.Burst < 1 {
+		return def
+	}
+	return b
 }
 
 // join starts GossipSub on h and subscribes to the topic with v as its

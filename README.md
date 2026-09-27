@@ -7,9 +7,11 @@ built on top of this whitepaper. `obied`, the node daemon, validates its
 configuration, runs until SIGTERM/SIGINT and serves health endpoints
 (`/healthz`, `/readyz`, `/metrics`); on its first start it generates the
 node's Ed25519 identity key in `<state_dir>/node.key`. It joins the libp2p mesh
-under that identity and stays connected to the configured `mesh.bootstrap`
-peers. `obiectl`, the operator CLI, queries it over the local admin socket. The security functions follow in
-later work packages.
+under that identity, stays connected to the configured `mesh.bootstrap`
+peers and gossips signed verdicts and revocations with them, relaying only
+valid events within per-publisher and per-peer rate limits. `obiectl`, the
+operator CLI, queries it over the local admin socket. The security functions
+follow in later work packages.
 
 ```sh
 make build           # static binaries in ./bin/
@@ -216,8 +218,8 @@ As a defensive tool, OBIE must resist being weaponized.
 
 - **Identity Barriers:** Anonymous publishing is rejected. Cryptographic identity (verified via domain/ACME *(planned)*) is required
   to participate in the reputation pool *(planned)*.
-- **Rate Limiting:** Strict quotas are applied per-identity and per-ASN to prevent flood-based DoS *(planned)*; the
-  specification states the expected rates.
+- **Rate Limiting:** Strict quotas are applied per-identity and per-ASN to prevent flood-based DoS; v0.1 limits the
+  events accepted per publisher and per forwarding peer, per-ASN quotas are *(planned)*.
 - **Reputation Warm-up:** New nodes have limited influence until they prove value over time *(planned)*.
 
 #### 5.2 Local Sovereignty as a Fail-safe
