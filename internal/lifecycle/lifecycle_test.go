@@ -137,8 +137,11 @@ func TestStartFailureReportsRollbackErrors(t *testing.T) {
 
 	err := m.Start(context.Background())
 	var startErr *StartError
-	if !errors.As(err, &startErr) || !errors.Is(err, stopBoom) {
-		t.Fatalf("Start error = %v, want StartError joined with the stop error", err)
+	if !errors.As(err, &startErr) || !errors.Is(startErr.Rollback, stopBoom) || !errors.Is(err, stopBoom) {
+		t.Fatalf("Start error = %v, want StartError carrying the stop error", err)
+	}
+	if want := "start subsystem b: boom (stopping started subsystems: stop subsystem a: stuck)"; err.Error() != want {
+		t.Errorf("error message = %q, want %q", err, want)
 	}
 }
 

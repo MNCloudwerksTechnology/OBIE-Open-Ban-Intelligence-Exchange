@@ -114,22 +114,35 @@ func (m *Manager) Register(s Subsystem) {
 	m.entries = append(m.entries, &entry{sub: s, state: StatePending})
 }
 
-// StartError reports the subsystem that failed to start.
+// StartError reports the subsystem that failed to start and the outcome of
+// stopping the subsystems started before it.
 type StartError struct {
 	Subsystem string
 	Err       error
+	// Rollback is the error of stopping the already started subsystems;
+	// nil when they all stopped cleanly.
+	Rollback error
 }
 
 func (e *StartError) Error() string {
-	return fmt.Sprintf("start subsystem %s: %v", e.Subsystem, e.Err)
+	msg := fmt.Sprintf("start subsystem %s: %v", e.Subsystem, e.Err)
+	if e.Rollback != nil {
+		msg += fmt.Sprintf(" (stopping started subsystems: %v)", e.Rollback)
+	}
+	return msg
 }
 
-func (e *StartError) Unwrap() error { return e.Err }
+// Unwrap returns Err and, if set, Rollback.
+func (e *StartError) Unwrap() []error {
+	if e.Rollback == nil {
+		return []error{e.Err}
+	}
+	return []error{e.Err, e.Rollback}
+}
 
 // Start starts every registered subsystem in order. On the first failure, or
 // when ctx is canceled in between, it stops the subsystems already started
-// and returns a *StartError (joined with any stop errors). Start may only be
-// called once.
+// and returns a *StartError. Start may only be called once.
 func (m *Manager) Start(ctx context.Context) error {
 	m.mu.Lock()
 	if m.started {
@@ -151,11 +164,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		if err != nil {
 			m.setState(e, StateFailed, err)
 			m.log.Error("subsystem failed to start; stopping started subsystems", "subsystem", name, "error", err)
-			startErr := &StartError{Subsystem: name, Err: err}
-			if stopErr := m.Stop(context.WithoutCancel(ctx)); stopErr != nil {
-				return errors.Join(startErr, stopErr)
-			}
-			return startErr
+			return &StartError{Subsystem: name, Err: err, Rollback: m.Stop(context.WithoutCancel(ctx))}
 		}
 		m.setState(e, StateRunning, nil)
 		m.log.Info("subsystem started", "subsystem", name)

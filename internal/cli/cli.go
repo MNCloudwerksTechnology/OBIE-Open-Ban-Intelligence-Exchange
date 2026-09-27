@@ -2,12 +2,17 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/daemon"
 	"github.com/MNCloudwerksTechnology/obie/internal/logging"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
@@ -18,6 +23,7 @@ const (
 	ExitOK             = 0
 	ExitNotImplemented = 1
 	ExitInvalidConfig  = 1
+	ExitFailure        = 1
 	ExitUsage          = 2
 	ExitIOError        = 3
 )
@@ -36,7 +42,20 @@ func Run(program string, args []string, stdout, stderr io.Writer) int {
 
 // RunDaemon runs obied with args and returns the process exit code. It loads
 // and validates the configuration file; with --check-config it stops there.
+// Otherwise it runs the node until SIGTERM or SIGINT and then shuts down
+// gracefully; a second signal terminates the process immediately.
 func RunDaemon(args []string, stdout, stderr io.Writer) int {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer stop()
+	go func() {
+		<-ctx.Done()
+		stop() // Restore default signal handling for a second signal.
+	}()
+	return runDaemon(ctx, args, stdout, stderr)
+}
+
+// runDaemon is RunDaemon with the shutdown signal delivered as ctx.
+func runDaemon(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	const program = "obied"
 	fs := newFlagSet(program, stderr)
 	configPath := fs.String("config", config.DefaultPath, "path to the YAML configuration `file`")
@@ -60,10 +79,14 @@ func RunDaemon(args []string, stdout, stderr io.Writer) int {
 
 	// Validation guarantees a known level.
 	level, _ := logging.ParseLevel(cfg.Log.Level)
-	log := logging.New(stderr, level).Logger(program)
+	logs := logging.New(stderr, level)
+	log := logs.Logger(daemon.Component)
 	log.Info("configuration loaded", "path", *configPath, "mode", cfg.Node.Mode)
-	log.Error("daemon not implemented yet; use --check-config to validate the configuration")
-	return ExitNotImplemented
+	if err := daemon.Run(ctx, cfg, logs); err != nil {
+		log.Error("obied failed", "error", err)
+		return ExitFailure
+	}
+	return ExitOK
 }
 
 func newFlagSet(program string, stderr io.Writer) *flag.FlagSet {
