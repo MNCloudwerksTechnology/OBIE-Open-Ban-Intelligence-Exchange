@@ -12,7 +12,9 @@ describe('App routing', () => {
 
   it('renders the home page at /', async () => {
     const harness = await RouterTestingHarness.create('/');
-    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toBe('OBIE');
+    expect(harness.routeNativeElement?.querySelector('h1')?.textContent).toBe(
+      'A neighbourhood watch for servers.',
+    );
   });
 
   it('renders the not-found page for unknown URLs', async () => {

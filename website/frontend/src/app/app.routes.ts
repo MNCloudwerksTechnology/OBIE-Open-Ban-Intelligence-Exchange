@@ -7,7 +7,7 @@ import { NotFound } from './pages/not-found/not-found';
 export const NOT_FOUND_PATH = '404';
 
 export const routes: Routes = [
-  { path: '', component: Home, title: 'OBIE' },
+  { path: '', component: Home },
   { path: NOT_FOUND_PATH, component: NotFound, title: 'Page not found · OBIE' },
   { path: '**', component: NotFound, title: 'Page not found · OBIE' },
 ];
