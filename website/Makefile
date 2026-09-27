@@ -25,6 +25,10 @@ JAR  := $(BACKEND)/target/obie-website.jar
 
 .DEFAULT_GOAL := build
 
+# `ci` relies on its prerequisites running in order (vuln scans the SBOM that
+# backend writes), so never run them in parallel, even under `make -j`.
+.NOTPARALLEL:
+
 .PHONY: help
 help: ## Show this help
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | \
