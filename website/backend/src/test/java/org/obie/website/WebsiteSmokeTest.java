@@ -6,8 +6,6 @@ import java.util.List;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.SpringBootTest.WebEnvironment;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -17,8 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 
 /** Boots the whole application and checks what a visitor and a monitor see. */
-@SpringBootTest(webEnvironment = WebEnvironment.RANDOM_PORT)
-class WebsiteSmokeTest {
+class WebsiteSmokeTest extends IntegrationTest {
 
   /** The landing page's h1, from the front end's content file. */
   private static final String HOME_HEADING = "A neighbourhood watch for servers.";

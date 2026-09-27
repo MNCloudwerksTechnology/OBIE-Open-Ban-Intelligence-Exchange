@@ -18,12 +18,30 @@ website/
 - Node.js 24 with npm
 - Java 21 (no Maven needed: the back end ships the Maven wrapper `./mvnw`)
 - Go (only to install the pinned `osv-scanner` for `make vuln`)
+- Docker (the back-end tests start PostgreSQL with Testcontainers)
+- To run the jar: a PostgreSQL database and an SMTP server (see
+  [Configuration](#configuration))
 
 ## Build and run
 
 ```sh
 make -C website            # build website/backend/target/obie-website.jar
 make -C website run        # java -jar …/obie-website.jar → http://localhost:8080
+```
+
+`make run` needs the required environment variables from
+[Configuration](#configuration); the application refuses to start without
+them. For a local run, a throwaway database and mail catcher are enough:
+
+```sh
+docker run -d --name obie-db -p 5432:5432 -e POSTGRES_PASSWORD=obie postgres:16-alpine
+docker run -d --name obie-mail -p 1025:1025 -p 8025:8025 mailhog/mailhog
+export OBIE_DB_URL=jdbc:postgresql://localhost:5432/postgres OBIE_DB_USERNAME=postgres \
+  OBIE_DB_PASSWORD=obie OBIE_SMTP_HOST=localhost OBIE_SMTP_PORT=1025 \
+  OBIE_SMTP_STARTTLS=false OBIE_SITE_ORIGIN=http://localhost:8080 \
+  OBIE_INQUIRY_RECIPIENT=me@example.org OBIE_MAIL_FROM=website@example.org \
+  OBIE_INQUIRY_SECRET=$(openssl rand -base64 32)
+make -C website run        # mails show up at http://localhost:8025
 ```
 
 `GET /` returns the prerendered home page, `GET /api/health` returns
@@ -41,7 +59,7 @@ http://localhost:4200.
 | `make -C website frontend-lint`| ESLint (angular-eslint) and Prettier check                          |
 | `make -C website frontend-test`| Front-end unit tests (Vitest)                                       |
 | `make -C website frontend`     | Production build, all public routes prerendered (`frontend/dist/`) |
-| `make -C website backend`      | `./mvnw verify`: tests incl. smoke test, Spotless, SpotBugs, jar    |
+| `make -C website backend`      | `./mvnw verify`: tests (PostgreSQL via Testcontainers, GreenMail), Spotless, SpotBugs, jar |
 | `make -C website vuln`         | `npm audit --omit=dev --audit-level=high` and osv-scanner on the back end's runtime SBOM |
 | `make -C website run`          | Run the built jar                                                   |
 | `make -C website clean`        | Remove build output and installed tools                             |
@@ -50,6 +68,79 @@ http://localhost:4200.
 contains it; running `./mvnw verify` directly fails with a hint if
 `frontend/dist/` is missing. Fix formatting with `npm run format` (front end)
 and `./mvnw spotless:apply` (back end).
+
+## Configuration
+
+All settings come from environment variables. Required ones have no default.
+Durations use ISO-8601 (`PT3S` = 3 seconds, `PT1H` = 1 hour), periods too
+(`P12M` = 12 months).
+
+| Variable | Required | Default | Meaning |
+|----------|----------|---------|---------|
+| `OBIE_DB_URL` | yes | – | JDBC URL of the PostgreSQL database, e.g. `jdbc:postgresql://db:5432/obie`. Flyway creates and migrates the schema at startup. |
+| `OBIE_DB_USERNAME` | yes | – | Database user. |
+| `OBIE_DB_PASSWORD` | yes | – | Database password. |
+| `OBIE_SMTP_HOST` | yes | – | SMTP server for the inquiry mails. |
+| `OBIE_SMTP_PORT` | no | `587` | SMTP port (`587` for STARTTLS, `465` for TLS). |
+| `OBIE_SMTP_USERNAME` | no | – | SMTP user, if the server needs authentication. |
+| `OBIE_SMTP_PASSWORD` | no | – | SMTP password. |
+| `OBIE_SMTP_STARTTLS` | no | `true` | Use STARTTLS and refuse to send without it. Set to `false` only for a local mail catcher or together with `OBIE_SMTP_SSL`. |
+| `OBIE_SMTP_SSL` | no | `false` | Connect with TLS from the start (port 465). |
+| `OBIE_MAIL_FROM` | yes | – | Sender address of all mails, e.g. `website@obie.example`. It must be allowed to send through the SMTP server. |
+| `OBIE_INQUIRY_RECIPIENT` | yes | – | Address that receives every inquiry. |
+| `OBIE_INQUIRY_SECRET` | yes | – | Server-side secret, at least 32 characters (e.g. `openssl rand -base64 32`). It salts the hashes of client IPs and signs form tokens. Keep it stable: after a change, forms that were already open are treated as bots (fake `202`, nothing stored), and old IP hashes no longer match new ones. |
+| `OBIE_SITE_ORIGIN` | yes | – | The site's own origin, e.g. `https://obie.example`; the only origin allowed to call the API from a browser (CORS). |
+| `OBIE_INQUIRY_MIN_FILL_TIME` | no | `PT3S` | Submissions sent faster than this after the form was rendered count as bots. |
+| `OBIE_INQUIRY_FORM_TOKEN_MAX_AGE` | no | `P1D` | Forms rendered longer ago than this are rejected with 400 ("please reload the page"), so one token cannot be reused forever. |
+| `OBIE_INQUIRY_RATE_LIMIT` | no | `5` | Inquiries allowed per client IP within `OBIE_INQUIRY_RATE_LIMIT_PERIOD`. |
+| `OBIE_INQUIRY_RATE_LIMIT_PERIOD` | no | `PT1H` | Time in which a client's allowance refills completely. |
+| `OBIE_INQUIRY_RETENTION` | no | `P12M` | Inquiries older than this are deleted (daily at 03:30 UTC). |
+| `OBIE_MAIL_MAX_ATTEMPTS` | no | `10` | Delivery attempts per inquiry before the mails are given up (logged as an error; the inquiry stays stored). |
+| `OBIE_MAIL_RETRY_INITIAL_DELAY` | no | `PT1M` | Delay after the first failed delivery; doubled after each further failure. |
+| `OBIE_MAIL_RETRY_MAX_DELAY` | no | `PT6H` | Upper bound of the retry delay. |
+| `SERVER_PORT` | no | `8080` | HTTP port (Spring Boot). |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | no | – | Set to `native` behind a reverse proxy that sets `X-Forwarded-For`/`X-Forwarded-Proto`, so rate limit and IP hash see the visitor's address. Leave unset without a proxy: the headers could be forged. |
+
+## Inquiry API
+
+The inquiry form talks to two endpoints. Errors are
+[RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details
+(`application/problem+json`) and never contain internal details.
+
+1. **`GET /api/inquiries/form-token`** when the form is shown →
+   `200 {"token": "…"}`. The token is a signed form-render timestamp.
+2. **`POST /api/inquiries`** with `Content-Type: application/json`:
+
+   | Field | Required | Rules |
+   |-------|----------|-------|
+   | `type` | yes | `talk`, `workshop`, `interview`, `collaboration` or `other` |
+   | `name` | yes | at most 200 characters, one line |
+   | `email` | yes | valid address, at most 254 characters |
+   | `organisation` | no | at most 200 characters, one line |
+   | `eventDate` | no | `YYYY-MM-DD`, in the future |
+   | `eventLocation` | no | at most 200 characters, one line (`online` is fine) |
+   | `audienceSize` | no | whole number, 1 to 1,000,000 |
+   | `message` | yes | 20 to 5000 characters |
+   | `consent` | yes | `true` (privacy notice accepted) |
+   | `website` | no | honeypot: hide the field from people and send it empty |
+   | `formToken` | yes | the token from step 1 |
+
+   Responses:
+   - `202 {"id": "…"}`: accepted. Bots (honeypot filled, invalid token,
+     sent less than 3 s after the form was rendered) get the same answer, but
+     nothing is stored or sent.
+   - `400` with `errors: [{"field": "email", "message": "…"}]`: show each
+     message next to its field. Unknown fields are errors, too.
+   - `413`: body larger than 16 KiB. `429` with `Retry-After` (seconds): too
+     many inquiries from this IP (IPv6: from this /64 network). Every
+     request counts, including rejected ones.
+
+An accepted inquiry is stored first (PostgreSQL, table `inquiry`; the client
+IP only as a salted hash) and mailed afterwards: the operator gets
+`[OBIE inquiry] <type> from <name>` with Reply-To set to the visitor, the
+visitor a short plain-text confirmation that repeats nothing they typed. When
+the SMTP server fails, delivery is retried with exponential backoff and each
+failure is logged.
 
 ## How it fits together
 
@@ -70,7 +161,17 @@ and `./mvnw spotless:apply` (back end).
   `classpath:/static/`. `StaticSiteConfig` serves files and prerendered
   routes; `NotFoundPageResolver` renders the 404 page. API endpoints live
   under `/api/**`; Actuator's health endpoint is the only one exposed
-  (`/api/health`).
+  (`/api/health`). The inquiry feature (`org.obie.website.inquiry`) is
+  described in [ADR 0012](../documentation/adr/0012-website-inquiry-backend.md).
+- **Security headers.** `SecurityHeadersFilter` sets CSP, HSTS,
+  `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and
+  `frame-ancestors 'none'` on every response. Inline scripts are allowed only
+  by hash: the filter hashes the inline scripts of the packaged pages at
+  startup, so the front end needs no inline event handlers and no
+  `'unsafe-inline'`.
+- **Database changes.** Add a Flyway migration
+  `backend/src/main/resources/db/migration/V<n>__<what>.sql`; never edit one
+  that has been released.
 - **Adding a page.** Add the route to `src/app/app.routes.ts` and a
   `RenderMode.Prerender` entry to `src/app/app.routes.server.ts`. The back
   end serves it without changes.
