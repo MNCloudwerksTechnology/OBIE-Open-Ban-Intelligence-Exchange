@@ -8,6 +8,9 @@ type Option func(*options)
 type options struct {
 	now                func() time.Time
 	allowDocumentation bool
+	// skipClockSkew leaves the issued_at clock check to the caller; Receive
+	// runs it after the signature.
+	skipClockSkew bool
 }
 
 func newOptions(opts []Option) options {

@@ -190,7 +190,7 @@ func TestDecodeInvalid(t *testing.T) {
 		{name: "issued_at as number", data: withField(t, "issued_at", `1767577800`), wantErr: ErrMalformed},
 
 		// Validation runs after decoding.
-		{name: "issued_at in the future", data: withField(t, "issued_at", `"2026-01-05T02:00:00Z"`), wantErr: ErrInvalidField},
+		{name: "issued_at in the future", data: withField(t, "issued_at", `"2026-01-05T02:00:00Z"`), wantErr: ErrClockSkew},
 		{name: "unsupported indicator kind", data: withField(t, "indicator", `{"kind":"fqdn","value":"evil.example","scope":"/0"}`), wantErr: ErrUnsupportedIndicator},
 		{name: "private indicator", data: withField(t, "indicator", `{"kind":"ipv4","value":"10.0.0.1","scope":"/32"}`), wantErr: ErrNonPublicIndicator},
 		{name: "non-canonical indicator", data: withField(t, "indicator", `{"kind":"ipv6","value":"2A01:4F8::1","scope":"/128"}`), wantErr: ErrInvalidField},

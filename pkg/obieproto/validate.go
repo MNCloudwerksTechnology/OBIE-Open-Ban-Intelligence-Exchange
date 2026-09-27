@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"time"
 )
 
 var (
@@ -60,8 +61,17 @@ func (e *Event) validateIssuedAt(o options) error {
 	if t.IsZero() || t.Nanosecond() != 0 || t.Year() > 9999 {
 		return invalid("issued_at", "must be a UTC time with second precision")
 	}
-	if limit := o.now().Add(MaxClockSkew); t.After(limit) {
-		return invalid("issued_at", "%s is more than %s in the future", t.Format(TimestampLayout), MaxClockSkew)
+	if o.skipClockSkew {
+		return nil
+	}
+	return e.checkClockSkew(o.now())
+}
+
+// checkClockSkew rejects an issued_at more than MaxClockSkew after now.
+func (e *Event) checkClockSkew(now time.Time) error {
+	if t := e.IssuedAt.UTC(); t.After(now.Add(MaxClockSkew)) {
+		return &FieldError{Field: "issued_at", Err: ErrClockSkew,
+			Detail: fmt.Sprintf("%s is more than %s in the future", t.Format(TimestampLayout), MaxClockSkew)}
 	}
 	return nil
 }

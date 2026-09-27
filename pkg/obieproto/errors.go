@@ -35,9 +35,11 @@ var (
 	ErrInvalidSignature = errors.New("obieproto: invalid signature")
 	// ErrPublisherMismatch reports a publisher.peer_id that is not the peer
 	// ID of the signing key: when signing, the key does not belong to the
-	// peer ID; when verifying, the peer ID embeds no Ed25519 key; when
-	// receiving, the message was not published by that peer.
+	// peer ID; when verifying, the peer ID embeds no Ed25519 key.
 	ErrPublisherMismatch = errors.New("obieproto: publisher does not match the signing key")
+	// ErrClockSkew reports an issued_at more than MaxClockSkew ahead of the
+	// receiver's clock.
+	ErrClockSkew = errors.New("obieproto: issued_at too far in the future")
 	// ErrExpired reports a received event that is no longer relevant: a
 	// verdict past its TTL or a revocation older than MaxTTLSeconds.
 	ErrExpired = errors.New("obieproto: event expired")
