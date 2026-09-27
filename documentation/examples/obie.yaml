@@ -14,7 +14,8 @@
 # ("7d"). Paths must be absolute.
 
 node:
-  # Directory for persistent node state (identity key, event store).
+  # Directory for persistent node state (identity key; the event store lives
+  # in <state_dir>/db, created with mode 0700).
   state_dir: /var/lib/obie
   # observe: decide and record verdicts, but never block anything.
   # enforce: additionally push blocks to the enforcement backend.

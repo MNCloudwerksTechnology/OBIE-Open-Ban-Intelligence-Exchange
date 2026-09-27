@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
@@ -16,6 +17,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/logging"
 	"github.com/MNCloudwerksTechnology/obie/internal/mesh"
 	"github.com/MNCloudwerksTechnology/obie/internal/ops"
+	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
 
@@ -50,6 +52,8 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 	}
 
 	mgr := lifecycle.New(logs.Logger("lifecycle"), lifecycle.Options{StopTimeout: cfg.Node.ShutdownTimeout.Std()})
+	// The store starts first and stops last: every other subsystem may use it.
+	mgr.Register(store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{}))
 	mgr.Register(ops.New(cfg.Metrics.Listen, mgr.Status, logs.Logger(ops.Name)))
 	mgr.Register(m)
 	mgr.Register(admin.New(cfg.Admin.Socket, cfg.Admin.SocketGroup, admin.Info{

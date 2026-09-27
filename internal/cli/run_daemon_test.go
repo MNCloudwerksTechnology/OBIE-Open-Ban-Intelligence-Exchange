@@ -136,6 +136,9 @@ func TestRunDaemonGracefulShutdown(t *testing.T) {
 		return runDaemon(ctx, args, &stdout, &stderr)
 	})
 
+	if info, err := os.Stat(filepath.Join(n.stateDir, "db")); err != nil || !info.IsDir() {
+		t.Errorf("event store not opened in <state_dir>/db: %v", err)
+	}
 	resp, err := http.Get("http://" + n.metrics + "/readyz") // #nosec G107 -- test daemon URL.
 	if err != nil {
 		t.Fatal(err)

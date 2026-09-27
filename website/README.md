@@ -4,7 +4,7 @@ The public website of OBIE: an Angular front end, prerendered to static HTML
 at build time, served together with a small API by a Spring Boot back end. The
 production build is a single jar. The website is independent of the OBIE node;
 design decisions are recorded in
-[ADR 0008](../documentation/adr/0008-website-stack-and-build.md).
+[ADR 0009](../documentation/adr/0009-website-stack-and-build.md).
 
 ```text
 website/
