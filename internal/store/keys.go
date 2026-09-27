@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Keyspace prefixes; see ADR 0004.
+// Keyspace prefixes; see ADR 0008.
 var (
 	prefixEvent     = []byte("e/")
 	prefixVerdict   = []byte("v/")

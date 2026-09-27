@@ -25,7 +25,9 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"status": {summary: "show the node status", run: runStatus},
+	"status":   {summary: "show the node status", run: runStatus},
+	"identity": {summary: "show the node's peer ID and key fingerprint", run: runCtlIdentity},
+	"peers":    {summary: "list the connected mesh peers", run: runPeers},
 }
 
 // RunCtl runs obiectl with args and returns the process exit code.
@@ -87,10 +89,7 @@ func runStatus(ctx context.Context, client *admin.Client, args []string, stdout,
 
 	status, err := client.Status(ctx)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "obiectl: %v\n", err)
-		if errors.Is(err, admin.ErrDaemonNotRunning) {
-			_, _ = fmt.Fprintln(stderr, "obiectl: start obied, or point --socket at its admin.socket")
-		}
+		reportClientError(stderr, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -103,6 +102,14 @@ func runStatus(ctx context.Context, client *admin.Client, args []string, stdout,
 		return ExitIOError
 	}
 	return ExitOK
+}
+
+// reportClientError explains a failed admin API call.
+func reportClientError(stderr io.Writer, err error) {
+	_, _ = fmt.Fprintf(stderr, "obiectl: %v\n", err)
+	if errors.Is(err, admin.ErrDaemonNotRunning) {
+		_, _ = fmt.Fprintln(stderr, "obiectl: start obied, or point --socket at its admin.socket")
+	}
 }
 
 func writeJSON(w io.Writer, v any) error {
@@ -131,14 +138,10 @@ func writeStatusTable(w io.Writer, s *admin.StatusResponse) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	_, _ = fmt.Fprintf(tw, "\nSUBSYSTEM\tSTATE\tREADY\tERROR\n")
+	_, _ = fmt.Fprintf(tw, "\nSUBSYSTEM\tSTATE\tREADY\tERROR\tDETAIL\n")
 	for _, name := range names {
 		sub := s.Subsystems[name]
-		errText := sub.Error
-		if errText == "" {
-			errText = "-"
-		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, sub.State, yesNo(sub.Ready), errText)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", name, sub.State, yesNo(sub.Ready), orDash(sub.Error), orDash(sub.Detail))
 	}
 	return tw.Flush()
 }

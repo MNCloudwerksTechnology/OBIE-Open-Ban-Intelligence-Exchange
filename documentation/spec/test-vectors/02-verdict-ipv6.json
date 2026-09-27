@@ -1,0 +1,36 @@
+{
+  "name": "02-verdict-ipv6",
+  "description": "Verdict about a single IPv6 address; optional fields (asn, log_hash, mitre) are omitted and confidence is the integer 1.",
+  "private_key_seed": "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
+  "public_key": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c",
+  "event": {
+    "id": "0199a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a02",
+    "spec": "obie/0.1",
+    "type": "indicator.verdict",
+    "issued_at": "2026-09-27T12:00:00Z",
+    "indicator": {
+      "kind": "ipv6",
+      "value": "2a01:4f8:c17:b8f::2",
+      "scope": "/128"
+    },
+    "protocol": "http",
+    "evidence": {
+      "events": 3,
+      "reason": "path_traversal",
+      "honeypot": false
+    },
+    "verdict": {
+      "suggested_action": "watch",
+      "confidence": 1,
+      "ttl_seconds": 3600
+    },
+    "publisher": {
+      "peer_id": "12D3KooWDwTirQce1RRKnasT5fPVFgzXCy6SiRgSwrwPGLC7zE91",
+      "signature": "ed25519:6DNtYV3Lx7uwEwDrN7i3D5KlWmLc37K3gb9Lyx3Qp1HwhZQ8_QG272SBjCTbeO7WHauZ4XWKkYkUUouIsP6xDQ"
+    }
+  },
+  "canonical": "7b2265766964656e6365223a7b226576656e7473223a332c22686f6e6579706f74223a66616c73652c22726561736f6e223a22706174685f74726176657273616c227d2c226964223a2230313939613162322d633364342d376535662d386136622d376338643965306631613032222c22696e64696361746f72223a7b226b696e64223a2269707636222c2273636f7065223a222f313238222c2276616c7565223a22326130313a3466383a6331373a6238663a3a32227d2c226973737565645f6174223a22323032362d30392d32375431323a30303a30305a222c2270726f746f636f6c223a2268747470222c227075626c6973686572223a7b22706565725f6964223a22313244334b6f6f5744775469725163653152524b6e6173543566505646677a58437936536952675377727750474c43377a453931227d2c2273706563223a226f6269652f302e31222c2274797065223a22696e64696361746f722e76657264696374222c2276657264696374223a7b22636f6e666964656e6365223a312c227375676765737465645f616374696f6e223a227761746368222c2274746c5f7365636f6e6473223a333630307d7d",
+  "signature": "ed25519:6DNtYV3Lx7uwEwDrN7i3D5KlWmLc37K3gb9Lyx3Qp1HwhZQ8_QG272SBjCTbeO7WHauZ4XWKkYkUUouIsP6xDQ",
+  "protocol_valid": true,
+  "valid": true
+}

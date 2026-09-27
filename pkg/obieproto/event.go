@@ -5,6 +5,10 @@ import "time"
 // Spec is the protocol version identifier carried in every event.
 const Spec = "obie/0.1"
 
+// Topic is the GossipSub topic on which obie/0.1 events are published. Each
+// message on it is exactly one serialized event; see [Receive].
+const Topic = "obie/0.1/verdicts"
+
 // Event types defined by obie/0.1.
 const (
 	// TypeVerdict announces that the publisher considers an indicator hostile.
@@ -40,6 +44,9 @@ const (
 	MaxTTLSeconds = 2592000
 	// MaxClockSkew is how far issued_at may lie in the future.
 	MaxClockSkew = 5 * time.Minute
+	// MaxEvidenceEvents is the largest evidence.events, 2^53-1: the largest
+	// integer the canonical (signed) form represents exactly.
+	MaxEvidenceEvents = 1<<53 - 1
 )
 
 // Event is an obie/0.1 envelope. Which optional parts are required depends on

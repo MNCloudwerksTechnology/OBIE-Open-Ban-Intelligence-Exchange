@@ -272,7 +272,7 @@ func (s *DB) runValueLogGC() error {
 	}
 }
 
-// badgerOptions sizes Badger for a small VPS (ADR 0004).
+// badgerOptions sizes Badger for a small VPS (ADR 0008).
 func (s *DB) badgerOptions() badger.Options {
 	opts := badger.DefaultOptions(s.dir).
 		WithLogger(badgerLogger{s.log}).

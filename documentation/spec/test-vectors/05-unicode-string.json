@@ -1,0 +1,36 @@
+{
+  "name": "05-unicode-string",
+  "description": "Exercises RFC 8785 string canonicalization: evidence.reason holds non-ASCII characters (including one outside the Basic Multilingual Plane), a quotation mark, a backslash, HTML characters and control characters. The reason pattern of obie/0.1 forbids these, so Decode rejects the event, but the signature is valid: signing and verification do not depend on field validation.",
+  "private_key_seed": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+  "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  "event": {
+    "id": "0199a1b2-c3d4-7e5f-8a6b-7c8d9e0f1a05",
+    "spec": "obie/0.1",
+    "type": "indicator.verdict",
+    "issued_at": "2026-09-27T12:00:00Z",
+    "indicator": {
+      "kind": "ipv4",
+      "value": "85.10.20.30",
+      "scope": "/32"
+    },
+    "protocol": "ssh",
+    "evidence": {
+      "events": 5,
+      "reason": "grüße_€_😀_\"q\"_\\_<&>_\t\n\u0001\u2028",
+      "honeypot": false
+    },
+    "verdict": {
+      "suggested_action": "watch",
+      "confidence": 0.5,
+      "ttl_seconds": 60
+    },
+    "publisher": {
+      "peer_id": "12D3KooWQK1wnefoLrcVHbbnf5tLzbopUd3K3bFAoJpA7YJgL5pV",
+      "signature": "ed25519:HCuQcUSDmg1-jVJtyP5ENyEtbv0ghqJAFXwWoGLoqcq0Gne4MjZRt8UxdazBEaKATkrFlrNK5ctHR5G-voIHBA"
+    }
+  },
+  "canonical": "7b2265766964656e6365223a7b226576656e7473223a352c22686f6e6579706f74223a66616c73652c22726561736f6e223a226772c3bcc39f655fe282ac5ff09f98805f5c22715c225f5c5c5f3c263e5f5c745c6e5c75303030317fe280a8227d2c226964223a2230313939613162322d633364342d376535662d386136622d376338643965306631613035222c22696e64696361746f72223a7b226b696e64223a2269707634222c2273636f7065223a222f3332222c2276616c7565223a2238352e31302e32302e3330227d2c226973737565645f6174223a22323032362d30392d32375431323a30303a30305a222c2270726f746f636f6c223a22737368222c227075626c6973686572223a7b22706565725f6964223a22313244334b6f6f57514b31776e65666f4c7263564862626e6635744c7a626f705564334b336246416f4a704137594a674c357056227d2c2273706563223a226f6269652f302e31222c2274797065223a22696e64696361746f722e76657264696374222c2276657264696374223a7b22636f6e666964656e6365223a302e352c227375676765737465645f616374696f6e223a227761746368222c2274746c5f7365636f6e6473223a36307d7d",
+  "signature": "ed25519:HCuQcUSDmg1-jVJtyP5ENyEtbv0ghqJAFXwWoGLoqcq0Gne4MjZRt8UxdazBEaKATkrFlrNK5ctHR5G-voIHBA",
+  "protocol_valid": false,
+  "valid": true
+}

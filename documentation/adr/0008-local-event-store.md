@@ -1,4 +1,4 @@
-# ADR 0004: Local event store
+# ADR 0008: Local event store
 
 - **Status:** Accepted
 - **Date:** 2026-09-27

@@ -21,15 +21,23 @@ import (
 // testNode describes the listeners of a daemon started by a test.
 type testNode struct {
 	config   string // path of the configuration file
-	socket   string // admin socket
 	stateDir string // node.state_dir
+	socket   string // admin socket
 	metrics  string // ops listen address
 }
 
-// newTestNode writes a configuration with a temporary state dir, admin
-// socket and a free ops port; node holds extra keys of the node section,
-// indented by two spaces.
-func newTestNode(t *testing.T, node string) testNode {
+// newTestNode writes a configuration with a temporary state directory and
+// admin socket, a free ops port and a mesh on random loopback ports;
+// nodeKeys are further YAML lines of the node section, indented by two
+// spaces.
+func newTestNode(t *testing.T, nodeKeys string) testNode {
+	t.Helper()
+	return newTestNodeWith(t, nodeKeys, "mesh:\n  listen: [/ip4/127.0.0.1/tcp/0, /ip4/127.0.0.1/udp/0/quic-v1]\n")
+}
+
+// newTestNodeWith is newTestNode with the mesh section, and any further
+// top-level sections, given as YAML in sections.
+func newTestNodeWith(t *testing.T, nodeKeys, sections string) testNode {
 	t.Helper()
 	// Unix socket paths are limited to about 100 bytes; t.TempDir can exceed that.
 	dir, err := os.MkdirTemp("", "obie")
@@ -37,10 +45,10 @@ func newTestNode(t *testing.T, node string) testNode {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	n := testNode{socket: filepath.Join(dir, "obie.sock"), stateDir: filepath.Join(dir, "state"), metrics: freeAddr(t)}
+	n := testNode{stateDir: filepath.Join(dir, "state"), socket: filepath.Join(dir, "obie.sock"), metrics: freeAddr(t)}
 	n.config = writeConfig(t, fmt.Sprintf(
-		"node:\n  state_dir: %s\n%sadmin:\n  socket: %s\n  socket_group: obie-test-no-such-group\nmetrics:\n  listen: %s\n",
-		n.stateDir, node, n.socket, n.metrics))
+		"node:\n  state_dir: %s\n%sadmin:\n  socket: %s\n  socket_group: obie-test-no-such-group\nmetrics:\n  listen: %s\n%s",
+		n.stateDir, nodeKeys, n.socket, n.metrics, sections))
 	return n
 }
 
@@ -240,5 +248,62 @@ func TestRunDaemonCanceledDuringStartup(t *testing.T) {
 	}
 	if findLog(logLines(t, &stderr), "obied", "shutdown requested during startup") == nil {
 		t.Errorf("no startup-interrupted line:\n%s", stderr.String())
+	}
+}
+
+func TestRunDaemonPersistsIdentity(t *testing.T) {
+	n := newTestNode(t, "")
+	var peerIDs []any
+	for i, msg := range []string{"node identity generated", "node identity loaded"} {
+		var stderr bytes.Buffer
+		ctx, cancel := context.WithCancel(context.Background())
+		exit := startDaemon(ctx, t, n, &stderr, func(ctx context.Context, args []string) int {
+			return runDaemon(ctx, args, &bytes.Buffer{}, &stderr)
+		})
+		cancel()
+		if code := waitExit(t, exit, &stderr); code != ExitOK {
+			t.Fatalf("run %d: exit code = %d:\n%s", i, code, stderr.String())
+		}
+		l := findLog(logLines(t, &stderr), "obied", msg)
+		if l == nil {
+			t.Fatalf("run %d: no %q line:\n%s", i, msg, stderr.String())
+		}
+		if l["key_file"] != filepath.Join(n.stateDir, "node.key") || l["fingerprint"] == nil {
+			t.Errorf("run %d: identity line = %v", i, l)
+		}
+		peerIDs = append(peerIDs, l["peer_id"])
+	}
+	if peerIDs[0] != peerIDs[1] {
+		t.Errorf("peer ID changed across restarts: %v", peerIDs)
+	}
+	info, err := os.Stat(filepath.Join(n.stateDir, "node.key"))
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("key file: %v, mode %v", err, info.Mode())
+	}
+}
+
+func TestRunDaemonRefusesInsecureKey(t *testing.T) {
+	n := newTestNode(t, "")
+	if err := os.MkdirAll(n.stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	keyFile := filepath.Join(n.stateDir, "node.key")
+	if err := os.WriteFile(keyFile, []byte("key"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(keyFile, 0o644); err != nil { // #nosec G302 -- the insecure mode under test.
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	if code := runDaemon(context.Background(), []string{"--config", n.config}, &bytes.Buffer{}, &stderr); code != ExitFailure {
+		t.Fatalf("exit code = %d, want %d:\n%s", code, ExitFailure, stderr.String())
+	}
+	l := findLog(logLines(t, &stderr), "obied", "obied failed")
+	if msg, _ := l["error"].(string); !strings.Contains(msg, "node identity: insecure key file") ||
+		!strings.Contains(msg, "chmod 600 "+keyFile) {
+		t.Errorf("failure line = %v", l)
+	}
+	if _, err := os.Lstat(n.socket); !os.IsNotExist(err) {
+		t.Errorf("admin socket created although the identity failed: %v", err)
 	}
 }
