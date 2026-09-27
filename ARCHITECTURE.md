@@ -56,6 +56,12 @@ Only the packages that exist today are listed in detail; the remaining
   (`make build` does this from `git describe`).
 - **Static binaries.** Builds use `CGO_ENABLED=0`; the target platforms are
   Linux amd64 and arm64.
+- **Protocol model.** `pkg/obieproto` is the single source of truth for the
+  obie/0.1 event format. Received events go through `obieproto.Decode`
+  (strict: size ≤ 4 KiB, no unknown/duplicate keys, full validation); events a
+  node publishes are built, `Normalize`d and `Validate`d. Validation never
+  rewrites a received event, and indicators in internal or special-purpose
+  ranges are always rejected — a node must never publish internal addresses.
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck) must pass before every commit. Tool versions
   are pinned in the `Makefile`.
