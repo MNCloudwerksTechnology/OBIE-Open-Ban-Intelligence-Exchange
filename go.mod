@@ -2,6 +2,8 @@ module github.com/MNCloudwerksTechnology/obie
 
 go 1.26.0
 
+toolchain go1.26.7
+
 require (
 	filippo.io/edwards25519 v1.1.1
 	github.com/libp2p/go-libp2p v0.50.0
