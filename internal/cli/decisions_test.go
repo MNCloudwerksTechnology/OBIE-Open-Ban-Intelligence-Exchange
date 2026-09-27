@@ -144,7 +144,10 @@ func banVerdict(id, publisher, value string, confidence float64) *obieproto.Even
 }
 
 // TestObiectlExplainAgainstInProcessDaemon stores a local verdict and a
-// verdict of a single trusted peer, starts obied and explains both.
+// verdict of a single trusted peer, and a local verdict on an address of
+// the built-in allow-list, starts obied and explains them. The benchmarking
+// range 198.18.0.0/15 stands in for public addresses: it is not on the
+// built-in allow-list.
 func TestObiectlExplainAgainstInProcessDaemon(t *testing.T) {
 	const peer = "12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd"
 	n := newTestNodeWith(t, "", "mesh:\n  listen: [/ip4/127.0.0.1/tcp/0]\n"+
@@ -154,8 +157,9 @@ func TestObiectlExplainAgainstInProcessDaemon(t *testing.T) {
 		t.Fatal(err)
 	}
 	putVerdicts(t, n.stateDir,
-		banVerdict("01900000-0000-7000-8000-000000000001", key.PeerID(), "203.0.113.7", 0.8),
-		banVerdict("01900000-0000-7000-8000-000000000002", peer, "203.0.113.8", 1))
+		banVerdict("01900000-0000-7000-8000-000000000001", key.PeerID(), "198.18.0.7", 0.8),
+		banVerdict("01900000-0000-7000-8000-000000000002", peer, "198.18.0.8", 1),
+		banVerdict("01900000-0000-7000-8000-000000000003", key.PeerID(), "203.0.113.9", 1))
 
 	var stderr bytes.Buffer
 	ctx, cancel := context.WithCancel(context.Background())
@@ -173,22 +177,29 @@ func TestObiectlExplainAgainstInProcessDaemon(t *testing.T) {
 	}
 
 	var local admin.DecisionResponse
-	if err := json.Unmarshal([]byte(ctl("explain", "--json", "203.0.113.7")), &local); err != nil {
+	if err := json.Unmarshal([]byte(ctl("explain", "--json", "198.18.0.7")), &local); err != nil {
 		t.Fatal(err)
 	}
 	if local.State != admin.StateBlock || !local.LocalAutoblock || len(local.Publishers) != 1 || !local.Publishers[0].Local ||
-		local.Publishers[0].PeerID != key.PeerID() || local.ExpiresAt == nil || local.Sovereignty == nil {
+		local.Publishers[0].PeerID != key.PeerID() || local.ExpiresAt == nil || local.Sovereignty == nil || local.Sovereignty.Effect != "" {
 		t.Errorf("local verdict explanation = %+v", local)
 	}
+	allowed := ctl("explain", "203.0.113.9")
+	for _, want := range []string{"Decision:              allowed\n",
+		"Allow-list/overrides:  allow-listed: built-in range 203.0.113.0/24 (documentation (TEST-NET-3))\n"} {
+		if !strings.Contains(allowed, want) {
+			t.Errorf("allow-listed explanation lacks %q:\n%s", want, allowed)
+		}
+	}
 
-	single := ctl("explain", "203.0.113.8")
+	single := ctl("explain", "198.18.0.8")
 	for _, want := range []string{"Decision:              none\n", "Publishers:            1 (quorum 2)\n",
 		"seed       " + peer + "  ban     1       1           1      yes"} {
 		if !strings.Contains(single, want) {
 			t.Errorf("single peer explanation lacks %q:\n%s", want, single)
 		}
 	}
-	if out := ctl("explain", "198.51.100.1"); !strings.Contains(out, "No active verdicts.") {
+	if out := ctl("explain", "198.18.0.1"); !strings.Contains(out, "No active verdicts.") || !strings.Contains(out, "Allow-list/overrides:  none apply\n") {
 		t.Errorf("unknown indicator explanation:\n%s", out)
 	}
 
@@ -196,13 +207,16 @@ func TestObiectlExplainAgainstInProcessDaemon(t *testing.T) {
 	if err := json.Unmarshal([]byte(ctl("decisions", "--state", "block", "--json")), &blocked); err != nil {
 		t.Fatal(err)
 	}
-	if len(blocked.Decisions) != 1 || blocked.Decisions[0].Indicator.Value != "203.0.113.7" {
+	if len(blocked.Decisions) != 1 || blocked.Decisions[0].Indicator.Value != "198.18.0.7" {
 		t.Errorf("blocked decisions = %+v", blocked.Decisions)
 	}
-	if out := ctl("decisions"); !strings.Contains(out, "ipv4:203.0.113.8") || !strings.Contains(out, "ipv4:203.0.113.7") {
+	if out := ctl("decisions", "--state", "allowed"); !strings.Contains(out, "ipv4:203.0.113.9") || strings.Contains(out, "198.18.0") {
+		t.Errorf("allowed decisions:\n%s", out)
+	}
+	if out := ctl("decisions"); !strings.Contains(out, "ipv4:198.18.0.8") || !strings.Contains(out, "ipv4:198.18.0.7") {
 		t.Errorf("decisions table:\n%s", out)
 	}
-	if out := ctl("status"); !strings.Contains(out, "decision   running  yes    -      1 blocked of 2 indicators") {
+	if out := ctl("status"); !strings.Contains(out, "decision   running  yes    -      1 blocked of 3 indicators") {
 		t.Errorf("status lacks the decision subsystem:\n%s", out)
 	}
 

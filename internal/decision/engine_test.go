@@ -464,11 +464,24 @@ func TestEngineForceAllow(t *testing.T) {
 		t.Errorf("Explain = %+v, %v", d.Sovereignty, err)
 	}
 
+	// A force-block inside the force-allowed range is overruled while the
+	// force-allow lasts, and blocks once it is gone.
+	fb := ipv4("198.51.100.31")
+	if err := f.store.SetOverride(store.Override{Indicator: fb, Action: store.ForceBlock}); err != nil {
+		t.Fatal(err)
+	}
+	f.engine.processDirty()
+	wantChanges(t, f.rec.take())
+
 	if _, err := f.store.DeleteOverride(rng.Key()); err != nil {
 		t.Fatal(err)
 	}
 	f.engine.processDirty()
-	wantChanges(t, f.rec.take(), "added/override")
+	changes = f.rec.take()
+	wantChanges(t, changes, "added/override", "added/override")
+	if len(changes) == 2 && (changes[0].Key != inside.Key() || changes[1].Key != fb.Key()) {
+		t.Errorf("changes = %+v", changes)
+	}
 
 	// A force-block on this node's own address is overruled.
 	own := ipv4("198.51.100.99")

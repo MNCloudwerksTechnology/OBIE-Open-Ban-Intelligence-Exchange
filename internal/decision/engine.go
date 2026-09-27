@@ -319,18 +319,29 @@ func (e *Engine) keptKeys() []string {
 	return keys
 }
 
-// overlapping returns the keys of the kept decisions whose indicator
-// overlaps any of ranges.
+// overlapping returns the keys of the kept decisions and of the
+// force-blocks whose indicator overlaps any of ranges. A force-block that a
+// force-allow overruled is not kept, but must be re-decided when the
+// force-allow goes.
 func (e *Engine) overlapping(ranges []netip.Prefix) []string {
 	if len(ranges) == 0 {
 		return nil
 	}
+	overlaps := func(ind obieproto.Indicator) bool {
+		p, err := sovereignty.PrefixOf(ind)
+		return err == nil && slices.ContainsFunc(ranges, p.Overlaps)
+	}
+	var keys []string
+	_, r := e.current()
+	for _, o := range r.Overrides.ForceBlocks() {
+		if overlaps(o.Indicator) {
+			keys = append(keys, o.Indicator.Key())
+		}
+	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	var keys []string
 	for key, d := range e.decisions {
-		p, err := sovereignty.PrefixOf(d.Indicator)
-		if err == nil && slices.ContainsFunc(ranges, p.Overlaps) {
+		if overlaps(d.Indicator) {
 			keys = append(keys, key)
 		}
 	}

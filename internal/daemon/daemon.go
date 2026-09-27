@@ -13,26 +13,62 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
+	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
 	"github.com/MNCloudwerksTechnology/obie/internal/logging"
 	"github.com/MNCloudwerksTechnology/obie/internal/mesh"
 	"github.com/MNCloudwerksTechnology/obie/internal/ops"
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
-// Component is the logger name of the daemon itself.
-const Component = "obied"
+// Logger names.
+const (
+	// Component is the logger name of the daemon itself.
+	Component            = "obied"
+	sovereigntyComponent = "allowlist"
+	enforceComponent     = "enforce"
+	reloadComponent      = "reload"
+)
+
+// waitForShutdown blocks until ctx is canceled, reloading the configuration
+// with rl whenever reload fires.
+func waitForShutdown(ctx context.Context, reload <-chan struct{}, rl *reloader) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-reload:
+			_ = rl.reload(ctx) // a failure is logged and keeps the running configuration
+		}
+	}
+}
+
+// Options configures Run beyond the configuration file.
+type Options struct {
+	// Reload receives a value whenever the configuration is to be reloaded
+	// (SIGHUP); nil never reloads.
+	Reload <-chan struct{}
+	// LoadConfig reads the configuration file again; required with Reload.
+	LoadConfig func() (*config.Config, error)
+	// Env is how the allow-list learns the host's addresses; the zero
+	// value uses the real host.
+	Env sovereignty.Env
+}
 
 // Run loads the node identity from node.state_dir, generating it on the
-// first start, then starts the subsystems configured by cfg and blocks until
-// ctx is canceled, then shuts them down in reverse order within
-// node.shutdown_timeout. It returns nil after a clean shutdown, also when ctx
-// is canceled during startup, and an error when a subsystem fails to start
-// or to stop in time, and when the identity cannot be loaded.
-func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
+// first start, builds the allow-list, then starts the subsystems configured
+// by cfg and blocks until ctx is canceled, reloading the configuration
+// whenever opts.Reload fires; then it shuts the subsystems down in reverse
+// order within node.shutdown_timeout. It returns nil after a clean
+// shutdown, also when ctx is canceled during startup, and an error when a
+// subsystem fails to start or to stop in time, and when the identity or the
+// allow-list cannot be loaded. A failed reload keeps the running
+// configuration.
+func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Options) error {
 	log := logs.Logger(Component)
 	startedAt := time.Now()
 
@@ -40,6 +76,11 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 	if err != nil {
 		return err
 	}
+	allow, err := sovereignty.Build(ctx, cfg, opts.Env, logs.Logger(sovereigntyComponent))
+	if err != nil {
+		return fmt.Errorf("allow-list: %w", err)
+	}
+	log.Info("allow-list loaded", "entries", len(allow.Entries()))
 
 	db := store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{})
 	// go-libp2p's own logs join ours; below warn they are too chatty.
@@ -59,13 +100,18 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 	mgr := lifecycle.New(logs.Logger("lifecycle"), lifecycle.Options{StopTimeout: cfg.Node.ShutdownTimeout.Std()})
 	// The store starts first and stops last: every other subsystem may use it.
 	mgr.Register(db)
-	engine := decision.New(db, decision.NewPolicy(id.PeerID(), cfg.Trust, cfg.Decision), logs.Logger(decision.Name), decision.Options{})
+	engine := decision.New(db, decision.NewPolicy(id.PeerID(), cfg.Trust, cfg.Decision), logs.Logger(decision.Name),
+		decision.Options{Allowlist: allow})
+	// The gate is the only path to enforcement; it subscribes before the
+	// engine starts, so it sees the initial blocks.
+	gate := enforce.NewGate(cfg.Node.Mode, nil, logs.Logger(enforceComponent))
+	engine.Subscribe(gate.Handle)
 	mgr.Register(engine)
 	mgr.Register(ops.New(cfg.Metrics.Listen, mgr.Status, logs.Logger(ops.Name)))
 	mgr.Register(m)
 	mgr.Register(admin.New(cfg.Admin.Socket, cfg.Admin.SocketGroup, admin.Info{
 		Version:   version.Version,
-		Mode:      func() string { return string(cfg.Node.Mode) },
+		Mode:      func() string { return string(gate.Mode()) },
 		StartedAt: startedAt,
 		Identity:  admin.NewIdentityResponse(id),
 		Status:    mgr.Status,
@@ -102,7 +148,9 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 	log.Info("obied started", "version", version.Version, "mode", cfg.Node.Mode, "peer_id", id.PeerID(),
 		"admin_socket", cfg.Admin.Socket, "metrics_listen", cfg.Metrics.Listen)
 
-	<-ctx.Done()
+	rl := &reloader{running: cfg, self: id.PeerID(), load: opts.LoadConfig, env: opts.Env,
+		engine: engine, gate: gate, mesh: m, log: logs.Logger(reloadComponent)}
+	waitForShutdown(ctx, opts.Reload, rl)
 	log.Info("shutdown requested", "timeout", cfg.Node.ShutdownTimeout.String())
 	if err := mgr.Stop(context.WithoutCancel(ctx)); err != nil {
 		return fmt.Errorf("shutdown: %w", err)
