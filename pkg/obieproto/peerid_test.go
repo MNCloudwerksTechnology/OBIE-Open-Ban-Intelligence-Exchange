@@ -56,6 +56,33 @@ func TestPeerIDFromPublicKeyRejectsWrongSize(t *testing.T) {
 	}
 }
 
+// weakKeys are public keys crypto/ed25519 accepts but no key pair has.
+var weakKeys = map[string]string{
+	// Small order: the identity (0, 1), (0, -1) of order 2, and a point of
+	// order 8 (from the libsodium blocklist).
+	"identity":     "0100000000000000000000000000000000000000000000000000000000000000",
+	"order 2":      "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+	"order 8":      "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+	"order 4, x=0": "0000000000000000000000000000000000000000000000000000000000000000",
+	// Non-canonical: y = p encodes y = 0.
+	"y = p": "edffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+	// Non-canonical: y = 1 with the sign bit of x = 0 set.
+	"negative zero x": "0100000000000000000000000000000000000000000000000000000000000080",
+}
+
+func TestWeakPublicKeysAreRejected(t *testing.T) {
+	for name, pub := range weakKeys {
+		t.Run(name, func(t *testing.T) {
+			if id, err := PeerIDFromPublicKey(mustHex(t, pub)); err == nil {
+				t.Errorf("PeerIDFromPublicKey(%s) = %q, want error", pub, id)
+			}
+			if key, err := PublicKeyFromPeerID(rawPeerID(mustHex(t, pub))); err == nil {
+				t.Errorf("PublicKeyFromPeerID(peer ID of %s) = %x, want error", pub, key)
+			}
+		})
+	}
+}
+
 func TestPublicKeyFromPeerIDRejects(t *testing.T) {
 	tests := []struct{ name, peerID string }{
 		{"empty", ""},

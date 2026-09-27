@@ -3,6 +3,7 @@ package obieproto
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 )
 
@@ -126,8 +127,8 @@ func forbid(allowedIn string, fields ...presence) error {
 }
 
 func (ev *Evidence) validate() error {
-	if ev.Events < 1 {
-		return invalid("evidence.events", "%d must be at least 1", ev.Events)
+	if ev.Events < 1 || ev.Events > MaxEvidenceEvents {
+		return invalid("evidence.events", "%d must be in [1, %d]", ev.Events, int64(MaxEvidenceEvents))
 	}
 	if !reasonPattern.MatchString(ev.Reason) {
 		return invalid("evidence.reason", "%q must match %s", ev.Reason, reasonPattern)
@@ -142,8 +143,9 @@ func (v *Verdict) validate() error {
 	if v.SuggestedAction != ActionBan && v.SuggestedAction != ActionWatch {
 		return invalid("verdict.suggested_action", "%q must be %q or %q", v.SuggestedAction, ActionBan, ActionWatch)
 	}
-	// Written as a negated range so that NaN is rejected too.
-	if !(v.Confidence >= 0 && v.Confidence <= 1) {
+	// Written as a negated range so that NaN is rejected too. Negative zero is
+	// rejected because it signs like 0 (RFC 8785 writes both as 0).
+	if !(v.Confidence >= 0 && v.Confidence <= 1) || math.Signbit(v.Confidence) {
 		return invalid("verdict.confidence", "%v must be in [0, 1]", v.Confidence)
 	}
 	if v.TTLSeconds < MinTTLSeconds || v.TTLSeconds > MaxTTLSeconds {

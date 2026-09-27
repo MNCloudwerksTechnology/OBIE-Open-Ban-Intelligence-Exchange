@@ -15,6 +15,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mr-tron/base58"
+
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto/internal/jcs"
 )
 
@@ -32,9 +34,11 @@ type testVector struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	// PrivateKeySeed is the 32-byte Ed25519 seed (RFC 8032) of the key that
-	// made the signature, in hex. It is public and for tests only.
-	PrivateKeySeed string `json:"private_key_seed"`
-	// PublicKey is the public key of PrivateKeySeed, in hex.
+	// made the signature, in hex. It is public and for tests only. A forged
+	// signature has no seed.
+	PrivateKeySeed string `json:"private_key_seed,omitempty"`
+	// PublicKey is the public key of PrivateKeySeed, in hex, or the forger's
+	// weak key.
 	PublicKey string `json:"public_key"`
 	// Event is the event as a receiver gets it, signature included.
 	Event json.RawMessage `json:"event"`
@@ -48,6 +52,39 @@ type testVector struct {
 	ProtocolValid bool `json:"protocol_valid"`
 	// Valid reports whether the signature verifies.
 	Valid bool `json:"valid"`
+	// Error classifies why an invalid vector is rejected: vectorErrSignature
+	// or vectorErrPublisher.
+	Error string `json:"error,omitempty"`
+}
+
+// Values of testVector.Error.
+const (
+	vectorErrSignature = "invalid_signature"
+	vectorErrPublisher = "publisher_mismatch"
+)
+
+// vectorErrors maps testVector.Error to the sentinel Verify returns.
+var vectorErrors = map[string]error{vectorErrSignature: ErrInvalidSignature, vectorErrPublisher: ErrPublisherMismatch}
+
+// weakPublicKey is the identity point: a small-order Ed25519 public key for
+// which the signature (R = identity, S = 0) verifies every message under
+// plain RFC 8032 verification.
+const weakPublicKey = "0100000000000000000000000000000000000000000000000000000000000000"
+
+// forgedSignature is (R = identity, S = 0).
+var forgedSignature = append(mustHexConst(weakPublicKey), make([]byte, 32)...)
+
+func mustHexConst(s string) []byte {
+	b, err := hex.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
+
+// rawPeerID builds a peer ID without checking the key, as a forger would.
+func rawPeerID(pub []byte) string {
+	return base58.Encode(append(bytes.Clone(ed25519PeerIDPrefix), pub...))
 }
 
 // vectorSpec describes how to build one vector.
@@ -58,9 +95,14 @@ type vectorSpec struct {
 	signer, peerOf string
 	event          func() *Event
 	// tamper changes the event after signing (negative vectors).
-	tamper        func(e *Event)
+	tamper func(e *Event)
+	// forged replaces key and signature with weakPublicKey and
+	// forgedSignature; signer and peerOf are ignored.
+	forged        bool
 	protocolValid bool
 	valid         bool
+	// err is testVector.Error.
+	err string
 }
 
 func vectorSpecs() []vectorSpec {
@@ -167,7 +209,7 @@ func vectorSpecs() []vectorSpec {
 			tamper: func(e *Event) {
 				e.Indicator.Value = "85.10.20.31"
 			},
-			protocolValid: true, valid: false,
+			protocolValid: true, valid: false, err: vectorErrSignature,
 		},
 		{
 			name: "07-wrong-key",
@@ -175,7 +217,16 @@ func vectorSpecs() []vectorSpec {
 				"was made by the key of private_key_seed (key B). The signature does not verify.",
 			signer: testSeedB, peerOf: testSeedA,
 			event:         func() *Event { return vectorSpecs()[0].event() },
-			protocolValid: true, valid: false,
+			protocolValid: true, valid: false, err: vectorErrSignature,
+		},
+		{
+			name: "08-weak-key",
+			description: "Negative: publisher.peer_id embeds the identity point, a public key of small order, and the " +
+				"signature is (R = identity, S = 0). Plain RFC 8032 verification accepts this signature for any event, " +
+				"so verifiers must reject public keys that are small-order or not canonically encoded.",
+			event:         func() *Event { return vectorSpecs()[0].event() },
+			forged:        true,
+			protocolValid: true, valid: false, err: vectorErrPublisher,
 		},
 	}
 }
@@ -183,19 +234,23 @@ func vectorSpecs() []vectorSpec {
 // buildVector produces the file content of one vector.
 func buildVector(t *testing.T, spec vectorSpec) []byte {
 	t.Helper()
-	signer := testKey(t, spec.signer)
-	peerID, err := PeerIDFromPublicKey(testKey(t, spec.peerOf).Public().(ed25519.PublicKey))
-	if err != nil {
-		t.Fatal(err)
-	}
 	e := spec.event()
-	e.Publisher.PeerID = peerID
+	// pub is the signer's public key, publisher that of the peer ID.
+	pub, publisher := mustHex(t, weakPublicKey), mustHex(t, weakPublicKey)
+	sign := func([]byte) []byte { return forgedSignature }
+	if !spec.forged {
+		signer := testKey(t, spec.signer)
+		pub = signer.Public().(ed25519.PublicKey)
+		publisher = testKey(t, spec.peerOf).Public().(ed25519.PublicKey)
+		// ed25519.Sign rather than Sign, so that 07 can sign for another peer ID.
+		sign = func(msg []byte) []byte { return ed25519.Sign(signer, msg) }
+	}
+	e.Publisher.PeerID = rawPeerID(publisher)
 	msg, err := CanonicalBytes(e)
 	if err != nil {
 		t.Fatalf("%s: CanonicalBytes() error = %v", spec.name, err)
 	}
-	// ed25519.Sign rather than Sign, so that 07 can sign for another peer ID.
-	e.Publisher.Signature = signaturePrefix + base64.RawURLEncoding.EncodeToString(ed25519.Sign(signer, msg))
+	e.Publisher.Signature = signaturePrefix + base64.RawURLEncoding.EncodeToString(sign(msg))
 	if spec.tamper != nil {
 		spec.tamper(e)
 	}
@@ -210,12 +265,13 @@ func buildVector(t *testing.T, spec vectorSpec) []byte {
 		Name:           spec.name,
 		Description:    spec.description,
 		PrivateKeySeed: spec.signer,
-		PublicKey:      hex.EncodeToString(signer.Public().(ed25519.PublicKey)),
+		PublicKey:      hex.EncodeToString(pub),
 		Event:          eventJSON,
 		Canonical:      hex.EncodeToString(msg),
 		Signature:      e.Publisher.Signature,
 		ProtocolValid:  spec.protocolValid,
 		Valid:          spec.valid,
+		Error:          spec.err,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -309,9 +365,12 @@ func readVector(t *testing.T, file string) testVector {
 }
 
 func checkVector(t *testing.T, v testVector) {
-	key := testKey(t, v.PrivateKeySeed)
-	if got := hex.EncodeToString(key.Public().(ed25519.PublicKey)); got != v.PublicKey {
-		t.Errorf("public_key = %s, want %s derived from the seed", v.PublicKey, got)
+	var key ed25519.PrivateKey
+	if v.PrivateKeySeed != "" {
+		key = testKey(t, v.PrivateKeySeed)
+		if got := hex.EncodeToString(key.Public().(ed25519.PublicKey)); got != v.PublicKey {
+			t.Errorf("public_key = %s, want %s derived from the seed", v.PublicKey, got)
+		}
 	}
 	canonical := mustHex(t, v.Canonical)
 
@@ -340,13 +399,16 @@ func checkVector(t *testing.T, v testVector) {
 		t.Errorf("Decode() error = %v, want protocol_valid = %v", err, v.ProtocolValid)
 	}
 
-	resigned := signaturePrefix + base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, canonical))
 	verifyErr := Verify(&e)
-	switch {
-	case v.Valid && (verifyErr != nil || resigned != v.Signature):
+	if !v.Valid {
+		if want := vectorErrors[v.Error]; want == nil || !errors.Is(verifyErr, want) {
+			t.Errorf("Verify() = %v, want error %q", verifyErr, v.Error)
+		}
+		return
+	}
+	resigned := signaturePrefix + base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, canonical))
+	if verifyErr != nil || resigned != v.Signature {
 		t.Errorf("Verify() = %v and re-signing gives %s; want a valid signature %s", verifyErr, resigned, v.Signature)
-	case !v.Valid && !errors.Is(verifyErr, ErrInvalidSignature):
-		t.Errorf("Verify() = %v, want %v", verifyErr, ErrInvalidSignature)
 	}
 }
 

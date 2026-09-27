@@ -3,6 +3,7 @@ module github.com/MNCloudwerksTechnology/obie
 go 1.23
 
 require (
+	filippo.io/edwards25519 v1.1.1
 	github.com/mr-tron/base58 v1.2.0
 	github.com/multiformats/go-multiaddr v0.16.1
 	go.yaml.in/yaml/v3 v3.0.5

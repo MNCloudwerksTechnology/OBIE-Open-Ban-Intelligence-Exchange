@@ -28,8 +28,10 @@ Ed25519 key and its peer ID.
   non-finite numbers and integer literals beyond ±(2^53−1) are errors, never
   repaired. Otherwise two different events could share one signature (for
   example `encoding/json` turns invalid UTF-8 into U+FFFD, and an `int64`
-  beyond 2^53 loses precision as a double). `CanonicalBytes` checks event
-  strings for valid UTF-8 before marshalling for the same reason.
+  beyond 2^53 loses precision as a double). For the same reason
+  `CanonicalBytes` rejects event strings that are not valid UTF-8 and an
+  `issued_at` with sub-second precision, and `Validate` limits
+  `evidence.events` to 2^53−1 and rejects a confidence of −0.
 - **Signed bytes:** `json.Marshal(event)`, parsed generically, with
   `publisher.signature` removed, then JCS-encoded. Deriving the form from the
   struct's JSON encoding keeps it in step with the wire format; a
@@ -42,6 +44,13 @@ Ed25519 key and its peer ID.
   module graph via go-multiaddr) and cross-checked with go-libp2p. We do not
   import go-libp2p for this; the mesh work package will, and must produce
   the same IDs. `PublicKeyFromPeerID` accepts only exactly this encoding.
+- **Weak keys are rejected.** `crypto/ed25519` verifies signatures for any
+  32-byte key, including small-order points, for which signatures can be
+  forged without a private key (identity key, `R = identity, S = 0`
+  verifies every message). Peer IDs whose key is not a canonical point
+  encoding or has small order are rejected, using
+  `filippo.io/edwards25519` (the library underlying Go's own Ed25519
+  implementation) for point decoding and the cofactor check.
 - **API:** `Sign(event, key)` fails with `ErrPublisherMismatch` unless
   `publisher.peer_id` is the key's peer ID. `Verify(event)` takes the key from
   the peer ID: a peer ID without an embedded Ed25519 key is
@@ -61,5 +70,5 @@ Ed25519 key and its peer ID.
   `omitempty`) changes the signed bytes. It is a protocol change, shows up as
   out-of-date test vectors, and needs a new spec version.
 - Integer fields of an event must stay within ±(2^53−1) to be signable.
-- Verification costs about 60 µs per event on one core (about 17k
-  events/s on a Ryzen 9 7950X3D). Two-thirds of that is Ed25519 itself.
+- Verification costs about 64 µs per event on one core (about 15.6k
+  events/s on a Ryzen 9 7950X3D). Most of that is Ed25519 itself.

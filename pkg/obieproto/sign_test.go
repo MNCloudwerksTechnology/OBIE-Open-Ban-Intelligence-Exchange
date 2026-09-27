@@ -126,6 +126,17 @@ func TestSignRejects(t *testing.T) {
 			wantErr: ErrMalformed,
 		},
 		{
+			name: "sub-second issued_at",
+			event: func() *Event {
+				e := validVerdict()
+				e.Publisher.PeerID = testPeerIDA
+				e.IssuedAt.Time = e.IssuedAt.Add(500 * time.Millisecond)
+				return e
+			},
+			key:     keyA,
+			wantErr: ErrMalformed,
+		},
+		{
 			name:    "nil event",
 			event:   func() *Event { return nil },
 			key:     keyA,
@@ -223,6 +234,29 @@ func TestVerifyRejects(t *testing.T) {
 	}
 	if err := Verify(nil); !errors.Is(err, ErrMalformed) {
 		t.Errorf("Verify(nil) error = %v, want %v", err, ErrMalformed)
+	}
+}
+
+// TestVerifyRejectsWeakKeyForgery shows why weak keys must be rejected: with
+// the identity point as public key, crypto/ed25519 accepts the signature
+// (R = identity, S = 0) for any message.
+func TestVerifyRejectsWeakKeyForgery(t *testing.T) {
+	weak := mustHex(t, weakPublicKey)
+	for _, value := range []string{"85.10.20.30", "1.2.3.4"} {
+		e := validVerdict()
+		e.Indicator.Value = value
+		e.Publisher.PeerID = rawPeerID(weak)
+		e.Publisher.Signature = "ed25519:" + base64.RawURLEncoding.EncodeToString(forgedSignature)
+		msg, err := CanonicalBytes(e)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ed25519.Verify(weak, msg, forgedSignature) {
+			t.Fatal("crypto/ed25519 rejects the forgery; the test premise no longer holds")
+		}
+		if err := Verify(e); !errors.Is(err, ErrPublisherMismatch) {
+			t.Errorf("Verify(forged %s) error = %v, want %v", value, err, ErrPublisherMismatch)
+		}
 	}
 }
 

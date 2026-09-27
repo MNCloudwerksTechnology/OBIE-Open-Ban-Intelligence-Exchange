@@ -15,8 +15,9 @@ import (
 
 // CanonicalBytes returns the bytes an event's signature covers: the RFC 8785
 // (JSON Canonicalization Scheme) form of the event's JSON encoding with
-// publisher.signature removed. Strings must be valid UTF-8 and integers must
-// lie within ±(2^53-1); otherwise the error matches [ErrMalformed].
+// publisher.signature removed. Strings must be valid UTF-8, integers must lie
+// within ±(2^53-1) and issued_at must have whole seconds, so that every
+// field is covered exactly; otherwise the error matches [ErrMalformed].
 func CanonicalBytes(e *Event) ([]byte, error) {
 	if e == nil {
 		return nil, &FieldError{Err: ErrMalformed, Detail: "nil event"}
@@ -25,6 +26,11 @@ func CanonicalBytes(e *Event) ([]byte, error) {
 	// let two different events share one signature.
 	if path, bad := invalidUTF8(reflect.ValueOf(*e)); bad {
 		return nil, &FieldError{Field: strings.TrimPrefix(path, "."), Err: ErrMalformed, Detail: "not valid UTF-8"}
+	}
+	// The JSON encoding drops sub-second precision, which the signature would
+	// then not cover.
+	if e.IssuedAt.Nanosecond() != 0 {
+		return nil, &FieldError{Field: "issued_at", Err: ErrMalformed, Detail: "has sub-second precision"}
 	}
 	data, err := json.Marshal(e)
 	if err != nil {
@@ -110,9 +116,10 @@ func Sign(e *Event, key ed25519.PrivateKey) error {
 
 // Verify checks publisher.signature against the Ed25519 public key embedded
 // in publisher.peer_id; no key lookup is involved. It returns nil only if the
-// signature covers exactly this event. A missing, malformed or non-matching
-// signature yields an error matching [ErrInvalidSignature]; a peer ID that
-// does not embed an Ed25519 key yields [ErrPublisherMismatch].
+// signature covers exactly this event's [CanonicalBytes]. A missing,
+// malformed or non-matching signature yields an error matching
+// [ErrInvalidSignature]; a peer ID that does not embed a usable Ed25519 key
+// (including weak keys of small order) yields [ErrPublisherMismatch].
 //
 // Verify checks the signature only. Receivers obtain the event from [Decode],
 // which enforces every obie/0.1 rule, and must verify it before acting on it.
