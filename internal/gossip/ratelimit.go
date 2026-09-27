@@ -20,6 +20,10 @@ type limiter struct {
 	mu        sync.Mutex
 	buckets   map[string]*rate.Limiter
 	lastSweep time.Time
+	// latest is the latest time seen. Concurrent callers may pass their
+	// times out of order, and a rate.Limiter given an earlier time than
+	// its last one credits the interval between them again.
+	latest time.Time
 }
 
 // maxSweepInterval bounds the sweep interval of very slow buckets.
@@ -35,12 +39,13 @@ func newLimiter(eventsPerSecond float64, burst int) *limiter {
 	}
 }
 
-// take takes a token from key's bucket at now. It returns nil if the
-// bucket is empty, else the reservation, which gives the token back when
-// canceled.
+// take takes a token from key's bucket at now, or at the latest time
+// seen if that is later. It returns nil if the bucket is empty, else the
+// reservation, which gives the token back through cancel.
 func (l *limiter) take(key string, now time.Time) *rate.Reservation {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	now = l.advance(now)
 	l.sweep(now)
 	b := l.buckets[key]
 	if b == nil {
@@ -55,6 +60,22 @@ func (l *limiter) take(key string, now time.Time) *rate.Reservation {
 	return r
 }
 
+// cancel gives back the token of a reservation made by take.
+func (l *limiter) cancel(r *rate.Reservation, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	r.CancelAt(l.advance(now))
+}
+
+// advance returns now, or the latest time seen if that is later.
+func (l *limiter) advance(now time.Time) time.Time {
+	if now.Before(l.latest) {
+		return l.latest
+	}
+	l.latest = now
+	return now
+}
+
 // takeBoth takes a token from a's bucket for keyA and from b's bucket for
 // keyB, or from neither if either is empty, and reports whether it did.
 func takeBoth(a *limiter, keyA string, b *limiter, keyB string, now time.Time) bool {
@@ -63,7 +84,7 @@ func takeBoth(a *limiter, keyA string, b *limiter, keyB string, now time.Time) b
 		return false
 	}
 	if b.take(keyB, now) == nil {
-		ra.CancelAt(now)
+		a.cancel(ra, now)
 		return false
 	}
 	return true

@@ -92,3 +92,25 @@ func TestLimiterSweepIntervalIsBounded(t *testing.T) {
 		t.Errorf("fill = %s, want 5s", l.fill)
 	}
 }
+
+// Concurrent validators read the clock before verifying the signature, so
+// the limiter sees their times out of order; an earlier time must not
+// credit the same interval twice.
+func TestLimiterTimeOutOfOrder(t *testing.T) {
+	start := time.Unix(1_800_000_000, 0)
+	l := newLimiter(10, 50)
+
+	admitted := 0
+	for ms := range 1000 {
+		now := start.Add(time.Duration(ms) * time.Millisecond)
+		for _, at := range []time.Time{now, now.Add(-20 * time.Millisecond)} {
+			if allow(l, "a", at) {
+				admitted++
+			}
+		}
+	}
+	// The burst plus 10 events per second for 1s.
+	if admitted > 60 {
+		t.Errorf("admitted %d events in 1s, want at most 60", admitted)
+	}
+}
