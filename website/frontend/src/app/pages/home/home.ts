@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { Meta, Title } from '@angular/platform-browser';
 
 import { LANDING_CONTENT } from '../../content/landing.content';
+import { Contact } from '../../sections/contact';
 import { Faq } from '../../sections/faq';
 import { Founder } from '../../sections/founder';
 import { GetStarted } from '../../sections/get-started';
@@ -15,7 +16,7 @@ import { Status } from '../../sections/status';
 @Component({
   selector: 'app-home',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Faq, Founder, GetStarted, Hero, HowItWorks, Principles, Problem, Status],
+  imports: [Contact, Faq, Founder, GetStarted, Hero, HowItWorks, Principles, Problem, Status],
   templateUrl: './home.html',
 })
 export class Home {

@@ -7,9 +7,9 @@ import { LANDING_CONTENT } from '../content/landing.content';
   selector: 'app-faq',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="section section--alt" [id]="faq.id" aria-labelledby="faq-heading">
+    <section class="section" [id]="faq.id" aria-labelledby="faq-heading">
       <div class="container">
-        <p class="eyebrow"><span>07</span>{{ faq.label }}</p>
+        <p class="eyebrow"><span>08</span>{{ faq.label }}</p>
         <h2 class="section-heading" id="faq-heading">{{ faq.heading }}</h2>
         <div class="items">
           @for (item of faq.items; track item.question) {

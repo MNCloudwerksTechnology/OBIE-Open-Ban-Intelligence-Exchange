@@ -30,6 +30,12 @@ export const LINKS = {
   cloudwerks: 'https://cloudwerks.de',
 } as const;
 
+/** Anchor of the inquiry form; `/#contact` deep-links to it. */
+export const CONTACT_ID = 'contact';
+
+/** Neutral avatar shown until the operator supplies a headshot. */
+export const FOUNDER_AVATAR_PLACEHOLDER = '/founder/avatar-placeholder.svg';
+
 /** English landing page copy. */
 export const LANDING_CONTENT_EN: LandingContent = {
   meta: {
@@ -47,6 +53,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
   },
   header: {
     github: { label: 'GitHub', href: LINKS.repository },
+    invite: { label: 'Invite Markus to speak', href: `#${CONTACT_ID}` },
   },
   hero: {
     eyebrow: 'OBIE · Open Ban Intelligence Exchange',
@@ -296,14 +303,105 @@ export const LANDING_CONTENT_EN: LandingContent = {
     quickStart: { label: 'Example configuration with every option', href: LINKS.exampleConfig },
     nextStep: { label: 'Open the quick start on GitHub', href: LINKS.quickStart },
   },
+  // Founder facts come from the operator (work package #1675). Do not add
+  // claims, quotes, testimonials or speaking history. website/README.md lists
+  // the fields the operator still has to fill in.
   founder: {
     id: 'founder',
     label: 'Founder',
     heading: 'Who started OBIE.',
-    placeholderLabel: 'Placeholder',
-    placeholder:
-      'This space will introduce OBIE’s founder and how to book a talk, workshop or interview.',
+    name: 'Markus Niewerth',
+    role: 'Founder of OBIE · Software architect · Managing director, Cloudwerks Technology GmbH',
+    bio: 'Markus Niewerth has been building software systems that reduce complexity for 15 years. As founder of Cloudwerks Technology GmbH he designs and builds its products himself, among them QuickSelect, Krisis and OBIE, and works in parallel as a software architect on automotive platforms (software-defined vehicle, Android Automotive OS). He started OBIE after evaluating crowd-sourced security SDKs for a project and running into what he calls the centralization trap.',
+    // TODO(operator): headshot. Put the photo into public/founder/, point
+    // `src` at it and describe it in `alt`; keep `alt` empty for the placeholder.
+    photo: { src: FOUNDER_AVATAR_PLACEHOLDER, alt: '' },
+    topicsHeading: 'Proposed talk topics',
+    topicsNote: 'Proposals drawn from OBIE’s principles. Suggest your own topic in the form below.',
+    // TODO(operator): confirm talk topics (proposals derived from OBIE's
+    // themes; none are on record yet).
+    topics: [
+      'The centralization trap: collective defence without a central authority',
+      'Evidence above authority: designing a threat-sharing protocol you don’t have to trust',
+      'Local sovereignty in practice: trust-weighted decisions and allow-lists that always win',
+      'Boringly robust: security software a competent engineer can deploy in a weekend',
+    ],
+    linksLabel: 'Profiles',
+    links: [
+      { label: 'LinkedIn', href: 'https://www.linkedin.com/in/niewerth/' },
+      { label: 'GitHub', href: 'https://github.com/MNCloudwerksTechnology' },
+    ],
+    invite: { label: 'Invite Markus to speak', href: `#${CONTACT_ID}` },
     nextStep: { label: 'Ask a question on GitHub', href: LINKS.issues },
+  },
+  contact: {
+    id: CONTACT_ID,
+    label: 'Contact',
+    heading: 'Invite Markus to speak, or get in touch.',
+    intro:
+      'For talks, workshops, interviews, research collaborations and other questions about OBIE. Your message goes directly to Markus Niewerth.',
+    form: {
+      typeLegend: 'What is your inquiry about?',
+      types: [
+        { value: 'talk', label: 'Talk' },
+        { value: 'workshop', label: 'Workshop' },
+        { value: 'interview', label: 'Interview or press' },
+        { value: 'collaboration', label: 'Collaboration or research' },
+        { value: 'other', label: 'Other' },
+      ],
+      eventLegend: 'About the event',
+      fields: {
+        name: { label: 'Your name' },
+        email: { label: 'E-mail address', hint: 'Only used to answer you.' },
+        organisation: { label: 'Organisation' },
+        eventDate: { label: 'Date' },
+        eventLocation: { label: 'Location', hint: 'A city, a venue or “online”.' },
+        audienceSize: { label: 'Expected audience', hint: 'Number of people.' },
+        message: { label: 'Message', hint: 'At least 20 characters.' },
+      },
+      optional: '(optional)',
+      consent: {
+        before: 'I have read the ',
+        link: { label: 'privacy notice', href: LINKS.privacy },
+        after: ' and agree that my inquiry is stored and used to answer me.',
+      },
+      honeypot: 'Leave this field empty',
+      submit: 'Send inquiry',
+      sending: 'Sending…',
+      invalid: 'Please check the marked fields.',
+      success: {
+        heading: 'Inquiry sent.',
+        text: 'Thanks, Markus will get back to you within a few days.',
+      },
+      error: {
+        heading: 'Your inquiry was not sent.',
+        text: 'Something went wrong, on our side or with the connection. Your entries are still here, so please try again.',
+        expired:
+          'The form was open for a long time and had to be refreshed. Your entries are still here, so please send it again.',
+        rateLimited: 'Too many inquiries came from your network. Please try again later.',
+        retry: 'Try again',
+      },
+      // Worded exactly like the back end (InquiryRequest.java), so a visitor
+      // sees the same message whichever side catches the mistake.
+      messages: {
+        typeRequired: 'Please choose what your inquiry is about.',
+        nameRequired: 'Please enter your name.',
+        emailRequired: 'Please enter your e-mail address.',
+        emailInvalid: 'Please enter a valid e-mail address.',
+        messageRequired: 'Please enter a message.',
+        messageLength: 'Please write between 20 and 5000 characters.',
+        maxLength: 'Please use at most {max} characters.',
+        singleLine: 'Please use a single line.',
+        controlCharacters: 'Please remove special control characters.',
+        dateInFuture: 'Please choose a date in the future.',
+        dateFormat: 'Please enter a date as YYYY-MM-DD.',
+        positiveNumber: 'Please enter a positive number.',
+        wholeNumber: 'Please enter a whole number.',
+        maxAudience: 'Please enter at most 1,000,000.',
+        consentRequired: 'Please accept the privacy notice.',
+      },
+    },
+    nextStep: { label: 'Prefer to ask in public? Open an issue on GitHub', href: LINKS.issues },
   },
   faq: {
     id: 'faq',
@@ -343,7 +441,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
       {
         question: 'Who is behind it?',
         answer:
-          'OBIE is developed in the open on GitHub, with a public specification and MIT-licensed code. The company that initiated it is named in the footer, and the founder section above will introduce the person who started it. Anyone can read the code, report problems and contribute.',
+          'OBIE is developed in the open on GitHub, with a public specification and MIT-licensed code. The company that initiated it is named in the footer, and the founder section above introduces the person who started it. Anyone can read the code, report problems and contribute.',
       },
     ],
     nextStep: { label: 'Ask your own question on GitHub', href: LINKS.issues },

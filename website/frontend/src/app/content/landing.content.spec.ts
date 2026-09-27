@@ -2,7 +2,13 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { LandingContent } from './landing-content.model';
-import { LANDING_CONTENT_EN, LINKS, REPOSITORY_URL } from './landing.content';
+import {
+  CONTACT_ID,
+  FOUNDER_AVATAR_PLACEHOLDER,
+  LANDING_CONTENT_EN,
+  LINKS,
+  REPOSITORY_URL,
+} from './landing.content';
 
 /** Every string in the content object, depth first. */
 function allStrings(value: unknown): string[] {
@@ -23,6 +29,7 @@ const sections = [
   content.status,
   content.getStarted,
   content.founder,
+  content.contact,
   content.faq,
 ];
 
@@ -124,11 +131,14 @@ describe('Landing page content', () => {
     });
   });
 
-  it('keeps the company name out of all visible copy but the footer', () => {
-    const { footer, ...rest } = content;
+  it('keeps the company name out of all visible copy but the footer and the founder profile', () => {
+    const { footer, founder, ...rest } = content;
     expect(footer.licence).toContain('Cloudwerks');
+    // The operator approved the founder's bio and role line as they are.
+    const { bio, role, ...founderRest } = founder;
+    expect([bio, role].every((text) => text.includes('Cloudwerks'))).toBe(true);
     // URLs are exempt: the GitHub organisation carries the company name.
-    const visible = allStrings(rest).filter((text) => !text.startsWith('https://'));
+    const visible = allStrings([rest, founderRest]).filter((text) => !text.startsWith('https://'));
     expect(visible.filter((text) => /cloudwerks/i.test(text))).toEqual([]);
   });
 
@@ -144,6 +154,56 @@ describe('Landing page content', () => {
         expect(text).toMatch(/^(https:\/\/|\/[a-z]|#[a-z])/);
       }
     }
+  });
+
+  it('introduces the founder with the operator-supplied facts', () => {
+    const { founder } = content;
+    expect(founder.name).toBe('Markus Niewerth');
+    expect(founder.role.startsWith('Founder of OBIE')).toBe(true);
+    expect(founder.bio.split(/\s+/).length).toBeLessThanOrEqual(80);
+    expect(founder.topics.length).toBeGreaterThanOrEqual(3);
+    expect(founder.topics.length).toBeLessThanOrEqual(5);
+    expect(founder.topicsHeading).toMatch(/proposed/i);
+    expect(founder.links.map((link) => link.href)).toEqual([
+      'https://www.linkedin.com/in/niewerth/',
+      'https://github.com/MNCloudwerksTechnology',
+    ]);
+  });
+
+  it('keeps the placeholder avatar out of the accessibility tree until a photo exists', () => {
+    const { photo } = content.founder;
+    expect(existsSync(resolve(process.cwd(), 'public', photo.src.slice(1))), photo.src).toBe(true);
+    if (photo.src === FOUNDER_AVATAR_PLACEHOLDER) {
+      expect(photo.alt).toBe('');
+    } else {
+      expect(photo.alt).not.toBe('');
+    }
+  });
+
+  it('opens the inquiry form from the header and the founder section', () => {
+    expect(content.contact.id).toBe(CONTACT_ID);
+    expect(content.header.invite.href).toBe(`#${CONTACT_ID}`);
+    expect(content.founder.invite.href).toBe(`#${CONTACT_ID}`);
+  });
+
+  it('offers exactly the inquiry types the back end accepts', () => {
+    expect(content.contact.form.types.map((type) => type.value)).toEqual([
+      'talk',
+      'workshop',
+      'interview',
+      'collaboration',
+      'other',
+    ]);
+  });
+
+  it('keeps the booking copy non-commercial (operator rule)', () => {
+    const selling = /consult|free call|book a call|pricing|price|termin|quote|offer/i;
+    const copy = allStrings([content.founder, content.contact, content.header]);
+    expect(copy.filter((text) => selling.test(text))).toEqual([]);
+  });
+
+  it('links the consent checkbox to the privacy page', () => {
+    expect(content.contact.form.consent.link.href).toBe(LINKS.privacy);
   });
 
   it('links only to repository files that exist', () => {

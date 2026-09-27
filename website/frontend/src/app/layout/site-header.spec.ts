@@ -22,7 +22,7 @@ describe('SiteHeader', () => {
   });
 
   it('links to every section by its anchor, in page order', () => {
-    const links = Array.from(header.querySelectorAll('nav a'));
+    const links = Array.from(header.querySelectorAll('nav li a'));
     const c = LANDING_CONTENT_EN;
     expect(links.map((link) => link.getAttribute('href'))).toEqual(
       [c.problem, c.howItWorks, c.principles, c.status, c.getStarted, c.faq].map(
@@ -37,6 +37,12 @@ describe('SiteHeader', () => {
       'Get started',
       'FAQ',
     ]);
+  });
+
+  it('invites visitors to book Markus from the navigation', () => {
+    const invite = header.querySelector('nav a.invite');
+    expect(invite?.textContent?.trim()).toBe('Invite Markus to speak');
+    expect(invite?.getAttribute('href')).toBe('#contact');
   });
 
   it('links the brand back to the top of the page', () => {
