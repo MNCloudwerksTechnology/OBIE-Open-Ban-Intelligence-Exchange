@@ -42,6 +42,7 @@ func (c *Config) validate(lines lineMap, decodeProblems problems) error {
 
 	v.absPath("node.state_dir", c.Node.StateDir, false)
 	v.oneOf("node.mode", string(c.Node.Mode), string(ModeObserve), string(ModeEnforce))
+	v.positive("node.shutdown_timeout", c.Node.ShutdownTimeout)
 
 	v.absPath("admin.socket", c.Admin.Socket, false)
 	v.nonEmpty("admin.socket_group", c.Admin.SocketGroup)
