@@ -13,7 +13,9 @@ lifecycle, ops endpoints and admin API in
 canonicalization and signing in
 [ADR 0004](documentation/adr/0004-event-canonicalization-and-signing.md); the
 node identity key in
-[ADR 0005](documentation/adr/0005-node-identity-key.md).
+[ADR 0005](documentation/adr/0005-node-identity-key.md); the mesh host and
+static bootstrap peers in
+[ADR 0006](documentation/adr/0006-mesh-host-and-bootstrap.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
@@ -49,6 +51,7 @@ internal/           all non-public code (one package per concern listed above)
   identity/         persistent Ed25519 node key (<state_dir>/node.key); peer ID, signing
   lifecycle/        ordered subsystem start/stop with timeouts; status and readiness
   logging/          slog JSON handler; per-component loggers
+  mesh/             go-libp2p host, bootstrap peers with backoff, peer view
   ops/              /healthz, /readyz and Prometheus /metrics
   version/          build version, injected via -ldflags
 pkg/
@@ -101,6 +104,20 @@ Only the packages that exist today are listed in detail; the remaining
   directory writable by group or others, stop `obied` with an error naming
   the fix. Subsystems receive an `identity.Identity`
   (`PeerID`, `PublicKey`, `Sign`) and never the private key (ADR 0005).
+- **Mesh.** The `mesh` subsystem runs a go-libp2p host under the node
+  identity (through a `crypto.PrivKey` adapter, so the private key still never
+  leaves `internal/identity`), listening on `mesh.listen` over TCP and QUIC
+  (IPv4 and IPv6 by default) with Noise, yamux, a connection manager with
+  water marks 32/128 and the resource manager with default scaled limits. It
+  is ready once it listens; zero connected peers is a valid, degraded state
+  shown in the status detail, never "not ready". Every `mesh.bootstrap` peer
+  is dialed at start and redialed whenever it is disconnected, with
+  exponential backoff (1 s up to 5 min, equal jitter), and is protected from
+  connection trimming. `obiectl peers` (`GET /v1/peers`) lists the connected
+  peers with name and trust weight from `trust.publishers`, addresses,
+  connected-since and ping latency. DHT, mDNS, relay, hole punching, NAT port
+  mapping and AutoNAT are explicitly disabled (ADR 0006). The admin package
+  does not import `internal/mesh`: `obiectl` stays free of go-libp2p.
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
   before every commit. Tool versions are pinned in the `Makefile`. The CI
@@ -117,6 +134,11 @@ not preclude them:
   (`obied keygen --force`), which gives it a new peer ID that every trusting
   peer must re-enter. A later release adds a statement signed by the old key
   that vouches for the new one, so peers can carry trust weights over.
+- **Peer discovery and NAT traversal.** v0.1 only connects to the static
+  `mesh.bootstrap` peers and to peers that dial in. A Kademlia DHT for peer
+  discovery, mDNS for LAN discovery, and circuit relay with hole punching
+  (plus AutoNAT and NAT port mapping) for nodes behind NAT are planned for
+  later releases; they are deliberately disabled in the host today.
 - **Organisational identity.** v0.1 knows only per-node peer IDs. Binding
   nodes to an organisation (for example by a DNS domain challenge), and
   quorum rules over distinct organisations, follow in a later release.
