@@ -13,22 +13,45 @@ first — it is the binding technical baseline.
 
 ## Build and test
 
-| Command          | What it does                                                   |
-|------------------|----------------------------------------------------------------|
-| `make build`     | Static (`CGO_ENABLED=0`) `obied` and `obiectl` into `./bin/`   |
-| `make test`      | `go test -race -count=1 ./...`                                 |
-| `make vet`       | `go vet ./...`                                                 |
-| `make fmt-check` | Fails if any Go file is not `gofmt`-formatted                  |
-| `make lint`      | golangci-lint with the committed `.golangci.yml`              |
-| `make vuln`      | govulncheck against the Go vulnerability database              |
-| `make ci`        | fmt-check + vet + lint + test + vuln                          |
-| `make clean`     | Removes `./bin/` including installed tools                     |
+| Command                | What it does                                                     |
+|------------------------|------------------------------------------------------------------|
+| `make build`           | Static (`CGO_ENABLED=0`) `obied` and `obiectl` into `./bin/`     |
+| `make test`            | `go test -race -count=1 ./...`                                   |
+| `make vet`             | `go vet ./...`                                                   |
+| `make fmt-check`       | Fails if any Go file is not `gofmt`-formatted                    |
+| `make lint`            | golangci-lint with the committed `.golangci.yml`                 |
+| `make vuln`            | govulncheck against the Go vulnerability database                |
+| `make lint-workflows`  | actionlint on the CI workflows; checks both copies are identical |
+| `make test-privileged` | Tests including the `privileged` build tag (needs root)          |
+| `make ci`              | fmt-check + vet + lint + lint-workflows + test + vuln            |
+| `make clean`           | Removes `./bin/` including installed tools                       |
 
 The version embedded in the binaries comes from `git describe`; override it
 with `make build VERSION=v0.1.0`. A plain `go build` reports `dev`.
 
 **`make ci` must pass before you open a pull request.** The CI pipeline runs
 the same checks.
+
+## Continuous integration
+
+Every pull request and every push to `develop` or `main` runs the CI pipeline
+defined in `.gitea/workflows/ci.yml` (Gitea Actions). `.github/workflows/ci.yml`
+is a byte-identical copy for the public GitHub mirror — change both together;
+`make lint-workflows` fails if they differ. The pipeline has these jobs:
+
+- **make ci** — the exact local gate, on `ubuntu-latest` with the Go version
+  from `go.mod`.
+- **build linux/amd64, linux/arm64** — static `obied` and `obiectl` binaries,
+  uploaded as build artifacts.
+- **privileged tests** — never part of the default run. Start it manually
+  ("Run workflow" with the `privileged` input checked) to run the tests behind
+  the `privileged` build tag as root.
+
+**A red pipeline blocks merge.** A pull request is only merged when every job
+of its latest pipeline run is green; fix the failure (or the check) rather
+than bypassing it. The pipeline only runs `make` targets, so every red check
+can be reproduced locally with the same command — the local `make ci` is the
+source of truth.
 
 ## Code guidelines
 
