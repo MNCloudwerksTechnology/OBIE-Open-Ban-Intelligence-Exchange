@@ -55,6 +55,15 @@ func (c *Client) Identity(ctx context.Context) (*IdentityResponse, error) {
 	return &resp, nil
 }
 
+// Peers fetches the connected mesh peers.
+func (c *Client) Peers(ctx context.Context) (*PeersResponse, error) {
+	var resp PeersResponse
+	if err := c.get(ctx, PeersPath, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	// The host is ignored: the transport always dials the socket.
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://obied"+path, nil)

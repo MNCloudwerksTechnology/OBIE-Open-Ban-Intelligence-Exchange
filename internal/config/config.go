@@ -128,6 +128,7 @@ func Default() Config {
 				"/ip4/0.0.0.0/tcp/4001",
 				"/ip4/0.0.0.0/udp/4001/quic-v1",
 				"/ip6/::/tcp/4001",
+				"/ip6/::/udp/4001/quic-v1",
 			},
 			Bootstrap: []string{},
 		},

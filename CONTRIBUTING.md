@@ -6,7 +6,7 @@ first — it is the binding technical baseline.
 
 ## Prerequisites
 
-- Go 1.23 or newer
+- Go 1.26 or newer
 - GNU Make, Git
 - Network access on the first run: `make lint`, `make lint-workflows` and
   `make vuln` install the pinned golangci-lint, actionlint and govulncheck

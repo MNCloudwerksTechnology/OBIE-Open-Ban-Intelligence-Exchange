@@ -69,7 +69,7 @@ func TestDefaults(t *testing.T) {
 		{"node.shutdown_timeout", d.Node.ShutdownTimeout.Std(), 10 * time.Second},
 		{"admin.socket", d.Admin.Socket, "/run/obie/obie.sock"},
 		{"admin.socket_group", d.Admin.SocketGroup, "obie"},
-		{"mesh.listen", d.Mesh.Listen, []string{"/ip4/0.0.0.0/tcp/4001", "/ip4/0.0.0.0/udp/4001/quic-v1", "/ip6/::/tcp/4001"}},
+		{"mesh.listen", d.Mesh.Listen, []string{"/ip4/0.0.0.0/tcp/4001", "/ip4/0.0.0.0/udp/4001/quic-v1", "/ip6/::/tcp/4001", "/ip6/::/udp/4001/quic-v1"}},
 		{"mesh.bootstrap", d.Mesh.Bootstrap, []string{}},
 		{"trust.publishers", d.Trust.Publishers, []Publisher{}},
 		{"trust.default_weight", d.Trust.DefaultWeight, 0.0},
@@ -122,7 +122,7 @@ enforce:
 	if cfg.Node.Mode != ModeEnforce || cfg.Node.StateDir != "/var/lib/obie" {
 		t.Errorf("node = %+v", cfg.Node)
 	}
-	if len(cfg.Mesh.Bootstrap) != 1 || len(cfg.Mesh.Listen) != 3 {
+	if len(cfg.Mesh.Bootstrap) != 1 || len(cfg.Mesh.Listen) != 4 {
 		t.Errorf("mesh = %+v", cfg.Mesh)
 	}
 	wantPubs := []Publisher{{PeerID: peerA, Name: "seed", Weight: 1}, {PeerID: peerB, Name: "friend", Weight: 0.5}}

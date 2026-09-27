@@ -14,6 +14,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
 	"github.com/MNCloudwerksTechnology/obie/internal/logging"
+	"github.com/MNCloudwerksTechnology/obie/internal/mesh"
 	"github.com/MNCloudwerksTechnology/obie/internal/ops"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
@@ -36,14 +37,28 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 		return err
 	}
 
+	// go-libp2p's own logs join ours; below warn they are too chatty.
+	mesh.UseLogHandler(logs.Logger("libp2p").Handler(), slog.LevelWarn)
+	m, err := mesh.New(id, mesh.Options{
+		Listen:    cfg.Mesh.Listen,
+		Bootstrap: cfg.Mesh.Bootstrap,
+		Trust:     cfg.Trust,
+		UserAgent: "obied/" + version.Version,
+	}, logs.Logger(mesh.Name))
+	if err != nil {
+		return fmt.Errorf("mesh: %w", err)
+	}
+
 	mgr := lifecycle.New(logs.Logger("lifecycle"), lifecycle.Options{StopTimeout: cfg.Node.ShutdownTimeout.Std()})
 	mgr.Register(ops.New(cfg.Metrics.Listen, mgr.Status, logs.Logger(ops.Name)))
+	mgr.Register(m)
 	mgr.Register(admin.New(cfg.Admin.Socket, cfg.Admin.SocketGroup, admin.Info{
 		Version:   version.Version,
 		Mode:      string(cfg.Node.Mode),
 		StartedAt: startedAt,
 		Identity:  admin.NewIdentityResponse(id),
 		Status:    mgr.Status,
+		Peers:     func() []admin.PeerResponse { return peerResponses(m.Peers()) },
 	}, logs.Logger(admin.Name)))
 
 	if err := mgr.Start(ctx); err != nil {
@@ -83,4 +98,22 @@ func loadIdentity(stateDir string, log *slog.Logger) (identity.Identity, error) 
 	log.Info(msg, "peer_id", key.PeerID(), "fingerprint", identity.Fingerprint(key.PublicKey()),
 		"key_file", identity.Path(stateDir))
 	return key, nil
+}
+
+// peerResponses converts the mesh's peer view into admin API wire types,
+// keeping the admin package free of go-libp2p types.
+func peerResponses(peers []mesh.Peer) []admin.PeerResponse {
+	out := make([]admin.PeerResponse, len(peers))
+	for i, p := range peers {
+		out[i] = admin.PeerResponse{
+			PeerID:         p.ID,
+			Name:           p.Name,
+			Addresses:      p.Addrs,
+			ConnectedSince: p.ConnectedSince.UTC(),
+			LatencySeconds: p.Latency.Seconds(),
+			TrustWeight:    p.TrustWeight,
+			Bootstrap:      p.Bootstrap,
+		}
+	}
+	return out
 }

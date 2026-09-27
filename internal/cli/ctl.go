@@ -27,6 +27,7 @@ type command struct {
 var commands = map[string]command{
 	"status":   {summary: "show the node status", run: runStatus},
 	"identity": {summary: "show the node's peer ID and key fingerprint", run: runCtlIdentity},
+	"peers":    {summary: "list the connected mesh peers", run: runPeers},
 }
 
 // RunCtl runs obiectl with args and returns the process exit code.
@@ -137,14 +138,10 @@ func writeStatusTable(w io.Writer, s *admin.StatusResponse) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	_, _ = fmt.Fprintf(tw, "\nSUBSYSTEM\tSTATE\tREADY\tERROR\n")
+	_, _ = fmt.Fprintf(tw, "\nSUBSYSTEM\tSTATE\tREADY\tERROR\tDETAIL\n")
 	for _, name := range names {
 		sub := s.Subsystems[name]
-		errText := sub.Error
-		if errText == "" {
-			errText = "-"
-		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", name, sub.State, yesNo(sub.Ready), errText)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", name, sub.State, yesNo(sub.Ready), orDash(sub.Error), orDash(sub.Detail))
 	}
 	return tw.Flush()
 }

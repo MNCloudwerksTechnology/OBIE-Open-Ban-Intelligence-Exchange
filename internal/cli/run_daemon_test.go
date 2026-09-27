@@ -27,9 +27,17 @@ type testNode struct {
 }
 
 // newTestNode writes a configuration with a temporary state directory and
-// admin socket and a free ops port; nodeKeys are further YAML lines of the
-// node section, indented by two spaces.
+// admin socket, a free ops port and a mesh on random loopback ports;
+// nodeKeys are further YAML lines of the node section, indented by two
+// spaces.
 func newTestNode(t *testing.T, nodeKeys string) testNode {
+	t.Helper()
+	return newTestNodeWith(t, nodeKeys, "mesh:\n  listen: [/ip4/127.0.0.1/tcp/0, /ip4/127.0.0.1/udp/0/quic-v1]\n")
+}
+
+// newTestNodeWith is newTestNode with the mesh section, and any further
+// top-level sections, given as YAML in sections.
+func newTestNodeWith(t *testing.T, nodeKeys, sections string) testNode {
 	t.Helper()
 	// Unix socket paths are limited to about 100 bytes; t.TempDir can exceed that.
 	dir, err := os.MkdirTemp("", "obie")
@@ -39,8 +47,8 @@ func newTestNode(t *testing.T, nodeKeys string) testNode {
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	n := testNode{stateDir: filepath.Join(dir, "state"), socket: filepath.Join(dir, "obie.sock"), metrics: freeAddr(t)}
 	n.config = writeConfig(t, fmt.Sprintf(
-		"node:\n  state_dir: %s\n%sadmin:\n  socket: %s\n  socket_group: obie-test-no-such-group\nmetrics:\n  listen: %s\n",
-		n.stateDir, nodeKeys, n.socket, n.metrics))
+		"node:\n  state_dir: %s\n%sadmin:\n  socket: %s\n  socket_group: obie-test-no-such-group\nmetrics:\n  listen: %s\n%s",
+		n.stateDir, nodeKeys, n.socket, n.metrics, sections))
 	return n
 }
 

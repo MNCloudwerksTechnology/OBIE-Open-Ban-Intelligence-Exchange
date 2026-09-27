@@ -33,6 +33,13 @@ type ReadinessChecker interface {
 	Ready() error
 }
 
+// DetailReporter is implemented by subsystems that summarize their
+// condition beyond ready or not, e.g. a degraded but working mode. Detail
+// returns a short human-readable text, or "" for nothing to report.
+type DetailReporter interface {
+	Detail() string
+}
+
 // State is the lifecycle state of a subsystem.
 type State string
 
@@ -54,6 +61,8 @@ type Status struct {
 	// Error is the start/stop failure or the reason the subsystem is not
 	// ready; empty otherwise.
 	Error string `json:"error,omitempty"`
+	// Detail is the DetailReporter summary of a running subsystem.
+	Detail string `json:"detail,omitempty"`
 }
 
 // Default timeouts used when Options leaves them zero.
@@ -212,7 +221,8 @@ func (m *Manager) Stop(ctx context.Context) error {
 }
 
 // Status reports every subsystem in start order. A subsystem is ready when
-// it is running and, if it implements ReadinessChecker, reports ready.
+// it is running and, if it implements ReadinessChecker, reports ready. The
+// detail of running subsystems that implement DetailReporter is included.
 func (m *Manager) Status() []Status {
 	m.mu.Lock()
 	type snapshot struct {
@@ -240,6 +250,9 @@ func (m *Manager) Status() []Status {
 					st.Ready = false
 					st.Error = err.Error()
 				}
+			}
+			if dr, ok := s.sub.(DetailReporter); ok {
+				st.Detail = dr.Detail()
 			}
 		}
 		out[i] = st

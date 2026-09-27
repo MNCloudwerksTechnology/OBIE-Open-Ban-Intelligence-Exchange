@@ -37,6 +37,7 @@ mesh:
     - /ip4/0.0.0.0/tcp/4001
     - /ip4/0.0.0.0/udp/4001/quic-v1
     - /ip6/::/tcp/4001
+    - /ip6/::/udp/4001/quic-v1
   # Peers to dial at startup. Each entry is a transport address ending in the
   # peer's ID, so the connection is authenticated. For example:
   #   - /dns4/seed.example.org/tcp/4001/p2p/12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd

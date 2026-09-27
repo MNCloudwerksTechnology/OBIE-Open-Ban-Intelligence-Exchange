@@ -33,6 +33,7 @@ func TestWriteStatusTable(t *testing.T) {
 		Subsystems: map[string]admin.SubsystemStatus{
 			"ops":   {State: lifecycle.StateRunning, Ready: true},
 			"admin": {State: lifecycle.StateFailed, Error: "boom"},
+			"mesh":  {State: lifecycle.StateRunning, Ready: true, Detail: "degraded: 0 peers connected"},
 		},
 	}
 	var out bytes.Buffer
@@ -44,9 +45,10 @@ Mode:     enforce
 Uptime:   1h2m3s
 Ready:    no
 
-SUBSYSTEM  STATE    READY  ERROR
-admin      failed   no     boom
-ops        running  yes    -
+SUBSYSTEM  STATE    READY  ERROR  DETAIL
+admin      failed   no     boom   -
+mesh       running  yes    -      degraded: 0 peers connected
+ops        running  yes    -      -
 `
 	if out.String() != want {
 		t.Errorf("table =\n%s\nwant\n%s", out.String(), want)
@@ -95,7 +97,7 @@ func TestObiectlStatusAgainstInProcessDaemon(t *testing.T) {
 		if got.UptimeSeconds < 0 || time.Since(got.StartedAt) > time.Minute {
 			t.Errorf("implausible uptime %v / start %v", got.UptimeSeconds, got.StartedAt)
 		}
-		for _, name := range []string{admin.Name, "ops"} {
+		for _, name := range []string{admin.Name, "ops", "mesh"} {
 			if s := got.Subsystems[name]; s.State != lifecycle.StateRunning || !s.Ready {
 				t.Errorf("subsystem %s = %+v, want running and ready", name, s)
 			}
@@ -107,7 +109,8 @@ func TestObiectlStatusAgainstInProcessDaemon(t *testing.T) {
 			t.Fatalf("exit code = %d, stderr %q", code, ctlStderr.String())
 		}
 		for _, want := range []string{"Version:  dev\n", "Mode:     enforce\n", "Ready:    yes\n",
-			"admin      running  yes    -\n", "ops        running  yes    -\n"} {
+			"admin      running  yes    -      -\n", "ops        running  yes    -      -\n",
+			"mesh       running  yes    -      degraded: 0 peers connected (0/0 bootstrap peers)\n"} {
 			if !strings.Contains(stdout.String(), want) {
 				t.Errorf("table lacks %q:\n%s", want, stdout.String())
 			}
