@@ -26,6 +26,8 @@ func indicator(t *testing.T, s string) obieproto.Indicator {
 	return ind
 }
 
+var now = time.Date(2029, 1, 1, 0, 0, 0, 0, time.UTC)
+
 func override(t *testing.T, s string, action store.Action) store.Override {
 	return store.Override{Indicator: indicator(t, s), Action: action, Note: "n"}
 }
@@ -86,7 +88,7 @@ func TestJudgePrecedence(t *testing.T) {
 			if tt.block {
 				overrides = append(overrides, override(t, tt.addr, store.ForceBlock))
 			}
-			r := Judge(indicator(t, tt.addr), allow, NewOverrides(overrides))
+			r := Judge(indicator(t, tt.addr), allow, NewOverrides(overrides), now)
 			if got := (want{r.Effect, r.Rule, r.Source}); got != tt.want {
 				t.Errorf("Judge = %+v, want %+v", got, tt.want)
 			}
@@ -106,29 +108,38 @@ func TestJudgeOverrideScope(t *testing.T) {
 	ov := NewOverrides([]store.Override{fa, override(t, "185.30.0.0/24", store.ForceBlock)})
 	allow := NewAllowlist(Builtin()...)
 
-	r := Judge(indicator(t, "185.20.0.9/32"), allow, ov)
+	r := Judge(indicator(t, "185.20.0.9/32"), allow, ov, now)
 	if r.Effect != EffectAllow || r.Match != "cidr:185.20.0.0/24" || !r.ExpiresAt.Equal(expires) || r.Note != "n" {
 		t.Errorf("address in force-allowed range: %+v", r)
 	}
 	if !strings.Contains(r.Reason, "force-allow override on cidr:185.20.0.0/24 until 2030-01-02T03:04:05Z") || !strings.Contains(r.Reason, `note: "n"`) {
 		t.Errorf("reason = %q", r.Reason)
 	}
-	if r := Judge(indicator(t, "185.20.0.0/16"), allow, ov); r.Effect != EffectAllow {
+	if r := Judge(indicator(t, "185.20.0.0/16"), allow, ov, now); r.Effect != EffectAllow {
 		t.Errorf("range containing a force-allowed range: %+v", r)
 	}
-	if r := Judge(indicator(t, "185.30.0.9/32"), allow, ov); r.Effect != EffectNone {
+	if r := Judge(indicator(t, "185.30.0.9/32"), allow, ov, now); r.Effect != EffectNone {
 		t.Errorf("address in force-blocked range: %+v", r)
 	}
-	if r := Judge(indicator(t, "185.30.0.0/24"), allow, ov); r.Effect != EffectBlock {
+	if r := Judge(indicator(t, "185.30.0.0/24"), allow, ov, now); r.Effect != EffectBlock {
 		t.Errorf("force-blocked range: %+v", r)
 	}
 	// A force-block on a range overlapping the built-in list is overruled.
 	ov = NewOverrides([]store.Override{override(t, "10.0.0.0/16", store.ForceBlock)})
-	if r := Judge(indicator(t, "10.0.0.0/16"), allow, ov); r.Effect != EffectAllow || r.Source != SourceBuiltin {
+	if r := Judge(indicator(t, "10.0.0.0/16"), allow, ov, now); r.Effect != EffectAllow || r.Source != SourceBuiltin {
 		t.Errorf("force-block on private range: %+v", r)
 	}
+	// Expired overrides are ignored.
+	if r := Judge(indicator(t, "185.20.0.9/32"), allow, NewOverrides([]store.Override{fa}), expires); r.Effect != EffectNone {
+		t.Errorf("expired force-allow: %+v", r)
+	}
+	fb := override(t, "185.30.0.0/24", store.ForceBlock)
+	fb.ExpiresAt = expires
+	if r := Judge(indicator(t, "185.30.0.0/24"), allow, NewOverrides([]store.Override{fb}), expires.Add(time.Second)); r.Effect != EffectNone {
+		t.Errorf("expired force-block: %+v", r)
+	}
 	// Without allow-list and overrides nothing applies.
-	if r := Judge(indicator(t, "10.0.0.1/32"), nil, nil); r.Effect != EffectNone {
+	if r := Judge(indicator(t, "10.0.0.1/32"), nil, nil, now); r.Effect != EffectNone {
 		t.Errorf("nil rules: %+v", r)
 	}
 }

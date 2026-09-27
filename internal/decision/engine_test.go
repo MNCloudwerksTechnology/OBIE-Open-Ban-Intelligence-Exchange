@@ -5,12 +5,14 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -316,18 +318,236 @@ func TestEngineRefreshesCappedBlocks(t *testing.T) {
 	wantChanges(t, f.rec.take(), "removed/refresh")
 }
 
-func TestEngineIgnoresOverridesWithoutVerdicts(t *testing.T) {
+// TestEngineForceBlockWithoutVerdicts: a force-block needs no verdicts; it
+// blocks until its override ends, capped at max_ttl, and is kept as a
+// decision only while it blocks.
+func TestEngineForceBlockWithoutVerdicts(t *testing.T) {
 	f := newFixture(t, testPolicy())
 	f.start(t)
 	ind := ipv4("198.51.100.7")
+	end := f.clock.Now().Add(2 * time.Hour)
+	if err := f.store.SetOverride(store.Override{Indicator: ind, Action: store.ForceBlock, ExpiresAt: end, Note: "abuse"}); err != nil {
+		t.Fatal(err)
+	}
+	f.engine.processDirty()
+	changes := f.rec.take()
+	wantChanges(t, changes, "added/override")
+	if len(changes) == 1 {
+		d := changes[0].Decision
+		if d.State != StateBlock || !d.ExpiresAt.Equal(end) || d.Sovereignty.Rule != sovereignty.RuleForceBlock ||
+			!strings.HasPrefix(d.Reason, "operator force-block override on ipv4:198.51.100.7 until ") {
+			t.Errorf("decision = %+v", d)
+		}
+	}
+	if got := f.engine.Decisions(StateBlock); len(got) != 1 {
+		t.Errorf("Decisions(block) = %+v", got)
+	}
+
+	// Without TTL the block lasts max_ttl and is refreshed while the
+	// override lives.
+	if err := f.store.SetOverride(store.Override{Indicator: ind, Action: store.ForceBlock}); err != nil {
+		t.Fatal(err)
+	}
+	f.engine.processDirty()
+	changes = f.rec.take()
+	wantChanges(t, changes, "updated/override")
+	if len(changes) == 1 && !changes[0].Decision.ExpiresAt.Equal(f.clock.Now().Add(testPolicy().MaxTTL)) {
+		t.Errorf("uncapped force-block: %+v", changes[0].Decision)
+	}
+	f.clock.Advance(testPolicy().MaxTTL)
+	f.engine.refreshExpired()
+	wantChanges(t, f.rec.take(), "updated/refresh")
+
+	if ok, err := f.store.DeleteOverride(ind.Key()); err != nil || !ok {
+		t.Fatalf("DeleteOverride = %v, %v", ok, err)
+	}
+	f.engine.processDirty()
+	wantChanges(t, f.rec.take(), "removed/override")
+	if got := f.engine.Decisions(""); len(got) != 0 {
+		t.Errorf("Decisions() = %+v", got)
+	}
+}
+
+// TestEngineForceBlockExpires: an expired force-block is removed once the
+// store reports the expiry.
+func TestEngineForceBlockExpires(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	f.start(t)
+	ind := ipv4("198.51.100.17")
+	if err := f.store.SetOverride(store.Override{Indicator: ind, Action: store.ForceBlock, ExpiresAt: f.clock.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	f.engine.processDirty()
+	wantChanges(t, f.rec.take(), "added/override")
+	f.clock.Advance(time.Hour)
+	if got := f.engine.Decisions(StateBlock); len(got) != 0 {
+		t.Errorf("expired force-block still listed: %+v", got)
+	}
+	if err := f.store.Sweep(f.clock.Now()); err != nil {
+		t.Fatal(err)
+	}
+	f.engine.processDirty()
+	wantChanges(t, f.rec.take(), "removed/expiry")
+}
+
+// TestEngineAllowlist: an allow-listed indicator is "allowed" whatever its
+// score, and a block that becomes allow-listed on reload is removed.
+func TestEngineAllowlist(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	allowed, other := ipv4("198.51.100.20"), ipv4("198.51.100.21")
+	f.put(t, allowed, pubA, 1, time.Hour)
+	f.put(t, allowed, pubB, 1, time.Hour)
+	f.put(t, other, pubA, 1, time.Hour)
+	f.put(t, other, pubB, 1, time.Hour)
+	f.engine = New(f.store, testPolicy(), discardLogger(), Options{Now: f.clock.Now, RefreshInterval: time.Hour,
+		Allowlist: sovereignty.NewAllowlist(sovereignty.Entry{Prefix: netip.MustParsePrefix("198.51.100.20/32"), Source: sovereignty.SourceConfig})})
+	f.engine.Subscribe(f.rec.record)
+	f.start(t)
+
+	changes := f.rec.take()
+	wantChanges(t, changes, "added/startup")
+	if len(changes) == 1 && changes[0].Key != other.Key() {
+		t.Errorf("blocked %s", changes[0].Key)
+	}
+	d, ok := f.decision(allowed.Key())
+	if !ok || d.State != StateAllowed || !d.ExpiresAt.IsZero() || d.Score != 2 ||
+		d.Reason != "allow-listed: allowlist.cidrs entry 198.51.100.20/32; verdicts: consensus: score 2 >= threshold 1.8, 2 >= quorum 2" {
+		t.Errorf("allowed decision = %+v, %v", d, ok)
+	}
+	if got := f.engine.Decisions(StateAllowed); len(got) != 1 {
+		t.Errorf("Decisions(allowed) = %+v", got)
+	}
+
+	// Reload with a range covering both: the block is removed.
+	f.engine.Reload(testPolicy(), sovereignty.NewAllowlist(sovereignty.Entry{Prefix: netip.MustParsePrefix("198.51.100.0/24"), Source: sovereignty.SourceFile}))
+	wantChanges(t, f.rec.take(), "removed/reload")
+	// Reload with a higher threshold and no allow-list: nothing blocks.
+	p := testPolicy()
+	p.Threshold = 5
+	f.engine.Reload(p, nil)
+	wantChanges(t, f.rec.take())
+	if d, _ := f.decision(allowed.Key()); d.State != StateNone || d.Threshold != 5 {
+		t.Errorf("after reload: %+v", d)
+	}
+	// And back: both block again.
+	f.engine.Reload(testPolicy(), nil)
+	wantChanges(t, f.rec.take(), "added/reload", "added/reload")
+}
+
+// TestEngineForceAllow: a force-allow on a range re-decides the kept
+// indicators it overlaps; a force-block does not beat the protected
+// allow-list.
+func TestEngineForceAllow(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	f.engine = New(f.store, testPolicy(), discardLogger(), Options{Now: f.clock.Now, RefreshInterval: time.Hour,
+		Allowlist: sovereignty.NewAllowlist(sovereignty.Entry{Prefix: netip.MustParsePrefix("198.51.100.99/32"), Source: sovereignty.SourceSelf})})
+	f.engine.Subscribe(f.rec.record)
+	inside, outside := ipv4("198.51.100.30"), ipv4("198.51.101.30")
+	for _, ind := range []obieproto.Indicator{inside, outside} {
+		f.put(t, ind, pubA, 1, time.Hour)
+		f.put(t, ind, pubB, 1, time.Hour)
+	}
+	f.start(t)
+	wantChanges(t, f.rec.take(), "added/startup", "added/startup")
+
+	rng := obieproto.Indicator{Kind: obieproto.KindCIDR, Value: "198.51.100.0/24", Scope: "/24"}
+	if err := f.store.SetOverride(store.Override{Indicator: rng, Action: store.ForceAllow, Note: "partner"}); err != nil {
+		t.Fatal(err)
+	}
+	f.engine.processDirty()
+	changes := f.rec.take()
+	wantChanges(t, changes, "removed/override")
+	if len(changes) == 1 && (changes[0].Key != inside.Key() || changes[0].Decision.State != StateAllowed) {
+		t.Errorf("change = %+v", changes[0])
+	}
+	if d, err := f.engine.Explain(inside); err != nil || d.Sovereignty.Rule != sovereignty.RuleForceAllow || d.Sovereignty.Note != "partner" {
+		t.Errorf("Explain = %+v, %v", d.Sovereignty, err)
+	}
+
+	if _, err := f.store.DeleteOverride(rng.Key()); err != nil {
+		t.Fatal(err)
+	}
+	f.engine.processDirty()
+	wantChanges(t, f.rec.take(), "added/override")
+
+	// A force-block on this node's own address is overruled.
+	own := ipv4("198.51.100.99")
+	if err := f.store.SetOverride(store.Override{Indicator: own, Action: store.ForceBlock}); err != nil {
+		t.Fatal(err)
+	}
+	// Explain reads the overrides from the store: it is current before the
+	// worker ran.
+	d, err := f.engine.Explain(own)
+	if err != nil || d.State != StateAllowed || d.Sovereignty.Source != sovereignty.SourceSelf {
+		t.Errorf("Explain(own) = %+v, %v", d, err)
+	}
+	f.engine.processDirty()
+	wantChanges(t, f.rec.take())
+}
+
+// flakyOverrides fails Overrides while fail is set.
+type flakyOverrides struct {
+	*store.DB
+	fail atomic.Bool
+}
+
+func (s *flakyOverrides) Overrides(now time.Time) ([]store.Override, error) {
+	if s.fail.Load() {
+		return nil, errFlaky
+	}
+	return s.DB.Overrides(now)
+}
+
+// TestEngineRetriesFailedOverrideReads: an override change is not lost when
+// reading the overrides fails.
+func TestEngineRetriesFailedOverrideReads(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	flaky := &flakyOverrides{DB: f.store}
+	f.engine = New(flaky, testPolicy(), discardLogger(), Options{Now: f.clock.Now, RefreshInterval: time.Hour})
+	f.engine.Subscribe(f.rec.record)
+	f.start(t)
+	ind := ipv4("198.51.100.40")
+
+	flaky.fail.Store(true)
 	if err := f.store.SetOverride(store.Override{Indicator: ind, Action: store.ForceBlock}); err != nil {
 		t.Fatal(err)
 	}
 	f.engine.processDirty()
 	wantChanges(t, f.rec.take())
-	if got := f.engine.Decisions(""); len(got) != 0 {
-		t.Errorf("Decisions() = %+v", got)
+	if err := f.engine.Ready(); !errors.Is(err, errFlaky) {
+		t.Errorf("Ready() = %v", err)
 	}
+	f.engine.Reload(testPolicy(), nil) // logs and keeps the previous overrides
+	wantChanges(t, f.rec.take())
+
+	flaky.fail.Store(false)
+	f.engine.processDirty()
+	wantChanges(t, f.rec.take(), "added/override")
+	if err := f.engine.Ready(); err != nil {
+		t.Errorf("Ready() = %v", err)
+	}
+	if err := f.engine.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	flaky.fail.Store(true)
+	if err := f.engine.Start(context.Background()); !errors.Is(err, errFlaky) {
+		t.Errorf("Start = %v", err)
+	}
+	if _, err := f.engine.Explain(ind); !errors.Is(err, errFlaky) {
+		t.Errorf("Explain = %v", err)
+	}
+}
+
+// TestEngineStartupForceBlock: force-blocks stored before the start are
+// decided at startup.
+func TestEngineStartupForceBlock(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	ind := ipv4("198.51.100.50")
+	if err := f.store.SetOverride(store.Override{Indicator: ind, Action: store.ForceBlock}); err != nil {
+		t.Fatal(err)
+	}
+	f.start(t)
+	wantChanges(t, f.rec.take(), "added/startup")
 }
 
 func TestEngineExplain(t *testing.T) {

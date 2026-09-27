@@ -1,9 +1,11 @@
 // Package decision turns the verdicts a node holds into one deterministic,
 // explainable decision per indicator: a trust-weighted score over the
 // distinct publishers' active ban verdicts, a quorum of publishers and a
-// threshold, plus local autoblock. The Engine keeps the decision of every
-// indicator with active verdicts up to date from the store's change
-// notifications and streams block changes to subscribers. See ADR 0011.
+// threshold, plus local autoblock, overruled by the operator's allow-list
+// and overrides. The Engine keeps the decision of every indicator with
+// active verdicts or a force-block override up to date from the store's
+// change notifications and streams block changes to subscribers. See
+// ADR 0011 and ADR 0013.
 package decision
 
 import (
@@ -13,6 +15,7 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
@@ -23,6 +26,9 @@ type State string
 const (
 	StateBlock State = "block"
 	StateNone  State = "none"
+	// StateAllowed: the allow-list or a force-allow override keeps the
+	// indicator from being blocked, whatever its verdicts.
+	StateAllowed State = "allowed"
 )
 
 // scoreTolerance absorbs float rounding when comparing the score with the
@@ -115,9 +121,42 @@ type Decision struct {
 	// Publishers lists every active verdict, contributing or not, by
 	// publisher.
 	Publishers []Contribution
+	// Sovereignty is the effect of the allow-list and the overrides;
+	// its Effect is sovereignty.EffectNone if they do not apply.
+	Sovereignty sovereignty.Ruling
 	// Reason explains the state in one line.
 	Reason      string
 	EvaluatedAt time.Time
+}
+
+// Rules are the operator's rules that overrule the verdicts. The zero
+// value applies none.
+type Rules struct {
+	Allowlist *sovereignty.Allowlist
+	Overrides *sovereignty.Overrides
+}
+
+// Decide decides on ind like Evaluate and then applies the operator's
+// rules (sovereignty.Judge): an allowed indicator is StateAllowed, a
+// force-blocked one StateBlock until the override ends, capped at
+// p.MaxTTL from now.
+func Decide(ind obieproto.Indicator, verdicts []*obieproto.Event, p Policy, r Rules, now time.Time) Decision {
+	d := Evaluate(ind, verdicts, p, now)
+	d.Sovereignty = sovereignty.Judge(ind, r.Allowlist, r.Overrides, now)
+	switch d.Sovereignty.Effect {
+	case sovereignty.EffectAllow:
+		d.State, d.ExpiresAt, d.Autoblock = StateAllowed, time.Time{}, false
+	case sovereignty.EffectBlock:
+		d.State, d.Autoblock = StateBlock, false
+		d.ExpiresAt = now.Add(p.MaxTTL)
+		if end := d.Sovereignty.ExpiresAt; !end.IsZero() && end.Before(d.ExpiresAt) {
+			d.ExpiresAt = end
+		}
+	default:
+		return d
+	}
+	d.Reason = d.Sovereignty.Reason + "; verdicts: " + d.Reason
+	return d
 }
 
 // Evaluate decides on ind from its active verdicts at now under policy p.

@@ -139,39 +139,41 @@ func sameOverride(a, b store.Override) bool {
 	return a.Action == b.Action && a.Note == b.Note && a.ExpiresAt.Equal(b.ExpiresAt)
 }
 
-// matchAllow returns the first force-allow override overlapping p.
-func (ov *Overrides) matchAllow(p netip.Prefix) (store.Override, bool) {
+// matchAllow returns the first force-allow override in effect at now that
+// overlaps p.
+func (ov *Overrides) matchAllow(p netip.Prefix, now time.Time) (store.Override, bool) {
 	if ov == nil {
 		return store.Override{}, false
 	}
 	for _, a := range ov.allows {
-		if a.prefix.Overlaps(p) {
+		if a.prefix.Overlaps(p) && a.o.Active(now) {
 			return a.o, true
 		}
 	}
 	return store.Override{}, false
 }
 
-// Judge applies the operator's rules to ind, first match wins:
+// Judge applies the operator's rules to ind at now, first match wins:
 //  1. a force-allow override overlapping ind allows it;
 //  2. a built-in, own or bootstrap allow-list entry overlapping ind allows it;
 //  3. a force-block override on ind itself blocks it;
 //  4. an allowlist.cidrs or allowlist.files entry overlapping ind allows it.
 //
-// Otherwise the Ruling's Effect is EffectNone. An indicator that is not an
-// address or CIDR range is judged by its overrides only.
-func Judge(ind obieproto.Indicator, allow *Allowlist, ov *Overrides) Ruling {
+// Otherwise the Ruling's Effect is EffectNone. Overrides that expired at now
+// are ignored. An indicator that is not an address or CIDR range is judged
+// by its overrides only.
+func Judge(ind obieproto.Indicator, allow *Allowlist, ov *Overrides, now time.Time) Ruling {
 	p, err := PrefixOf(ind)
 	valid := err == nil
 	if valid {
-		if o, ok := ov.matchAllow(p); ok {
+		if o, ok := ov.matchAllow(p, now); ok {
 			return overrideRuling(EffectAllow, o)
 		}
 		if e, ok := allow.MatchProtected(p); ok {
 			return entryRuling(e)
 		}
 	}
-	if o, ok := ov.Get(ind.Key()); ok && o.Action == store.ForceBlock {
+	if o, ok := ov.Get(ind.Key()); ok && o.Action == store.ForceBlock && o.Active(now) {
 		return overrideRuling(EffectBlock, o)
 	}
 	if valid {

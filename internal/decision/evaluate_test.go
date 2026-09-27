@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
+	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
@@ -287,5 +289,42 @@ func TestNewPolicy(t *testing.T) {
 	}
 	if p.Threshold != 1.8 || p.Quorum != 2 || p.MaxTTL != 30*24*time.Hour || !p.LocalAutoblock || p.Names[pubA] != "alpha" {
 		t.Errorf("policy = %+v", p)
+	}
+}
+
+// TestDecide checks how the operator's rules turn a decision around.
+func TestDecide(t *testing.T) {
+	p := testPolicy()
+	blocking := []*obieproto.Event{ban(pubA, 1), ban(pubB, 1)}
+	allow := sovereignty.NewAllowlist(sovereignty.Builtin()...) // target is in TEST-NET-3
+	d := Decide(target, blocking, p, Rules{Allowlist: allow}, t0)
+	if d.State != StateAllowed || !d.ExpiresAt.IsZero() || d.Score != 2 || d.Sovereignty.Source != sovereignty.SourceBuiltin ||
+		!strings.HasPrefix(d.Reason, "allow-listed: built-in range 203.0.113.0/24 (documentation (TEST-NET-3)); verdicts: consensus") {
+		t.Errorf("allow-listed: %+v", d)
+	}
+	local := []*obieproto.Event{ban(self, 1)}
+	if d := Decide(target, local, p, Rules{Allowlist: allow}, t0); d.State != StateAllowed || d.Autoblock {
+		t.Errorf("allow-listed autoblock: %+v", d)
+	}
+	if d := Decide(target, blocking, p, Rules{}, t0); d.State != StateBlock || d.Sovereignty.Effect != sovereignty.EffectNone {
+		t.Errorf("no rules: %+v", d)
+	}
+
+	public := ipv4("185.0.0.1")
+	for _, tt := range []struct {
+		name string
+		end  time.Time
+		want time.Time
+	}{
+		{"no TTL", time.Time{}, t0.Add(p.MaxTTL)},
+		{"short TTL", t0.Add(time.Hour), t0.Add(time.Hour)},
+		{"TTL beyond max_ttl", t0.Add(p.MaxTTL + time.Hour), t0.Add(p.MaxTTL)},
+	} {
+		ov := sovereignty.NewOverrides([]store.Override{{Indicator: public, Action: store.ForceBlock, ExpiresAt: tt.end}})
+		d := Decide(public, nil, p, Rules{Allowlist: allow, Overrides: ov}, t0)
+		if d.State != StateBlock || !d.ExpiresAt.Equal(tt.want) || d.Autoblock ||
+			d.Reason[:strings.Index(d.Reason, ";")] != d.Sovereignty.Reason {
+			t.Errorf("%s: %+v", tt.name, d)
+		}
 	}
 }
