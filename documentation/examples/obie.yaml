@@ -1,0 +1,91 @@
+# OBIE node configuration — /etc/obie/obie.yaml
+#
+# Every key is optional: an omitted key takes the default shown here, so this
+# file configures exactly the same node as an empty one. Validate changes
+# before restarting the node:
+#
+#   obied --config /etc/obie/obie.yaml --check-config
+#
+# Unknown keys, values of the wrong type and invalid values are errors that
+# name the offending key path (e.g. "trust.publishers[1].weight"); obied
+# refuses to start until they are fixed.
+#
+# Durations are written in Go syntax ("10s", "90m", "36h") or as whole days
+# ("7d"). Paths must be absolute.
+
+node:
+  # Directory for persistent node state (identity key, event store).
+  state_dir: /var/lib/obie
+  # observe: decide and record verdicts, but never block anything.
+  # enforce: additionally push blocks to the enforcement backend.
+  mode: observe
+
+admin:
+  # Unix socket of the local admin API used by obiectl.
+  socket: /run/obie/obie.sock
+  # Group that owns the socket; members may run obiectl.
+  socket_group: obie
+
+mesh:
+  # libp2p multiaddrs to listen on. They must not contain /p2p/<peer-id>:
+  # the node listens under its own identity.
+  listen:
+    - /ip4/0.0.0.0/tcp/4001
+    - /ip4/0.0.0.0/udp/4001/quic-v1
+    - /ip6/::/tcp/4001
+  # Peers to dial at startup. Each entry is a transport address ending in the
+  # peer's ID, so the connection is authenticated. For example:
+  #   - /dns4/seed.example.org/tcp/4001/p2p/12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd
+  bootstrap: []
+
+trust:
+  # Publishers whose verdicts count towards a decision, each with a weight
+  # between 0 (ignored) and 1 (fully trusted). Peer IDs must be unique.
+  # For example:
+  #   - peer_id: 12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd
+  #     name: seed.example.org
+  #     weight: 0.8
+  publishers: []
+  # Weight of publishers not listed above (0..1). 0 ignores unknown peers.
+  default_weight: 0
+  # Weight of this node's own observations (0..1).
+  local_weight: 1.0
+
+decision:
+  # An address is blocked when its score — the sum of weight x confidence
+  # over the distinct publishers' latest active verdicts — reaches threshold
+  # (> 0) AND at least quorum (>= 1) distinct publishers reported it.
+  # The allowlist always wins.
+  threshold: 1.8
+  quorum: 2
+  # Longest time a block may last, whatever a verdict requests.
+  max_ttl: 30d
+  # Block duration when a verdict requests none; must not exceed max_ttl.
+  default_ttl: 7d
+
+allowlist:
+  # Networks that are never blocked, in CIDR notation without host bits,
+  # e.g. [192.0.2.0/24, 2001:db8::/32]. Add your own management networks.
+  cidrs: []
+
+enforce:
+  # dryrun: log what would be blocked. nftables: manage an nftables set.
+  backend: dryrun
+  # Upper bound on simultaneously blocked addresses (>= 1).
+  max_entries: 100000
+  # How often the backend is reconciled with the decided state (> 0).
+  reconcile_interval: 10s
+
+metrics:
+  # ip:port of the Prometheus metrics and health endpoint. Use an IP
+  # address, not a hostname; ":9464" listens on all interfaces.
+  listen: 127.0.0.1:9464
+
+audit:
+  # JSON-lines audit log of every decision. Empty disables it; otherwise an
+  # absolute file path, e.g. /var/log/obie/audit.jsonl.
+  path: ""
+
+log:
+  # Minimum level of the JSON logs written to stderr: debug, info, warn or error.
+  level: info

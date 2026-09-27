@@ -8,5 +8,5 @@ import (
 )
 
 func main() {
-	os.Exit(cli.Run("obied", os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(cli.RunDaemon(os.Args[1:], os.Stdout, os.Stderr))
 }

@@ -15,8 +15,8 @@ func TestRun(t *testing.T) {
 		wantStdout string
 		wantStderr string
 	}{
-		{name: "version", args: []string{"--version"}, wantCode: ExitOK, wantStdout: "obied dev\n"},
-		{name: "version single dash", args: []string{"-version"}, wantCode: ExitOK, wantStdout: "obied dev\n"},
+		{name: "version", args: []string{"--version"}, wantCode: ExitOK, wantStdout: "obiectl dev\n"},
+		{name: "version single dash", args: []string{"-version"}, wantCode: ExitOK, wantStdout: "obiectl dev\n"},
 		{name: "help", args: []string{"--help"}, wantCode: ExitOK, wantStderr: "-version"},
 		{name: "unknown flag", args: []string{"--bogus"}, wantCode: ExitUsage, wantStderr: "flag provided but not defined"},
 		{name: "positional argument", args: []string{"start"}, wantCode: ExitUsage, wantStderr: `unexpected argument "start"`},
@@ -25,7 +25,7 @@ func TestRun(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			code := Run("obied", tt.args, &stdout, &stderr)
+			code := Run("obiectl", tt.args, &stdout, &stderr)
 			if code != tt.wantCode {
 				t.Errorf("exit code = %d, want %d", code, tt.wantCode)
 			}

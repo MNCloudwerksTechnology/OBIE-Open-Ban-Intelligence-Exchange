@@ -67,6 +67,11 @@ source of truth.
   explaining why.
 - Architecture changes need a new ADR in `documentation/adr/` and an update to
   `ARCHITECTURE.md`.
+- A new configuration key needs a struct field and default in
+  `internal/config`, a validation rule with tests where applicable, and a
+  commented entry in `documentation/examples/obie.yaml` (a test enforces it).
+- Log only through component loggers from `internal/logging`, never through
+  `slog.Default()`.
 
 ## Commit messages
 
