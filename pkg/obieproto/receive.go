@@ -1,6 +1,9 @@
 package obieproto
 
-import "fmt"
+import (
+	"fmt"
+	"slices"
+)
 
 // Receive is the complete check a node applies to a message received on
 // [Topic] before it acts on the event or forwards it. data is the message
@@ -14,7 +17,7 @@ import "fmt"
 // verified. Any error means the message is dropped and not forwarded.
 // [AllowDocumentationRanges] has no effect: the mesh never accepts them.
 func Receive(data []byte, from string, opts ...Option) (*Event, error) {
-	opts = append(opts, func(o *options) { o.allowDocumentation = false })
+	opts = append(slices.Clip(opts), func(o *options) { o.allowDocumentation = false })
 	e, err := Decode(data, opts...)
 	if err != nil {
 		return nil, err

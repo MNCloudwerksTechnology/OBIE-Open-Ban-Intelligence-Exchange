@@ -119,10 +119,10 @@ func checkConfidenceLiteral(data []byte) error {
 	literal := string(v.Verdict.Confidence)
 	f, _, err := big.ParseFloat(literal, 10, confidencePrec, big.ToNearestEven)
 	if err != nil {
-		return invalid("verdict.confidence", "%s is not a number", literal)
+		return invalid("verdict.confidence", "%.40s is not a number", literal)
 	}
 	if f.Sign() < 0 || f.Cmp(big.NewFloat(1)) > 0 {
-		return invalid("verdict.confidence", "%s must be in [0, 1]", literal)
+		return invalid("verdict.confidence", "%.40s must be in [0, 1]", literal)
 	}
 	return nil
 }
