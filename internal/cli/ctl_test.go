@@ -11,6 +11,7 @@ import (
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
+	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
 
@@ -72,7 +73,7 @@ func TestStatusWriteError(t *testing.T) {
 // TestObiectlStatusAgainstInProcessDaemon starts obied in-process on a
 // temporary socket and queries it through the obiectl code path.
 func TestObiectlStatusAgainstInProcessDaemon(t *testing.T) {
-	n := newTestNode(t, "node:\n  mode: enforce\n")
+	n := newTestNode(t, "  mode: enforce\n")
 	var stderr bytes.Buffer
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -95,7 +96,7 @@ func TestObiectlStatusAgainstInProcessDaemon(t *testing.T) {
 		if got.UptimeSeconds < 0 || time.Since(got.StartedAt) > time.Minute {
 			t.Errorf("implausible uptime %v / start %v", got.UptimeSeconds, got.StartedAt)
 		}
-		for _, name := range []string{admin.Name, "ops"} {
+		for _, name := range []string{store.Name, admin.Name, "ops"} {
 			if s := got.Subsystems[name]; s.State != lifecycle.StateRunning || !s.Ready {
 				t.Errorf("subsystem %s = %+v, want running and ready", name, s)
 			}
@@ -107,7 +108,8 @@ func TestObiectlStatusAgainstInProcessDaemon(t *testing.T) {
 			t.Fatalf("exit code = %d, stderr %q", code, ctlStderr.String())
 		}
 		for _, want := range []string{"Version:  dev\n", "Mode:     enforce\n", "Ready:    yes\n",
-			"admin      running  yes    -\n", "ops        running  yes    -\n"} {
+			"admin      running  yes    -\n", "ops        running  yes    -\n",
+			"store      running  yes    -\n"} {
 			if !strings.Contains(stdout.String(), want) {
 				t.Errorf("table lacks %q:\n%s", want, stdout.String())
 			}

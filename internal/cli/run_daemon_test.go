@@ -20,14 +20,16 @@ import (
 
 // testNode describes the listeners of a daemon started by a test.
 type testNode struct {
-	config  string // path of the configuration file
-	socket  string // admin socket
-	metrics string // ops listen address
+	config   string // path of the configuration file
+	socket   string // admin socket
+	stateDir string // node.state_dir
+	metrics  string // ops listen address
 }
 
-// newTestNode writes a configuration with a temporary admin socket and a
-// free ops port; extra is appended to the YAML.
-func newTestNode(t *testing.T, extra string) testNode {
+// newTestNode writes a configuration with a temporary state dir, admin
+// socket and a free ops port; node holds extra keys of the node section,
+// indented by two spaces.
+func newTestNode(t *testing.T, node string) testNode {
 	t.Helper()
 	// Unix socket paths are limited to about 100 bytes; t.TempDir can exceed that.
 	dir, err := os.MkdirTemp("", "obie")
@@ -35,10 +37,10 @@ func newTestNode(t *testing.T, extra string) testNode {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	n := testNode{socket: filepath.Join(dir, "obie.sock"), metrics: freeAddr(t)}
+	n := testNode{socket: filepath.Join(dir, "obie.sock"), stateDir: filepath.Join(dir, "state"), metrics: freeAddr(t)}
 	n.config = writeConfig(t, fmt.Sprintf(
-		"admin:\n  socket: %s\n  socket_group: obie-test-no-such-group\nmetrics:\n  listen: %s\n%s",
-		n.socket, n.metrics, extra))
+		"node:\n  state_dir: %s\n%sadmin:\n  socket: %s\n  socket_group: obie-test-no-such-group\nmetrics:\n  listen: %s\n",
+		n.stateDir, node, n.socket, n.metrics))
 	return n
 }
 
@@ -126,6 +128,9 @@ func TestRunDaemonGracefulShutdown(t *testing.T) {
 		return runDaemon(ctx, args, &stdout, &stderr)
 	})
 
+	if info, err := os.Stat(filepath.Join(n.stateDir, "db")); err != nil || !info.IsDir() {
+		t.Errorf("event store not opened in <state_dir>/db: %v", err)
+	}
 	resp, err := http.Get("http://" + n.metrics + "/readyz") // #nosec G107 -- test daemon URL.
 	if err != nil {
 		t.Fatal(err)
@@ -151,7 +156,7 @@ func TestRunDaemonGracefulShutdown(t *testing.T) {
 }
 
 func TestRunDaemonStopsOnSIGTERM(t *testing.T) {
-	n := newTestNode(t, "node:\n  shutdown_timeout: 5s\n")
+	n := newTestNode(t, "  shutdown_timeout: 5s\n")
 	var stdout, stderr bytes.Buffer
 	exit := startDaemon(context.Background(), t, n, &stderr, func(_ context.Context, args []string) int {
 		return RunDaemon(args, &stdout, &stderr)
@@ -177,8 +182,8 @@ func TestRunDaemonStartFailure(t *testing.T) {
 	}
 	defer func() { _ = taken.Close() }()
 	n := newTestNode(t, "")
-	n.config = writeConfig(t, fmt.Sprintf("admin:\n  socket: %s\nmetrics:\n  listen: %s\nlog:\n  level: warn\n",
-		n.socket, taken.Addr()))
+	n.config = writeConfig(t, fmt.Sprintf("node:\n  state_dir: %s\nadmin:\n  socket: %s\nmetrics:\n  listen: %s\nlog:\n  level: warn\n",
+		n.stateDir, n.socket, taken.Addr()))
 
 	var stdout, stderr bytes.Buffer
 	if code := runDaemon(context.Background(), []string{"--config", n.config}, &stdout, &stderr); code != ExitFailure {
