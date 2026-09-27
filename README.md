@@ -4,16 +4,22 @@
 
 OBIE is in early development: the v0.1 reference implementation in Go is being
 built on top of this whitepaper. `obied`, the node daemon, validates its
-configuration, runs until SIGTERM/SIGINT and serves health endpoints
+configuration, runs until SIGTERM/SIGINT, reloads its configuration on
+SIGHUP and serves health endpoints
 (`/healthz`, `/readyz`, `/metrics`); on its first start it generates the
 node's Ed25519 identity key in `<state_dir>/node.key`. It joins the libp2p mesh
 under that identity, stays connected to the configured `mesh.bootstrap`
 peers and gossips signed verdicts and revocations with them, relaying only
 valid events within per-publisher and per-peer rate limits. It keeps a
-trust-weighted decision (`block` or `none`) for every indicator it holds
-verdicts on and explains it on request. `obiectl`, the operator CLI, queries
-it over the local admin socket. Enforcement, the allow-list and operator
-overrides follow in later work packages.
+trust-weighted decision (`block`, `none` or `allowed`) for every indicator
+it holds verdicts on and explains it on request. The operator has the last
+word: loopback, private, link-local, documentation and the node's own and
+bootstrap peers' addresses are never blocked, `allowlist.cidrs` and
+`allowlist.files` add more, and `obiectl allow` / `obiectl block` overrule
+the mesh for any address. A node starts in `observe` mode and never
+enforces until `node.mode: enforce` is set; the enforcement backend follows
+in a later work package. `obiectl`, the operator CLI, queries it over the
+local admin socket.
 
 ```sh
 make build           # static binaries in ./bin/
@@ -25,8 +31,13 @@ make build           # static binaries in ./bin/
 ./bin/obiectl --socket /run/obie/obie.sock status [--json]
 ./bin/obiectl --socket /run/obie/obie.sock identity [--json]
 ./bin/obiectl --socket /run/obie/obie.sock peers [--json]      # connected mesh peers
-./bin/obiectl --socket /run/obie/obie.sock explain [--json] 203.0.113.7   # why (not) blocked
-./bin/obiectl --socket /run/obie/obie.sock decisions [--state block] [--json]
+./bin/obiectl --socket /run/obie/obie.sock explain [--json] 198.51.100.7  # why (not) blocked
+./bin/obiectl --socket /run/obie/obie.sock decisions [--state block|none|allowed] [--json]
+./bin/obiectl --socket /run/obie/obie.sock allow <ip|cidr> [--ttl 7d] [--note text]  # never block
+./bin/obiectl --socket /run/obie/obie.sock block <ip|cidr> [--ttl 1h] [--note text]  # always block
+./bin/obiectl --socket /run/obie/obie.sock overrides [--json]
+./bin/obiectl --socket /run/obie/obie.sock unoverride <ip|cidr>
+kill -HUP "$(pidof obied)"   # reload allow-list files, trust, decision settings and mode
 make ci              # every check a change must pass
 ```
 

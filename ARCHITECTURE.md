@@ -21,7 +21,9 @@ mesh host and static bootstrap peers in
 store in [ADR 0008](documentation/adr/0008-local-event-store.md); the gossip
 of events in [ADR 0009](documentation/adr/0009-gossip-of-events.md); the
 trust-weighted decision engine in
-[ADR 0011](documentation/adr/0011-trust-weighted-decision.md); the website
+[ADR 0011](documentation/adr/0011-trust-weighted-decision.md); the
+allow-list, operator overrides, observe/enforce modes and configuration
+reload in [ADR 0013](documentation/adr/0013-local-sovereignty.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -41,7 +43,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Identity:** one Ed25519 key per node; the libp2p peer ID is derived from it (same key for mesh and event signing).
 - **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0008).
 - **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts` (no pubsub signatures, message ID = event ID, validation before relay, per-publisher and per-peer rate limits, peer scoring), static bootstrap peers in v0.1.
-- **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins. Mode `observe` (default) or `enforce`.
+- **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins (built-in ranges, own and bootstrap addresses, `allowlist.cidrs`, `allowlist.files`); operator force-allow / force-block overrides; mode `observe` (default) or `enforce`; SIGHUP reloads (ADR 0013).
 - **Enforcement:** pluggable enforcer; `dryrun` and `nftables` (own table `inet obie`, timeout sets) backends; reconcile loop.
 - **Ops:** Prometheus `/metrics`, `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); JSON decision audit log.
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests; privileged tests behind the `privileged` build tag.
@@ -58,6 +60,7 @@ internal/           all non-public code (one package per concern listed above)
   config/           YAML configuration schema, defaults, strict decoding, validation
   daemon/           wires the obied subsystems together and runs them
   decision/         trust-weighted consensus per indicator, explanations, block change stream
+  enforce/          mode gate: the only path from block changes to the enforcer
   gossip/           GossipSub topic: validation, dedupe, rate limits, Publish, metrics hook
   httpserver/       HTTP server as a lifecycle subsystem
   identity/         persistent Ed25519 node key (<state_dir>/node.key); peer ID, signing
@@ -65,6 +68,7 @@ internal/           all non-public code (one package per concern listed above)
   logging/          slog JSON handler; per-component loggers
   mesh/             go-libp2p host, bootstrap peers with backoff, peer view
   ops/              /healthz, /readyz and Prometheus /metrics
+  sovereignty/      allow-list (built-in, config, files, own and bootstrap addresses), override precedence
   store/            BadgerDB event and indicator state: dedupe, expiry, overrides
   version/          build version, injected via -ldflags
 pkg/
@@ -162,8 +166,31 @@ Only the packages that exist today are listed in detail; the remaining
   `obiectl explain <ip>` (`GET /v1/decisions/{indicator}`) shows every
   publisher's weight, confidence and contribution, score vs threshold,
   count vs quorum and the final decision; `obiectl decisions`
-  (`GET /v1/decisions?state=block`) lists them. The allow-list and overrides
-  are shown as not applied until WP #1660 (ADR 0011).
+  (`GET /v1/decisions?state=block`) lists them (ADR 0011).
+- **Sovereignty.** `internal/sovereignty` builds the effective allow-list —
+  built-in ranges (loopback, RFC 1918, CGNAT, link-local, ULA, multicast,
+  unspecified, broadcast, IPv4-mapped, documentation), `allowlist.cidrs`,
+  the IPs of `mesh.listen` (all interface addresses for an unspecified
+  one), the `mesh.bootstrap` peers' IPs (DNS names resolved) and
+  `allowlist.files` (one IP/CIDR per line) — and judges an indicator
+  against it and the stored overrides, first match wins: force-allow
+  (overlapping) > built-in/own/bootstrap entry (overlapping) > force-block
+  (exact indicator) > `allowlist.cidrs`/files entry (overlapping) > the
+  trust-weighted decision. Allow-listed indicators get state `allowed`;
+  a force-block needs no verdicts and lasts until its override ends,
+  capped at `decision.max_ttl` and refreshed. `obiectl allow|block <ip|cidr>
+  [--ttl] [--note]`, `obiectl overrides` and `obiectl unoverride`
+  (`GET/POST /v1/overrides`, `DELETE /v1/overrides/{indicator}`) manage the
+  overrides; `obiectl explain` names the rule, its source and the match.
+- **Modes and reload.** `internal/enforce.Gate` subscribes to the block
+  change stream and is the only path to the enforcer: in `observe`
+  (default) it logs every change and forwards nothing, in `enforce` it
+  forwards; switching replays or withdraws the current blocks. The mode is
+  set only in the configuration (`obiectl status` shows it first). SIGHUP
+  re-reads the configuration and the allow-list files and applies
+  `node.mode`, `trust`, `decision` and `allowlist` at once; an invalid
+  configuration or allow-list file is logged and the running one kept;
+  changes to other keys are logged as needing a restart (ADR 0013).
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
   before every commit. Tool versions are pinned in the `Makefile`. The CI

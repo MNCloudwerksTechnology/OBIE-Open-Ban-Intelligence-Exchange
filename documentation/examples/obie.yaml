@@ -2,9 +2,14 @@
 #
 # Every key is optional: an omitted key takes the default shown here, so this
 # file configures exactly the same node as an empty one. Validate changes
-# before restarting the node:
+# before restarting or reloading the node:
 #
 #   obied --config /etc/obie/obie.yaml --check-config
+#
+# SIGHUP makes obied re-read this file: node.mode, trust, decision and
+# allowlist (including the allowlist.files) take effect at once; changes to
+# other keys need a restart and are logged as such. An invalid file is
+# rejected and the running configuration kept.
 #
 # Unknown keys, values of the wrong type and invalid values are errors that
 # name the offending key path (e.g. "trust.publishers[1].weight"); obied
