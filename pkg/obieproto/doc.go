@@ -15,3 +15,5 @@
 // Validation checks the format of publisher.signature only; verifying it is
 // the job of the signing layer.
 package obieproto
+
+//go:generate go test -run ^TestVectors$ -update
