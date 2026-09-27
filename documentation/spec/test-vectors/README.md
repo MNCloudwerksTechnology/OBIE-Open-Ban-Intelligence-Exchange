@@ -3,6 +3,8 @@
 Each `*.json` file is one test vector for signing and verifying obie/0.1
 events. An independent implementation should reproduce every field from the
 event and the key alone.
+The protocol itself is specified in [obie-0.1.md](../obie-0.1.md) (section 7
+for signing).
 
 ## Signing rules
 

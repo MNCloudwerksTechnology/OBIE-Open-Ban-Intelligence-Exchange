@@ -1,6 +1,6 @@
 // Package mesh runs the node's libp2p host: an encrypted, authenticated
 // connection to every configured bootstrap peer, kept alive with
-// exponential backoff (ADR 0006).
+// exponential backoff (ADR 0007).
 //
 // The host uses the node identity, listens on TCP and QUIC, secures
 // connections with Noise (QUIC with its libp2p TLS handshake) and has no

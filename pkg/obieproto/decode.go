@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"slices"
 )
 
@@ -80,10 +81,50 @@ func Decode(data []byte, opts ...Option) (*Event, error) {
 	if err := dec.Decode(&e); err != nil {
 		return nil, &FieldError{Err: ErrMalformed, Detail: err.Error()}
 	}
+	if e.Verdict != nil && e.Verdict.Confidence == 1 {
+		if err := checkConfidenceLiteral(data); err != nil {
+			return nil, err
+		}
+	}
 	if err := e.Validate(opts...); err != nil {
 		return nil, err
 	}
 	return &e, nil
+}
+
+// confidencePrec is the precision, in bits, at which a confidence literal is
+// compared with 0 and 1. A literal of at most MaxEventSize characters that
+// lies outside [0, 1] differs from the bound by more than 10^-4200, far more
+// than a rounding error at this precision.
+const confidencePrec = 1 << 15
+
+// checkConfidenceLiteral rejects a verdict.confidence whose literal lies
+// outside [0, 1] although its binary64 value does not, e.g.
+// 1.0000000000000001, which rounds to 1. The range applies to the value as
+// written, as a JSON Schema validator comparing decimals exactly sees it.
+// Rounding is monotonic, so only a literal that rounds to 1 can exceed 1; a
+// negative literal rounds to a negative value or -0, which Validate rejects.
+// Callers therefore only check literals whose binary64 value is 1, which
+// also keeps literals with huge exponents away from the slow big.Float
+// parser. data has already been decoded successfully.
+func checkConfidenceLiteral(data []byte) error {
+	var v struct {
+		Verdict *struct {
+			Confidence json.Number `json:"confidence"`
+		} `json:"verdict"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil || v.Verdict == nil {
+		return nil
+	}
+	literal := string(v.Verdict.Confidence)
+	f, _, err := big.ParseFloat(literal, 10, confidencePrec, big.ToNearestEven)
+	if err != nil {
+		return invalid("verdict.confidence", "%.40s is not a number", literal)
+	}
+	if f.Sign() < 0 || f.Cmp(big.NewFloat(1)) > 0 {
+		return invalid("verdict.confidence", "%.40s must be in [0, 1]", literal)
+	}
+	return nil
 }
 
 // checkSpecAndType looks only at the top-level spec and type keys.

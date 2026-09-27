@@ -1,4 +1,4 @@
-# ADR 0006: Mesh host and static bootstrap peers
+# ADR 0007: Mesh host and static bootstrap peers
 
 - **Status:** Accepted
 - **Date:** 2026-09-27

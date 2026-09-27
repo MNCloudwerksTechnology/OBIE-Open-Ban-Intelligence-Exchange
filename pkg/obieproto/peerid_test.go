@@ -89,6 +89,7 @@ func TestPublicKeyFromPeerIDRejects(t *testing.T) {
 		{"not base58", "12D3KooW0OIl"},
 		{"secp256k1 key", "16Uiu2HAm8RymmxmEHvqcSJhoQMKpJSZmo22eiGyz2wJxScjQHZxL"},
 		{"sha256 multihash (RSA style)", "QmYyQSo1c1Ym7orWxLYvCrM2EmxFTANf8wXmmE7DWjhx5N"},
+		{"CIDv1 form of testPeerIDA", "bafzaajaiaejcbv22taayfmikw7kux7wtzfsaooqo4fzphwvgems26aq2nd3qoui2"},
 		{"truncated", testPeerIDA[:len(testPeerIDA)-1]},
 		{"extra character", testPeerIDA + "1"},
 		{"leading zero byte", "1" + testPeerIDA},

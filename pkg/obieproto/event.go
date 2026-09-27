@@ -5,6 +5,10 @@ import "time"
 // Spec is the protocol version identifier carried in every event.
 const Spec = "obie/0.1"
 
+// Topic is the GossipSub topic on which obie/0.1 events are published. Each
+// message on it is exactly one serialized event; see [Receive].
+const Topic = "obie/0.1/verdicts"
+
 // Event types defined by obie/0.1.
 const (
 	// TypeVerdict announces that the publisher considers an indicator hostile.

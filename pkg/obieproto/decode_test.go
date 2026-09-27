@@ -147,7 +147,7 @@ func TestDecodeInvalid(t *testing.T) {
 		{name: "newer spec with unknown fields", data: []byte(`{"spec":"obie/0.2","type":"indicator.verdict","extra":1}`), wantErr: ErrUnsupportedSpec},
 		{name: "spec not a string", data: withField(t, "spec", `1`), wantErr: ErrUnsupportedSpec},
 		{name: "unknown type with unknown fields", data: []byte(`{"spec":"obie/0.1","type":"indicator.appeal","appeal":{}}`), wantErr: ErrUnsupportedType},
-		{name: "observation type", data: withField(t, "type", `"indicator.observation"`), wantErr: ErrUnsupportedType},
+		{name: "observation type", data: withField(t, "type", `"indicator.observed"`), wantErr: ErrUnsupportedType},
 		{name: "missing type", data: withField(t, "type", ""), wantErr: ErrUnsupportedType},
 		{name: "type wrong case", data: withField(t, "type", `"Indicator.Verdict"`), wantErr: ErrUnsupportedType},
 
@@ -180,6 +180,8 @@ func TestDecodeInvalid(t *testing.T) {
 		{name: "indicator not an object", data: withField(t, "indicator", `"85.10.20.30"`), wantErr: ErrMalformed},
 		{name: "confidence as string", data: withField(t, "verdict.confidence", `"0.9"`), wantErr: ErrMalformed},
 		{name: "events as float", data: withField(t, "evidence.events", `47.5`), wantErr: ErrMalformed},
+		{name: "integer with a fraction", data: withField(t, "evidence.events", `47.0`), wantErr: ErrMalformed},
+		{name: "integer with an exponent", data: withField(t, "verdict.ttl_seconds", `6e2`), wantErr: ErrMalformed},
 		{name: "honeypot as string", data: withField(t, "evidence.honeypot", `"true"`), wantErr: ErrMalformed},
 		{name: "negative asn", data: withField(t, "publisher.asn", `-1`), wantErr: ErrMalformed},
 		{name: "asn above 32 bits", data: withField(t, "publisher.asn", `4294967296`), wantErr: ErrMalformed},
@@ -193,6 +195,8 @@ func TestDecodeInvalid(t *testing.T) {
 		{name: "private indicator", data: withField(t, "indicator", `{"kind":"ipv4","value":"10.0.0.1","scope":"/32"}`), wantErr: ErrNonPublicIndicator},
 		{name: "non-canonical indicator", data: withField(t, "indicator", `{"kind":"ipv6","value":"2A01:4F8::1","scope":"/128"}`), wantErr: ErrInvalidField},
 		{name: "confidence out of range", data: withField(t, "verdict.confidence", `1.5`), wantErr: ErrInvalidField},
+		{name: "confidence literal above 1 that rounds to 1", data: withField(t, "verdict.confidence", `1.0000000000000001`), wantErr: ErrInvalidField},
+		{name: "confidence literal with exponent above 1", data: withField(t, "verdict.confidence", `100000000000000000001e-20`), wantErr: ErrInvalidField},
 		{name: "revoke with verdict fields", data: []byte(strings.Replace(revokeJSON, `"reason":"false_positive",`, `"reason":"false_positive","protocol":"ssh",`, 1)), wantErr: ErrInvalidField},
 	}
 	for _, tt := range tests {

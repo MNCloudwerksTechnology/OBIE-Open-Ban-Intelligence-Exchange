@@ -30,8 +30,12 @@ every key and its default.
 
 Requires Go 1.26 or newer. Every pull request is gated by the same `make ci` in
 CI. See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical baseline and
-[CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute. The whitepaper
-follows below.
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute. The wire protocol is
+specified in [documentation/spec/obie-0.1.md](documentation/spec/obie-0.1.md).
+
+The whitepaper follows below. It describes the long-term vision; statements
+marked *(planned)* are not implemented in v0.1 (see
+[the deviations in ARCHITECTURE.md](ARCHITECTURE.md#deviations-from-the-whitepaper)).
 
 ---
 
@@ -93,21 +97,30 @@ OBIE is designed as a lightweight overlay network that integrates with existing 
 
 The foundation of OBIE is a leaderless P2P mesh built on `libp2p`.
 
-- **Discovery:** Nodes use a Kademlia-based Distributed Hash Table (DHT) for decentralized peer discovery.
+- **Discovery:** Nodes use a Kademlia-based Distributed Hash Table (DHT) for decentralized peer discovery *(planned)*; v0.1
+  uses static bootstrap peers.
 - **Identity:** Each node maintains a persistent Ed25519 peer ID. Organizational identity is optionally bound via domain
-  challenges (ACME/`.well-known`).
-- **Messaging:** High-confidence signals are broadcast via GossipSub topics (e.g., `obie.v0.ssh`, `obie.v0.http`).
-  Targeted RPC (Remote Procedure Call) is used for direct evidence fetching and appeals.
+  challenges (ACME/`.well-known`) *(planned)*.
+- **Messaging:** High-confidence signals are broadcast via GossipSub topics (e.g., `obie.v0.ssh`, `obie.v0.http`) *(planned)*; v0.1
+  uses the single topic `obie/0.1/verdicts`. Targeted RPC (Remote Procedure Call) is used for direct evidence fetching
+  and appeals *(planned)*.
 
 #### 3.2 Data Model: OBIE Events
 
-Events are normalized JSON objects (or CBOR/COSE for efficiency) containing indicators, evidence, and verdicts.
+Events are normalized JSON objects (or CBOR/COSE for efficiency *(planned)*) containing indicators, evidence, and verdicts.
 
 ![data_model.png](diagrams/data_model.png)
 
 ##### 3.2.1 Technical Schema
 
-A typical OBIE verdict event includes high-fidelity metadata allowing the subscriber to verify the claim's provenance and local relevance:
+The normative definition of the v0.1 event format — every field and its constraints, event semantics, indicator
+normalization, canonicalization and signing, transport, validation rules, privacy and security considerations — is the
+[obie/0.1 protocol specification](documentation/spec/obie-0.1.md), with a
+[JSON Schema](documentation/spec/obie-0.1.schema.json) and
+[signing test vectors](documentation/spec/test-vectors/README.md).
+
+A typical OBIE verdict event includes high-fidelity metadata allowing the subscriber to verify the claim's provenance
+and local relevance (the IPv6 address is from the documentation range, which real nodes reject):
 
 ```json
 {
@@ -141,23 +154,25 @@ A typical OBIE verdict event includes high-fidelity metadata allowing the subscr
 ```
 
 OBIE supports a broad range of indicators beyond simple IP addresses, and events are typically tagged with **MITRE ATT&CK® techniques** (e.g., T1110 for Brute Force) to provide immediate context for detection engineers. Supported indicator types include:
-- **Network:** IPv4/v6, CIDR blocks, ASNs.
-- **Service:** FQDNs, URLs.
-- **Fingerprints:** JA3/JA4 (TLS), SSH key fingerprints, HTTP fingerprints.
-- **File:** SHA256 hashes of malicious payloads observed in-flight.
+- **Network:** IPv4/v6, CIDR blocks, ASNs *(planned)* — v0.1 supports public IPv4/IPv6 addresses and CIDR blocks.
+- **Service:** FQDNs, URLs *(planned)*.
+- **Fingerprints:** JA3/JA4 (TLS), SSH key fingerprints, HTTP fingerprints *(planned)*.
+- **File:** SHA256 hashes of malicious payloads observed in-flight *(planned)*.
 
 #### 3.3 The Tech Stack
 
 The reference implementation utilizes:
 
 - **Language:** Go (for static binaries and `libp2p` maturity).
-- **Storage:** RocksDB/BadgerDB for local state; CRDTs for distributed reputation consistency.
-- **Policy Engine:** OPA (Open Policy Agent) using Rego to map network signals to local actions.
-- **Enforcement:** `nftables` (Linux), `eBPF` for high-rate drops, or shims for `Fail2Ban`.
+- **Storage:** RocksDB/BadgerDB for local state (v0.1: BadgerDB); CRDTs for distributed reputation consistency *(planned)*.
+- **Policy Engine:** OPA (Open Policy Agent) using Rego to map network signals to local actions *(planned)*; v0.1 uses a
+  built-in weighted-score decision.
+- **Enforcement:** `nftables` (Linux), `eBPF` for high-rate drops *(planned)*, or shims for `Fail2Ban` *(planned)*.
 
 ### 4. Decentralized Trust and Reputation
 
-In a leaderless system, trust is the primary currency. OBIE implements a multidimensional reputation model:
+In a leaderless system, trust is the primary currency. OBIE implements a multidimensional reputation model *(planned)*; in
+v0.1 operators assign a trust weight to each publisher:
 
 #### 4.1 Scoring Dimensions
 
@@ -179,17 +194,19 @@ The consensus algorithm follows a Bayesian-inspired weighting:
 
 To trigger automatic enforcement (e.g., a `DROP` rule), a signal must typically meet a "Diversity Quorum":
 - **Weighted Score Threshold:** The aggregate score must exceed a locally defined limit (default: 1.8).
-- **ASN Diversity:** Corroboration must come from at least 3 distinct Autonomous Systems (ASNs).
-- **Org Diversity:** Reports must originate from at least 3 unique verified organizations.
+- **ASN Diversity:** Corroboration must come from at least 3 distinct Autonomous Systems (ASNs) *(planned)*; v0.1 requires a
+  minimum number of distinct publishers (default: 2).
+- **Org Diversity:** Reports must originate from at least 3 unique verified organizations *(planned)*.
 
 #### 4.3 Detection Lifecycle & Remediation
 
 OBIE transitions signals through a formal lifecycle to ensure accuracy and permit correction:
-1. **Observation:** A node detects malicious activity and generates an `indicator.observed` event.
+1. **Observation:** A node detects malicious activity and generates an `indicator.observed` event *(planned)*; in v0.1
+   observations stay local.
 2. **Verdict:** Once local confidence is high, the node publishes an `indicator.verdict`.
 3. **Corroboration:** Peer nodes receive the verdict, verify the signature, and update their local consensus score for that indicator.
-4. **Enforcement:** If thresholds are met, the subscriber's local policy engine (OPA) triggers enforcement via `nftables` or `eBPF`.
-5. **Revocation/Appeal:** If a signal is found to be a false positive, the original issuer can broadcast an `indicator.revoke`. Alternatively, the subject of a ban can submit an `indicator.appeal` (signed with proof of IP ownership) for human or automated review.
+4. **Enforcement:** If thresholds are met, the subscriber's local policy engine (OPA *(planned)*) triggers enforcement via `nftables` or `eBPF` *(planned)*.
+5. **Revocation/Appeal:** If a signal is found to be a false positive, the original issuer can broadcast an `indicator.revoke`. Alternatively, the subject of a ban can submit an `indicator.appeal` (signed with proof of IP ownership) for human or automated review *(planned)*.
 
 ### 5. Security and Resilience: Defending the Mesh
 
@@ -197,10 +214,11 @@ As a defensive tool, OBIE must resist being weaponized.
 
 #### 5.1 Poisoning and Sybil Resistance
 
-- **Identity Barriers:** Anonymous publishing is rejected. Cryptographic identity (verified via domain/ACME) is required
-  to participate in the reputation pool.
-- **Rate Limiting:** Strict quotas are applied per-identity and per-ASN to prevent flood-based DoS.
-- **Reputation Warm-up:** New nodes have limited influence until they prove value over time.
+- **Identity Barriers:** Anonymous publishing is rejected. Cryptographic identity (verified via domain/ACME *(planned)*) is required
+  to participate in the reputation pool *(planned)*.
+- **Rate Limiting:** Strict quotas are applied per-identity and per-ASN to prevent flood-based DoS *(planned)*; the
+  specification states the expected rates.
+- **Reputation Warm-up:** New nodes have limited influence until they prove value over time *(planned)*.
 
 #### 5.2 Local Sovereignty as a Fail-safe
 
@@ -211,10 +229,10 @@ losing local protection.
 #### 5.3 Operational Integration: SIEM and SOAR
 
 OBIE is designed to be "boringly robust" and integrates seamlessly with the modern security stack:
-- **SIEM Ingestion:** All OBIE events are exported as structured JSON/ECS-compliant logs, ready for ingestion into ELK/Loki/Splunk.
-- **SOAR Orchestration:** Playbooks can use OBIE's RPC layer to fetch evidence hashes for manual forensic validation.
-- **Monitoring:** Native Prometheus metrics provide real-time visibility into ban propagation rates, signature failures, and ASN diversity metrics.
-- **Honeypot Enrichment:** Integration with Cowrie or T-Pot allows nodes to contribute "high-precision" signals derived from verified attacker interactions.
+- **SIEM Ingestion:** All OBIE events are exported as structured JSON/ECS-compliant logs, ready for ingestion into ELK/Loki/Splunk *(planned)*.
+- **SOAR Orchestration:** Playbooks can use OBIE's RPC layer to fetch evidence hashes for manual forensic validation *(planned)*.
+- **Monitoring:** Native Prometheus metrics provide real-time visibility into ban propagation rates, signature failures, and ASN diversity metrics (ASN diversity metrics *(planned)*).
+- **Honeypot Enrichment:** Integration with Cowrie or T-Pot allows nodes to contribute "high-precision" signals derived from verified attacker interactions *(planned)*.
 
 ### 6. Implementation Roadmap
 

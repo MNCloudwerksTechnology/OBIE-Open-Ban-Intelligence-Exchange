@@ -1,0 +1,83 @@
+package obieproto
+
+import (
+	"encoding/json"
+	"errors"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestTopic(t *testing.T) {
+	if Topic != "obie/0.1/verdicts" || !strings.HasPrefix(Topic, Spec+"/") {
+		t.Errorf("Topic = %q, want obie/0.1/verdicts", Topic)
+	}
+}
+
+func TestReceive(t *testing.T) {
+	signedJSON := func(e *Event) []byte { return mustMarshal(t, signedBy(t, e, testSeedA)) }
+	shortVerdict := func() *Event { e := validVerdict(); e.Verdict.TTLSeconds = 60; return e }
+	tests := []struct {
+		name    string
+		data    []byte
+		from    string
+		now     time.Time
+		wantErr error
+	}{
+		{name: "signed verdict", data: signedJSON(validVerdict()), from: testPeerIDA, now: testNow},
+		{name: "signed revocation", data: signedJSON(validRevoke()), from: testPeerIDA, now: testNow},
+		{name: "verdict one second before expiry", data: signedJSON(shortVerdict()), from: testPeerIDA, now: testNow.Add(59 * time.Second)},
+		{name: "expired verdict", data: signedJSON(shortVerdict()), from: testPeerIDA, now: testNow.Add(60 * time.Second), wantErr: ErrExpired},
+		{name: "expired revocation", data: signedJSON(validRevoke()), from: testPeerIDA, now: testNow.Add(MaxTTLSeconds * time.Second), wantErr: ErrExpired},
+		{name: "published by another peer", data: signedJSON(validVerdict()), from: testPeerIDB, now: testNow, wantErr: ErrPublisherMismatch},
+		{name: "no author", data: signedJSON(validVerdict()), from: "", now: testNow, wantErr: ErrPublisherMismatch},
+		{name: "unsigned", data: mustMarshal(t, func() *Event {
+			e := validVerdict()
+			e.Publisher.PeerID, e.Publisher.Signature = testPeerIDA, ""
+			return e
+		}()), from: testPeerIDA, now: testNow, wantErr: ErrInvalidSignature},
+		{name: "tampered", data: []byte(strings.Replace(string(signedJSON(validVerdict())), `"events":47`, `"events":48`, 1)),
+			from: testPeerIDA, now: testNow, wantErr: ErrInvalidSignature},
+		{name: "fails decoding", data: []byte(`{"spec":"obie/0.2"}`), from: testPeerIDA, now: testNow, wantErr: ErrUnsupportedSpec},
+		{name: "future issued_at", data: signedJSON(validVerdict()), from: testPeerIDA, now: testNow.Add(-MaxClockSkew - time.Second), wantErr: ErrInvalidField},
+		{name: "documentation range", data: signedJSON(func() *Event {
+			e := validVerdict()
+			e.Indicator = Indicator{Kind: KindIPv4, Value: "203.0.113.7", Scope: "/32"}
+			return e
+		}()), from: testPeerIDA, now: testNow, wantErr: ErrNonPublicIndicator},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e, err := Receive(tt.data, tt.from, WithClock(func() time.Time { return tt.now }), AllowDocumentationRanges())
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("Receive() error = %v, want %v", err, tt.wantErr)
+			}
+			if (e == nil) == (err == nil) {
+				t.Errorf("Receive() = %v, %v; want exactly one of event and error", e, err)
+			}
+		})
+	}
+}
+
+// TestReceiveVectors checks that a relay accepts exactly the vectors that
+// are both protocol-valid and correctly signed.
+func TestReceiveVectors(t *testing.T) {
+	files, err := filepath.Glob(filepath.Join(vectorDir, "*.json"))
+	if err != nil || len(files) == 0 {
+		t.Fatalf("no test vectors: %v", err)
+	}
+	for _, file := range files {
+		t.Run(filepath.Base(file), func(t *testing.T) {
+			v := readVector(t, file)
+			var e Event
+			if err := json.Unmarshal(v.Event, &e); err != nil {
+				t.Fatal(err)
+			}
+			_, err := Receive(v.Event, e.Publisher.PeerID, WithClock(func() time.Time { return e.IssuedAt.Time }))
+			if want := v.ProtocolValid && v.Valid; (err == nil) != want {
+				t.Errorf("Receive() error = %v, want accepted = %v", err, want)
+			}
+		})
+	}
+}
