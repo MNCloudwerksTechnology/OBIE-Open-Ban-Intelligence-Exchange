@@ -174,7 +174,7 @@ func vectorSpecs() []vectorSpec {
 			description: "Negative: publisher.peer_id is the peer ID of public key A (vector 01), but the signature " +
 				"was made by the key of private_key_seed (key B). The signature does not verify.",
 			signer: testSeedB, peerOf: testSeedA,
-			event: func() *Event { return vectorSpecs()[0].event() },
+			event:         func() *Event { return vectorSpecs()[0].event() },
 			protocolValid: true, valid: false,
 		},
 	}
