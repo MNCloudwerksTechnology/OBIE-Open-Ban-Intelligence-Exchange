@@ -10,11 +10,13 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
 
-// Exit codes returned by Run.
+// Exit codes returned by Run. Diagnostics written to stderr are best effort:
+// a failing stderr cannot be reported anywhere else.
 const (
 	ExitOK             = 0
 	ExitNotImplemented = 1
 	ExitUsage          = 2
+	ExitIOError        = 3
 )
 
 // Run parses args for the named program and returns the process exit code.
@@ -32,15 +34,18 @@ func Run(program string, args []string, stdout, stderr io.Writer) int {
 		return ExitUsage
 	}
 	if fs.NArg() > 0 {
-		fmt.Fprintf(stderr, "%s: unexpected argument %q\n", program, fs.Arg(0))
+		_, _ = fmt.Fprintf(stderr, "%s: unexpected argument %q\n", program, fs.Arg(0))
 		fs.Usage()
 		return ExitUsage
 	}
 	if *showVersion {
-		fmt.Fprintln(stdout, version.String(program))
+		if _, err := fmt.Fprintln(stdout, version.String(program)); err != nil {
+			_, _ = fmt.Fprintf(stderr, "%s: writing version: %v\n", program, err)
+			return ExitIOError
+		}
 		return ExitOK
 	}
 
-	fmt.Fprintf(stderr, "%s: not implemented yet; only --version is available\n", program)
+	_, _ = fmt.Fprintf(stderr, "%s: not implemented yet; only --version is available\n", program)
 	return ExitNotImplemented
 }

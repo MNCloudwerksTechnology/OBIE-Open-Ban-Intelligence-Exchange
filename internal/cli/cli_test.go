@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -35,5 +36,19 @@ func TestRun(t *testing.T) {
 				t.Errorf("stderr = %q, want it to contain %q", stderr.String(), tt.wantStderr)
 			}
 		})
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("broken pipe") }
+
+func TestRunVersionWriteError(t *testing.T) {
+	var stderr bytes.Buffer
+	if code := Run("obiectl", []string{"--version"}, failingWriter{}, &stderr); code != ExitIOError {
+		t.Errorf("exit code = %d, want %d", code, ExitIOError)
+	}
+	if !strings.Contains(stderr.String(), "broken pipe") {
+		t.Errorf("stderr = %q, want it to mention the write error", stderr.String())
 	}
 }
