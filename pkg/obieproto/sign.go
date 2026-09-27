@@ -114,6 +114,38 @@ func Sign(e *Event, key ed25519.PrivateKey) error {
 	return nil
 }
 
+// Signer produces Ed25519 signatures with a key that the caller does not
+// hand out, such as the node identity.
+type Signer interface {
+	// PeerID returns the libp2p peer ID of the signing key.
+	PeerID() string
+	// Sign returns the Ed25519 signature of msg.
+	Sign(msg []byte) []byte
+}
+
+// SignWith is [Sign] for a key held by signer: it sets publisher.peer_id to
+// the signer's peer ID, signs the event and checks the result with
+// [Verify], so a signer whose peer ID does not belong to its key is caught
+// (the error matches [ErrPublisherMismatch] or [ErrInvalidSignature]). On
+// error the event is left unchanged.
+func SignWith(e *Event, signer Signer) error {
+	if e == nil {
+		return &FieldError{Err: ErrMalformed, Detail: "nil event"}
+	}
+	signed := *e
+	signed.Publisher.PeerID = signer.PeerID()
+	msg, err := CanonicalBytes(&signed)
+	if err != nil {
+		return err
+	}
+	signed.Publisher.Signature = signaturePrefix + base64.RawURLEncoding.EncodeToString(signer.Sign(msg))
+	if err := Verify(&signed); err != nil {
+		return err
+	}
+	*e = signed
+	return nil
+}
+
 // Verify checks publisher.signature against the Ed25519 public key embedded
 // in publisher.peer_id; no key lookup is involved. It returns nil only if the
 // signature covers exactly this event's [CanonicalBytes]. A missing,
