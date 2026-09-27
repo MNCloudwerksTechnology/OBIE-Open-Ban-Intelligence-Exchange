@@ -18,7 +18,8 @@ website/
 - Node.js 24 with npm
 - Java 21 (no Maven needed: the back end ships the Maven wrapper `./mvnw`)
 - Go (only to install the pinned `osv-scanner` for `make vuln`)
-- Docker (the back-end tests start PostgreSQL with Testcontainers)
+- Docker (the back-end tests start PostgreSQL and, for the browser test,
+  Chromium with Testcontainers)
 - To run the jar: a PostgreSQL database and an SMTP server (see
   [Configuration](#configuration))
 
@@ -59,7 +60,7 @@ http://localhost:4200.
 | `make -C website frontend-lint`| ESLint (angular-eslint) and Prettier check                          |
 | `make -C website frontend-test`| Front-end unit tests (Vitest)                                       |
 | `make -C website frontend`     | Production build, all public routes prerendered (`frontend/dist/`) |
-| `make -C website backend`      | `./mvnw verify`: tests (PostgreSQL via Testcontainers, GreenMail), Spotless, SpotBugs, jar |
+| `make -C website backend`      | `./mvnw verify`: tests (PostgreSQL and a Chromium browser via Testcontainers, GreenMail), Spotless, SpotBugs, jar |
 | `make -C website vuln`         | `npm audit --omit=dev --audit-level=high` and osv-scanner on the back end's runtime SBOM |
 | `make -C website run`          | Run the built jar                                                   |
 | `make -C website clean`        | Remove build output and installed tools                             |
@@ -100,6 +101,25 @@ Durations use ISO-8601 (`PT3S` = 3 seconds, `PT1H` = 1 hour), periods too
 | `OBIE_MAIL_RETRY_MAX_DELAY` | no | `PT6H` | Upper bound of the retry delay. |
 | `SERVER_PORT` | no | `8080` | HTTP port (Spring Boot). |
 | `SERVER_FORWARD_HEADERS_STRATEGY` | no | – | Set to `native` behind a reverse proxy that sets `X-Forwarded-For`/`X-Forwarded-Proto`, so rate limit and IP hash see the visitor's address. Leave unset without a proxy: the headers could be forged. |
+
+## Founder content: what the operator fills in
+
+The founder section and the inquiry form (`/#contact`) take all their text
+from `frontend/src/app/content/landing.content.ts` (`founder` and
+`contact`). Nothing about the founder is invented: every gap is marked
+`TODO(operator)` in that file, and the page looks finished while the
+placeholders are in place. Search for `TODO(operator)` to find them.
+
+| Field (`founder.…`) | State | What to do |
+|---------------------|-------|------------|
+| `photo.src`, `photo.alt` | **TODO(operator): headshot.** A neutral placeholder avatar (`/founder/avatar-placeholder.svg`) with an empty `alt`. | Put a square photo (at least 240 × 240 px, JPEG or WebP) into `frontend/public/founder/`, set `src` to its path (e.g. `/founder/markus-niewerth.jpg`) and describe it in `alt`. The content test requires a non-empty `alt` once `src` is not the placeholder. |
+| `topics` | **TODO(operator): confirm talk topics.** Four proposals derived from OBIE's principles, shown under "Proposed talk topics". | Confirm, edit or replace them (3 to 5 topics). Change `topicsHeading`/`topicsNote` if they are no longer proposals. |
+| `name`, `role` | Supplied by the operator. | Change only if they change. |
+| `bio` | Supplied and approved by the operator (at most 80 words, checked by a test). | Change only with the operator's approval; do not add claims. |
+| `links` | LinkedIn and GitHub, supplied by the operator. | Optional: an empty list hides the links. |
+
+The inquiry recipient is not content: it is `OBIE_INQUIRY_RECIPIENT` (see
+[Configuration](#configuration)).
 
 ## Inquiry API
 
@@ -152,6 +172,14 @@ failure is logged.
   a 4-pt spacing scale) and no component library. Inter and Source Code Pro
   are self-hosted from `@fontsource` packages, so the browser makes no
   third-party requests ([ADR 0012](../documentation/adr/0012-landing-page-content-and-design-system.md)).
+- **Inquiry form.** `sections/contact.ts` is the form (reactive forms,
+  in-page section `#contact`); `core/inquiry-api.ts` talks to the API. It
+  fetches the form token only in the browser, never while prerendering, and
+  waits until the token is older than the minimum fill time before it
+  sends, so a quick retry is never discarded as a bot. The validators in
+  `core/inquiry-validators.ts` and the messages in the content file mirror
+  `InquiryRequest.java`; change both together
+  ([ADR 0013](../documentation/adr/0013-website-inquiry-form.md)).
 - **Landing page copy.** Every user-visible string of the landing page lives
   in `src/app/content/landing.content.ts`; templates only bind to it. Edit
   copy there. A German version is a second `LandingContent` object provided
