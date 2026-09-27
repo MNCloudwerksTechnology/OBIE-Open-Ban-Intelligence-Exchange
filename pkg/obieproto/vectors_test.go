@@ -406,6 +406,9 @@ func checkVector(t *testing.T, v testVector) {
 		}
 		return
 	}
+	if v.PrivateKeySeed == "" || v.Error != "" {
+		t.Fatalf("valid vector needs private_key_seed and no error (seed %q, error %q)", v.PrivateKeySeed, v.Error)
+	}
 	resigned := signaturePrefix + base64.RawURLEncoding.EncodeToString(ed25519.Sign(key, canonical))
 	if verifyErr != nil || resigned != v.Signature {
 		t.Errorf("Verify() = %v and re-signing gives %s; want a valid signature %s", verifyErr, resigned, v.Signature)

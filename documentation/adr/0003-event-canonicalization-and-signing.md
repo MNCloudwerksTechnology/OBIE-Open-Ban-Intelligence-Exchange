@@ -50,7 +50,9 @@ Ed25519 key and its peer ID.
   verifies every message). Peer IDs whose key is not a canonical point
   encoding or has small order are rejected, using
   `filippo.io/edwards25519` (the library underlying Go's own Ed25519
-  implementation) for point decoding and the cofactor check.
+  implementation) for point decoding and the cofactor check. go-libp2p
+  does not reject such keys itself, so the mesh must apply the same check
+  to peer IDs it accepts.
 - **API:** `Sign(event, key)` fails with `ErrPublisherMismatch` unless
   `publisher.peer_id` is the key's peer ID. `Verify(event)` takes the key from
   the peer ID: a peer ID without an embedded Ed25519 key is

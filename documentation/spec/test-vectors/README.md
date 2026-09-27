@@ -53,7 +53,8 @@ valid obie/0.1 event (`protocol_valid: false`); it checks JCS string
 canonicalization and signing only.
 
 The keys are the RFC 8032 §7.1 test keys 1 (vectors 01, 03–06) and 2
-(vectors 02, 07).
+(vectors 02, 07). Vector 08 uses the identity point `01 00…00` and has no
+seed.
 
 ## Regenerating
 
