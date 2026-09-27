@@ -9,7 +9,8 @@ initial baseline is
 loading and logging are detailed in
 [ADR 0002](documentation/adr/0002-configuration-and-logging.md); the daemon
 lifecycle, ops endpoints and admin API in
-[ADR 0003](documentation/adr/0003-daemon-lifecycle-and-admin-api.md).
+[ADR 0003](documentation/adr/0003-daemon-lifecycle-and-admin-api.md); the local
+event store in [ADR 0004](documentation/adr/0004-local-event-store.md).
 
 The [whitepaper in the README](README.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
@@ -23,7 +24,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Logging:** `log/slog` JSON to stderr.
 - **Events:** obie/0.1 JSON; signatures are Ed25519 over the RFC 8785 (JCS) canonical form of the event with `publisher.signature` removed; `signature` = `"ed25519:" + base64url(no padding)`. IDs are UUIDv7.
 - **Identity:** one Ed25519 key per node; the libp2p peer ID is derived from it (same key for mesh and event signing).
-- **Storage:** BadgerDB v4 in the state dir.
+- **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0004).
 - **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts`, static bootstrap peers in v0.1.
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers ≥ quorum (default 2) — local verdicts count with `local_weight`. Allow-list always wins. Mode `observe` (default) or `enforce`.
 - **Enforcement:** pluggable enforcer; `dryrun` and `nftables` (own table `inet obie`, timeout sets) backends; reconcile loop.
@@ -45,6 +46,7 @@ internal/           all non-public code (one package per concern listed above)
   lifecycle/        ordered subsystem start/stop with timeouts; status and readiness
   logging/          slog JSON handler; per-component loggers
   ops/              /healthz, /readyz and Prometheus /metrics
+  store/            BadgerDB event and indicator state: dedupe, expiry, overrides
   version/          build version, injected via -ldflags
 pkg/
   obieproto/        public protocol types + sign/verify (importable by third parties)
