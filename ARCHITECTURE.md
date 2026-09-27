@@ -116,7 +116,7 @@ Only the packages that exist today are listed in detail; the remaining
   connection trimming. `obiectl peers` (`GET /v1/peers`) lists the connected
   peers with name and trust weight from `trust.publishers`, addresses,
   connected-since and ping latency. DHT, mDNS, relay, hole punching, NAT port
-  mapping and AutoNAT are explicitly disabled (ADR 0006). The admin package
+  mapping and the AutoNAT service are explicitly disabled (ADR 0006). The admin package
   does not import `internal/mesh`: `obiectl` stays free of go-libp2p.
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass

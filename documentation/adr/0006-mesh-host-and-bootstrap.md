@@ -39,7 +39,8 @@ configured, and stay connected when those peers go away and come back.
   stays one JSON stream.
 - **Explicitly disabled in v0.1:** DHT (no routing), mDNS, circuit relay
   (client and service), AutoRelay, hole punching, NAT port mapping and
-  AutoNAT. go-libp2p's black-hole detectors are disabled too: they suppress
+  the AutoNAT service (go-libp2p always runs the AutoNAT v1 client; it stays
+  inert because no OBIE node serves AutoNAT). go-libp2p's black-hole detectors are disabled too: they suppress
   UDP/IPv6 dials after repeated failures, which must not happen to addresses
   the operator configured. These features are planned for later releases.
 - **Key:** the host uses the node identity through an adapter that

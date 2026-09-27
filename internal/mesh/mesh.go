@@ -231,7 +231,8 @@ func (m *Mesh) newHost() (host.Host, error) {
 		libp2p.ResourceManager(rm),
 		libp2p.UserAgent(m.opts.UserAgent),
 		// No relay, and no discovery: AutoRelay, hole punching, NAT port
-		// mapping, AutoNAT and routing (DHT) stay off by not enabling them.
+		// mapping, the AutoNAT service and routing (DHT) stay off by not
+		// enabling them; the always-present AutoNAT v1 client finds no server.
 		libp2p.DisableRelay(),
 		// The operator's addresses are always dialed, even if dials of
 		// other UDP or IPv6 addresses failed before.
