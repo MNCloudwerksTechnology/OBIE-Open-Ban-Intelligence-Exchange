@@ -46,7 +46,7 @@ func runDecisions(ctx context.Context, client *admin.Client, args []string, stdo
 	const program = "obiectl decisions"
 	fs := newFlagSet(program, stderr)
 	asJSON := fs.Bool("json", false, "print the decisions as JSON")
-	state := fs.String("state", "", "list only decisions in `state` (block or none)")
+	state := fs.String("state", "", "list only decisions in `state` (block, none or allowed)")
 	if code, done := parseCommand(fs, program, args, stderr); done {
 		return code
 	}
@@ -99,11 +99,10 @@ func writeExplanation(w io.Writer, d *admin.DecisionResponse) error {
 	_, _ = fmt.Fprintf(tw, "Publishers:\t%d (quorum %d)\n", d.Contributors, d.Quorum)
 	_, _ = fmt.Fprintf(tw, "Local autoblock:\t%s\n", yesNo(d.LocalAutoblock))
 	if s := d.Sovereignty; s != nil {
-		applied := "not applied"
-		if s.Applied {
-			applied = "applied"
+		_, _ = fmt.Fprintf(tw, "Allow-list/overrides:\t%s\n", sovereigntyText(s))
+		if s.OverrideNote != "" {
+			_, _ = fmt.Fprintf(tw, "Override note:\t%s\n", s.OverrideNote)
 		}
-		_, _ = fmt.Fprintf(tw, "Allow-list/overrides:\t%s (%s)\n", applied, s.Note)
 	}
 	_, _ = fmt.Fprintf(tw, "Evaluated:\t%s\n", d.EvaluatedAt.UTC().Format(time.RFC3339))
 	if err := tw.Flush(); err != nil {
@@ -124,6 +123,18 @@ func writeExplanation(w io.Writer, d *admin.DecisionResponse) error {
 			p.IssuedAt.UTC().Format(time.RFC3339), p.ExpiresAt.UTC().Format(time.RFC3339))
 	}
 	return tw.Flush()
+}
+
+// sovereigntyText says how the allow-list and overrides affect a decision.
+func sovereigntyText(s *admin.SovereigntyResponse) string {
+	switch {
+	case !s.Applied:
+		return "not applied (" + s.Note + ")"
+	case s.Effect == "":
+		return "none apply"
+	default:
+		return s.Note
+	}
 }
 
 // writeDecisionsTable prints one row per decision, in the order the daemon

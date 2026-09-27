@@ -41,8 +41,8 @@ func TestWriteStatusTable(t *testing.T) {
 	if err := writeStatusTable(&out, status); err != nil {
 		t.Fatal(err)
 	}
-	want := `Version:  v0.1.0
-Mode:     enforce
+	want := `Mode:     ENFORCE (blocks are sent to the enforcer)
+Version:  v0.1.0
 Uptime:   1h2m3s
 Ready:    no
 
@@ -53,6 +53,16 @@ ops        running  yes    -      -
 `
 	if out.String() != want {
 		t.Errorf("table =\n%s\nwant\n%s", out.String(), want)
+	}
+	for mode, want := range map[string]string{
+		"observe": "Mode:     OBSERVE (decisions are logged, nothing is blocked)\n",
+		"shadow":  "Mode:     SHADOW\n",
+	} {
+		out.Reset()
+		status.Mode = mode
+		if err := writeStatusTable(&out, status); err != nil || !strings.HasPrefix(out.String(), want) {
+			t.Errorf("mode %s: %q, %v", mode, out.String(), err)
+		}
 	}
 }
 
@@ -109,7 +119,7 @@ func TestObiectlStatusAgainstInProcessDaemon(t *testing.T) {
 		if code := RunCtl([]string{"--socket=" + n.socket, "status"}, &stdout, &ctlStderr); code != ExitOK {
 			t.Fatalf("exit code = %d, stderr %q", code, ctlStderr.String())
 		}
-		for _, want := range []string{"Version:  dev\n", "Mode:     enforce\n", "Ready:    yes\n",
+		for _, want := range []string{"Version:  dev\n", "Mode:     ENFORCE (blocks are sent to the enforcer)\n", "Ready:    yes\n",
 			"admin      running  yes    -      -\n", "ops        running  yes    -      -\n",
 			"mesh       running  yes    -      degraded: 0 peers connected (0/0 bootstrap peers)\n",
 			"store      running  yes    -      -\n"} {

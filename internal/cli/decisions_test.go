@@ -31,7 +31,7 @@ var (
 			{PeerID: "12D3KooWSSS", Local: true, Action: "ban", Weight: 1, Confidence: 1, Score: 1, Contributes: true,
 				IssuedAt: explainAt.Add(-time.Hour), ExpiresAt: explainUntil},
 		},
-		Sovereignty: &admin.SovereigntyResponse{Note: "allow-list and operator overrides are not applied yet"},
+		Sovereignty: &admin.SovereigntyResponse{Applied: true, Note: "no allow-list entry or override applies"},
 	}
 )
 
@@ -46,7 +46,7 @@ Reason:                consensus: score 1.8 >= threshold 1.8, 2 >= quorum 2
 Score:                 1.8 (threshold 1.8)
 Publishers:            2 (quorum 2)
 Local autoblock:       no
-Allow-list/overrides:  not applied (allow-list and operator overrides are not applied yet)
+Allow-list/overrides:  none apply
 Evaluated:             2026-09-28T12:00:00Z
 
 PUBLISHER    PEER ID      ACTION  WEIGHT  CONFIDENCE  SCORE  COUNTS  ISSUED                EXPIRES

@@ -17,7 +17,7 @@ func TestRunCtlUsage(t *testing.T) {
 	}{
 		{name: "version", args: []string{"--version"}, wantCode: ExitOK, wantStdout: "obiectl dev\n"},
 		{name: "version single dash", args: []string{"-version"}, wantCode: ExitOK, wantStdout: "obiectl dev\n"},
-		{name: "help", args: []string{"--help"}, wantCode: ExitOK, wantStderr: "status     show the node status"},
+		{name: "help", args: []string{"--help"}, wantCode: ExitOK, wantStderr: "status      show the node status"},
 		{name: "help lists socket", args: []string{"--help"}, wantCode: ExitOK, wantStderr: "/run/obie/obie.sock"},
 		{name: "unknown flag", args: []string{"--bogus"}, wantCode: ExitUsage, wantStderr: "flag provided but not defined"},
 		{name: "no command", args: nil, wantCode: ExitUsage, wantStderr: "missing command"},
