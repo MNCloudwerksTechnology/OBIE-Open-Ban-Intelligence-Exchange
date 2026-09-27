@@ -151,7 +151,8 @@ func scopeOf(prefix netip.Prefix) string {
 // range that merely contains such a range is rejected too, because acting on
 // it would affect internal addresses.
 func checkPublic(prefix netip.Prefix, o options) error {
-	if prefix.Addr().Is6() && !globalUnicastIPv6.Contains(prefix.Addr()) {
+	inGlobal := prefix.Bits() >= globalUnicastIPv6.Bits() && globalUnicastIPv6.Contains(prefix.Addr())
+	if prefix.Addr().Is6() && !inGlobal {
 		return nonPublic(prefix, globalUnicastIPv6, "lies outside global unicast space")
 	}
 	for _, r := range nonPublicRanges {
