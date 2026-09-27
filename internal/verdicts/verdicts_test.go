@@ -238,7 +238,7 @@ func TestEvidenceNeverLeavesTheHash(t *testing.T) {
 		if err != nil || d.IsDir() {
 			return err
 		}
-		content, err := os.ReadFile(path) // #nosec G304 -- a test database file.
+		content, err := os.ReadFile(path) // #nosec G304 G122 -- files of the test database, which nothing else touches.
 		if err != nil {
 			return err
 		}

@@ -23,6 +23,9 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
+// Name is the logger name of the verdict service.
+const Name = "verdicts"
+
 // CoalesceWindow is the shortest time between two verdicts of this node on
 // the same indicator; reports within it are coalesced.
 const CoalesceWindow = 60 * time.Second

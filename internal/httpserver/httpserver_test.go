@@ -90,7 +90,7 @@ func TestConnContext(t *testing.T) {
 	type key struct{}
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		addr, _ := r.Context().Value(key{}).(string)
-		_, _ = io.WriteString(w, addr)
+		_, _ = io.WriteString(w, addr) // #nosec G705 -- a test server echoing its own address.
 	})
 	s := New("web", TCP("127.0.0.1:0"), handler, discardLogger(), ConnContext(func(ctx context.Context, c net.Conn) context.Context {
 		return context.WithValue(ctx, key{}, c.LocalAddr().String())
