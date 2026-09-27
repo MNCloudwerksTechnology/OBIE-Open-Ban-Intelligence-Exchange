@@ -133,6 +133,31 @@ func TestPutDeduplicates(t *testing.T) {
 	}
 }
 
+func TestSeen(t *testing.T) {
+	clk := newClock()
+	db := newMemDB(t, clk)
+	ind := ipv4("11.0.0.1")
+	cur := verdict(pubA, ind, clk.Now(), time.Hour)
+	stale := verdict(pubA, ind, clk.Now().Add(-time.Minute), time.Hour)
+	unknown := verdict(pubA, ind, clk.Now(), time.Hour)
+	mustPut(t, db, cur, true)
+	mustPut(t, db, stale, false)
+
+	for _, tt := range []struct {
+		name string
+		id   string
+		want bool
+	}{
+		{"accepted", cur.ID, true},
+		{"ignored", stale.ID, true},
+		{"never put", unknown.ID, false},
+	} {
+		if got, err := db.Seen(tt.id); got != tt.want || err != nil {
+			t.Errorf("Seen(%s) = %v, %v; want %v", tt.name, got, err, tt.want)
+		}
+	}
+}
+
 func TestPutIgnoresExpiredEvents(t *testing.T) {
 	clk := newClock()
 	db := newMemDB(t, clk)
