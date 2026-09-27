@@ -5,25 +5,27 @@ import (
 	"time"
 )
 
+func allow(l *limiter, key string, now time.Time) bool { return l.take(key, now) != nil }
+
 func TestLimiter(t *testing.T) {
 	start := time.Unix(1_800_000_000, 0)
 	l := newLimiter(2, 3)
 
 	for i := range 3 {
-		if !l.allow("a", start) {
+		if !allow(l, "a", start) {
 			t.Fatalf("event %d within the burst was denied", i+1)
 		}
 	}
-	if l.allow("a", start) {
+	if allow(l, "a", start) {
 		t.Error("event beyond the burst was allowed")
 	}
-	if !l.allow("b", start) {
+	if !allow(l, "b", start) {
 		t.Error("another key shares the exhausted bucket")
 	}
-	if !l.allow("a", start.Add(500*time.Millisecond)) {
+	if !allow(l, "a", start.Add(500*time.Millisecond)) {
 		t.Error("the bucket did not refill at 2 events per second")
 	}
-	if l.allow("a", start.Add(500*time.Millisecond)) {
+	if allow(l, "a", start.Add(500*time.Millisecond)) {
 		t.Error("the bucket refilled more than one token in 500ms")
 	}
 }
@@ -33,22 +35,51 @@ func TestLimiterDropsFullBuckets(t *testing.T) {
 	l := newLimiter(10, 50) // refills in 5s
 
 	for i := range 50 {
-		l.allow(string(rune('a'+i%26))+"-"+string(rune('0'+i/26)), start)
+		allow(l, string(rune('a'+i%26))+"-"+string(rune('0'+i/26)), start)
 	}
-	l.allow("busy", start)
+	allow(l, "busy", start)
 	if got := l.size(); got != 51 {
 		t.Fatalf("size = %d, want 51", got)
 	}
 	// "busy" keeps spending tokens; the others refill and are dropped.
 	for s := 1; s <= 6; s++ {
 		for range 20 {
-			l.allow("busy", start.Add(time.Duration(s)*time.Second))
+			allow(l, "busy", start.Add(time.Duration(s)*time.Second))
 		}
 	}
 	if got := l.size(); got != 1 {
 		t.Errorf("size after refill = %d, want only the busy bucket", got)
 	}
-	if l.allow("busy", start.Add(6*time.Second)) {
+	if allow(l, "busy", start.Add(6*time.Second)) {
 		t.Error("dropping idle buckets reset the busy one")
+	}
+}
+
+func TestTakeBoth(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	publishers, peers := newLimiter(1, 2), newLimiter(1, 2)
+
+	for range 2 {
+		if !takeBoth(publishers, "flooder", peers, "relay", now) {
+			t.Fatal("event within both bursts was denied")
+		}
+	}
+	// The publisher's bucket is empty: the relay keeps its tokens.
+	for range 5 {
+		if takeBoth(publishers, "flooder", peers, "other-relay", now) {
+			t.Fatal("event beyond the publisher's burst was allowed")
+		}
+	}
+	if !takeBoth(publishers, "honest-1", peers, "other-relay", now) || !takeBoth(publishers, "honest-2", peers, "other-relay", now) {
+		t.Error("a relay was charged for events dropped by the publisher limit")
+	}
+	// The relay's bucket is empty now: the publisher keeps its token.
+	if takeBoth(publishers, "honest-3", peers, "other-relay", now) {
+		t.Fatal("event beyond the relay's burst was allowed")
+	}
+	for range 2 {
+		if !takeBoth(publishers, "honest-3", peers, "relay-3", now) {
+			t.Error("a publisher was charged for an event dropped by the peer limit")
+		}
 	}
 }

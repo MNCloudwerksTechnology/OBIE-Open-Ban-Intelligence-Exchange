@@ -78,7 +78,7 @@ func TestCheck(t *testing.T) {
 			v, m := newValidator(t, newStore(t), now)
 			result := v.validate(context.Background(), peerA, &pubsub.Message{Message: &pb.Message{Data: tt.data}})
 			if result != tt.result || m.count(tt.outcome) != 1 {
-				t.Errorf("validate() = %v with outcomes %v; want %v with one %s", result, m.counts, tt.result, tt.outcome)
+				t.Errorf("validate() = %v with outcomes %v; want %v with one %s", result, m.snapshot(), tt.result, tt.outcome)
 			}
 		})
 	}
@@ -174,8 +174,8 @@ func TestValidateAcceptsLocalPublications(t *testing.T) {
 	if got := v.validate(context.Background(), selfPeer, msg); got != pubsub.ValidationAccept {
 		t.Errorf("validate(own publication) = %v, want accept", got)
 	}
-	if len(m.counts) != 0 {
-		t.Errorf("own publication observed: %v", m.counts)
+	if got := m.snapshot(); len(got) != 0 {
+		t.Errorf("own publication observed: %v", got)
 	}
 }
 

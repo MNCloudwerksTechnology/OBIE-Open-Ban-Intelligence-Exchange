@@ -76,7 +76,9 @@ type Mesh struct {
 type RateLimit struct {
 	// Publisher bounds the events of each publisher.
 	Publisher TokenBucket `yaml:"publisher"`
-	// Peer bounds the events each directly connected peer forwards.
+	// Peer bounds the events each directly connected peer forwards. It must
+	// exceed Publisher: a peer relays the events of every publisher, up to
+	// Publisher each.
 	Peer TokenBucket `yaml:"peer"`
 }
 
@@ -152,7 +154,8 @@ func Default() Config {
 			Bootstrap: []string{},
 			RateLimit: RateLimit{
 				Publisher: TokenBucket{EventsPerSecond: 10, Burst: 50},
-				Peer:      TokenBucket{EventsPerSecond: 10, Burst: 50},
+				// A peer relays the events of many publishers.
+				Peer: TokenBucket{EventsPerSecond: 50, Burst: 250},
 			},
 		},
 		Trust:     Trust{Publishers: []Publisher{}, DefaultWeight: 0, LocalWeight: 1.0},

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -112,6 +113,13 @@ func (m *countingMetrics) Observe(o Outcome) {
 		m.counts = map[Outcome]int{}
 	}
 	m.counts[o]++
+}
+
+// snapshot returns a copy of the counts.
+func (m *countingMetrics) snapshot() map[Outcome]int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return maps.Clone(m.counts)
 }
 
 func (m *countingMetrics) count(o Outcome) int {

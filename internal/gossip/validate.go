@@ -60,7 +60,9 @@ func (v *validator) check(from peer.ID, data []byte) (Outcome, pubsub.Validation
 	if seen {
 		return Duplicate, pubsub.ValidationIgnore
 	}
-	if !v.peers.allow(from.String(), now) || !v.publishers.allow(ev.Publisher.PeerID, now) {
+	// An event dropped for one limit does not count against the other: a
+	// relay is not charged for a flooding publisher's excess.
+	if !takeBoth(v.publishers, ev.Publisher.PeerID, v.peers, from.String(), now) {
 		v.log.Debug("rate limit exceeded; ignoring event", "event", ev.ID, "publisher", ev.Publisher.PeerID,
 			"peer", from.String())
 		return RateLimited, pubsub.ValidationIgnore

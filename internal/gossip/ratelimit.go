@@ -31,9 +31,10 @@ func newLimiter(eventsPerSecond float64, burst int) *limiter {
 	}
 }
 
-// allow takes a token from key's bucket at now and reports whether there
-// was one.
-func (l *limiter) allow(key string, now time.Time) bool {
+// take takes a token from key's bucket at now. It returns nil if the
+// bucket is empty, else the reservation, which gives the token back when
+// canceled.
+func (l *limiter) take(key string, now time.Time) *rate.Reservation {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.sweep(now)
@@ -42,7 +43,26 @@ func (l *limiter) allow(key string, now time.Time) bool {
 		b = rate.NewLimiter(l.limit, l.burst)
 		l.buckets[key] = b
 	}
-	return b.AllowN(now, 1)
+	r := b.ReserveN(now, 1)
+	if !r.OK() || r.DelayFrom(now) > 0 {
+		r.CancelAt(now)
+		return nil
+	}
+	return r
+}
+
+// takeBoth takes a token from a's bucket for keyA and from b's bucket for
+// keyB, or from neither if either is empty, and reports whether it did.
+func takeBoth(a *limiter, keyA string, b *limiter, keyB string, now time.Time) bool {
+	ra := a.take(keyA, now)
+	if ra == nil {
+		return false
+	}
+	if b.take(keyB, now) == nil {
+		ra.CancelAt(now)
+		return false
+	}
+	return true
 }
 
 // sweep drops the full buckets, at most once per fill time.

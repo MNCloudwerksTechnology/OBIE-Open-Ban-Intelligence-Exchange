@@ -476,9 +476,13 @@ let publishers stay within what receivers will tolerate:
   bucket with the rates above is RECOMMENDED) and MAY also limit the events
   they accept per forwarding peer; they MAY drop events beyond the limits.
   Such drops SHOULD be reported to GossipSub as `Ignore`, not `Reject`,
-  because the forwarding peer is not necessarily at fault. The reference
-  implementation applies both limits, each a token bucket of 10 events per
-  second with a burst of 50 by default.
+  because the forwarding peer is not necessarily at fault. A per-peer
+  limit SHOULD be well above the per-publisher limit: a relay forwards the
+  events of every publisher, and a flooding publisher's admitted events
+  alone reach the per-publisher limit. The reference implementation admits
+  an event only if both limits do, and counts it against both; by default
+  the per-publisher bucket holds 50 events refilled at 10 per second, the
+  per-peer bucket 250 events refilled at 50 per second.
 
 ## 12. Versioning and forward compatibility
 
