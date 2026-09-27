@@ -41,6 +41,8 @@ const (
 	CauseStartup = "startup"
 	// CauseRefresh: a block reached its expiry and was re-evaluated.
 	CauseRefresh = "refresh"
+	// CauseSnapshot: the block existed when the subscriber subscribed.
+	CauseSnapshot = "snapshot"
 )
 
 // Change is an entry of the block change stream.
@@ -51,8 +53,8 @@ type Change struct {
 	// Decision is the new decision, without Publishers; for ChangeRemoved
 	// its State is StateNone and Reason says why.
 	Decision Decision
-	// Cause is what triggered the evaluation: a store.Reason, CauseStartup
-	// or CauseRefresh.
+	// Cause is what triggered the evaluation: a store.Reason, CauseStartup,
+	// CauseRefresh or CauseSnapshot.
 	Cause string
 }
 
@@ -89,9 +91,10 @@ type Engine struct {
 	decisions map[string]Decision
 
 	// dirty holds the indicators changed in the store since the worker last
-	// ran, with the latest reason; wake signals the worker.
+	// ran, or whose evaluation failed, with the latest cause; wake signals
+	// the worker.
 	dirtyMu sync.Mutex
-	dirty   map[string]store.Reason
+	dirty   map[string]string
 	wake    chan struct{}
 
 	// workMu serializes evaluations, so decisions are applied in the order
@@ -119,7 +122,7 @@ func New(st store.Store, p Policy, log *slog.Logger, opts Options) *Engine {
 		log:       log,
 		opts:      opts.withDefaults(),
 		decisions: map[string]Decision{},
-		dirty:     map[string]store.Reason{},
+		dirty:     map[string]string{},
 		wake:      make(chan struct{}, 1),
 		subs:      map[int]func(Change){},
 	}
@@ -173,8 +176,8 @@ func (e *Engine) Stop(ctx context.Context) error {
 	}
 }
 
-// Ready reports the error of the last failed evaluation, nil if the last
-// one succeeded.
+// Ready reports why the last evaluation pass failed, nil if it succeeded.
+// Indicators whose evaluation failed are retried every refresh interval.
 func (e *Engine) Ready() error {
 	e.errMu.Lock()
 	defer e.errMu.Unlock()
@@ -192,11 +195,23 @@ func (e *Engine) count() int {
 	return len(e.decisions)
 }
 
-// Subscribe registers fn for the block change stream. Callbacks run on the
-// engine's worker goroutine, one at a time and in order; they must be fast
-// and must not call back into the engine's Subscribe. It returns a function
-// that removes the subscription.
+// Subscribe registers fn for the block change stream. Every block that
+// exists at that moment is first delivered to fn as ChangeAdded with
+// CauseSnapshot, atomically with the registration, so a subscriber sees
+// every block exactly once from then on; subscribers registered before
+// Start receive the initial blocks with CauseStartup instead. Callbacks run
+// one at a time and in order — on the worker goroutine, or on the goroutine
+// calling Start or Subscribe — and must be fast. They must not call
+// Subscribe, Start or Stop. It returns a function that removes the
+// subscription.
 func (e *Engine) Subscribe(fn func(Change)) (unsubscribe func()) {
+	// workMu keeps evaluations out until fn is registered and has the
+	// snapshot, so no change is missed or delivered twice.
+	e.workMu.Lock()
+	defer e.workMu.Unlock()
+	for _, d := range e.list(StateBlock, false) {
+		fn(Change{Type: ChangeAdded, Key: d.Indicator.Key(), Decision: d, Cause: CauseSnapshot})
+	}
 	e.subsMu.Lock()
 	defer e.subsMu.Unlock()
 	id := e.nextSub
@@ -211,7 +226,8 @@ func (e *Engine) Subscribe(fn func(Change)) (unsubscribe func()) {
 
 // Explain evaluates the normalized indicator ind now, with the
 // contribution of every publisher. An indicator without active verdicts
-// yields StateNone.
+// yields StateNone. Only verdicts on ind itself count: an address inside a
+// CIDR range with verdicts is explained on its own.
 func (e *Engine) Explain(ind obieproto.Indicator) (Decision, error) {
 	now := e.opts.Now()
 	verdicts, err := e.store.ActiveVerdicts(ind.Key(), now)
@@ -222,12 +238,21 @@ func (e *Engine) Explain(ind obieproto.Indicator) (Decision, error) {
 }
 
 // Decisions returns the kept decisions in state, or all for "", ordered by
-// indicator key and without Publishers.
+// indicator key and without Publishers. A block that reached its expiry but
+// has not been re-evaluated yet is not listed as a block.
 func (e *Engine) Decisions(state State) []Decision {
+	return e.list(state, true)
+}
+
+// list returns the kept decisions in state, or all for "", by key; with
+// hideExpired, blocks that reached their expiry are left out of StateBlock.
+func (e *Engine) list(state State, hideExpired bool) []Decision {
+	now := e.opts.Now()
 	e.mu.RLock()
 	out := make([]Decision, 0, len(e.decisions))
 	for _, d := range e.decisions {
-		if state == "" || d.State == state {
+		expired := hideExpired && d.State == StateBlock && !now.Before(d.ExpiresAt)
+		if state == "" || (d.State == state && !expired) {
 			out = append(out, d)
 		}
 	}
@@ -264,7 +289,7 @@ func (e *Engine) load(ctx context.Context) error {
 // store's writer is never blocked by an evaluation.
 func (e *Engine) markDirty(c store.Change) {
 	e.dirtyMu.Lock()
-	e.dirty[c.Key] = c.Reason
+	e.dirty[c.Key] = string(c.Reason)
 	e.dirtyMu.Unlock()
 	select {
 	case e.wake <- struct{}{}:
@@ -287,6 +312,7 @@ func (e *Engine) loop(stop <-chan struct{}, done chan<- struct{}) {
 		case <-e.wake:
 			e.processDirty()
 		case <-refresh.C:
+			e.processDirty() // retries failed evaluations
 			e.refreshExpired()
 		}
 	}
@@ -298,7 +324,7 @@ func (e *Engine) processDirty() {
 	defer e.workMu.Unlock()
 	e.dirtyMu.Lock()
 	dirty := e.dirty
-	e.dirty = make(map[string]store.Reason, len(dirty))
+	e.dirty = make(map[string]string, len(dirty))
 	e.dirtyMu.Unlock()
 
 	keys := make([]string, 0, len(dirty))
@@ -306,9 +332,7 @@ func (e *Engine) processDirty() {
 		keys = append(keys, key)
 	}
 	slices.Sort(keys)
-	for _, key := range keys {
-		e.reevaluate(key, string(dirty[key]))
-	}
+	e.reevaluateAll(keys, func(key string) string { return dirty[key] })
 }
 
 // refreshExpired re-evaluates the blocks that reached their expiry, e.g.
@@ -326,27 +350,47 @@ func (e *Engine) refreshExpired() {
 	}
 	e.mu.RUnlock()
 	slices.Sort(due)
-	for _, key := range due {
-		e.reevaluate(key, CauseRefresh)
+	e.reevaluateAll(due, func(string) string { return CauseRefresh })
+}
+
+// reevaluateAll re-evaluates the indicators with keys. Those that fail are
+// marked dirty again, without waking the worker, so they are retried on the
+// next refresh tick, and the first failure is reported by Ready. Callers
+// hold workMu.
+func (e *Engine) reevaluateAll(keys []string, cause func(key string) string) {
+	var firstErr error
+	for _, key := range keys {
+		err := e.reevaluate(key, cause(key))
+		if err == nil {
+			continue
+		}
+		e.log.Error("reading verdicts failed; keeping the previous decision and retrying", "indicator", key, "error", err)
+		if firstErr == nil {
+			firstErr = err
+		}
+		e.dirtyMu.Lock()
+		if _, newer := e.dirty[key]; !newer {
+			e.dirty[key] = cause(key)
+		}
+		e.dirtyMu.Unlock()
 	}
+	e.setErr(firstErr)
 }
 
 // reevaluate decides on the indicator with key from the store's current
 // state. Callers hold workMu.
-func (e *Engine) reevaluate(key, cause string) {
+func (e *Engine) reevaluate(key, cause string) error {
 	now := e.opts.Now()
 	verdicts, err := e.store.ActiveVerdicts(key, now)
 	if err != nil {
-		e.log.Error("reading verdicts failed; keeping the previous decision", "indicator", key, "error", err)
-		e.setErr(fmt.Errorf("read verdicts of %s: %w", key, err))
-		return
+		return fmt.Errorf("read verdicts of %s: %w", key, err)
 	}
-	e.setErr(nil)
 	ind, ok := e.indicatorOf(key, verdicts)
 	if !ok {
-		return // no verdicts before or now, e.g. an override was set: nothing to decide
+		return nil // no verdicts before or now, e.g. an override was set: nothing to decide
 	}
 	e.apply(key, Evaluate(ind, verdicts, e.policy, now), cause)
+	return nil
 }
 
 // indicatorOf returns the indicator with key, from its verdicts or else

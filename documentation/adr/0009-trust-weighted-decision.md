@@ -52,15 +52,24 @@ an address is or is not blocked.
 - **Change stream:** `Engine.Subscribe` delivers `added` (became `block`),
   `updated` (still `block`, but expiry, score or contributors changed) and
   `removed` (no longer `block`) changes with the new decision and the cause
-  (the store's reason, `startup` or `refresh`). Callbacks run on the worker
-  goroutine and must be fast; the enforcer queues them.
+  (the store's reason, `startup` or `refresh`). A subscriber registered
+  after `Start` first receives every current block as `added` with cause
+  `snapshot`, atomically with its registration, so it neither misses nor
+  duplicates a block. Callbacks run one at a time, must be fast and must not
+  call `Subscribe`, `Start` or `Stop`; the enforcer queues them.
+- **Failures:** if reading an indicator's verdicts fails, its previous
+  decision is kept, the indicator stays pending and is retried every refresh
+  interval, and the subsystem reports not ready until a pass succeeds.
 - **Sovereignty placeholder:** the allow-list and operator overrides are not
   applied yet (WP #1660). Explanations carry a `sovereignty` section that
   states this, so the API shape does not change when they are.
 - **Admin API:** `GET /v1/decisions/{indicator}` explains one indicator
   (an IPv4/IPv6 address, a CIDR range or an indicator key such as
   `ipv4:203.0.113.7`; an indicator without verdicts yields decision `none`);
-  `GET /v1/decisions?state=block|none` lists the kept summaries. As for
+  `GET /v1/decisions?state=block|none` lists the kept summaries (a block
+  past its expiry is no longer listed as a block, even before its refresh).
+  An address is explained from the verdicts on that address only; verdicts
+  on a CIDR range containing it are explained under the range. As for
   peers, the wire types live in `internal/admin` and `internal/daemon`
   converts, so the admin API contract does not depend on the engine's
   internal types. `obiectl explain <ip>`

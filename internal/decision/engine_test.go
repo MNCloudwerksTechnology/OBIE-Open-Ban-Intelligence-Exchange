@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -356,25 +357,94 @@ func TestEngineExplain(t *testing.T) {
 	}
 }
 
-func TestEngineReadErrorKeepsDecision(t *testing.T) {
-	f := newFixture(t, testPolicy())
-	ind := ipv4("198.51.100.10")
-	f.put(t, ind, self, 1, time.Hour)
-	f.start(t)
-	f.rec.take()
+// flakyStore fails ActiveVerdicts while fail is set.
+type flakyStore struct {
+	*store.DB
+	fail atomic.Bool
+}
 
-	if err := f.store.Stop(context.Background()); err != nil {
-		t.Fatal(err)
+var errFlaky = errors.New("flaky read")
+
+func (s *flakyStore) ActiveVerdicts(key string, now time.Time) ([]*obieproto.Event, error) {
+	if s.fail.Load() {
+		return nil, errFlaky
 	}
-	f.engine.markDirty(store.Change{Key: ind.Key(), Reason: store.ReasonVerdict})
+	return s.DB.ActiveVerdicts(key, now)
+}
+
+// TestEngineRetriesFailedReads checks that a change whose evaluation failed
+// is not lost: the decision is kept, Ready reports the failure, and the
+// indicator is evaluated again once reads succeed.
+func TestEngineRetriesFailedReads(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	flaky := &flakyStore{DB: f.store}
+	f.engine = New(flaky, testPolicy(), discardLogger(), Options{Now: f.clock.Now, RefreshInterval: time.Hour})
+	f.engine.Subscribe(f.rec.record)
+	ind := ipv4("198.51.100.10")
+	v := f.put(t, ind, self, 1, time.Hour)
+	f.start(t)
+	wantChanges(t, f.rec.take(), "added/startup")
+
+	flaky.fail.Store(true)
+	f.revoke(t, v)
 	f.engine.processDirty()
-	if err := f.engine.Ready(); !errors.Is(err, store.ErrClosed) {
-		t.Errorf("Ready() = %v, want ErrClosed", err)
+	if err := f.engine.Ready(); !errors.Is(err, errFlaky) {
+		t.Errorf("Ready() = %v, want the read error", err)
 	}
 	if got := f.engine.Decisions(StateBlock); len(got) != 1 {
 		t.Errorf("decision not kept: %+v", got)
 	}
+	f.engine.processDirty() // still failing: the change stays pending
 	wantChanges(t, f.rec.take())
+
+	flaky.fail.Store(false)
+	f.engine.processDirty()
+	wantChanges(t, f.rec.take(), "removed/revoke")
+	if err := f.engine.Ready(); err != nil {
+		t.Errorf("Ready() after recovery = %v", err)
+	}
+}
+
+// TestEngineSubscribeSnapshot checks that a subscriber registered after
+// Start receives the existing blocks, then the changes.
+func TestEngineSubscribeSnapshot(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	blocked := ipv4("198.51.100.14")
+	f.put(t, blocked, self, 1, time.Hour)
+	f.put(t, ipv4("198.51.100.15"), pubA, 1, time.Hour) // not blocked
+	f.start(t)
+
+	late := newRecorder()
+	f.engine.Subscribe(late.record)
+	changes := late.take()
+	wantChanges(t, changes, "added/snapshot")
+	if len(changes) == 1 && (changes[0].Key != blocked.Key() || changes[0].Decision.State != StateBlock) {
+		t.Errorf("snapshot = %+v", changes[0])
+	}
+	f.put(t, ipv4("198.51.100.16"), self, 1, time.Hour)
+	f.engine.processDirty()
+	wantChanges(t, late.take(), "added/verdict")
+}
+
+// TestEngineDecisionsHidesExpiredBlocks checks that a block past its expiry
+// is not listed as blocked before the refresh re-evaluates it.
+func TestEngineDecisionsHidesExpiredBlocks(t *testing.T) {
+	p := testPolicy()
+	p.MaxTTL = time.Hour
+	f := newFixture(t, p)
+	f.put(t, ipv4("198.51.100.17"), self, 1, 3*time.Hour)
+	f.start(t)
+	f.clock.Advance(time.Hour)
+	if got := f.engine.Decisions(StateBlock); len(got) != 0 {
+		t.Errorf("Decisions(block) lists an expired block: %+v", got)
+	}
+	if got := f.engine.Decisions(""); len(got) != 1 {
+		t.Errorf("Decisions() = %+v", got)
+	}
+	f.engine.refreshExpired()
+	if got := f.engine.Decisions(StateBlock); len(got) != 1 {
+		t.Errorf("Decisions(block) after refresh = %+v", got)
+	}
 }
 
 func TestEngineStartFailsOnClosedStore(t *testing.T) {
