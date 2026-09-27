@@ -12,6 +12,7 @@ import (
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
 	"github.com/MNCloudwerksTechnology/obie/internal/logging"
@@ -19,6 +20,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/ops"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
+	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
 // Component is the logger name of the daemon itself.
@@ -53,7 +55,10 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 
 	mgr := lifecycle.New(logs.Logger("lifecycle"), lifecycle.Options{StopTimeout: cfg.Node.ShutdownTimeout.Std()})
 	// The store starts first and stops last: every other subsystem may use it.
-	mgr.Register(store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{}))
+	st := store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{})
+	mgr.Register(st)
+	engine := decision.New(st, decision.NewPolicy(id.PeerID(), cfg.Trust, cfg.Decision), logs.Logger(decision.Name), decision.Options{})
+	mgr.Register(engine)
 	mgr.Register(ops.New(cfg.Metrics.Listen, mgr.Status, logs.Logger(ops.Name)))
 	mgr.Register(m)
 	mgr.Register(admin.New(cfg.Admin.Socket, cfg.Admin.SocketGroup, admin.Info{
@@ -63,6 +68,21 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory) error {
 		Identity:  admin.NewIdentityResponse(id),
 		Status:    mgr.Status,
 		Peers:     func() []admin.PeerResponse { return peerResponses(m.Peers()) },
+		Explain: func(ind obieproto.Indicator) (admin.DecisionResponse, error) {
+			d, err := engine.Explain(ind)
+			if err != nil {
+				return admin.DecisionResponse{}, err
+			}
+			return explanationResponse(d), nil
+		},
+		Decisions: func(state string) []admin.DecisionResponse {
+			ds := engine.Decisions(decision.State(state))
+			out := make([]admin.DecisionResponse, len(ds))
+			for i := range ds {
+				out[i] = decisionResponse(&ds[i])
+			}
+			return out
+		},
 	}, logs.Logger(admin.Name)))
 
 	if err := mgr.Start(ctx); err != nil {
@@ -120,4 +140,56 @@ func peerResponses(peers []mesh.Peer) []admin.PeerResponse {
 		}
 	}
 	return out
+}
+
+// sovereigntyPending is the explanation's sovereignty section until the
+// allow-list and overrides are applied (WP #1660).
+var sovereigntyPending = admin.SovereigntyResponse{
+	Applied: false,
+	Note:    "allow-list and operator overrides are not applied yet",
+}
+
+// decisionResponse converts a decision into its admin API summary.
+func decisionResponse(d *decision.Decision) admin.DecisionResponse {
+	resp := admin.DecisionResponse{
+		Indicator:      d.Indicator,
+		State:          string(d.State),
+		Score:          d.Score,
+		Threshold:      d.Threshold,
+		Contributors:   d.Contributors,
+		Quorum:         d.Quorum,
+		LocalAutoblock: d.Autoblock,
+		Reason:         d.Reason,
+		EvaluatedAt:    d.EvaluatedAt.UTC(),
+	}
+	if !d.ExpiresAt.IsZero() {
+		expires := d.ExpiresAt.UTC()
+		resp.ExpiresAt = &expires
+	}
+	return resp
+}
+
+// explanationResponse converts a decision into its admin API explanation
+// with every publisher's contribution.
+func explanationResponse(d decision.Decision) admin.DecisionResponse {
+	resp := decisionResponse(&d)
+	resp.Publishers = make([]admin.ContributionResponse, len(d.Publishers))
+	for i, c := range d.Publishers {
+		resp.Publishers[i] = admin.ContributionResponse{
+			PeerID:      c.PeerID,
+			Name:        c.Name,
+			Local:       c.Local,
+			EventID:     c.EventID,
+			Action:      c.Action,
+			Weight:      c.Weight,
+			Confidence:  c.Confidence,
+			Score:       c.Score,
+			Contributes: c.Contributes,
+			IssuedAt:    c.IssuedAt.UTC(),
+			ExpiresAt:   c.ExpiresAt.UTC(),
+		}
+	}
+	sovereignty := sovereigntyPending
+	resp.Sovereignty = &sovereignty
+	return resp
 }
