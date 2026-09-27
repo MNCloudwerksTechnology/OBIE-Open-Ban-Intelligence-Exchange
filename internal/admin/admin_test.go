@@ -62,6 +62,8 @@ func testInfo(statuses ...lifecycle.Status) Info {
 		Identity:  testIdentity,
 		Status:    func() []lifecycle.Status { return statuses },
 		Now:       func() time.Time { return started.Add(90 * time.Second) },
+		Explain:   testExplain,
+		Decisions: testDecisions,
 	}
 }
 

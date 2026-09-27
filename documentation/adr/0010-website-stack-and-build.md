@@ -1,4 +1,4 @@
-# ADR 0009: Website stack and single-artefact build
+# ADR 0010: Website stack and single-artefact build
 
 - **Status:** Accepted
 - **Date:** 2026-09-28
