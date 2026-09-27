@@ -1,0 +1,56 @@
+# golangci-lint v2 configuration. The linter version is pinned in the Makefile
+# (GOLANGCI_LINT_VERSION); run it via `make lint`.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - errorlint
+    - gosec
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+  settings:
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: indent-error-flow
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: errorf
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: receiver-naming
+        - name: increment-decrement
+        - name: unexported-return
+        - name: unreachable-code
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/MNCloudwerksTechnology/obie
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

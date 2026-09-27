@@ -1,0 +1,23 @@
+# Build output and locally installed tools
+/bin/
+/dist/
+
+# Test and coverage artifacts
+*.test
+*.out
+coverage.*
+/testdata/fuzz-cache/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+
+# Local agent coordination state
+/.agentic/
