@@ -40,6 +40,7 @@ var commands = map[string]command{
 	"revoke":     {summary: "revoke this node's verdict by event ID, address or CIDR range", run: runRevoke},
 	"indicators": {summary: "list the indicators with active verdicts", run: runIndicators},
 	"show":       {summary: "show every active verdict on an address or CIDR range", run: runShow},
+	"enforced":   {summary: "list the entries the enforcement backend currently applies", run: runEnforced},
 }
 
 // RunCtl runs obiectl with args and returns the process exit code.

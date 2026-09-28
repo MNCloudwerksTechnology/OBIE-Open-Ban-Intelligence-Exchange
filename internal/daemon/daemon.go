@@ -105,10 +105,23 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	engine := decision.New(db, decision.NewPolicy(id.PeerID(), cfg.Trust, cfg.Decision), logs.Logger(decision.Name),
 		decision.Options{Allowlist: allow})
 	// The gate is the only path to enforcement; it subscribes before the
-	// engine starts, so it sees the initial blocks.
-	gate := enforce.NewGate(cfg.Node.Mode, nil, logs.Logger(enforceComponent))
+	// engine starts, so it sees the initial blocks. The reconciler applies
+	// them; it only notifies it once the engine runs.
+	backend, err := newEnforcer(cfg.Enforce.Backend, logs.Logger(enforceComponent))
+	if err != nil {
+		return err
+	}
+	var reconciler *enforce.Reconciler
+	gate := enforce.NewGate(cfg.Node.Mode, func() { reconciler.Trigger() }, logs.Logger(enforceComponent))
+	reconciler = enforce.NewReconciler(gate, backend, enforce.Options{
+		Backend:    string(cfg.Enforce.Backend),
+		MaxEntries: cfg.Enforce.MaxEntries,
+		Interval:   cfg.Enforce.ReconcileInterval.Std(),
+		Allowlist:  engine.Allowlist,
+	}, logs.Logger(enforceComponent))
 	engine.Subscribe(gate.Handle)
 	mgr.Register(engine)
+	mgr.Register(reconciler)
 	mgr.Register(ops.New(cfg.Metrics.Listen, mgr.Status, logs.Logger(ops.Name)))
 	mgr.Register(m)
 	allowlist, err := parsePrefixes(cfg.Allowlist.CIDRs)
@@ -146,7 +159,10 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 			return out
 		},
 		Overrides: storeOverrides{store: db, now: time.Now},
-		Verdicts:  reporter,
+		Enforced: func(ctx context.Context) ([]admin.EnforcedEntry, error) {
+			return enforcedEntries(ctx, reconciler)
+		},
+		Verdicts: reporter,
 	}, logs.Logger(admin.Name)))
 
 	if err := mgr.Start(ctx); err != nil {
@@ -188,6 +204,31 @@ func loadIdentity(stateDir string, log *slog.Logger) (identity.Identity, error) 
 	log.Info(msg, "peer_id", key.PeerID(), "fingerprint", identity.Fingerprint(key.PublicKey()),
 		"key_file", identity.Path(stateDir))
 	return key, nil
+}
+
+// newEnforcer returns the enforcement backend configured in
+// enforce.backend.
+func newEnforcer(backend config.Backend, log *slog.Logger) (enforce.Enforcer, error) {
+	switch backend {
+	case config.BackendDryRun:
+		return enforce.NewDryRun(log), nil
+	default:
+		return nil, fmt.Errorf("enforce.backend %q is not available in this build; use %q", backend, config.BackendDryRun)
+	}
+}
+
+// enforcedEntries lists the entries the backend applies as admin API wire
+// types.
+func enforcedEntries(ctx context.Context, rec *enforce.Reconciler) ([]admin.EnforcedEntry, error) {
+	entries, err := rec.Entries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]admin.EnforcedEntry, len(entries))
+	for i, e := range entries {
+		out[i] = admin.EnforcedEntry{Prefix: e.Prefix.String(), ExpiresAt: e.Expires.UTC()}
+	}
+	return out, nil
 }
 
 // parsePrefixes parses CIDR ranges that configuration validation accepted.

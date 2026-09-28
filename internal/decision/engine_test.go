@@ -458,6 +458,9 @@ func TestEngineAllowlist(t *testing.T) {
 	// Reload with a range covering both: the block is removed.
 	f.engine.Reload(testPolicy(), sovereignty.NewAllowlist(sovereignty.Entry{Prefix: netip.MustParsePrefix("198.51.100.0/24"), Source: sovereignty.SourceFile}))
 	wantChanges(t, f.rec.take(), "removed/reload")
+	if _, ok := f.engine.Allowlist().Match(netip.MustParsePrefix("198.51.100.21/32")); !ok {
+		t.Errorf("Allowlist() = %+v, want the reloaded one", f.engine.Allowlist().Entries())
+	}
 	// Reload with a higher threshold and no allow-list: nothing blocks.
 	p := testPolicy()
 	p.Threshold = 5

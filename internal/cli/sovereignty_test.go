@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -42,6 +43,25 @@ func waitMode(t *testing.T, n testNode, mode string) {
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
+}
+
+// syncBuffer is a bytes.Buffer the daemon can log into while the test
+// reads it.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // TestSovereigntyAgainstInProcessDaemon exercises overrides, the
@@ -80,12 +100,12 @@ func TestSovereigntyAgainstInProcessDaemon(t *testing.T) {
 		banVerdict("01900000-0000-7000-8000-000000000011", key.PeerID(), "198.18.0.7", 1),
 		banVerdict("01900000-0000-7000-8000-000000000012", key.PeerID(), "198.18.1.7", 1))
 
-	var stderr bytes.Buffer
+	var logs syncBuffer
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	reload := make(chan struct{})
-	exit := startDaemon(ctx, t, n, &stderr, func(ctx context.Context, args []string) int {
-		return runDaemonWith(ctx, reload, args, &bytes.Buffer{}, &stderr)
+	exit := startDaemon(ctx, t, n, &logs.buf, func(ctx context.Context, args []string) int {
+		return runDaemonWith(ctx, reload, args, &bytes.Buffer{}, &logs)
 	})
 	ctl := ctlFunc(t, n)
 
@@ -149,19 +169,33 @@ func TestSovereigntyAgainstInProcessDaemon(t *testing.T) {
 		t.Errorf("status after reload:\n%s", out)
 	}
 
+	// waitRejected waits until want reloads have been rejected, so that the
+	// last reload is done before the files change again.
+	const rejectedMsg = `"msg":"configuration reload rejected; the running configuration is kept"`
+	waitRejected := func(want int) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for strings.Count(logs.String(), rejectedMsg) < want {
+			if time.Now().After(deadline) {
+				t.Fatalf("fewer than %d rejected reloads:\n%s", want, logs.String())
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+
 	// An invalid configuration is rejected and the running one kept.
 	if err := os.WriteFile(n.config, []byte("node:\n  mode: observe\ndecision:\n  quorum: 0\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// The reload channel is unbuffered: the second send returns only once
-	// the first reload is done, so the files may change afterwards.
 	reload <- struct{}{}
 	reload <- struct{}{}
+	waitRejected(2)
 	// An invalid allow-list file too.
 	writeNodeConfig("  mode: observe\n", mesh+"allowlist:\n  files: ["+allowFile+"]\n")
 	writeFile("198.18.0.7/33\n")
 	reload <- struct{}{}
 	reload <- struct{}{}
+	waitRejected(4)
 	waitMode(t, n, "enforce")
 	// A valid reload afterwards.
 	writeFile("198.18.1.0/24\n")
@@ -171,10 +205,10 @@ func TestSovereigntyAgainstInProcessDaemon(t *testing.T) {
 	waitMode(t, n, "enforce")
 
 	cancel()
-	if code := waitExit(t, exit, &stderr); code != ExitOK {
-		t.Fatalf("obied exit code = %d:\n%s", code, stderr.String())
+	if code := waitExit(t, exit, &logs.buf); code != ExitOK {
+		t.Fatalf("obied exit code = %d:\n%s", code, logs.String())
 	}
-	lines := logLines(t, &stderr)
+	lines := logLines(t, &logs.buf)
 	var rejected []string
 	for _, l := range lines {
 		if l["component"] == "reload" && l["msg"] == "configuration reload rejected; the running configuration is kept" {
@@ -186,7 +220,7 @@ func TestSovereigntyAgainstInProcessDaemon(t *testing.T) {
 	}
 	if findLog(lines, "enforce", "observe mode: block decision not enforced") == nil ||
 		findLog(lines, "enforce", "node mode changed") == nil || findLog(lines, "reload", "configuration reloaded") == nil {
-		t.Errorf("missing mode or reload log lines:\n%s", stderr.String())
+		t.Errorf("missing mode or reload log lines:\n%s", logs.String())
 	}
 }
 
