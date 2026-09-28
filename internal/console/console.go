@@ -1,7 +1,9 @@
 // Package console serves the node's local web console (ADR 0019): an
-// opt-in, read-only view of the node for its operator. It listens on a
-// loopback address only, serves only the local users the admin API admits,
-// and only to browsers signed in with a token that obied keeps in memory.
+// opt-in view of the node for its operator, from which the operator also
+// carries out obiectl's actions after a confirmation, unless
+// console.actions is off (ADR 0026). It listens on a loopback address
+// only, serves only the local users the admin API admits, and only to
+// browsers signed in with a token that obied keeps in memory.
 //
 // The console is a lifecycle subsystem that never fails: when it cannot
 // listen, the node runs without it and the reason is logged and shown in

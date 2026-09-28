@@ -48,7 +48,10 @@ allow-list and configuration views, with the expired overrides the store
 keeps and the configuration reference in code, in
 [ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md) and
 its activity timeline, read from the audit trail and followed live, in
-[ADR 0025](documentation/adr/0025-console-activity-timeline.md); the website
+[ADR 0025](documentation/adr/0025-console-activity-timeline.md) and its
+operator actions, confirmed, checked by the admin API's rules and audited
+with their origin, in
+[ADR 0026](documentation/adr/0026-console-operator-actions.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -69,11 +72,11 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Events:** obie/0.1 JSON; signatures are Ed25519 over the RFC 8785 (JCS) canonical form of the event with `publisher.signature` removed; `signature` = `"ed25519:" + base64url(no padding)`. IDs are UUIDv7.
 - **Identity:** one Ed25519 key per node; the libp2p peer ID is derived from it (same key for mesh and event signing).
 - **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0008); revoked and expired verdicts kept for 24 hours after their expiry, with the revocation's reason (ADR 0023); expired overrides kept for 7 days after their expiry (ADR 0024).
-- **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts` (no pubsub signatures, message ID = event ID, validation before relay, per-publisher and per-peer rate limits, peer scoring), static bootstrap peers in v0.1.
+- **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts` (no pubsub signatures, message ID = event ID, validation before relay, per-publisher and per-peer rate limits, peer scoring), static bootstrap peers in v0.1; the node's own events published while no peer is on the topic are held in memory and sent when one joins (ADR 0026).
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins (built-in ranges, own and bootstrap addresses, `allowlist.cidrs`, `allowlist.files`); operator force-allow / force-block overrides; mode `observe` (default) or `enforce`; SIGHUP reloads (ADR 0013).
 - **Enforcement:** pluggable enforcer (`Setup`/`List`/`Apply`/`Teardown`, entries with timeouts); `dryrun` (default) and `nftables` (netlink via google/nftables, own table `inet obie` with interval+timeout sets `obie_v4`/`obie_v6` and a priority -10 input chain, optional forward chain, CAP_NET_ADMIN only, `obied teardown-firewall`; ADR 0015) backends; reconcile loop with `enforce.max_entries` cap and allow-list re-check (ADR 0014).
-- **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015), which also records peer connections, reloads and mode changes and keeps its last 10,000 records in memory for the console (ADR 0025).
-- **Console:** opt-in (`console.enabled`, default off), read-only web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019); an overview of health, key numbers and attention conditions that refreshes itself through a fragment endpoint (ADR 0020); a peers view of every configured and connected peer with its trust, held verdicts and recent events (ADR 0021); a decisions list filtered, searched, sorted and paged on the node, the explanation of any address like `obiectl explain`, and a firewall view of the backend's entries and their differences from the decided blocks, with copy buttons and shareable links (ADR 0022); a verdicts view of this node's and every other publisher's verdicts — active, revoked (and why) or expired — with the evidence's hash and event count, totals per publisher, and links to the publisher and the decision (ADR 0023); an overrides view of the force-allows and force-blocks in effect (and expired ones), an allow-list view grouped by origin with the state of each allow-list file on disk and the lookup *Is this address protected?*, and a configuration view of every setting with its running value, default mark, one-line summary and reload/restart, the load status and the changes on disk not active yet (ADR 0024); an activity timeline of the audit trail, newest first, filtered by kind and address, followed live every second through a fragment of new rows, with bursts summed up, and the last entries on the overview (ADR 0025).
+- **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015), which also records peer connections, reloads and mode changes and keeps its last 10,000 records in memory for the console (ADR 0025); operator actions carry their origin (`obie.origin` `admin-api` or `console`, `user.id`, `user.name`; ADR 0026).
+- **Console:** opt-in (`console.enabled`, default off) web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019); an overview of health, key numbers and attention conditions that refreshes itself through a fragment endpoint (ADR 0020); a peers view of every configured and connected peer with its trust, held verdicts and recent events (ADR 0021); a decisions list filtered, searched, sorted and paged on the node, the explanation of any address like `obiectl explain`, and a firewall view of the backend's entries and their differences from the decided blocks, with copy buttons and shareable links (ADR 0022); a verdicts view of this node's and every other publisher's verdicts — active, revoked (and why) or expired — with the evidence's hash and event count, totals per publisher, and links to the publisher and the decision (ADR 0023); an overrides view of the force-allows and force-blocks in effect (and expired ones), an allow-list view grouped by origin with the state of each allow-list file on disk and the lookup *Is this address protected?*, and a configuration view of every setting with its running value, default mark, one-line summary and reload/restart, the load status and the changes on disk not active yet (ADR 0024); an activity timeline of the audit trail, newest first, filtered by kind and address, followed live every second through a fragment of new rows, with bursts summed up, and the last entries on the overview (ADR 0025); the operator actions of `obiectl` — allow, block, unoverride, report, revoke — from the decision, verdicts and overrides views, each confirmed on a page that states what the node computed it will do, checked and carried out through the admin API's checks and services, refused when the address's state changed since the confirmation, recorded with the console as origin, and switched off by `console.actions: false` (ADR 0026).
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests, above all the four-node end-to-end test in `test/e2e` (ADR 0016); goleak in every package's `TestMain`; the soak test behind the `soak` build tag (`make soak`, ADR 0017); privileged tests behind the `privileged` build tag, run in a fresh network namespace (see [Privileged tests](CONTRIBUTING.md#privileged-tests)).
 
 ## Repository layout
@@ -200,7 +203,10 @@ Only the packages that exist today are listed in detail; the remaining
   that order; invalid events are rejected (and penalise the forwarder
   through peer scoring), duplicates and rate-limited events are ignored,
   accepted ones are stored and relayed. `Mesh.Publish` stores an event of
-  the node first, then publishes it. Outcomes are counted in
+  the node first, then publishes it; while no peer is on the topic it holds
+  the event instead (at most 10,000, in memory) and publishes the held
+  events in order when a peer joins, dropping those about to expire
+  (`Mesh.Held`, `Mesh.TopicPeers`; ADR 0026). Outcomes are counted in
   `obie_events_received_total` and reported through the `gossip.Metrics`
   interface (ADR 0009).
 - **Decision.** The `decision` subsystem (registered right after `store`)
@@ -359,7 +365,22 @@ Only the packages that exist today are listed in detail; the remaining
   running allow-list with each of its files read again by `CheckFile`, and
   the lookup judged like the engine judges; the running configuration from
   the reloader's load record, with the file on disk loaded, validated and
-  compared key by key (ADR 0024).
+  compared key by key (ADR 0024). The operator actions at
+  `/actions/{allow,block,unoverride,report,revoke}` go through
+  `console.Node.Actions`, which the daemon implements with the admin API's
+  exported request checks (`OverrideRequest.Check`, `ReportRequest.Check`,
+  `RevocationRequest.Check`), `verdicts.Service.Check`,
+  `store.CheckOverride` and the very override and audited verdict services
+  of the admin API. `GET` shows the form, then the confirmation, whose
+  consequence `decision.Engine.ExplainWith` computes from the inputs the
+  action would leave; the `POST` checks the session itself (an ended one
+  changes nothing and returns to the confirmation after signing in),
+  compares a fingerprint of the address's override and own verdict under
+  one lock for all tabs (409 if stale), carries the action out,
+  `Engine.Flush`es the change and redirects back with an outcome kept in
+  memory under a random ID. Action pages refuse cross-site and same-site
+  navigations; `console.actions` (default `true`, reload) switches them
+  off (ADR 0026).
 - **Observability.** Metrics are defined in the package that updates them
   and registered on the Prometheus default registry, which `internal/ops`
   serves; label values come from closed sets only (the admin endpoint label
@@ -376,7 +397,11 @@ Only the packages that exist today are listed in detail; the remaining
   `/activity` (`console.Node.Activity`) reads the file backwards from a
   mark — the last record number and the file's size — and its live feed
   (`/api/activity?after=`) continues from memory after that number
-  (ADR 0025). Operator documentation, collector
+  (ADR 0025). An operator action's request carries its origin in its
+  context (`audit.WithOrigin`): the admin API attaches `admin-api` and the
+  `SO_PEERCRED` UID, the console `console` and the socket table's; the
+  override and verdict services write it as `obie.origin`, `user.id` and
+  `user.name` (ADR 0026). Operator documentation, collector
   snippets and a Grafana dashboard are in `documentation/operations/`
   (ADR 0015).
 - **End-to-end test.** `test/e2e` runs four complete nodes in one process

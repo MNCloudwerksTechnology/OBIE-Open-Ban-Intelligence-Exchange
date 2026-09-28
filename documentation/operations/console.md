@@ -1,7 +1,8 @@
 # Web console
 
-The web console is a read-only window onto a running node, in your
-browser. It is built into `obied`, loads nothing from outside the node and
+The web console is a window onto a running node, in your browser, from
+which you can also [act](#act-from-the-console) on what you see: allow,
+block, remove an override, report or revoke, each after a confirmation. It is built into `obied`, loads nothing from outside the node and
 works offline. It is **off by default** and, when on, reachable **only
 from the node's own host**, only by the local users who may run `obiectl`,
 and only with a token that `obied` keeps in memory. Its security model and
@@ -23,7 +24,9 @@ what this node told the mesh and what the mesh told it; the
 [overrides view](#the-overrides-view), the
 [allow-list view](#the-allow-list-view) and the
 [configuration view](#the-configuration-view) show every rule you set and
-the configuration the node runs with.
+the configuration the node runs with. [Act from the
+console](#act-from-the-console) says how to fix a false positive in
+seconds, and how to keep the console strictly read-only.
 
 ## Switch it on
 
@@ -147,17 +150,19 @@ when?". It lists what happened, newest first:
 |-------|------|
 | *Block added*, *Block updated*, *Block removed* | The node decided to block an address or network, changed a block's expiry, score or rule, or stopped blocking it. |
 | *Spared by the allow-list* (or *by an always-allow override*) | An address with verdicts is not blocked because the allow-list or a force-allow protects it. |
-| *Always allow set*, *Always block set*, *… removed* | You set or removed an override (`obiectl allow`, `block`, `unoverride`). |
-| *Reported by this node* | This node issued a verdict (`obiectl report`, Fail2Ban). |
-| *Verdict revoked* | This node revoked one of its verdicts (`obiectl revoke`). |
+| *Always allow set*, *Always block set*, *… removed* | You set or removed an override (`obiectl allow`, `block`, `unoverride`, or [from the console](#act-from-the-console)). |
+| *Reported by this node* | This node issued a verdict (`obiectl report`, Fail2Ban, or from the console). |
+| *Verdict revoked* | This node revoked one of its verdicts (`obiectl revoke`, or from the console). |
 | *Peer connected*, *Peer disconnected* | The mesh connected to a peer, or lost its last connection to it. |
 | *Configuration reloaded* | A reload took effect, naming the settings it changed and those that wait for a restart. |
 | *Mode changed to Enforce* or *Observe* | A reload switched `node.mode`. |
 
 Each entry shows when it happened (UTC), what happened, what it is about
-and the reason the node recorded, with a few facts — until when a block
-or override lasts, your note, what triggered a decision, and that a block
-decided in observe mode was not applied. It links to what it is about: an
+and the reason the node recorded, with a few facts — who set an override,
+reported or revoked, and through which door (*By alice (uid 1000) in the
+console*, or *with obiectl or another client of the admin socket*), until
+when a block or override lasts, your note, what triggered a decision, and
+that a block decided in observe mode was not applied. It links to what it is about: an
 address to [its explanation](#why-an-address-is-or-is-not-blocked), a peer
 to [its page](#the-peers-view), a reload to the
 [configuration view](#the-configuration-view), a mode change to the
@@ -428,8 +433,9 @@ The list shows 50 verdicts per page, ordered by address and publisher like
 read when the page opens, on the node, fast with 1,000,000 held
 indicators (see [performance](performance.md#console)); reload it to read
 again. The explanation of an address links to its verdicts too.
-Publishing and revoking verdicts stays with `obiectl report` and
-`obiectl revoke`.
+*Report an address…* publishes a verdict of this node, and *Revoke…* on
+one of this node's active verdicts withdraws it: see [Act from the
+console](#act-from-the-console).
 
 ## The overrides view
 
@@ -460,8 +466,10 @@ after those 7 days. An override you removed with
 records it. The list shows up to 1,000 overrides and says how many more
 match; the filters narrow it.
 
-The list is read when the page opens; reload it to read it again. Setting
-and removing overrides stays with `obiectl`.
+The list is read when the page opens; reload it to read it again.
+*Always allow an address…*, *Always block an address…* and *Remove…* on
+each override set and remove overrides after a confirmation: see [Act
+from the console](#act-from-the-console).
 
 ## The allow-list view
 
@@ -580,6 +588,82 @@ nowhere in the console.
 The page is read when it opens; reload it to follow a reload of `obied`.
 The configuration is changed in the file, not in the console.
 
+## Act from the console
+
+Fixing a false positive takes seconds: open the address's
+[explanation](#why-an-address-is-or-is-not-blocked) and choose what to do.
+The console offers exactly what `obiectl` offers, under the same rules:
+
+| Action | Where | Like |
+|--------|-------|------|
+| *Always allow…* — never block the address or network here | explanation, overrides view | `sudo obiectl allow [--ttl] [--note]` |
+| *Always block…* — block it whatever its score | explanation, overrides view | `sudo obiectl block [--ttl] [--note]` |
+| *Remove the override…* | explanation, each override in the overrides view | `sudo obiectl unoverride` |
+| *Report…* — publish a signed verdict of this node | explanation, verdicts view | `sudo obiectl report` |
+| *Revoke my verdict…* — withdraw this node's active verdict | explanation, this node's verdicts in the verdicts view | `sudo obiectl revoke` |
+
+Every action takes two steps and changes nothing before the second:
+
+1. **Enter the details** — for an override, when it ends (`90m`, `36h`,
+   `7d`, or nothing for never) and a note; for a report, the protocol, the
+   reason, the number of events, and optionally the confidence (0.8 by
+   default), the lifetime (`decision.default_ttl` by default) and *watch*
+   instead of *ban*; for a revocation, the reason (`false_positive` by
+   default). Choose *Review*.
+2. **Confirm** — the node checks the action as it checks `obiectl`'s and
+   says in plain words what it will do: the decision now and after
+   ("203.0.113.7 will be unblocked on this node only"), whether only this
+   node is affected or a signed event goes to the mesh ("This will publish
+   a signed ban verdict … to the 3 peers connected now"), what observe
+   mode means for the firewall, which override it replaces, and whether an
+   always-block would take effect at all. Choose the button to carry it
+   out, *Change* to go back, or *Cancel*.
+
+The browser then returns to the page you came from, which shows what was
+done and the new state: the explanation, the lists and the overview read
+it at once.
+
+- **Refusals are explained.** What `obiectl` refuses, the console refuses
+  with the same words — a report on an allow-listed or internal address,
+  an address that is none, a note longer than 1,024 bytes, removing an
+  override that is not there, revoking a verdict this node does not hold
+  — and nothing changes.
+- **No peer reachable.** A report or a revocation while the node has no
+  peer is stored and counts on this node at once; the node sends it as
+  soon as a peer is reachable, and the console says so. It waits in
+  memory: if `obied` restarts before, it is not sent (the verdict still
+  counts on this node).
+- **Two tabs, or obiectl at the same time.** If the address's override or
+  this node's verdict on it changed after you opened the confirmation, the
+  console carries nothing out, shows the confirmation again with the state
+  of now and asks you to confirm once more.
+- **Your session ended** (after 12 hours, a restart of `obied` or
+  `obiectl console --rotate`): nothing is carried out; sign in again and
+  the confirmation opens again, to confirm with the state of then.
+- **The audit log records who acted, and through which door.** Every
+  action is recorded like `obiectl`'s, with `obie.origin: console` (or
+  `admin-api` for `obiectl`) and your local user in `user.id` and
+  `user.name`; the [activity timeline](#the-activity-timeline) shows
+  *By alice (uid 1000) in the console*. See
+  [Monitoring](monitoring.md#audit-log).
+
+### Keep the console read-only
+
+The actions add no right: whoever may sign in may run `obiectl` too. To
+run the console strictly read-only all the same, set `console.actions` to
+`false` and reload:
+
+```yaml
+console:
+  enabled: true
+  actions: false
+```
+
+The views then offer no action, say how to act with `obiectl`, and the
+action pages are refused. How the actions are designed and the threats
+they were weighed against are in
+[ADR 0026](../adr/0026-console-operator-actions.md).
+
 ## Copy and share
 
 Next to every address the console shows a *Copy* button; *Copy link* at
@@ -658,3 +742,7 @@ logs why.
 | `refused: a state-changing request must come from a console page` | A program other than a browser posted to the console. Sign in with a browser. |
 | *This is not the console's current token* | The token was replaced or `obied` restarted. Get the current one with `sudo obiectl console`. |
 | *Too many sign-in attempts* | More than a few attempts in a row; wait a few seconds. |
+| *Actions are switched off on this node (console.actions: false)* | The console is read-only. Act with `obiectl`, or set `console.actions: true` and reload. |
+| *Nothing was changed. The state of … changed since this confirmation was shown* | Another tab, `obiectl` or the mesh changed the address meanwhile. Check what your action does now and confirm again. |
+| *Your session ended before the action was carried out* | Sign in again; the confirmation opens again. |
+| `refused: an action page opens only from the console's own pages` | A link on another site or another local port led to an action page. Open the console in the address bar and choose the action there. |

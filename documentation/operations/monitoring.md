@@ -26,7 +26,7 @@ No label ever carries an IP address or a peer ID.
 | `obie_peers_connected` | gauge | | Connected mesh peers. |
 | `obie_peers_configured` | gauge | | Bootstrap peers in `mesh.bootstrap`. |
 | `obie_events_received_total` | counter | `outcome` (`accepted`, `duplicate`, `rate_limited`, `expired`, `invalid_signature`, `invalid_schema`, `too_large`) | Events received from peers, by validation outcome. |
-| `obie_events_published_total` | counter | `type` (`verdict`, `revoke`) | Events this node published. |
+| `obie_events_published_total` | counter | `type` (`verdict`, `revoke`) | Events this node sent to the mesh; one published while no peer was on the topic counts when it is sent, once a peer joins. |
 | `obie_store_active_indicators` | gauge | | Indicators with at least one active verdict. |
 | `obie_store_active_verdicts` | gauge | | Active verdicts (one per publisher and indicator). |
 | `obie_decisions` | gauge | `state` (`block`, `none`, `allowed`) | Decisions the engine keeps, by state. |
@@ -72,9 +72,9 @@ changes:
 | `block-updated` | A block's expiry, score, publishers or rule changed. |
 | `block-removed` | An indicator is no longer blocked. |
 | `allowed-by-allowlist` | The allow-list or a force-allow keeps an indicator with verdicts from being blocked. |
-| `override-set` / `override-removed` | The operator set or deleted an override (`obiectl allow`, `block`, `unoverride`). |
-| `local-report` | This node issued a verdict (`obiectl report`, Fail2Ban). |
-| `revocation` | This node revoked one of its verdicts (`obiectl revoke`). |
+| `override-set` / `override-removed` | The operator set or deleted an override (`obiectl allow`, `block`, `unoverride`, or the web console). |
+| `local-report` | This node issued a verdict (`obiectl report`, Fail2Ban, or the web console). |
+| `revocation` | This node revoked one of its verdicts (`obiectl revoke`, or the web console). |
 | `peer-connected` / `peer-disconnected` | The mesh connected to a peer, or lost its last connection to it. |
 | `config-reloaded` | A reload (SIGHUP, also logrotate's) took effect; a rejected reload is not recorded. |
 | `mode-changed` | A reload switched `node.mode`. |
@@ -99,6 +99,18 @@ Records follow the Elastic Common Schema (nested objects):
   `obie.settings` lists the settings a reload changed and applied,
   `obie.restart_settings` those that wait for a restart; `obie.mode` of
   `mode-changed` is the new mode, `obie.previous_mode` the one before.
+- `obie.origin` says through which door an operator action came —
+  `admin-api` (`obiectl`, Fail2Ban and every other client of the admin
+  socket) or `console` (the [web console](console.md#act-from-the-console))
+  — and `user.id` and `user.name` name the local user who carried it out:
+  the UID from the socket's peer credentials, and its name if the host
+  knows it. Only `override-set`, `override-removed`, `local-report` and
+  `revocation` have them:
+
+  ```json
+  {"@timestamp":"2026-09-28T12:00:00.123Z","event":{"kind":"event","module":"obie","dataset":"obie.audit","action":"override-set","outcome":"success","reason":"operator force_block override set"},"source":{"ip":"192.0.2.99"},"rule":{"name":"force_block"},"user":{"id":"1000","name":"alice"},"obie":{"indicator":"ipv4:192.0.2.99","mode":"enforce","expires_at":"2026-09-28T13:00:00.123Z","note":"scanner","origin":"console"}}
+  ```
+
 - Blocks that exist when `obied` starts are not recorded again; use
   `obiectl decisions` for the current state.
 - The [web console's activity timeline](console.md#the-activity-timeline)

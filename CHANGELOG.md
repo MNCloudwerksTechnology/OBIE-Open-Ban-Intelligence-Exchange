@@ -53,7 +53,7 @@ The first release, v0.1.0 "Stable Base".
 - **Admin API and CLI.** A local Unix-socket API restricted to root, the
   service user and the `obie` group, and `obiectl` on top of it
   (`status`, `peers` and the commands above).
-- **Web console.** An opt-in, read-only browser view of the node
+- **Web console.** An opt-in browser view of the node
   (`console.enabled`, switched on and off by a reload), listening on a
   loopback address only, for the users of `obiectl` only and behind a
   token kept in `obied`'s memory (`obiectl console`, `--rotate`); it shows
@@ -128,6 +128,19 @@ The first release, v0.1.0 "Stable Base".
   now also records `peer-connected`, `peer-disconnected`,
   `config-reloaded` and `mode-changed`
   ([ADR 0025](documentation/adr/0025-console-activity-timeline.md)).
+  From the decision, verdicts and overrides views the operator can always
+  allow, always block (with expiry and note), remove an override, report
+  an address and revoke this node's own verdicts: each action asks to
+  confirm after saying in plain words what it will do — the decision now
+  and after, whether only this node is affected or a signed event goes to
+  how many peers — obeys the admin API's rules with its words, refuses a
+  confirmation that another tab or `obiectl` made stale, and returns to
+  the view with the new state. `console.actions: false` keeps the console
+  read-only. Audit records of operator actions now carry `obie.origin`
+  (`console` or `admin-api`), `user.id` and `user.name`. A verdict or
+  revocation published while no peer is connected is now held in memory
+  and sent as soon as a peer joins, instead of being lost
+  ([ADR 0026](documentation/adr/0026-console-operator-actions.md)).
 - **Packaging.** Reproducible static release tarballs for linux/amd64 and
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
   hardened systemd unit, a distroless container image, and a three-node
