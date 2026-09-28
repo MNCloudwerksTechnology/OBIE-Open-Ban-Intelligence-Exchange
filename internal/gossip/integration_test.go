@@ -372,3 +372,64 @@ func TestGossipRateLimitsFlooder(t *testing.T) {
 	}
 	t.Logf("B: %v; C: %v", b.metrics.snapshot(), c.metrics.snapshot())
 }
+
+// TestGossipCapsMessageSize checks both size limits: a message above
+// obieproto.MaxEventSize reaches the validator and is rejected, an RPC
+// above MaxRPCSize is refused before any of it is parsed.
+func TestGossipCapsMessageSize(t *testing.T) {
+	a := newNode(t)
+	// The raw peer's GossipSub sends RPCs of up to 1 MiB.
+	raw := newUnsignedRawPublisher(t)
+	connect(t, raw.host, a.host, raw.topic)
+
+	raw.publish(t, []byte(strings.Repeat(" ", 2*obieproto.MaxEventSize)+"{}"))
+	waitFor(t, 5*time.Second, "the oversized event rejected", func() bool { return a.metrics.count(TooLarge) == 1 })
+
+	raw.publish(t, []byte(strings.Repeat(" ", 2*MaxRPCSize)+"{}"))
+	// Nothing of the oversized RPC may reach the validator.
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if got := a.metrics.snapshot(); len(got) != 1 || got[TooLarge] != 1 {
+			t.Fatalf("A validated a message of an oversized RPC: %v", got)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestGossipRateLimitsForwardingPeer floods B from one raw peer relaying
+// the events of many publishers, each within the publisher limit: the
+// per-peer limit cuts the flood while A's events still reach B.
+func TestGossipRateLimitsForwardingPeer(t *testing.T) {
+	a, b := newNode(t), newNode(t)
+	line(t, a, b)
+	relay := newUnsignedRawPublisher(t)
+	connect(t, relay.host, b.host, relay.topic)
+
+	perPublisher := defaultLimit.Publisher.Burst / 2
+	publishers := 3 * defaultLimit.Peer.Burst / perPublisher
+	var flood [][]byte
+	for range publishers {
+		p := newPublisher(t)
+		for range perPublisher {
+			flood = append(flood, marshal(t, p.verdict(t, time.Now(), 3600)))
+		}
+	}
+	acceptedBefore := b.metrics.count(Accepted)
+	start := time.Now()
+	for _, data := range flood {
+		relay.publish(t, data)
+	}
+	legit := a.verdict(t, time.Now(), 3600)
+	if err := a.gossip.Publish(context.Background(), legit); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, propagationDeadline, "A's event on B", func() bool { return b.has(legit.ID) })
+	// GossipSub's queues may drop part of the flood before validation.
+	waitFor(t, propagationDeadline, "B rate-limiting the relayed flood", func() bool { return b.metrics.count(RateLimited) > 0 })
+	elapsed := time.Since(start).Seconds()
+	maxAdmitted := float64(defaultLimit.Peer.Burst) + defaultLimit.Peer.EventsPerSecond*elapsed
+	if got := float64(b.metrics.count(Accepted) - acceptedBefore - 1); got > maxAdmitted {
+		t.Errorf("B accepted %.0f of %d relayed events in %.1fs, want at most %.0f", got, len(flood), elapsed, maxAdmitted)
+	}
+	t.Logf("B: %v after %.1fs", b.metrics.snapshot(), elapsed)
+}
