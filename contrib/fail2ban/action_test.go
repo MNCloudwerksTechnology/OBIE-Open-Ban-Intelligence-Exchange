@@ -58,6 +58,11 @@ func TestActionBan(t *testing.T) {
 			wantArgs: []string{"--socket", "/run/obie/obie.sock", "--timeout", "5s", "report", "--ip", "203.0.113.7",
 				"--protocol", "ssh", "--reason", "bruteforce", "--events", "5", "--mitre", "T1110", "--ttl", "1234s"},
 		},
+		"manual ban without failures": {
+			jail: "sshd", ticket: ban{ip: "203.0.113.7", failures: "0", bantime: "600"},
+			wantArgs: []string{"--socket", "/run/obie/obie.sock", "--timeout", "5s", "report", "--ip", "203.0.113.7",
+				"--protocol", "ssh", "--reason", "bruteforce", "--events", "1", "--mitre", "T1110", "--ttl", "600s"},
+		},
 		"ban shorter than the minimum TTL": {
 			jail: "sshd", ticket: ban{ip: "203.0.113.7", failures: "5", bantime: "30"},
 			wantArgs: []string{"--socket", "/run/obie/obie.sock", "--timeout", "5s", "report", "--ip", "203.0.113.7",
@@ -103,6 +108,7 @@ func TestActionBanDerivesProtocolFromJailName(t *testing.T) {
 		"postfix-sasl": "smtp", "exim": "smtp", "sendmail-auth": "smtp",
 		"dovecot": "imap", "courier-auth": "imap", "proftpd": "ftp", "vsftpd": "ftp",
 		"recidive": "recidive", "Custom-Jail": "custom-jail",
+		"My.Jail": "my_jail", "a-very-long-jail-name-beyond-the-limit": "a-very-long-jail-name-beyond-the",
 	} {
 		t.Run(jail, func(t *testing.T) {
 			env := newFakeEnv(t, 0, "")
