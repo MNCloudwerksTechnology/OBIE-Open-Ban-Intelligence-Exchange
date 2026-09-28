@@ -19,6 +19,8 @@
 # Environment: VERSION (required, x.y.z[-pre]), GO, CYCLONEDX_GOMOD,
 # PLATFORMS (default "linux/amd64 linux/arm64"), SOURCE_DATE_EPOCH.
 set -eu
+# The staged files' modes must not depend on the caller's umask.
+umask 022
 
 out=${1:?usage: release.sh <out-dir>}
 version=${VERSION:-}
@@ -66,8 +68,10 @@ for platform in $platforms; do
 	install -m 0644 "$root/contrib/fail2ban/action.d/obie.conf" "$stage/fail2ban/action.d/obie.conf"
 	install -m 0644 "$root/LICENSE.md" "$stage/LICENSE.md"
 	install -m 0644 "$root/README.md" "$stage/README.md"
+	# No pipe: sh has no pipefail, and a failing tar must fail the release.
 	tar --sort=name --format=gnu --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
-		--mode='go-w' -C "$out" -cf - "$name" | gzip -9 -n >"$out/$name.tar.gz"
+		--mode='go-w' -C "$out" -cf "$out/$name.tar" "$name"
+	gzip -9 -n "$out/$name.tar"
 	rm -rf "$stage"
 done
 

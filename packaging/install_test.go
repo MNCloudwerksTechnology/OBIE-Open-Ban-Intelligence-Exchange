@@ -181,6 +181,18 @@ func TestInstallRefuses(t *testing.T) {
 			t.Errorf("install.sh = %v, want a root error:\n%s", err, out)
 		}
 	})
+	for _, prefix := range []string{"relative", "/opt/o#bie", "/opt/o&bie", "/opt/o bie", "/home/me"} {
+		t.Run("PREFIX "+prefix, func(t *testing.T) {
+			root := t.TempDir()
+			out, err := install(t, newTarball(t), "DESTDIR="+root, "PREFIX="+prefix)
+			if err == nil || !strings.Contains(out, "PREFIX must") {
+				t.Errorf("install.sh = %v, want a PREFIX error:\n%s", err, out)
+			}
+			if entries, _ := os.ReadDir(root); len(entries) != 0 {
+				t.Errorf("install.sh installed %d entries despite the bad PREFIX", len(entries))
+			}
+		})
+	}
 	t.Run("argument", func(t *testing.T) {
 		cmd := exec.Command("/bin/sh", filepath.Join(newTarball(t), "install.sh"), "--bogus") // #nosec G204 -- test script.
 		out, err := cmd.CombinedOutput()

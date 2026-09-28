@@ -126,6 +126,48 @@ func TestPrepareRefusesInvalidFormatFile(t *testing.T) {
 	}
 }
 
+func TestCheck(t *testing.T) {
+	t.Run("missing directory", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "state")
+		if err := Check(dir, "1.2.3"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Errorf("Check created the state directory: %v", err)
+		}
+	})
+	t.Run("no format file", func(t *testing.T) {
+		dir := t.TempDir()
+		if err := Check(dir, "1.2.3"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(Path(dir)); !os.IsNotExist(err) {
+			t.Errorf("Check stamped the state directory: %v", err)
+		}
+	})
+	t.Run("current", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFormat(t, dir, "1\n")
+		if err := Check(dir, "1.2.3"); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("newer", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFormat(t, dir, "3\n")
+		if err := Check(dir, "1.2.3"); !errors.Is(err, ErrNewerFormat) || !strings.Contains(err.Error(), "format 3") {
+			t.Errorf("Check = %v, want ErrNewerFormat naming format 3", err)
+		}
+	})
+	t.Run("invalid", func(t *testing.T) {
+		dir := t.TempDir()
+		writeFormat(t, dir, "x\n")
+		if err := Check(dir, "1.2.3"); err == nil || errors.Is(err, ErrNewerFormat) {
+			t.Errorf("Check = %v, want an invalid-format error", err)
+		}
+	})
+}
+
 func TestPrepareFailsOnUnreadableFormatFile(t *testing.T) {
 	dir := t.TempDir()
 	// A directory where the format file belongs cannot be read as one.

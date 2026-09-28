@@ -51,7 +51,8 @@ LABEL org.opencontainers.image.title="OBIE" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="$VERSION"
 COPY --from=build /out/obied /out/obiectl /usr/local/bin/
-COPY --from=build --chown=65532:65532 /rootfs/ /
+COPY --from=build --chown=65532:65532 --chmod=0700 /rootfs/var/lib/obie /var/lib/obie
+COPY --from=build --chown=65532:65532 --chmod=0750 /rootfs/run/obie /run/obie
 COPY packaging/docker/obie.yaml /etc/obie/obie.yaml
 USER 65532:65532
 VOLUME ["/var/lib/obie"]

@@ -43,6 +43,16 @@ case "${1:-}" in
 *) die "unexpected argument $1; see --help" ;;
 esac
 
+case "$PREFIX" in
+/*) ;;
+*) die "PREFIX must be an absolute path, got '$PREFIX'" ;;
+esac
+case "$PREFIX" in
+*[\#\&\ ]* | /home/* | /root/*)
+	die "PREFIX must not contain spaces, # or & nor lie below /home or /root (the unit sets ProtectHome), got '$PREFIX'"
+	;;
+esac
+
 for f in bin/obied bin/obiectl etc/obie.yaml systemd/obied.service fail2ban/action.d/obie.conf; do
 	[ -f "$src/$f" ] || die "$src/$f is missing; run install.sh from an extracted release tarball"
 done
@@ -71,8 +81,8 @@ for b in obied obiectl; do
 done
 log "installed obied and obiectl into $bindir"
 
-# The configuration is readable by the obie group only: it may name
-# internal networks. An existing configuration is never touched.
+# obie.yaml is readable by root and the obie group only: it may name
+# internal networks. An existing obie.yaml is never touched.
 install -d -m 0755 "$confdir"
 install -m 0644 "$src/etc/obie.yaml" "$confdir/obie.yaml.example"
 if [ -e "$confdir/obie.yaml" ]; then
@@ -96,7 +106,9 @@ else
 	log "Fail2Ban not found; its action is in $src/fail2ban/action.d/obie.conf"
 fi
 
-if [ -z "$DESTDIR" ] && command -v systemctl >/dev/null 2>&1; then
+# Only where systemd runs: in an image build or a container without it,
+# daemon-reload would fail after everything is installed.
+if [ -z "$DESTDIR" ] && [ -d /run/systemd/system ]; then
 	systemctl daemon-reload
 	if systemctl is-active --quiet obied; then
 		log "obied is running; restart it to use the new version: systemctl restart obied"

@@ -97,8 +97,9 @@ type Endpoints struct {
 }
 
 // Run checks the format of node.state_dir (ADR 0017), loads the node
-// identity from it, generating it on the first start, builds the allow-list, then starts the subsystems configured
-// by cfg and blocks until ctx is canceled, reloading the configuration
+// identity from it, generating it on the first start, builds the
+// allow-list, then starts the subsystems configured by cfg and blocks
+// until ctx is canceled, reloading the configuration
 // whenever opts.Reload fires; then it shuts the subsystems down in reverse
 // order within node.shutdown_timeout. It returns nil after a clean
 // shutdown, also when ctx is canceled during startup, and an error when a

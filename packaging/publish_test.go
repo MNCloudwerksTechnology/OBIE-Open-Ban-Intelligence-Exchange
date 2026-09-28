@@ -22,11 +22,13 @@ import (
 type fakeForge struct {
 	gitea bool
 
-	mu       sync.Mutex
-	url      string
-	release  map[string]any // nil until created
-	created  map[string]any // body of the create request
-	uploaded map[string]string
+	mu sync.Mutex
+	// lookupStatus, if set, is the status of every release lookup.
+	lookupStatus int
+	url          string
+	release      map[string]any // nil until created
+	created      map[string]any // body of the create request
+	uploaded     map[string]string
 }
 
 func newFakeForge(t *testing.T, gitea bool) *fakeForge {
@@ -56,6 +58,10 @@ func (f *fakeForge) serve(w http.ResponseWriter, r *http.Request) {
 	repo := f.apiPrefix() + "/repos/acme/obie/releases"
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == repo+"/tags/v1.2.3":
+		if f.lookupStatus != 0 {
+			http.Error(w, "lookup failed", f.lookupStatus)
+			return
+		}
 		if f.release == nil {
 			http.NotFound(w, r)
 			return
@@ -114,6 +120,15 @@ func (f *fakeForge) writeRelease(w http.ResponseWriter) {
 // publish runs publish-release.sh for tag v1.2.3 against forge.
 func publish(t *testing.T, forge *fakeForge, dir string) string {
 	t.Helper()
+	out, err := runPublish(forge, dir)
+	if err != nil {
+		t.Fatalf("publish-release.sh: %v\n%s", err, out)
+	}
+	return out
+}
+
+// runPublish runs publish-release.sh for tag v1.2.3 against forge.
+func runPublish(forge *fakeForge, dir string) (string, error) {
 	env := []string{"TOKEN=secret", "SERVER_URL=" + forge.url, "REPO=acme/obie", "TAG=v1.2.3",
 		"GITHUB_API_URL=" + forge.url + "/api", "GITEA_ACTIONS="}
 	if forge.gitea {
@@ -122,18 +137,36 @@ func publish(t *testing.T, forge *fakeForge, dir string) string {
 	cmd := exec.Command("/bin/sh", "publish-release.sh", dir) // #nosec G204 -- test script.
 	cmd.Env = append(os.Environ(), env...)
 	out, err := cmd.CombinedOutput()
-	if err != nil {
-		t.Fatalf("publish-release.sh: %v\n%s", err, out)
-	}
-	return string(out)
+	return string(out), err
 }
 
-func TestPublishRelease(t *testing.T) {
+// requireTools skips the test unless curl and jq work.
+func requireTools(t *testing.T) {
+	t.Helper()
 	for _, tool := range []string{"curl", "jq"} {
 		if err := exec.Command(tool, "--version").Run(); err != nil { // #nosec G204 -- fixed tool names.
 			t.Skipf("%s not usable: %v", tool, err)
 		}
 	}
+}
+
+func TestPublishReleaseStopsOnLookupFailure(t *testing.T) {
+	requireTools(t)
+	forge := newFakeForge(t, false)
+	forge.mu.Lock()
+	forge.lookupStatus = http.StatusInternalServerError
+	forge.mu.Unlock()
+	out, err := runPublish(forge, t.TempDir())
+	if err == nil || !strings.Contains(out, "failed with HTTP 500") {
+		t.Errorf("publish-release.sh = %v, want an HTTP 500 error:\n%s", err, out)
+	}
+	if created, _ := forge.state(); created != nil {
+		t.Errorf("release created although the lookup failed: %v", created)
+	}
+}
+
+func TestPublishRelease(t *testing.T) {
+	requireTools(t)
 	files := []string{"obie-1.2.3-linux-amd64.tar.gz", "obie-1.2.3-linux-amd64.obied.cdx.json", "SHA256SUMS"}
 	dir := t.TempDir()
 	for _, name := range files {

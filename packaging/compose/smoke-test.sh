@@ -15,6 +15,7 @@ compose() { docker compose -p "$project" "$@"; }
 
 cleanup() {
 	status=$?
+	trap - EXIT INT TERM
 	if [ "$status" -ne 0 ]; then
 		compose logs --no-color --tail 50 >&2 || true
 	fi

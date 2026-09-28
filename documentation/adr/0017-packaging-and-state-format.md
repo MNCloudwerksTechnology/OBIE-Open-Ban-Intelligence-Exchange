@@ -34,11 +34,12 @@ state when a newer version is rolled back.
 - **Release workflow on tags only.** `release.yml`, byte-identical in
   `.gitea/workflows/` and `.github/workflows/` like `ci.yml`, triggers only
   on pushed `v*` tags. It runs `make ci`, `make release` and `make
-  check-unit`, attaches the artefacts to the forge's release through its
-  REST API (`packaging/publish-release.sh`; Gitea and GitHub differ only in
-  the API root and the upload call) and pushes the multi-arch image to the
-  forge's registry (`ghcr.io` on GitHub). The CI gate builds everything but
-  pushes nothing.
+  check-unit` from a checkout without persisted credentials, pushes the
+  multi-arch image to the forge's registry (`ghcr.io` on GitHub) and last
+  attaches the artefacts to the forge's release through its REST API
+  (`packaging/publish-release.sh`; Gitea and GitHub differ only in the API
+  root and the upload call), so a release never appears without its image.
+  The CI gate builds everything but pushes nothing.
 - **systemd unit.** `packaging/systemd/obied.service` runs obied as the
   system user `obie` with `CAP_NET_ADMIN` as its only (ambient and bounding)
   capability, `StateDirectory`, `RuntimeDirectory` (admin socket, 0750),
@@ -47,7 +48,9 @@ state when a newer version is rolled back.
   namespaces, `MemoryDenyWriteExecute`, …) that `systemd-analyze security`
   rates **1.7 (OK)**. `PrivateUsers` and `PrivateNetwork` are deliberately
   not set: either would take `CAP_NET_ADMIN` away from the host's network
-  namespace. `make check-unit` runs `systemd-analyze verify` (any warning
+  namespace. Without `@chown`, obied cannot change its admin socket's
+  group, so `admin.socket_group` must be the unit's `Group=`; obied skips
+  the chown when the socket already has the group. `make check-unit` runs `systemd-analyze verify` (any warning
   fails) and requires an exposure of at most 3.0.
 - **install.sh** installs an extracted tarball: user and group `obie`,
   binaries into `$PREFIX/bin` (default `/usr/local`), the configuration only
@@ -74,8 +77,10 @@ state when a newer version is rolled back.
   Before loading the identity, obied stamps a directory without the file —
   new, or written before the file existed — with its format, and refuses to
   start on a directory with a higher format, naming the directory, both
-  formats and the fix (run the newer obied again or restore a backup). A
-  future format change raises the version and migrates older directories
+  formats and the fix (run the newer obied again or restore a backup).
+  `obied keygen` refuses a newer format too but never stamps: it may run as
+  root, and obied could not read a root-owned format file. A future format
+  change raises the version and migrates older directories
   in `internal/statedir` before anything else opens them.
 
 ## Consequences

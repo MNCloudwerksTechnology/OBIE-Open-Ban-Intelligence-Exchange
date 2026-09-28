@@ -51,12 +51,33 @@ func Prepare(dir, buildVersion string) (previous int, err error) {
 	case err != nil:
 		return 0, err
 	case found > Version:
-		return found, fmt.Errorf("%w: %s has format %d, but obied %s only understands format %d or older; "+
-			"it was last used by a newer obied. Run that newer obied again, or restore a backup of the state "+
-			"directory taken before the upgrade", ErrNewerFormat, dir, found, buildVersion, Version)
+		return found, newerFormatError(dir, found, buildVersion)
 	}
 	// found == Version: there is no older format to migrate from yet.
 	return found, nil
+}
+
+// Check refuses a state directory of a newer format like Prepare, but
+// never creates or stamps it: for offline commands that may run as another
+// user than obied (e.g. obied keygen as root), whose format file obied
+// could then not read. A missing directory or format file is fine.
+func Check(dir, buildVersion string) error {
+	found, err := read(dir)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return err
+	case found > Version:
+		return newerFormatError(dir, found, buildVersion)
+	}
+	return nil
+}
+
+func newerFormatError(dir string, found int, buildVersion string) error {
+	return fmt.Errorf("%w: %s has format %d, but obied %s only understands format %d or older; "+
+		"it was last used by a newer obied. Run that newer obied again, or restore a backup of the state "+
+		"directory taken before the upgrade", ErrNewerFormat, dir, found, buildVersion, Version)
 }
 
 // read returns the format version recorded in dir.

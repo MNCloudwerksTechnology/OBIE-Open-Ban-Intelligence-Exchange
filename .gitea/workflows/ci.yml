@@ -126,12 +126,16 @@ jobs:
         run: |
           make release VERSION=0.0.0-ci
           cp dist/release/SHA256SUMS "$RUNNER_TEMP/SHA256SUMS"
-          make release VERSION=0.0.0-ci
+          # The second build starts from an empty build cache.
+          GOCACHE="$(mktemp -d)" make release VERSION=0.0.0-ci
           diff "$RUNNER_TEMP/SHA256SUMS" dist/release/SHA256SUMS
 
       - name: make check-unit
         run: |
-          command -v systemd-analyze >/dev/null || sudo apt-get install -y --no-install-recommends systemd
+          if ! command -v systemd-analyze >/dev/null; then
+            sudo=; [ "$(id -u)" -eq 0 ] || sudo=sudo
+            $sudo apt-get update && $sudo apt-get install -y --no-install-recommends systemd
+          fi
           make check-unit
 
       - name: make image

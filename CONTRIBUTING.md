@@ -60,8 +60,8 @@ is a byte-identical copy for the public GitHub mirror — change both together;
 
 `.gitea/workflows/release.yml` (again with a byte-identical GitHub copy)
 runs only when a `v*` tag is pushed: it runs `make ci`, builds the release,
-attaches the tarballs, SBOMs and `SHA256SUMS` to the forge's release and
-pushes the multi-arch image. To release, tag the merged commit on `main`
+pushes the multi-arch image and then attaches the tarballs, SBOMs and
+`SHA256SUMS` to the forge's release. To release, tag the merged commit on `main`
 (`git tag -a v0.1.0 -m "OBIE 0.1.0" && git push origin v0.1.0`); see
 [ADR 0017](documentation/adr/0017-packaging-and-state-format.md).
 

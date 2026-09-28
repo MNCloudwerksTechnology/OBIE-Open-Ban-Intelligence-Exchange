@@ -104,6 +104,11 @@ findings are inherent to what obied does:
 | `DeviceAllow=` | 0.1 | `PrivateDevices` default (`char-rtc:r`) |
 | `UMask=` | 0.1 | `UMask=0027`: the `obie` group may read the audit log |
 
+The filter leaves out `@chown`: obied only changes the group of its admin
+socket when `admin.socket_group` differs from the unit's `Group=obie`. If
+you change one, change the other (in a drop-in) to match, or obied fails to
+start with `chgrp admin socket … operation not permitted`.
+
 Customize with `systemctl edit obied` (a drop-in survives upgrades) rather
 than editing the unit; `make check-unit` shows what a change costs.
 

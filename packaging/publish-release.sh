@@ -31,14 +31,27 @@ request() {
 prerelease=false
 case "$TAG" in *-*) prerelease=true ;; esac
 
-if ! release=$(request GET "$api/repos/$REPO/releases/tags/$TAG" 2>/dev/null); then
+# Only a 404 means there is no release yet; any other failure stops here.
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+status=$(curl --silent --show-error --location -o "$tmp" -w '%{http_code}' \
+	-H "Authorization: token $TOKEN" -H "Accept: application/json" "$api/repos/$REPO/releases/tags/$TAG")
+release=$(cat "$tmp")
+case "$status" in
+200) ;;
+404)
 	body=$(jq -n --arg tag "$TAG" --argjson pre "$prerelease" '{
 		tag_name: $tag, name: ("OBIE " + $tag), prerelease: $pre,
 		body: "Static linux/amd64 and linux/arm64 builds of obied and obiectl with install.sh, the systemd unit, the example configuration and the Fail2Ban action; a CycloneDX SBOM per binary. Verify the downloads with `sha256sum -c SHA256SUMS`. See documentation/operations/install.md."
 	}')
 	release=$(request POST "$api/repos/$REPO/releases" -H "Content-Type: application/json" -d "$body")
 	echo "publish-release: created release $TAG"
-fi
+	;;
+*)
+	echo "publish-release: looking up the release of $TAG failed with HTTP $status: $release" >&2
+	exit 1
+	;;
+esac
 id=$(echo "$release" | jq -r .id)
 upload_url=$(echo "$release" | jq -r '.upload_url // empty' | sed 's/{.*}//')
 
