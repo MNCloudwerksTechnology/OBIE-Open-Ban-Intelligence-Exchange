@@ -128,6 +128,18 @@ type Enforce struct {
 	Backend           Backend  `yaml:"backend"`
 	MaxEntries        int      `yaml:"max_entries"`
 	ReconcileInterval Duration `yaml:"reconcile_interval"`
+	NFTables          NFTables `yaml:"nftables"`
+}
+
+// NFTables configures the nftables backend (enforce.backend nftables).
+type NFTables struct {
+	// Forward also drops blocked sources in a forward chain, for routers
+	// and container hosts.
+	Forward bool `yaml:"forward"`
+	// TeardownOnStop makes `obied teardown-firewall --on-stop` (the
+	// systemd unit's ExecStopPost) remove the table; by default the
+	// blocks stay until their timeout.
+	TeardownOnStop bool `yaml:"teardown_on_stop"`
 }
 
 // Metrics configures the Prometheus and health endpoint listener.

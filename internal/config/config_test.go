@@ -84,6 +84,8 @@ func TestDefaults(t *testing.T) {
 		{"enforce.backend", d.Enforce.Backend, BackendDryRun},
 		{"enforce.max_entries", d.Enforce.MaxEntries, 100000},
 		{"enforce.reconcile_interval", d.Enforce.ReconcileInterval.Std(), 10 * time.Second},
+		{"enforce.nftables.forward", d.Enforce.NFTables.Forward, false},
+		{"enforce.nftables.teardown_on_stop", d.Enforce.NFTables.TeardownOnStop, false},
 		{"metrics.listen", d.Metrics.Listen, "127.0.0.1:9464"},
 		{"audit.path", d.Audit.Path, ""},
 		{"log.level", d.Log.Level, "info"},
@@ -117,6 +119,8 @@ decision:
   local_autoblock: false
 enforce:
   max_entries: 0x10
+  nftables:
+    forward: true
 `
 	cfg, err := Parse([]byte(input))
 	if err != nil {
@@ -137,6 +141,9 @@ enforce:
 	}
 	if cfg.Enforce.MaxEntries != 16 {
 		t.Errorf("enforce.max_entries = %d, want 16", cfg.Enforce.MaxEntries)
+	}
+	if !cfg.Enforce.NFTables.Forward || cfg.Enforce.NFTables.TeardownOnStop {
+		t.Errorf("enforce.nftables = %+v, want forward only", cfg.Enforce.NFTables)
 	}
 }
 

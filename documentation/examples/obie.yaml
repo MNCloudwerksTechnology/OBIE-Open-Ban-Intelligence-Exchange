@@ -124,8 +124,9 @@ allowlist:
 
 enforce:
   # Only used in node.mode enforce. dryrun: keep the blocks in memory and
-  # log every add/remove as JSON, blocking nothing. nftables: manage an
-  # nftables set (not available yet in this build).
+  # log every add/remove as JSON, blocking nothing. nftables: drop blocked
+  # sources through the sets of the table `inet obie` (Linux, needs
+  # CAP_NET_ADMIN); no other table is ever touched.
   backend: dryrun
   # Upper bound on simultaneously blocked addresses/ranges (>= 1). Beyond
   # it the lowest-score blocks are skipped, logged and counted.
@@ -134,6 +135,14 @@ enforce:
   # addition to right after every decision change; also the longest retry
   # delay after a failed apply.
   reconcile_interval: 10s
+  nftables:
+    # Also drop blocked sources in a `forward` chain (routers, container
+    # hosts), not only in the `input` chain.
+    forward: false
+    # Remove the table inet obie when the systemd unit stops (its
+    # ExecStopPost runs `obied teardown-firewall --on-stop`). false keeps
+    # the blocks across restarts until their timeout.
+    teardown_on_stop: false
 
 metrics:
   # ip:port of the Prometheus metrics and health endpoint. Use an IP
