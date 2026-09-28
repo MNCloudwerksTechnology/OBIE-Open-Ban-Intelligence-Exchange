@@ -20,6 +20,7 @@ website/
 - Go (only to install the pinned `osv-scanner` for `make vuln`)
 - Docker (the back-end tests start PostgreSQL and, for the browser test,
   Chromium with Testcontainers)
+- Google Chrome, only for `make lighthouse` and `npm run share-image`
 - To run the jar: a PostgreSQL database and an SMTP server (see
   [Configuration](#configuration))
 
@@ -62,6 +63,7 @@ http://localhost:4200.
 | `make -C website frontend`     | Production build, all public routes prerendered (`frontend/dist/`) |
 | `make -C website backend`      | `./mvnw verify`: tests (PostgreSQL and a Chromium browser via Testcontainers, GreenMail), Spotless, SpotBugs, jar |
 | `make -C website vuln`         | `npm audit --omit=dev --audit-level=high` and osv-scanner on the back end's runtime SBOM |
+| `make -C website lighthouse`   | Build the jar, start it with a throwaway PostgreSQL (Docker) and run Lighthouse CI (mobile) on every page; fails below 95 in any category |
 | `make -C website run`          | Run the built jar                                                   |
 | `make -C website clean`        | Remove build output and installed tools                             |
 
@@ -90,7 +92,7 @@ Durations use ISO-8601 (`PT3S` = 3 seconds, `PT1H` = 1 hour), periods too
 | `OBIE_MAIL_FROM` | yes | – | Sender address of all mails, e.g. `website@obie.example`. It must be allowed to send through the SMTP server. |
 | `OBIE_INQUIRY_RECIPIENT` | yes | – | Address that receives every inquiry. |
 | `OBIE_INQUIRY_SECRET` | yes | – | Server-side secret, at least 32 characters (e.g. `openssl rand -base64 32`). It salts the hashes of client IPs and signs form tokens. Keep it stable: after a change, forms that were already open are treated as bots (fake `202`, nothing stored), and old IP hashes no longer match new ones. |
-| `OBIE_SITE_ORIGIN` | yes | – | The site's own origin, e.g. `https://obie.example`; the only origin allowed to call the API from a browser (CORS). |
+| `OBIE_SITE_ORIGIN` | yes | – | The site's public origin, e.g. `https://obie.example` (scheme, host and optional port only): the only origin allowed to call the API from a browser (CORS), and the base of the canonical URLs, the share image URL, `robots.txt` and `sitemap.xml`. |
 | `OBIE_INQUIRY_MIN_FILL_TIME` | no | `PT3S` | Submissions sent faster than this after the form was rendered count as bots. |
 | `OBIE_INQUIRY_FORM_TOKEN_MAX_AGE` | no | `P1D` | Forms rendered longer ago than this are rejected with 400 ("please reload the page"), so one token cannot be reused forever. |
 | `OBIE_INQUIRY_RATE_LIMIT` | no | `5` | Inquiries allowed per client IP within `OBIE_INQUIRY_RATE_LIMIT_PERIOD`. |
@@ -238,6 +240,44 @@ stats are served; before the first success the answer is
 `{"available": false}` with every other field `null`, and the page leaves
 the stats strip out. Failures are logged as warnings.
 
+## Search engines, performance and accessibility
+
+Design decisions: [ADR 0015](../documentation/adr/0015-website-seo-and-delivery.md).
+
+- **Head tags.** `core/seo.ts` sets title, description, canonical link,
+  Open Graph and Twitter card tags per page; the not-found page is
+  `noindex`. The home page carries JSON-LD (`SoftwareSourceCode`,
+  `Organization`, `Person`) built from `content/seo.content.ts`; the founder's
+  `image` appears only once `founder.photo` is a real photo.
+- **Origin.** Pages are prerendered with the placeholder
+  `https://site-origin.invalid`; the back end replaces it with
+  `OBIE_SITE_ORIGIN` when serving. `GET /robots.txt` and `GET /sitemap.xml`
+  are generated from the same origin and the prerendered pages.
+- **Share image.** `frontend/public/social/obie-share.png`, 1200 × 630.
+  After a design change, regenerate it with `npm run share-image` in
+  `frontend/` (headless Chrome; `CHROME=/path/to/chrome` picks another one)
+  and commit it.
+- **Build checks and delivery.** `npm run build` ends with
+  `scripts/postbuild.mjs`: it fails when the initial JavaScript exceeds
+  150 KB gzip or an image lacks `width`/`height` or is not SVG, WebP or AVIF,
+  preloads the Inter weights listed in `PRELOADED_FONTS`, and writes `.br`
+  and `.gz` variants of the text assets. The back end serves those variants,
+  gzips pages and API responses, sends hashed files (`*-<hash>.js|css`,
+  `media/`) with a one-year `immutable` cache and everything else with
+  `no-cache`. The legal pages are loaded on demand, the inquiry form's code
+  right after the first paint, when the browser is idle.
+- **Accessibility checks.** `src/app/a11y.spec.ts` runs axe-core on every
+  route in both themes (WCAG 2.1 A/AA and best practices); a new route must
+  be added to its `ROUTES`. Colour contrast is checked on the tokens
+  (`styles.spec.ts`) and by Lighthouse, because jsdom has no layout.
+- **Lighthouse.** `make -C website lighthouse` needs Docker and Google Chrome
+  (or `CHROME_PATH`); `LIGHTHOUSE_PORT` (default `8089`) sets the jar's port.
+  Reports land in `website/.lighthouseci/reports/`. Mail and GitHub are
+  pointed at a closed local port, so the run depends on nothing outside the
+  machine. Over `http://localhost` Chrome accepts gzip but not Brotli, so the
+  local scores are slightly pessimistic. In CI, the `website lighthouse` job
+  runs it after the `website` job and does not block a merge.
+
 ## How it fits together
 
 - **Front end.** Angular builds in `outputMode: "static"`: every route listed
@@ -289,8 +329,9 @@ the stats strip out. Failures are logged as warnings.
   `backend/src/main/resources/db/migration/V<n>__<what>.sql`; never edit one
   that has been released.
 - **Adding a page.** Add the route to `src/app/app.routes.ts` and a
-  `RenderMode.Prerender` entry to `src/app/app.routes.server.ts`. The back
-  end serves it without changes.
+  `RenderMode.Prerender` entry to `src/app/app.routes.server.ts`, and call
+  `SeoService.apply` in the page with a unique title and description. The
+  back end serves it and lists it in `sitemap.xml` without changes.
 - **Dependency overrides.** `backend/pom.xml` overrides a few versions
   managed by Spring Boot to pick up security fixes; remove them when Spring
   Boot catches up.

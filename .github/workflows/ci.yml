@@ -151,6 +151,8 @@ jobs:
     # but its steps are skipped unless something under website/ changed.
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -212,6 +214,44 @@ jobs:
       - if: steps.changes.outputs.changed == 'true'
         name: make -C website ci
         run: make -C website ci
+
+  lighthouse:
+    name: website lighthouse (non-blocking)
+    # Lighthouse CI (mobile) against the jar started on the runner; fails below
+    # 95 in any category. Scores depend on the runner's load, so a failure is
+    # reported but never blocks a change: the job is not a required check.
+    needs: website
+    if: needs.website.outputs.changed == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: website/backend/pom.xml
+
+      # The runner image ships Google Chrome, which Lighthouse CI finds on its own.
+      - name: make -C website lighthouse
+        run: make -C website lighthouse
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: website/.lighthouseci/reports/
+          if-no-files-found: ignore
+          retention-days: 14
 
   privileged:
     name: privileged tests

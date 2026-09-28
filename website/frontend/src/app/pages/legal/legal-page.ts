@@ -1,9 +1,9 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { Meta, Title } from '@angular/platform-browser';
 import { ActivatedRoute } from '@angular/router';
 
 import { LegalContent, LegalPageContent } from '../../content/legal-content.model';
 import { LEGAL_CONTENT } from '../../content/legal.content';
+import { SeoService } from '../../core/seo';
 
 /** The legal pages; the route's `data.legalPage` names which one. */
 export type LegalPageKey = 'impressum' | 'privacy';
@@ -26,7 +26,6 @@ export class LegalPage {
   constructor() {
     const key = inject(ActivatedRoute).snapshot.data['legalPage'] as LegalPageKey;
     this.page = this.content[key];
-    inject(Title).setTitle(this.page.meta.title);
-    inject(Meta).updateTag({ name: 'description', content: this.page.meta.description });
+    inject(SeoService).apply({ ...this.page.meta, path: `/${key}` });
   }
 }

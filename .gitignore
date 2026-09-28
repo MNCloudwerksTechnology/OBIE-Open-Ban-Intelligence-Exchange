@@ -19,6 +19,7 @@ go.work.sum
 /website/frontend/.angular/
 /website/frontend/coverage/
 /website/backend/target/
+/website/.lighthouseci/
 
 # Editors and OS
 .idea/

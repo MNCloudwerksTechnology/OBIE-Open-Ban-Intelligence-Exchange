@@ -142,6 +142,37 @@ class InquiryFormBrowserTest extends IntegrationTest {
                     .anyMatch(mail -> isNotification(mail, subject)));
   }
 
+  /**
+   * The form's code loads lazily (ADR 0015), but soon after the page has loaded, not only when the
+   * visitor scrolls to it: submitted before hydration, the prerendered form would reload the page.
+   */
+  @Test
+  void formIsReadyBeforeTheVisitorScrollsToIt() {
+    String home = "http://host.testcontainers.internal:" + port + "/";
+    driver.get(home);
+    JavascriptExecutor js = (JavascriptExecutor) driver;
+    new WebDriverWait(driver, TIMEOUT)
+        .until(
+            d ->
+                (Boolean)
+                    js.executeScript(
+                        "return performance.getEntriesByType('resource')"
+                            + ".some(e => e.name.includes('/api/inquiries/form-token'))"));
+    assertThat((Boolean) js.executeScript("return scrollY === 0")).isTrue();
+
+    js.executeScript("document.querySelector('#contact form').requestSubmit()");
+
+    // Hydrated, the form validates in place and flags the empty required fields.
+    new WebDriverWait(driver, TIMEOUT)
+        .until(
+            d ->
+                Boolean.TRUE.equals(
+                    js.executeScript(
+                        "return document.querySelectorAll('#contact [aria-invalid=\"true\"]')"
+                            + ".length > 0")));
+    assertThat(driver.getCurrentUrl()).isEqualTo(home);
+  }
+
   private void type(String id, String text) {
     driver.findElement(By.id(id)).sendKeys(text);
   }

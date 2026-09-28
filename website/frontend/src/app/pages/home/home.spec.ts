@@ -4,6 +4,7 @@ import { Router, provideRouter } from '@angular/router';
 import { App } from '../../app';
 import { routes } from '../../app.routes';
 import { LANDING_CONTENT_EN, REPOSITORY_URL } from '../../content/landing.content';
+import { renderDeferBlocks } from '../../../testing/defer-blocks';
 
 describe('Home page', () => {
   let page: HTMLElement;
@@ -13,6 +14,7 @@ describe('Home page', () => {
     const fixture = TestBed.createComponent(App);
     await TestBed.inject(Router).navigateByUrl('/');
     fixture.detectChanges();
+    await renderDeferBlocks(fixture);
     page = fixture.nativeElement as HTMLElement;
   });
 

@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { Meta, Title } from '@angular/platform-browser';
-
 import { LANDING_CONTENT } from '../../content/landing.content';
+import { SEO_CONTENT } from '../../content/seo.content';
+import { SeoService } from '../../core/seo';
+import { homeStructuredData } from '../../core/structured-data';
 import { Contact } from '../../sections/contact';
 import { Faq } from '../../sections/faq';
 import { Founder } from '../../sections/founder';
@@ -21,8 +22,15 @@ import { Status } from '../../sections/status';
 })
 export class Home {
   constructor() {
-    const { meta } = inject(LANDING_CONTENT);
-    inject(Title).setTitle(meta.title);
-    inject(Meta).updateTag({ name: 'description', content: meta.description });
+    const { meta, founder } = inject(LANDING_CONTENT);
+    const seo = inject(SeoService);
+    seo.apply({
+      title: meta.title,
+      description: meta.description,
+      path: '/',
+      structuredData: homeStructuredData(inject(SEO_CONTENT), founder, (path) =>
+        seo.absolute(path),
+      ),
+    });
   }
 }
