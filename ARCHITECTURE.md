@@ -46,7 +46,9 @@ verdicts view, with the ended verdicts the store keeps for it, in
 [ADR 0023](documentation/adr/0023-console-verdicts.md) and its overrides,
 allow-list and configuration views, with the expired overrides the store
 keeps and the configuration reference in code, in
-[ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md); the website
+[ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md) and
+its activity timeline, read from the audit trail and followed live, in
+[ADR 0025](documentation/adr/0025-console-activity-timeline.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -70,8 +72,8 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts` (no pubsub signatures, message ID = event ID, validation before relay, per-publisher and per-peer rate limits, peer scoring), static bootstrap peers in v0.1.
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins (built-in ranges, own and bootstrap addresses, `allowlist.cidrs`, `allowlist.files`); operator force-allow / force-block overrides; mode `observe` (default) or `enforce`; SIGHUP reloads (ADR 0013).
 - **Enforcement:** pluggable enforcer (`Setup`/`List`/`Apply`/`Teardown`, entries with timeouts); `dryrun` (default) and `nftables` (netlink via google/nftables, own table `inet obie` with interval+timeout sets `obie_v4`/`obie_v6` and a priority -10 input chain, optional forward chain, CAP_NET_ADMIN only, `obied teardown-firewall`; ADR 0015) backends; reconcile loop with `enforce.max_entries` cap and allow-list re-check (ADR 0014).
-- **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015).
-- **Console:** opt-in (`console.enabled`, default off), read-only web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019); an overview of health, key numbers and attention conditions that refreshes itself through a fragment endpoint (ADR 0020); a peers view of every configured and connected peer with its trust, held verdicts and recent events (ADR 0021); a decisions list filtered, searched, sorted and paged on the node, the explanation of any address like `obiectl explain`, and a firewall view of the backend's entries and their differences from the decided blocks, with copy buttons and shareable links (ADR 0022); a verdicts view of this node's and every other publisher's verdicts — active, revoked (and why) or expired — with the evidence's hash and event count, totals per publisher, and links to the publisher and the decision (ADR 0023); an overrides view of the force-allows and force-blocks in effect (and expired ones), an allow-list view grouped by origin with the state of each allow-list file on disk and the lookup *Is this address protected?*, and a configuration view of every setting with its running value, default mark, one-line summary and reload/restart, the load status and the changes on disk not active yet (ADR 0024).
+- **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015), which also records peer connections, reloads and mode changes and keeps its last 10,000 records in memory for the console (ADR 0025).
+- **Console:** opt-in (`console.enabled`, default off), read-only web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019); an overview of health, key numbers and attention conditions that refreshes itself through a fragment endpoint (ADR 0020); a peers view of every configured and connected peer with its trust, held verdicts and recent events (ADR 0021); a decisions list filtered, searched, sorted and paged on the node, the explanation of any address like `obiectl explain`, and a firewall view of the backend's entries and their differences from the decided blocks, with copy buttons and shareable links (ADR 0022); a verdicts view of this node's and every other publisher's verdicts — active, revoked (and why) or expired — with the evidence's hash and event count, totals per publisher, and links to the publisher and the decision (ADR 0023); an overrides view of the force-allows and force-blocks in effect (and expired ones), an allow-list view grouped by origin with the state of each allow-list file on disk and the lookup *Is this address protected?*, and a configuration view of every setting with its running value, default mark, one-line summary and reload/restart, the load status and the changes on disk not active yet (ADR 0024); an activity timeline of the audit trail, newest first, filtered by kind and address, followed live every second through a fragment of new rows, with bursts summed up, and the last entries on the overview (ADR 0025).
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests, above all the four-node end-to-end test in `test/e2e` (ADR 0016); goleak in every package's `TestMain`; the soak test behind the `soak` build tag (`make soak`, ADR 0017); privileged tests behind the `privileged` build tag, run in a fresh network namespace (see [Privileged tests](CONTRIBUTING.md#privileged-tests)).
 
 ## Repository layout
@@ -82,7 +84,7 @@ cmd/
   obiectl/          operator CLI entry point
 internal/           all non-public code (one package per concern listed above)
   admin/            admin API on the Unix socket (server, wire types, obiectl client)
-  audit/            decision audit log: ECS JSON lines, reopened on SIGHUP
+  audit/            decision audit log: ECS JSON lines, reopened on SIGHUP; its tail in memory, read back newest first
   cli/              flag handling and commands of both binaries
   config/           YAML configuration schema, defaults, strict decoding, validation, settings reference
   console/          local web console: loopback server, request guards, token and sessions, layout, views
@@ -365,8 +367,16 @@ Only the packages that exist today are listed in detail; the remaining
   subsystem (registered after `store`) appends one ECS JSON line per
   decision change: the engine's block changes (`block-added|updated|removed`)
   and transitions to `allowed` (`Engine.SubscribeTransitions`), override
-  changes, local reports and revocations; startup state is not recorded.
-  SIGHUP reopens it before the reload. Operator documentation, collector
+  changes, local reports and revocations, the mesh's peer connections
+  (`mesh.Options.Connections`), and the reloader's reloads and mode
+  changes; startup state is not recorded. SIGHUP reopens it before the
+  reload. The `audit.Log` exists without `audit.path` too: it numbers every
+  record and keeps the last 10,000 in memory under the lock that appends
+  them to the file (opened read-write), so the console's timeline at
+  `/activity` (`console.Node.Activity`) reads the file backwards from a
+  mark — the last record number and the file's size — and its live feed
+  (`/api/activity?after=`) continues from memory after that number
+  (ADR 0025). Operator documentation, collector
   snippets and a Grafana dashboard are in `documentation/operations/`
   (ADR 0015).
 - **End-to-end test.** `test/e2e` runs four complete nodes in one process

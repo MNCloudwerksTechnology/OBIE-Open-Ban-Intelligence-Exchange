@@ -143,7 +143,7 @@ How to sign in and reach it from another machine: [Web console](console.md).
 
 | Key | Default | Applied on | Meaning |
 |-----|---------|------------|---------|
-| `audit.path` | `""` | restart | JSON-lines audit log of every decision change with ECS field names; empty disables it. An absolute file path in an existing directory, e.g. `/var/log/obie/audit.jsonl` (the unit creates `/var/log/obie`). Every reload reopens the file, for logrotate. See [Monitoring](monitoring.md#audit-log). |
+| `audit.path` | `""` | restart | JSON-lines audit log of every decision change, peer connection, reload and mode change with ECS field names; empty disables it. An absolute file path in an existing directory, e.g. `/var/log/obie/audit.jsonl` (the unit creates `/var/log/obie`). Every reload reopens the file, for logrotate. The console's [activity timeline](console.md#the-activity-timeline) reads it back; without it, the timeline shows only the last 10,000 entries since `obied` started. See [Monitoring](monitoring.md#audit-log). |
 
 ## log
 

@@ -63,7 +63,8 @@ pick your Prometheus data source; the `instance` variable selects nodes.
 Set `audit.path` to an absolute file path, e.g.
 `/var/log/obie/audit.jsonl`; the directory must exist and be writable by
 the user `obied` runs as. `obied` then appends one JSON object per line
-for every decision change:
+for every decision change, and for the node's peers, reloads and mode
+changes:
 
 | `event.action` | When |
 |---|---|
@@ -74,6 +75,9 @@ for every decision change:
 | `override-set` / `override-removed` | The operator set or deleted an override (`obiectl allow`, `block`, `unoverride`). |
 | `local-report` | This node issued a verdict (`obiectl report`, Fail2Ban). |
 | `revocation` | This node revoked one of its verdicts (`obiectl revoke`). |
+| `peer-connected` / `peer-disconnected` | The mesh connected to a peer, or lost its last connection to it. |
+| `config-reloaded` | A reload (SIGHUP, also logrotate's) took effect; a rejected reload is not recorded. |
+| `mode-changed` | A reload switched `node.mode`. |
 
 Records follow the Elastic Common Schema (nested objects):
 
@@ -82,15 +86,25 @@ Records follow the Elastic Common Schema (nested objects):
 ```
 
 - `source.ip` is set for single addresses; ranges are only in
-  `obie.indicator` (e.g. `cidr:203.0.113.0/24`).
+  `obie.indicator` (e.g. `cidr:203.0.113.0/24`). Records about no address
+  (peers, reloads, mode changes) have neither, and no `rule.name`.
 - `rule.name` is `consensus`, `local_autoblock`, `allowlist`,
   `force_allow`, `force_block`, `local_report` or `revocation`.
 - `obie.score`, `obie.threshold` and `obie.publishers` (contributing
   publishers) are set for decisions; `obie.mode` is the `node.mode` at the
   time; `obie.cause` says what triggered a decision change (`verdict`,
   `revoke`, `expiry`, `evict`, `override`, `refresh`, `reload`).
+- `obie.peer_id` and `obie.peer_name` (its `trust.publishers` name, if
+  any) name the peer of `peer-connected` and `peer-disconnected`;
+  `obie.settings` lists the settings a reload changed and applied,
+  `obie.restart_settings` those that wait for a restart; `obie.mode` of
+  `mode-changed` is the new mode, `obie.previous_mode` the one before.
 - Blocks that exist when `obied` starts are not recorded again; use
   `obiectl decisions` for the current state.
+- The [web console's activity timeline](console.md#the-activity-timeline)
+  reads this file back, so it shows the same records as your SIEM. `obied`
+  opens the file for reading too; if it may only write it, the timeline
+  shows the last records it keeps in memory instead.
 
 The full set of fields per action is in
 [the golden test file](../../internal/audit/testdata/audit.golden.jsonl).

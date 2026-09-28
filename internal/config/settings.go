@@ -81,7 +81,7 @@ var settings = []Setting{
 	{"console.enabled", "Serves this web console.", OnReload, false},
 	{"console.listen", "Loopback address this web console listens on.", OnReload, false},
 
-	{"audit.path", "File of the JSON audit log of every decision change; empty switches it off.", OnRestart, false},
+	{"audit.path", "File of the JSON audit log of decisions, peers, reloads and modes, which the timeline reads; empty switches it off.", OnRestart, false},
 
 	{"log.level", "Least level of the log lines obied writes: debug, info, warn or error.", OnRestart, false},
 }

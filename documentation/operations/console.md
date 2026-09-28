@@ -12,6 +12,8 @@ Every page shows the node, its mode (observe or enforce) and its health:
 *Starting*, *Ready*, *Degraded* (naming the subsystem and why) or
 *Shutting down*. The first page, the [overview](#the-overview), tells you
 within seconds whether the node is healthy and what it is doing; the
+[activity timeline](#the-activity-timeline) shows what the node did and
+does, live; the
 [peers view](#the-peers-view) shows every peer the node knows and the
 trust placed in it; the [decisions view](#the-decisions-view) lists every
 address the node decided on and [explains](#why-an-address-is-or-is-not-blocked)
@@ -101,6 +103,9 @@ numbers and decides what needs attention is recorded in
   blocks that share an
   entry with another block (the same range, or one inside a wider range),
   that the allow-list refuses, or that are over `enforce.max_entries`.
+- **Recent activity.** The last 5 entries of the
+  [activity timeline](#the-activity-timeline), with a link to all of
+  them.
 - **Parts of the node.** The readiness of the mesh, the store, the decision
   engine, enforcement, the admin interface and the other parts, with what
   each reports.
@@ -132,6 +137,66 @@ events shows that as a condition.
 | *… is not ready* or *… is degraded*, naming a part | The `obied` log says why; `sudo obiectl status` shows every part. |
 | *The configuration reload at … was rejected* | The node keeps the configuration it had. Fix the file, check it with `sudo obied --config /etc/obie/obie.yaml --check-config`, then reload again. |
 | *Changes to … wait for a restart* (note) | The configuration file changes settings that only a restart applies; restart `obied` when it suits you. |
+
+## The activity timeline
+
+*Activity* answers "What is my node doing right now, and what did it do
+when?". It lists what happened, newest first:
+
+| Entry | When |
+|-------|------|
+| *Block added*, *Block updated*, *Block removed* | The node decided to block an address or network, changed a block's expiry, score or rule, or stopped blocking it. |
+| *Spared by the allow-list* (or *by an always-allow override*) | An address with verdicts is not blocked because the allow-list or a force-allow protects it. |
+| *Always allow set*, *Always block set*, *… removed* | You set or removed an override (`obiectl allow`, `block`, `unoverride`). |
+| *Reported by this node* | This node issued a verdict (`obiectl report`, Fail2Ban). |
+| *Verdict revoked* | This node revoked one of its verdicts (`obiectl revoke`). |
+| *Peer connected*, *Peer disconnected* | The mesh connected to a peer, or lost its last connection to it. |
+| *Configuration reloaded* | A reload took effect, naming the settings it changed and those that wait for a restart. |
+| *Mode changed to Enforce* or *Observe* | A reload switched `node.mode`. |
+
+Each entry shows when it happened (UTC), what happened, what it is about
+and the reason the node recorded, with a few facts — until when a block
+or override lasts, your note, what triggered a decision, and that a block
+decided in observe mode was not applied. It links to what it is about: an
+address to [its explanation](#why-an-address-is-or-is-not-blocked), a peer
+to [its page](#the-peers-view), a reload to the
+[configuration view](#the-configuration-view), a mode change to the
+`node` settings there; an override also to the
+[overrides](#the-overrides-view) on the address, a report or revocation to
+this node's [verdicts](#the-verdicts-view) on it.
+
+**Filters.** *Kind* shows one kind of entry (blocks, the allow-list,
+overrides, reports, revocations, peers, reloads or mode changes);
+*Address or network* shows the entries about any address or network
+that overlaps it. The filters are in the link, so *Copy link* shares them.
+
+**Live.** The first page follows the node: new entries appear on top
+within about a second, without reloading, while the page is visible.
+*Pause live updates* stops them, for example to read an entry in peace;
+*Resume live updates* shows everything that happened meanwhile. During a
+burst — an attack wave that changes thousands of decisions a minute —
+the page lists at most 50 new entries a second and sums up the rest in a
+row that says how many of which kind arrived between which times, and
+keeps at most 500 entries, saying so when it took older ones off. Reload
+the page to page through all of them.
+
+**The same story as your SIEM.** Every entry is a record of the node's
+[audit log](monitoring.md#audit-log) (`audit.path`), and the timeline
+reads that file: what the console shows is what your SIEM ingests, also
+from before `obied` last restarted. *Older entries* pages back through
+the file, 100 entries at a time; with a filter, one page searches up to
+16 MiB of the file and offers to *Search further back*. The timeline reads
+only the current file: after logrotate moved the log away, older entries
+are in the rotated files and your SIEM. [ADR 0025](../adr/0025-console-activity-timeline.md)
+records how the timeline and the audit log fit together.
+
+**Without the audit log** (`audit.path` empty), the node keeps the last
+10,000 entries in memory: the timeline shows them and follows the node
+live as usual, and says what it cannot show — what happened before
+`obied` started, beyond the last 10,000 entries, and after the next
+restart — and that no SIEM receives them. Set `audit.path` and restart
+`obied` to keep the history. If `obied` may write the audit log but not
+read it back, the timeline says so and shows the entries in memory too.
 
 ## The peers view
 
@@ -564,6 +629,8 @@ The open page refreshes the health indicator every 5 seconds while it is
 visible, and the overview, the peers view, an explanation and the
 firewall view's summary refresh their content with it; *Updated* says
 when its data was read, and a focused link or button stays focused. The
+activity timeline asks for new entries every second while it is visible
+and not paused. The
 decisions list only says when the decisions changed; the verdicts,
 overrides, allow-list and configuration views are read when they open.
 Without

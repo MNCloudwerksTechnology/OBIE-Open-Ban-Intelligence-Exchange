@@ -42,9 +42,9 @@ it with a production firewall, and start in observe mode.
   shows the node's health, its key numbers, what needs attention, its
   peers with the trust placed in them, every decision with why it was made
   and what the firewall applies, the verdicts it published and received,
-  every override and allow-list entry, and the configuration it runs
-  with, in a browser on its own host, behind a token only its operator
-  can obtain.
+  every override and allow-list entry, the configuration it runs
+  with, and a live timeline of what it does, in a browser on its own
+  host, behind a token only its operator can obtain.
 
 ## What it does not do yet
 
