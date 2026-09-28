@@ -46,12 +46,24 @@ is a byte-identical copy for the public GitHub mirror — change both together;
   from `go.mod`.
 - **build linux/amd64, linux/arm64** — static `obied` and `obiectl` binaries,
   uploaded as build artifacts.
+- **release build, image and lab** — `make release` twice (the
+  `SHA256SUMS` must match: the build is reproducible), `make check-unit`
+  (`systemd-analyze verify` and an exposure of at most 3.0 for the systemd
+  unit), `make image` and `make lab-smoke` (the three-node compose lab comes
+  up, the nodes see each other and block by consensus). Nothing is pushed.
 - **website** — `make -C website ci` for the website in `website/` (see
   [`website/README.md`](website/README.md)); its steps are skipped when
   nothing under `website/` changed.
 - **privileged tests** — never part of the default run. Start it manually
   ("Run workflow" with the `privileged` input checked) to run the tests behind
   the `privileged` build tag as root.
+
+`.gitea/workflows/release.yml` (again with a byte-identical GitHub copy)
+runs only when a `v*` tag is pushed: it runs `make ci`, builds the release,
+attaches the tarballs, SBOMs and `SHA256SUMS` to the forge's release and
+pushes the multi-arch image. To release, tag the merged commit on `main`
+(`git tag -a v0.1.0 -m "OBIE 0.1.0" && git push origin v0.1.0`); see
+[ADR 0017](documentation/adr/0017-packaging-and-state-format.md).
 
 **A red pipeline blocks merge.** A pull request is only merged when every job
 of its latest pipeline run is green; fix the failure (or the check) rather

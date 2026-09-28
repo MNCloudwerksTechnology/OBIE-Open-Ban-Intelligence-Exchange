@@ -52,7 +52,16 @@ make build           # static binaries in ./bin/
 ./bin/obiectl show [--json] <ip | cidr>                                            # verdicts on one
 kill -HUP "$(pidof obied)"   # reload allow-list files, trust, decision settings and mode; reopen the audit log
 make ci              # every check a change must pass
+make release VERSION=0.1.0   # reproducible tarballs, SBOMs, SHA256SUMS in dist/release/
+make image           # container image obie:<version>
+make lab-smoke       # three-node compose lab: start, check, remove
 ```
+
+To install a release on a host (static binaries, `install.sh` and a
+hardened systemd unit) or run the container image, see
+[documentation/operations/install.md](documentation/operations/install.md);
+to try a three-node mesh locally in minutes, see
+[packaging/compose/README.md](packaging/compose/README.md).
 
 A node is configured with one YAML file (default `/etc/obie/obie.yaml`);
 [documentation/examples/obie.yaml](documentation/examples/obie.yaml) documents
