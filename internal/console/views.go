@@ -16,6 +16,10 @@ type view struct {
 	// Path is where the view is served; Title names it in the navigation
 	// and the page title.
 	Path, Title string
+	// Fragment, if set, is the path under /api/ that serves the view's
+	// refreshing region, its template "region", which the page marks
+	// with data-refresh (ADR 0020).
+	Fragment string
 	// template renders the view's content inside the layout.
 	template *template.Template
 	// content returns what the template shows.
@@ -24,16 +28,16 @@ type view struct {
 
 // views returns the console's views in navigation order. The navigation
 // lists exactly these, so a view of the epic appears once it is built and
-// added here (ADR 0019).
+// added here (ADR 0019); the overview links to it from then on (ADR 0020).
 func (c *Console) views() []view {
 	return []view{
-		{Path: "/", Title: "Home", template: homeTemplate, content: c.homeContent},
+		{Path: "/", Title: "Overview", Fragment: "/api/overview", template: overviewTemplate, content: c.overviewContent},
 	}
 }
 
 // Page templates: each is the shared layout with the page's content.
 var (
-	homeTemplate     = pageTemplate("home.html")
+	overviewTemplate = pageTemplate("overview.html")
 	notFoundTemplate = pageTemplate("notfound.html")
 )
 
@@ -62,14 +66,8 @@ type nodeSummary struct {
 	PeerID, ShortPeerID, Version string
 }
 
-// modeLabels and modeTexts name and explain node.mode.
-var (
-	modeLabels = map[string]string{"observe": "Observe", "enforce": "Enforce"}
-	modeTexts  = map[string]string{
-		"observe": "Observe: decisions are made, logged and shown, but nothing is blocked.",
-		"enforce": "Enforce: blocks are applied by the enforcement backend.",
-	}
-)
+// modeLabels name node.mode.
+var modeLabels = map[string]string{"observe": "Observe", "enforce": "Enforce"}
 
 // layout returns the layout data for a page titled title whose navigation
 // marks current.
@@ -108,19 +106,45 @@ func (c *Console) serveView(v view) http.Handler {
 	})
 }
 
+// serveFragment renders the refreshing region of the view v alone, for
+// the script that swaps it into the open page (ADR 0020).
+func (c *Console) serveFragment(v view) http.Handler {
+	region := v.template.Lookup("region")
+	if region == nil {
+		panic("console view " + v.Path + " declares a fragment but has no region template")
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		c.render(w, http.StatusOK, region, v.content(r))
+	})
+}
+
 // notFound renders the page for a path the console does not serve.
 func (c *Console) notFound(w http.ResponseWriter, r *http.Request) {
 	c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", "", struct{ Path string }{r.URL.Path}))
 }
 
-// homeContent is the data of the home view.
-func (c *Console) homeContent(*http.Request) any {
-	mode := c.node.Mode()
-	text, ok := modeTexts[mode]
-	if !ok {
-		text = mode
+// overviewContent reads the node and returns the data of the overview.
+func (c *Console) overviewContent(*http.Request) any {
+	var facts Facts
+	if c.node.Facts != nil {
+		facts = c.node.Facts()
 	}
-	return struct{ PeerID, Version, ModeText string }{c.node.PeerID, c.node.Version, text}
+	return buildOverview(overviewInput{now: c.now(), node: c.node, mode: c.node.Mode(), statuses: c.node.Status(),
+		facts: facts, link: c.detailLink})
+}
+
+// detailLink returns path as the link to the view that details a number
+// if the console has a view there (the query aside), and otherwise the
+// obiectl command that shows the same, so the overview never links to a
+// page that does not exist (ADR 0020).
+func (c *Console) detailLink(path, command string) (href, cmd string) {
+	route, _, _ := strings.Cut(path, "?")
+	for _, v := range c.pages {
+		if v.Path == route {
+			return path, ""
+		}
+	}
+	return "", command
 }
 
 // assets serves the embedded stylesheet, script and icon. They hold no

@@ -34,11 +34,16 @@ func (b *syncBuffer) String() string {
 }
 
 var testNode = Node{
-	Version: "v0.1.0",
-	PeerID:  "12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd",
-	Mode:    func() string { return "observe" },
+	Version:     "v0.1.0",
+	PeerID:      "12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd",
+	Fingerprint: "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU",
+	StartedAt:   time.Date(2026, 9, 28, 9, 0, 0, 0, time.UTC),
+	Mode:        func() string { return "observe" },
 	Status: func() []lifecycle.Status {
 		return []lifecycle.Status{{Name: Name, State: lifecycle.StateRunning, Ready: true}}
+	},
+	Facts: func() Facts {
+		return Facts{Config: ConfigFacts{LoadedAt: time.Date(2026, 9, 28, 9, 0, 0, 0, time.UTC)}}
 	},
 }
 
