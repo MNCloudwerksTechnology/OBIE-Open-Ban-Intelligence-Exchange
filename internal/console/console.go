@@ -65,6 +65,9 @@ type Node struct {
 	// Verdicts reads the verdicts for the verdicts view; nil reads none
 	// (ADR 0023).
 	Verdicts VerdictSource
+	// Rules reads the overrides, the allow-list and the configuration for
+	// their views; nil reads none (ADR 0024).
+	Rules RuleSource
 }
 
 // Options configures a Console.

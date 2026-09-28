@@ -81,7 +81,7 @@
     <dt>Uptime</dt>
     <dd><span data-tick>{{.Node.Uptime}}</span>{{with .Node.StartedAt.Text}}, since <time datetime="{{$.Node.StartedAt.ISO}}">{{.}}</time>{{end}}</dd>
     <dt>Configuration loaded</dt>
-    <dd>{{with .Node.ConfigLoadedAt.Text}}<time datetime="{{$.Node.ConfigLoadedAt.ISO}}">{{.}}</time>, {{end}}{{.Node.ConfigLoadedBy}}</dd>
+    <dd>{{with .Node.ConfigLoadedAt.Text}}<time datetime="{{$.Node.ConfigLoadedAt.ISO}}">{{.}}</time>, {{end}}{{.Node.ConfigLoadedBy}}{{with .Node.ConfigHref}}. <a href="{{.}}">The configuration it runs with</a>{{end}}</dd>
   </dl>
 </section>
 {{- end}}

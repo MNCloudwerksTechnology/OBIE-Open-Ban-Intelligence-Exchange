@@ -121,9 +121,10 @@ type part struct {
 type nodeFacts struct {
 	PeerID, Fingerprint, Version, Uptime string
 	StartedAt, ConfigLoadedAt            timestamp
-	// ConfigLoadedBy says how the running configuration was loaded.
-	ConfigLoadedBy      string
-	ModeLabel, ModeText string
+	// ConfigLoadedBy says how the running configuration was loaded;
+	// ConfigHref links to the configuration view, empty without it.
+	ConfigLoadedBy, ConfigHref string
+	ModeLabel, ModeText        string
 }
 
 // overviewInput is what the overview is built from.
@@ -403,6 +404,7 @@ func (o *overview) nodeFacts() nodeFacts {
 	if o.facts.Config.Reloaded {
 		n.ConfigLoadedBy = "by a reload"
 	}
+	n.ConfigHref, _ = o.link("/configuration", "")
 	n.ModeLabel, n.ModeText = modeExplained(o.mode, o.facts.Enforce.Backend)
 	return n
 }

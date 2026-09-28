@@ -1198,6 +1198,152 @@ main:has(.verdict-list) {
   background: var(--surface-alt);
 }
 
+/* Overrides, allow-list and configuration (ADR 0024) */
+
+.override-kind,
+.protected-mark,
+.default-mark {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.override-kind[data-kind="block"] {
+  border-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.override-kind[data-kind="allow"],
+.protected-mark {
+  border-color: var(--ok);
+}
+
+.default-mark {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Five columns fit the page when a time may break between day and
+   clock; a note on a force-block needs the room it frees. */
+.list.overrides time {
+  white-space: normal;
+}
+
+.list.overrides .day {
+  white-space: nowrap;
+}
+
+.no-effect {
+  display: block;
+  min-width: 12rem;
+  margin-top: 0.25rem;
+  color: var(--danger);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.group-text {
+  margin: 0 0 0.75rem;
+  color: var(--text-muted);
+}
+
+.group-text .protected-mark {
+  color: var(--text);
+}
+
+.lookup-answer {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--info);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.lookup-answer[data-state="protected"],
+.lookup-answer[data-state="allowed"] {
+  border-left-color: var(--ok);
+}
+
+.lookup-answer[data-state="blocked"] {
+  border-left-color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.lookup-answer p {
+  margin: 0.75rem 0 0;
+}
+
+.lookup-answer .lookup-title {
+  margin: 0 0 0.75rem;
+  font-weight: 600;
+}
+
+.entry-list,
+.value-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Entries, warnings and reload errors quote multiaddrs, paths and errors
+   that are longer than a narrow window. */
+.entry-list li,
+.value-list li,
+.list.allow-entries td,
+.lookup-answer dd,
+.callout,
+.config-status .condition-title {
+  overflow-wrap: anywhere;
+}
+
+.settings-section {
+  margin-top: 1.5rem;
+}
+
+.settings-section h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.0625rem;
+}
+
+.list.settings th[scope="row"] {
+  width: 45%;
+}
+
+.setting-key,
+.list.settings .value {
+  overflow-wrap: anywhere;
+}
+
+.list.settings tr[data-pending] > * {
+  background: var(--warn-bg);
+}
+
+.pending {
+  display: block;
+  margin-top: 0.375rem;
+  font-size: 0.8125rem;
+}
+
+.empty-value,
+.secret {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.applied[data-applied="restart"] {
+  font-weight: 600;
+}
+
+.config-status {
+  margin-top: 1rem;
+}
+
 .footer {
   padding: 0.75rem 1.5rem;
   border-top: 1px solid var(--border);

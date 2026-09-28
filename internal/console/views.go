@@ -75,6 +75,9 @@ func (c *Console) views() []view {
 		{Path: "/enforcement", Title: "Firewall", Fragment: "/api/enforcement", template: firewallTemplate,
 			content: c.firewallContent, region: c.firewallSummaryContent},
 		{Path: "/verdicts", Title: "Verdicts", template: verdictsTemplate, content: c.verdictsContent},
+		{Path: "/overrides", Title: "Overrides", template: overridesTemplate, content: c.overridesContent},
+		{Path: "/allowlist", Title: "Allow-list", template: allowlistTemplate, content: c.allowlistContent},
+		{Path: "/configuration", Title: "Configuration", template: configurationTemplate, content: c.configurationContent},
 	}
 }
 
@@ -88,6 +91,10 @@ var (
 	decisionTemplate  = pageTemplate("decision.html")
 	firewallTemplate  = pageTemplate("firewall.html")
 	notFoundTemplate  = pageTemplate("notfound.html")
+	// The overrides, allow-list and configuration views (ADR 0024).
+	overridesTemplate     = pageTemplate("overrides.html")
+	allowlistTemplate     = pageTemplate("allowlist.html")
+	configurationTemplate = pageTemplate("configuration.html")
 )
 
 func pageTemplate(file string) *template.Template {

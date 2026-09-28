@@ -562,11 +562,15 @@ func stateNoteOf(state, retention string) string {
 	}
 }
 
-// retentionText says how long ended verdicts are kept, e.g. "24 hours".
+// retentionText says how long ended verdicts or overrides are kept, e.g.
+// "24 hours" or "7 days".
 func retentionText(d time.Duration) string {
+	const day = 24 * time.Hour
 	switch {
 	case d <= 0:
 		return ""
+	case d > day && d%day == 0:
+		return plural(int(d/day), "day", "days")
 	case d%time.Hour == 0:
 		return plural(int(d/time.Hour), "hour", "hours")
 	default:

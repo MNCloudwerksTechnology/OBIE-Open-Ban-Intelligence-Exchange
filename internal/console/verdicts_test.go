@@ -373,7 +373,8 @@ func TestEmptyVerdicts(t *testing.T) {
 	if p.Retention != "24 hours" {
 		t.Errorf("retention = %q", p.Retention)
 	}
-	for d, want := range map[time.Duration]string{0: "", time.Hour: "1 hour", 90 * time.Minute: "1 h 30 min"} {
+	for d, want := range map[time.Duration]string{0: "", time.Hour: "1 hour", 90 * time.Minute: "1 h 30 min", 24 * time.Hour: "24 hours",
+		7 * 24 * time.Hour: "7 days", 36 * time.Hour: "36 hours"} {
 		if got := retentionText(d); got != want {
 			t.Errorf("retentionText(%v) = %q, want %q", d, got, want)
 		}

@@ -212,24 +212,65 @@ func Default() Config {
 // Load reads the file at path, decodes it over Default and validates it.
 // Configuration mistakes are returned as *Error listing every problem.
 func Load(path string) (*Config, error) {
+	f, err := LoadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return f.Config, nil
+}
+
+// File is a configuration file as obied read it.
+type File struct {
+	// Path is where the file was read.
+	Path string
+	// Config is the configuration the file sets over Default.
+	Config *Config
+	// set records the key paths the file sets.
+	set lineMap
+}
+
+// Sets reports whether the file sets key rather than leaving it to its
+// default. A nil File sets nothing.
+func (f *File) Sets(key string) bool {
+	if f == nil {
+		return false
+	}
+	_, ok := f.set[key]
+	return ok
+}
+
+// LoadFile reads, decodes and validates the file at path like Load, and
+// also returns which keys it sets.
+func LoadFile(path string) (*File, error) {
 	data, err := os.ReadFile(path) // #nosec G304 -- the operator chooses the config path.
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
 	}
-	return Parse(data)
+	cfg, lines, err := parse(data)
+	if err != nil {
+		return nil, err
+	}
+	return &File{Path: path, Config: cfg, set: lines}, nil
 }
 
 // Parse decodes YAML data over Default and validates the result.
 func Parse(data []byte) (*Config, error) {
+	cfg, _, err := parse(data)
+	return cfg, err
+}
+
+// parse is Parse, also returning the file line of every key path the data
+// sets.
+func parse(data []byte) (*Config, lineMap, error) {
 	cfg := Default()
 	lines, decodeProblems, err := decode(data, &cfg)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	// Values that failed to decode keep their defaults, so validation still
 	// runs and every problem is reported in one pass.
 	if err := cfg.validate(lines, decodeProblems); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return &cfg, nil
+	return &cfg, lines, nil
 }

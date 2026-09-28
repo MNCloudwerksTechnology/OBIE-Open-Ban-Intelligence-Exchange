@@ -1,0 +1,78 @@
+{{define "content" -}}
+<h1>Overrides</h1>
+<p class="lead">Every rule you set on an address or network with obiectl: <strong>always allow</strong> (a force-allow override) or <strong>always block</strong> (a force-block override), with your note, when you set it and when it ends. The console only shows them: set and remove them with <code>sudo obiectl allow</code>, <code>sudo obiectl block</code> and <code>sudo obiectl unoverride</code>. The page is read when it opens; reload it to read it again.</p>
+<p class="updated">Read at <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time></p>
+{{- with .Notice}}
+<p class="callout">{{.}}</p>
+{{- end}}
+
+<section class="section" aria-labelledby="list-heading">
+  <h2 id="list-heading">{{.Heading}}</h2>
+  <form class="filter-form" method="get" action="/overrides" role="search" aria-label="Filter overrides">
+    <div class="field field-wide">
+      <label for="overrides-address">Address or network</label>
+      <input id="overrides-address" name="address" type="search" value="{{.Address}}" placeholder="203.0.113.7 or 198.51.100.0/24" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="overrides-kind">Rule</label>
+      <select id="overrides-kind" name="kind">
+        {{- range .Kinds}}
+        <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+        {{- end}}
+      </select>
+    </div>
+    {{- with .State}}
+    <input type="hidden" name="state" value="{{.}}">
+    {{- end}}
+    <div class="form-actions">
+      <button type="submit" class="button">Show</button>
+      {{- with .Clear}}
+      <a href="{{.}}">Clear filters</a>
+      {{- end}}
+    </div>
+  </form>
+  {{- with .AddressErr}}
+  <p class="callout" data-level="warning">{{.}}</p>
+  {{- end}}
+  <div class="list-head">
+    <nav class="filters" aria-label="Override state">
+      <ul>
+        {{- range .States}}
+        <li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}} <span class="filter-count">{{count .Count}}</span></a></li>
+        {{- end}}
+      </ul>
+    </nav>
+  </div>
+  {{- with .StateNote}}
+  <p class="callout">{{.}}</p>
+  {{- end}}
+  {{- if .Err}}
+  <p class="callout" data-level="warning">The overrides could not be read: {{.Err}}</p>
+  {{- else if .Rows}}
+  <div class="table-scroll">
+  <table class="list overrides">
+    <thead>
+      <tr><th scope="col">Address</th><th scope="col">Rule</th><th scope="col">Note</th><th scope="col">Set</th><th scope="col">{{if .State}}Ended{{else}}Ends{{end}}</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Rows}}
+      <tr>
+        <th scope="row"><a class="mono address" href="{{.DecisionHref}}" data-copy>{{.Address}}</a></th>
+        <td><span class="cell-label">Rule</span> <span class="override-kind" data-kind="{{.Kind}}">{{.KindLabel}}</span>{{with .NoEffect}}<span class="no-effect">{{.}}</span>{{end}}</td>
+        <td><span class="cell-label">Note</span> {{if .Note}}{{.Note}}{{else}}<span class="cell-note">No note</span>{{end}}</td>
+        <td><span class="cell-label">Set</span> {{if .Set.Text}}<time datetime="{{.Set.ISO}}"><span class="day">{{day .Set}}</span> {{clock .Set}}</time>{{else}}<span class="cell-note">Not known</span>{{end}}</td>
+        <td><span class="cell-label">{{if $.State}}Ended{{else}}Ends{{end}}</span> {{if .Never}}Never{{else}}<time datetime="{{.Ends.ISO}}"><span class="day">{{day .Ends}}</span> {{clock .Ends}}</time>{{end}}</td>
+      </tr>
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  {{- with .More}}
+  <p class="note">{{plural . "more override matches" "more overrides match"}} but {{if eq . 1}}is{{else}}are{{end}} not listed; narrow the list with the filters above.</p>
+  {{- end}}
+  {{- else}}
+  <p class="empty">{{.Empty}}{{with .Clear}} <a href="{{.}}">Clear filters</a>{{end}}</p>
+  {{- end}}
+  <p class="note">An always-allow override beats everything else. An always-block override beats the verdicts and your own allow-list entries, but never a protected address: a built-in range, this node's own address or a bootstrap peer's. <a href="/allowlist">Is an address protected?</a></p>
+</section>
+{{- end}}

@@ -2,6 +2,7 @@ package sovereignty
 
 import (
 	"net/netip"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -136,5 +137,26 @@ func TestParseEntry(t *testing.T) {
 		case err != nil || p.String() != tt.want:
 			t.Errorf("ParseEntry(%q) = %v, %v, want %s", tt.in, p, err, tt.want)
 		}
+	}
+}
+
+func TestOverlapping(t *testing.T) {
+	a := NewAllowlist(
+		Entry{Prefix: netip.MustParsePrefix("185.0.0.0/16"), Source: SourceConfig},
+		Entry{Prefix: netip.MustParsePrefix("185.0.1.0/24"), Source: SourceFile, Label: "allow.txt:1"},
+		Entry{Prefix: netip.MustParsePrefix("185.0.1.7/32"), Source: SourceBootstrap},
+		Entry{Prefix: netip.MustParsePrefix("185.1.0.0/16"), Source: SourceConfig},
+	)
+	var got []string
+	for _, e := range a.Overlapping(netip.MustParsePrefix("185.0.1.0/24")) {
+		got = append(got, string(e.Source)+" "+e.Prefix.String())
+	}
+	want := []string{"bootstrap 185.0.1.7/32", "config 185.0.0.0/16", "file 185.0.1.0/24"}
+	if !slices.Equal(got, want) {
+		t.Errorf("Overlapping = %v, want %v", got, want)
+	}
+	var none *Allowlist
+	if none.Overlapping(netip.MustParsePrefix("185.0.1.0/24")) != nil || none.Files() != nil || none.Warnings() != nil {
+		t.Error("a nil allow-list holds something")
 	}
 }

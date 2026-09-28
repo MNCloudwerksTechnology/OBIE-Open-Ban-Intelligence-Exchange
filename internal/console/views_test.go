@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -140,7 +141,7 @@ func TestOverviewPage(t *testing.T) {
 		`<dd><code class="id">` + strings.ReplaceAll(testNode.Fingerprint, "+", "&#43;") + `</code></dd>`, // escaped, shown as +
 		"<dd>v0.1.0</dd>",
 		`<dd><span data-tick>3 h 0 min</span>, since <time datetime="2026-09-28T09:00:00Z">2026-09-28 09:00:00 UTC</time></dd>`,
-		`<dd><time datetime="2026-09-28T09:00:00Z">2026-09-28 09:00:00 UTC</time>, at start</dd>`,
+		`<dd><time datetime="2026-09-28T09:00:00Z">2026-09-28 09:00:00 UTC</time>, at start. <a href="/configuration">The configuration it runs with</a></dd>`,
 		// The shared layout.
 		`<span class="mono">12D3KooW…FhGyvd</span> · v0.1.0`,
 		`<p class="mode" data-mode="enforce"><span class="visually-hidden">Mode: </span><span data-mode-label>Enforce</span></p>`,
@@ -209,31 +210,38 @@ func TestOverviewFragment(t *testing.T) {
 func TestOverviewLinksOnlyToBuiltViews(t *testing.T) {
 	c, b := signedInBrowser(t)
 	overviewNode(c)
+	// A view the console does not serve is named by its command.
+	pages := c.pages
+	c.pages = slices.DeleteFunc(slices.Clone(pages), func(v view) bool { return v.Path == "/overrides" || v.Path == "/configuration" })
 	_, page := b.get("/")
-	for _, path := range []string{"/overrides"} {
+	c.pages = pages
+	for _, path := range []string{"/overrides", "/configuration"} {
 		if strings.Contains(page, `href="`+path) {
 			t.Errorf("the overview links to %s, which the console does not serve", path)
 		}
 	}
-	for _, cmd := range []string{"obiectl overrides"} {
-		if !strings.Contains(page, "Details: <code>"+cmd+"</code>") {
-			t.Errorf("the overview does not name %q", cmd)
-		}
+	if !strings.Contains(page, "Details: <code>obiectl overrides</code>") {
+		t.Error("the overview does not name obiectl overrides")
 	}
 	// The peers view (ADR 0021), the decisions and the firewall view
-	// (ADR 0022) and the verdicts view (ADR 0023) exist.
+	// (ADR 0022), the verdicts view (ADR 0023) and the overrides and
+	// configuration views (ADR 0024) exist.
+	_, page = b.get("/")
 	for _, want := range []string{
 		`<a class="number-main" href="/peers"><span class="number-label">Peers connected</span>`,
 		`<a class="number-main" href="/verdicts"><span class="number-label">Indicators held</span>`,
 		`<a class="number-main" href="/decisions?state=block">`,
 		`<a class="number-main" href="/decisions?state=allowed">`,
 		`<a class="number-main" href="/enforcement">`,
+		`<a class="number-main" href="/overrides"><span class="number-label">Active overrides</span>`,
+		`, at start. <a href="/configuration">The configuration it runs with</a></dd>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the overview lacks %q", want)
 		}
 	}
-	for _, cmd := range []string{"obiectl peers", "obiectl indicators", "obiectl decisions --state block", "obiectl enforced"} {
+	for _, cmd := range []string{"obiectl peers", "obiectl indicators", "obiectl decisions --state block", "obiectl enforced",
+		"obiectl overrides"} {
 		if strings.Contains(page, "Details: <code>"+cmd+"</code>") {
 			t.Errorf("the overview names %q of a view it links to", cmd)
 		}

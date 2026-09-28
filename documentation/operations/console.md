@@ -17,9 +17,11 @@ trust placed in it; the [decisions view](#the-decisions-view) lists every
 address the node decided on and [explains](#why-an-address-is-or-is-not-blocked)
 why it is or is not blocked; the [firewall view](#the-firewall-view) shows
 what the firewall applies; the [verdicts view](#the-verdicts-view) shows
-what this node told the mesh and what the mesh told it. The view of the
-node's overrides and configuration arrives with a later release; a view
-appears in the navigation once it exists.
+what this node told the mesh and what the mesh told it; the
+[overrides view](#the-overrides-view), the
+[allow-list view](#the-allow-list-view) and the
+[configuration view](#the-configuration-view) show every rule you set and
+the configuration the node runs with.
 
 ## Switch it on
 
@@ -93,10 +95,10 @@ numbers and decides what needs attention is recorded in
   details it — *Peers connected* to the [peers view](#the-peers-view),
   *Indicators held* to the [verdicts view](#the-verdicts-view), the
   decisions to the [decisions view](#the-decisions-view) in that
-  state, *Firewall entries* to the [firewall view](#the-firewall-view);
-  until a view exists, the number names the `obiectl` command that shows
-  the same (`obiectl overrides`). *Firewall entries*
-  also says why they differ from the decided blocks: blocks that share an
+  state, *Firewall entries* to the [firewall view](#the-firewall-view),
+  *Active overrides* to the [overrides view](#the-overrides-view).
+  *Firewall entries* also says why they differ from the decided blocks:
+  blocks that share an
   entry with another block (the same range, or one inside a wider range),
   that the allow-list refuses, or that are over `enforce.max_entries`.
 - **Parts of the node.** The readiness of the mesh, the store, the decision
@@ -104,7 +106,8 @@ numbers and decides what needs attention is recorded in
   each reports.
 - **This node.** The mode and what it means, the peer ID, the key
   fingerprint, the version, the uptime and when the running configuration
-  was loaded (at start or by a reload).
+  was loaded (at start or by a reload), with a link to the
+  [configuration view](#the-configuration-view).
 
 A part that is not running yet, or any more, is shown as such, and its
 numbers say *Waiting* for it (or *Stopped*) instead of 0; the rest of the
@@ -362,6 +365,155 @@ again. The explanation of an address links to its verdicts too.
 Publishing and revoking verdicts stays with `obiectl report` and
 `obiectl revoke`.
 
+## The overrides view
+
+*Overrides* answers "Which rules did I set on addresses myself?". It
+lists every override in effect — *Always allow* (`sudo obiectl allow`, a
+force-allow) or *Always block* (`sudo obiectl block`, a force-block) —
+like `obiectl overrides`. How the view and the store keep them is recorded
+in [ADR 0024](../adr/0024-console-overrides-allowlist-configuration.md).
+For each override:
+
+- **Address.** The address or network it is set on; choose it for the
+  [explanation](#why-an-address-is-or-is-not-blocked) of its decision.
+- **Rule.** *Always allow* or *Always block*. An always-block override
+  that does nothing says why: an always-allow override on an overlapping
+  address or network wins over it, or it covers a protected address — a
+  built-in range, this node's own address or a bootstrap peer's — which
+  not even an override blocks.
+- **Note** you gave it, when it was **set**, and when it **ends**:
+  *Never* for an override without `--ttl`.
+
+The newest override comes first. The form narrows the list to *Always
+allow* or *Always block* and to an **address or network**: every override
+on it, inside it or around it. The tab *Expired* shows the overrides that
+reached their end in the last 7 days, the most recently ended first,
+with when each ended: they do nothing any more, and the node forgets them
+after those 7 days. An override you removed with
+`sudo obiectl unoverride` is not kept; the [audit log](monitoring.md#audit-log)
+records it. The list shows up to 1,000 overrides and says how many more
+match; the filters narrow it.
+
+The list is read when the page opens; reload it to read it again. Setting
+and removing overrides stays with `obiectl`.
+
+## The allow-list view
+
+*Allow-list* answers "Which addresses does my node never block, and
+why?". It lists every entry of the allow-list the node runs with, grouped
+by where it comes from, in the order they take precedence:
+
+- **Built-in ranges**, by class: unspecified, loopback, private
+  (RFC 1918), shared address space (CGNAT), link-local, unique local,
+  multicast, limited broadcast, IPv4-mapped and documentation ranges.
+- **This node's addresses**: those in `mesh.listen`, or for an
+  unspecified listen address (`0.0.0.0`, `::`) those of every network
+  interface.
+- **Bootstrap peers**: the addresses of the peers in `mesh.bootstrap`, DNS
+  names resolved.
+- **Configured networks**: the entries of `allowlist.cidrs`.
+- **One group per allow-list file** in `allowlist.files`, each entry with
+  its line number.
+
+The first three groups are marked *Protected*: not even an always-block
+override blocks them. Your own entries (`allowlist.cidrs` and the files)
+are overruled by an always-block override. A group lists up to 1,000
+entries; the lookup finds every one.
+
+**Allow-list files.** Each file says how many entries were loaded from it
+and when — with the running configuration, at start or by the last
+successful reload — and how it looks now, read again when the page opens:
+
+- *Unchanged since it was loaded.*
+- *It changed since it was loaded*, and how many entries it holds now:
+  the new entries are not active until a reload applies them.
+- A **warning** when the file is missing or cannot be read, or now holds
+  lines the node rejects, listed with their line number and why (the first
+  20; `obied --check-config` names the first). The entries loaded stay in
+  effect, but the next reload is rejected, and `obied` would not start,
+  until the file is fixed.
+
+**Not protected.** A warning at the top names the addresses the
+allow-list should hold but could not determine when it was loaded: a
+bootstrap peer whose DNS name did not resolve (its addresses are protected
+after a reload resolves it), or the interface addresses for an
+unspecified listen address that could not be listed (list this node's
+public addresses in `allowlist.cidrs`).
+
+**Is this address protected?** Type an address or network — any address,
+also a private one — and choose *Look up*. The answer names the rule that
+decides, as the decision engine judges it with the running allow-list and
+your overrides:
+
+| Answer | Rule |
+|--------|------|
+| *Yes: … is protected by …* | A built-in range, this node's address or a bootstrap peer's address covers it. It is never blocked, not even by an always-block override. |
+| *Yes: the allow-list entry … covers …* | An entry of `allowlist.cidrs` or an allow-list file covers it. Only an always-block override on it, or on a network around it, would overrule the entry. |
+| *Yes, by your always-allow override on …* | Your always-allow override covers it, until it ends. |
+| *No: your always-block override … blocks …* | Your always-block override on it, or on a network around it, which also overrules your own allow-list entries that cover it. |
+| *No: no allow-list entry or override covers …* | Nothing protects it; the verdicts decide whether it is blocked. |
+
+The answer shows the matching entry or override with its label or note
+and when an override ends, lists the other entries that overlap the
+address (up to 1,000), and links to the address's decision and
+[explanation](#why-an-address-is-or-is-not-blocked). A network that
+contains an allow-list entry is never blocked either: blocking it would
+block the entry too. The lookup is part of the address
+(`/allowlist?address=203.0.113.7`), so it can be
+[shared](#copy-and-share).
+
+The allow-list is changed in the configuration file and the allow-list
+files, not in the console: edit them and reload `obied`. See the
+[configuration reference](configuration.md#allowlist), and
+[Override the mesh](operations.md#override-the-mesh) for overrides.
+
+## The configuration view
+
+*Configuration* answers "Which configuration does my node actually run
+with?". The first section says how it was loaded:
+
+- **File.** The configuration file `obied` read (`--config`).
+- **Running since.** When the running configuration was loaded: at start,
+  or by the last successful reload.
+- **Defaults.** How many settings the file leaves to their defaults.
+- **Last reload.** Whether the last reload succeeded, or was rejected —
+  with the error, and a clear *The configuration loaded at … is still
+  active*. Fix the file, check it with
+  `sudo obied --config /etc/obie/obie.yaml --check-config`, then reload
+  again.
+- **File on disk.** The file is read and checked again when the page
+  opens, and compared with the running configuration setting by setting:
+  it *matches*; or it *changed since it was loaded*, naming the settings
+  that are **not active until a reload** and those **waiting for a
+  restart** (after a reload, only the latter remain); or it cannot be
+  loaded now — missing, unreadable or invalid, or an allow-list file it
+  names is missing, unreadable or holds a line the node rejects — with
+  the error: a reload would be rejected, and the running configuration
+  kept. A change only to comments or layout changes nothing.
+
+Then **every setting**, grouped by the section of the file it is in
+(`node`, `admin`, `mesh`, `store`, `trust`, `decision`, `allowlist`,
+`enforce`, `metrics`, `console`, `audit`, `log`), in the order of the
+[configuration reference](configuration.md):
+
+- **Setting.** Its key, e.g. `mesh.rate_limit.peer.burst`, and what it
+  does in one line.
+- **Value.** The value it runs with, spelled as in the file — a list with
+  one entry per line — marked *Default* when the file does not set it. A
+  setting whose value on disk differs shows that too, with *Not active
+  until a reload* or *Waits for a restart*.
+- **A change applies on** *Reload* (`sudo systemctl reload obied` applies
+  it at once) or *Restart* (only a restart of `obied` applies it), as the
+  configuration reference marks it.
+
+Secrets are never shown: a setting that holds one would show only
+whether it is set. No setting holds a secret today; the node's private
+key and the console token are not part of the configuration and appear
+nowhere in the console.
+
+The page is read when it opens; reload it to follow a reload of `obied`.
+The configuration is changed in the file, not in the console.
+
 ## Copy and share
 
 Next to every address the console shows a *Copy* button; *Copy link* at
@@ -412,8 +564,9 @@ The open page refreshes the health indicator every 5 seconds while it is
 visible, and the overview, the peers view, an explanation and the
 firewall view's summary refresh their content with it; *Updated* says
 when its data was read, and a focused link or button stays focused. The
-decisions list only says when the decisions changed; the verdicts view
-is read when it opens. Without
+decisions list only says when the decisions changed; the verdicts,
+overrides, allow-list and configuration views are read when they open.
+Without
 JavaScript the page is still complete: reload it for current data. When a
 reload changes the mode or a subsystem's health, the page follows. When the console is switched off or moved to another address, or
 `obied` stops, the page says it cannot reach the console and keeps trying;
