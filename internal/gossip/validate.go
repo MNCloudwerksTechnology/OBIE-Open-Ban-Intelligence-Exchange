@@ -33,6 +33,7 @@ func (v *validator) validate(_ context.Context, from peer.ID, msg *pubsub.Messag
 		return pubsub.ValidationAccept
 	}
 	outcome, result := v.check(from, msg.GetData())
+	receivedTotal.WithLabelValues(string(outcome)).Inc()
 	v.metrics.Observe(outcome)
 	return result
 }
@@ -73,6 +74,7 @@ func (v *validator) check(from peer.ID, data []byte) (Outcome, pubsub.Validation
 	if _, err := v.store.Put(ev); err != nil && !errors.Is(err, store.ErrClosed) {
 		v.log.Error("storing received event failed", "event", ev.ID, "err", err)
 	}
+	observeDelay(ev.IssuedAt.Time, now)
 	return Accepted, pubsub.ValidationAccept
 }
 
