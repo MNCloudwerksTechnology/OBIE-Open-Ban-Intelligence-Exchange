@@ -16,6 +16,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
+	"github.com/MNCloudwerksTechnology/obie/internal/enforce/nft"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
 	"github.com/MNCloudwerksTechnology/obie/internal/logging"
@@ -108,7 +109,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	// The gate is the only path to enforcement; it subscribes before the
 	// engine starts, so it sees the initial blocks. The reconciler applies
 	// them; it only notifies it once the engine runs.
-	backend, err := newEnforcer(cfg.Enforce.Backend, logs.Logger(enforceComponent))
+	backend, err := newEnforcer(cfg.Enforce, logs.Logger(enforceComponent))
 	if err != nil {
 		return err
 	}
@@ -216,12 +217,14 @@ func loadIdentity(stateDir string, log *slog.Logger) (identity.Identity, error) 
 
 // newEnforcer returns the enforcement backend configured in
 // enforce.backend.
-func newEnforcer(backend config.Backend, log *slog.Logger) (enforce.Enforcer, error) {
-	switch backend {
+func newEnforcer(cfg config.Enforce, log *slog.Logger) (enforce.Enforcer, error) {
+	switch cfg.Backend {
 	case config.BackendDryRun:
 		return enforce.NewDryRun(log), nil
+	case config.BackendNFTables:
+		return nft.New(nft.Options{Forward: cfg.NFTables.Forward}, log), nil
 	default:
-		return nil, fmt.Errorf("enforce.backend %q is not available in this build; use %q", backend, config.BackendDryRun)
+		return nil, fmt.Errorf("enforce.backend %q is not available in this build; use %q", cfg.Backend, config.BackendDryRun)
 	}
 }
 

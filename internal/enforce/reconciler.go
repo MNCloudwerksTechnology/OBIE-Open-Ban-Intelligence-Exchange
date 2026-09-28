@@ -41,6 +41,11 @@ const ExpiryTolerance = 5 * time.Second
 // that may reject a zero timeout.
 const MinTimeout = time.Second
 
+// DeferDelay is the delay of the next pass after additions were deferred
+// until the entries they overlap, with less than ExpiryTolerance left,
+// expired.
+const DeferDelay = ExpiryTolerance + time.Second
+
 // PassTimeout bounds one reconciliation pass, so a hanging backend call
 // fails, is retried and shows in the readiness.
 const PassTimeout = 30 * time.Second
@@ -136,6 +141,9 @@ type Reconciler struct {
 	// skipped are the prefixes skipped in the last pass, by reason, so
 	// only new ones are logged.
 	skipped map[netip.Prefix]string
+	// deferred is set when the last pass deferred additions until the
+	// entries they overlap expired.
+	deferred bool
 
 	statusMu sync.Mutex
 	status   Status
@@ -245,11 +253,15 @@ func (r *Reconciler) Detail() string {
 	return b.String()
 }
 
-// Entries lists the entries the backend currently applies. It waits for
-// a pass in progress, at most PassTimeout.
+// Entries lists the entries the backend currently applies; none once
+// observe mode tore it down. It waits for a pass in progress, at most
+// PassTimeout.
 func (r *Reconciler) Entries(ctx context.Context) ([]Entry, error) {
 	r.enfMu.Lock()
 	defer r.enfMu.Unlock()
+	if r.backend == backendTornDown {
+		return nil, nil
+	}
 	return r.enf.List(ctx)
 }
 
@@ -283,12 +295,22 @@ func (r *Reconciler) loop(ctx context.Context, done chan<- struct{}) {
 				r.log.Error("enforcement failed; retrying", "error", err, "failures", failures, "retry_in", delay.String())
 			} else {
 				failures = 0
+				if r.deferredAdditions() {
+					delay = min(delay, DeferDelay)
+				}
 			}
 			r.setFailure(failures, delay)
 			timer.Reset(delay)
 			next = time.Now().Add(delay)
 		}
 	}
+}
+
+// deferredAdditions reports whether the last pass deferred additions.
+func (r *Reconciler) deferredAdditions() bool {
+	r.enfMu.Lock()
+	defer r.enfMu.Unlock()
+	return r.deferred
 }
 
 // pass runs Reconcile within PassTimeout.
@@ -309,7 +331,7 @@ func (r *Reconciler) backoff(n int) time.Duration {
 }
 
 // Reconcile runs one pass. In enforce mode it sets the backend up if
-// needed and applies the difference between the desired and the listed
+// needed (at the first pass and after a failed one) and applies the difference between the desired and the listed
 // entries; in observe mode it only tears the backend down, once.
 func (r *Reconciler) Reconcile(ctx context.Context) error {
 	r.enfMu.Lock()
@@ -327,14 +349,21 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	want, skipped := r.desired(r.opts.Now())
 	have, err := r.enf.List(ctx)
 	if err != nil {
+		r.backend = backendUnknown // e.g. the table was changed by hand
 		return r.fail(mode, fmt.Errorf("list the applied entries: %w", err))
 	}
 	add, remove := Diff(want, have)
+	add, remove, deferred := settle(add, remove, have, r.opts.Now())
+	r.deferred = deferred > 0
+	if deferred > 0 {
+		r.log.Debug("additions overlapping entries about to expire are deferred", "deferred", deferred)
+	}
 	if len(add) > 0 || len(remove) > 0 {
 		start := time.Now()
 		err := r.enf.Apply(ctx, add, remove)
 		observeApply(start)
 		if err != nil {
+			r.backend = backendUnknown
 			return r.fail(mode, fmt.Errorf("apply %d additions and %d removals: %w", len(add), len(remove), err))
 		}
 		r.log.Info("enforcement reconciled", "added", len(add), "removed", len(remove), "entries", len(want))
@@ -357,6 +386,7 @@ func (r *Reconciler) observe(ctx context.Context) error {
 		r.backend = backendTornDown
 	}
 	clear(r.skipped)
+	r.deferred = false
 	r.succeed(config.ModeObserve, nil, nil)
 	return nil
 }
@@ -373,8 +403,8 @@ type candidate struct {
 // desired returns the entries to apply at now: the blocks of the gate
 // with at least MinTimeout left that the allow-list does not refuse, the
 // operator's force-blocks and then the highest scores first up to
-// MaxEntries, ordered by prefix. It logs and counts newly skipped blocks
-// and counts the skipped ones by reason. Callers hold enfMu.
+// MaxEntries, without those inside a wider one, ordered by prefix. It logs newly skipped blocks and
+// counts the skipped ones by reason. Callers hold enfMu.
 func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 	allow := r.opts.Allowlist()
 	byPrefix := map[netip.Prefix]candidate{}
@@ -412,6 +442,7 @@ func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 	for _, c := range byPrefix {
 		cands = append(cands, c)
 	}
+	cands = mergeCovered(cands)
 	slices.SortFunc(cands, func(a, b candidate) int {
 		return cmp.Or(compareForced(a.forced, b.forced), cmp.Compare(b.score, a.score), comparePrefix(a.entry.Prefix, b.entry.Prefix))
 	})
@@ -445,6 +476,77 @@ func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 		counts[reason]++
 	}
 	return want, counts
+}
+
+// mergeCovered leaves out the candidates inside a wider one, since an
+// nftables interval set cannot hold overlapping ranges; the wider one
+// takes on their priority (the highest score, force-block if any), so the
+// cap weighs it like the blocks it stands for. A covered block that
+// outlives the wider one returns with the first pass after the wider one
+// ended.
+func mergeCovered(cands []candidate) []candidate {
+	slices.SortFunc(cands, func(a, b candidate) int { return comparePrefix(a.entry.Prefix, b.entry.Prefix) })
+	out := cands[:0]
+	for _, c := range cands {
+		// Sorted by prefix, the kept ones are disjoint and a covering one
+		// comes right before what it covers.
+		if n := len(out); n > 0 && out[n-1].entry.Prefix.Contains(c.entry.Prefix.Addr()) {
+			out[n-1].score = max(out[n-1].score, c.score)
+			out[n-1].forced = out[n-1].forced || c.forced
+			continue
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// settle adjusts the difference to what the backend holds at now. An
+// applied entry with less than ExpiryTolerance left is never removed: it
+// may expire before the removal reaches the backend, which then fails the
+// whole change. Renewing such an entry is a plain addition, which updates
+// its expiry. An addition overlapping another entry that stays applied,
+// e.g. a /25 under a /24 about to expire, is deferred: interval sets
+// reject overlapping ranges. It returns the number of deferred additions.
+func settle(add, remove, have []Entry, now time.Time) (keptAdd, keptRemove []Entry, deferred int) {
+	removed := make(map[netip.Prefix]bool, len(remove))
+	for _, e := range remove {
+		if e.Expires.Sub(now) >= ExpiryTolerance {
+			removed[e.Prefix] = true
+			keptRemove = append(keptRemove, e)
+		}
+	}
+	var stay []netip.Prefix
+	staying := map[netip.Prefix]bool{}
+	for _, e := range have {
+		if !removed[e.Prefix] {
+			stay = append(stay, e.Prefix)
+			staying[e.Prefix] = true
+		}
+	}
+	slices.SortFunc(stay, comparePrefix)
+	for _, e := range add {
+		// Applied prefixes are disjoint: one staying under e's own prefix
+		// overlaps no other.
+		if !staying[e.Prefix] && overlaps(e.Prefix, stay, staying) {
+			deferred++
+			continue
+		}
+		keptAdd = append(keptAdd, e)
+	}
+	return keptAdd, keptRemove, deferred
+}
+
+// overlaps reports whether p shares an address with one of the disjoint,
+// sorted prefixes in sorted, which set holds too.
+func overlaps(p netip.Prefix, sorted []netip.Prefix, set map[netip.Prefix]bool) bool {
+	for bits := p.Bits(); bits >= 0; bits-- { // p or a prefix containing it
+		if set[netip.PrefixFrom(p.Addr(), bits).Masked()] {
+			return true
+		}
+	}
+	// A prefix inside p is the first one at or after p's address.
+	i, _ := slices.BinarySearchFunc(sorted, p, comparePrefix)
+	return i < len(sorted) && p.Contains(sorted[i].Addr())
 }
 
 // compareForced orders force-blocks first.

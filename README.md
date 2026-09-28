@@ -21,7 +21,8 @@ enforces until `node.mode: enforce` is set; then a reconcile loop keeps the
 enforcement backend exactly in line with the decided blocks, capped at
 `enforce.max_entries` and never touching allow-listed addresses. The default
 `dryrun` backend only logs what it would block; the `nftables` backend
-follows in a later work package. `obiectl`, the operator CLI, queries it over the
+drops blocked sources through its own table `inet obie` and never touches
+any other ([guide](documentation/guides/nftables.md)). `obiectl`, the operator CLI, queries it over the
 local admin socket and turns local detections into signed verdicts: log
 lines given as evidence are hashed on the node, and only the hash and the
 counts are published.
