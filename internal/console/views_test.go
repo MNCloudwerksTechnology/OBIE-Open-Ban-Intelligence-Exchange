@@ -391,6 +391,38 @@ func TestNoInlineScriptOrStyle(t *testing.T) {
 	}
 }
 
+// markupFromString matches the ways a script turns a string into markup
+// or code in the page.
+var markupFromString = regexp.MustCompile(`innerHTML\s*=[^=]|outerHTML|insertAdjacentHTML|document\.write|\beval\(|new Function|createContextualFragment|setTimeout\(\s*['"]`)
+
+// TestScriptInsertsOnlyInertFragments: the script refreshes regions with
+// nodes from an inert document that DOMParser built from the console's
+// own fragment, and turns no string into markup otherwise (ADR 0020).
+func TestScriptInsertsOnlyInertFragments(t *testing.T) {
+	script, err := fs.ReadFile(assetFiles, "assets/console.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := markupFromString.FindString(string(script)); m != "" {
+		t.Errorf("console.js turns a string into markup: %q", m)
+	}
+	for _, want := range []string{"new DOMParser().parseFromString(html, 'text/html')", "getAttribute('data-refresh')",
+		"credentials: 'same-origin'", "document.hidden"} {
+		if !strings.Contains(string(script), want) {
+			t.Errorf("console.js lacks %q", want)
+		}
+	}
+	for _, s := range []string{`el.innerHTML = s`, `el.outerHTML`, `el.insertAdjacentHTML('beforeend', s)`, `document.write(s)`,
+		`eval(s)`, `setTimeout('go()', 1)`} {
+		if !markupFromString.MatchString(s) {
+			t.Errorf("markupFromString misses %q", s)
+		}
+	}
+	if markupFromString.MatchString(`return copy.innerHTML.trim();`) || markupFromString.MatchString(`a.innerHTML === b`) {
+		t.Error("markupFromString flags reading innerHTML")
+	}
+}
+
 // TestDetectorsCatchViolations keeps the two checks above from passing
 // vacuously.
 func TestDetectorsCatchViolations(t *testing.T) {
