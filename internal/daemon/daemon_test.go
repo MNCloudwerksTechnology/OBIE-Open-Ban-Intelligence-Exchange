@@ -15,6 +15,7 @@ import (
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/console"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce/nft"
@@ -302,6 +303,31 @@ func TestReloadRecordsLoads(t *testing.T) {
 	}
 	if got := f.rl.loads.record(); got.Rejected != nil || got.RestartKeys != nil {
 		t.Errorf("after reverting: %+v", got)
+	}
+}
+
+// TestConsoleFactsConversion: the console gets the enforcement's and the
+// reloads' numbers in its own types.
+func TestConsoleFactsConversion(t *testing.T) {
+	st := enforce.Status{Mode: config.ModeEnforce, Applied: 10, Blocks: 14, Covered: 1, Failures: 2, RetryIn: 4 * time.Second,
+		Skipped: map[string]int{enforce.SkipAllowlist: 2, enforce.SkipMaxEntries: 1}, Err: errors.New("netlink: busy")}
+	got := enforceFacts(st, config.Enforce{Backend: config.BackendNFTables, MaxEntries: 10})
+	want := console.EnforceFacts{Backend: "nftables", MaxEntries: 10, Mode: "enforce", Applied: 10, Blocks: 14, Covered: 1,
+		Refused: 2, Capped: 1, Failures: 2, Err: "netlink: busy", RetryIn: 4 * time.Second}
+	if got != want {
+		t.Errorf("enforceFacts = %+v\nwant          %+v", got, want)
+	}
+	if got := enforceFacts(enforce.Status{}, config.Enforce{Backend: config.BackendDryRun}); got.Err != "" || got.Mode != "" || got.Backend != "dryrun" {
+		t.Errorf("enforceFacts before the first pass = %+v", got)
+	}
+
+	at := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
+	c := configFacts(loadRecord{LoadedAt: at, Reloaded: true, RejectedAt: at.Add(time.Minute), Rejected: errors.New("bad"), RestartKeys: []string{"store"}})
+	if !c.LoadedAt.Equal(at) || !c.Reloaded || !c.RejectedAt.Equal(at.Add(time.Minute)) || c.Rejected != "bad" || len(c.RestartKeys) != 1 {
+		t.Errorf("configFacts = %+v", c)
+	}
+	if c := configFacts(loadRecord{LoadedAt: at}); c.Rejected != "" || c.Reloaded {
+		t.Errorf("configFacts at start = %+v", c)
 	}
 }
 

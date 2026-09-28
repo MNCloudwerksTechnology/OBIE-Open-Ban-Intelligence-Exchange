@@ -120,6 +120,7 @@ type Endpoints struct {
 func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Options) error {
 	log := logs.Logger(Component)
 	startedAt := time.Now()
+	loads := newConfigLoads(startedAt, time.Now)
 
 	if err := prepareStateDir(cfg.Node.StateDir, log); err != nil {
 		return err
@@ -163,10 +164,11 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	// The web console starts first and stops last, so that it can show the
 	// node starting and shutting down; it never fails to start (ADR 0019).
 	var gate *enforce.Gate
+	facts := &consoleFacts{mesh: m, store: db, loads: loads, enforce: cfg.Enforce, now: time.Now}
 	con := console.New(consoleConfig(cfg.Console, opts.Testing), console.Options{
 		Group: cfg.Admin.SocketGroup,
-		Node: console.Node{Version: version.Version, PeerID: id.PeerID(), Status: mgr.Status,
-			Mode: func() string { return string(gate.Mode()) }},
+		Node: console.Node{Version: version.Version, PeerID: id.PeerID(), Fingerprint: identity.Fingerprint(id.PublicKey()),
+			StartedAt: startedAt, Status: mgr.Status, Mode: func() string { return string(gate.Mode()) }, Facts: facts.read},
 	}, logs.Logger(console.Name))
 	if opts.Testing.Console != nil {
 		opts.Testing.Console(con)
@@ -193,6 +195,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		Allowlist:  engine.Allowlist,
 	}, logs.Logger(enforceComponent))
 	engine.Subscribe(gate.Handle)
+	facts.engine, facts.reconciler = engine, reconciler
 	// The audit log opens before the engine starts and closes after
 	// everything that writes to it has stopped.
 	auditLog := newAuditLog(cfg.Audit.Path, gate, logs.Logger(audit.Name))
@@ -273,7 +276,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	}
 
 	rl := &reloader{running: cfg, self: id.PeerID(), load: opts.LoadConfig, env: env,
-		engine: engine, gate: gate, mesh: m, audit: auditLog, log: logs.Logger(reloadComponent),
+		engine: engine, gate: gate, mesh: m, audit: auditLog, loads: loads, log: logs.Logger(reloadComponent),
 		console: func(c config.Console) { con.Apply(consoleConfig(c, opts.Testing)) }}
 	waitForShutdown(ctx, opts.Reload, rl)
 	log.Info("shutdown requested", "timeout", cfg.Node.ShutdownTimeout.String())

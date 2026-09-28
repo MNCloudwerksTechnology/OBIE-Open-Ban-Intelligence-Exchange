@@ -149,7 +149,7 @@ func TestConsoleEndToEnd(t *testing.T) {
 	if code != http.StatusOK || !strings.Contains(page, `data-health data-state="degraded"`) ||
 		!strings.Contains(page, "<li>mesh: 0 peers connected (0/0 bootstrap peers)</li>") ||
 		!strings.Contains(page, `data-mode="observe"`) {
-		t.Errorf("home page = %d:\n%s", code, page)
+		t.Errorf("overview = %d:\n%s", code, page)
 	}
 
 	// A new token signs the browser out.
@@ -203,6 +203,104 @@ func TestConsoleEndToEnd(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), c.Token) {
 		t.Error("the token was logged")
+	}
+}
+
+// TestConsoleOverviewEndToEnd runs obied with the console on and reads its
+// overview: the node's identity, mode and parts, the empty state of a node
+// that has just started, and what the reloads recorded.
+func TestConsoleOverviewEndToEnd(t *testing.T) {
+	addr := freeAddr(t)
+	n := newTestNodeWith(t, "", "mesh:\n  listen: [/ip4/127.0.0.1/tcp/0]\nconsole:\n  enabled: true\n  listen: "+addr+"\n")
+	var logs syncBuffer
+	reload := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	exit := startDaemon(ctx, t, n, &logs.buf, func(ctx context.Context, args []string) int {
+		return runDaemonWith(ctx, reload, args, &bytes.Buffer{}, &logs)
+	})
+
+	var stdout bytes.Buffer
+	if code := RunCtl([]string{"--socket", n.socket, "identity", "--json"}, &stdout, io.Discard); code != ExitOK {
+		t.Fatalf("obiectl identity = %d", code)
+	}
+	var id admin.IdentityResponse
+	if err := json.Unmarshal(stdout.Bytes(), &id); err != nil {
+		t.Fatal(err)
+	}
+	b := newConsoleBrowser(t, addr)
+	eventually(t, "the console serves", func() bool { return listening(addr) })
+	if code, _ := b.do(http.MethodPost, "/login", url.Values{"token": {consoleOf(t, n).Token}, "next": {"/"}}); code != http.StatusSeeOther {
+		t.Fatalf("sign-in = %d", code)
+	}
+
+	// A node without peers or data that has just started says what will
+	// come, once enforcement has made its first pass.
+	fragment := func() string {
+		code, body := b.do(http.MethodGet, "/api/overview", nil)
+		if code != http.StatusOK {
+			t.Fatalf("GET /api/overview = %d: %s", code, body)
+		}
+		return body
+	}
+	eventually(t, "the first enforcement pass", func() bool { return strings.Contains(fragment(), "<td>observing</td>") })
+	code, page := b.do(http.MethodGet, "/", nil)
+	for _, want := range []string{
+		"<h1>Overview</h1>",
+		`<code class="id">` + id.PeerID + "</code>",
+		`<code class="id">` + strings.ReplaceAll(id.Fingerprint, "+", "&#43;") + "</code>",
+		`<strong>Observe</strong>: The node decides and shows what it would block, but blocks nothing`,
+		`, at start</dd>`,
+		`<strong class="summary-title">Just started</strong>`,
+		`<h2 id="starting-heading">This node has just started</h2>`,
+		`<span class="number-label">Peers connected</span> <span class="number-value">None yet</span>`,
+		`<p class="number-note">no peer is configured in mesh.bootstrap</p>`,
+		`<span class="number-label">Indicators held</span> <span class="number-value">None yet</span>`,
+		`<span class="number-label">Firewall entries</span> <span class="number-value">None</span>`,
+		`<span class="number-label">Active overrides</span> <span class="number-value">0</span>`,
+		`Details: <code>obiectl peers</code>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("overview (%d) lacks %q:\n%s", code, want, page)
+		}
+	}
+	if !strings.Contains(page, `<tr><th scope="row">Mesh</th><td><span class="part-state" data-state="waiting">Waiting for peers</span></td>`) {
+		t.Error("overview does not show the mesh waiting for peers")
+	}
+	for _, name := range []string{"Store", "Decision engine", "Enforcement", "Admin interface"} {
+		if !strings.Contains(page, `<tr><th scope="row">`+name+`</th><td><span class="part-state" data-state="ready">Ready</span></td>`) {
+			t.Errorf("overview does not show %s ready", name)
+		}
+	}
+
+	// A rejected reload is a condition; the node keeps its configuration.
+	original, err := os.ReadFile(n.config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile := func(text string) {
+		t.Helper()
+		if err := os.WriteFile(n.config, []byte(text), 0o600); err != nil { // #nosec G703 -- the test's own configuration file.
+			t.Fatal(err)
+		}
+		reload <- struct{}{}
+	}
+	writeFile(string(original) + "decision:\n  quorum: 0\n")
+	eventually(t, "the overview shows the rejected reload", func() bool {
+		return strings.Contains(fragment(), "<span class=\"condition-level\">Warning:</span> The configuration reload at ")
+	})
+
+	// A later reload clears it, and names what waits for a restart.
+	writeFile(string(original) + "log:\n  level: debug\n")
+	eventually(t, "the overview shows the reload", func() bool {
+		f := fragment()
+		return strings.Contains(f, ", by a reload</dd>") && !strings.Contains(f, "was rejected") &&
+			strings.Contains(f, "<span class=\"condition-level\">Note:</span> Changes to log wait for a restart")
+	})
+
+	cancel()
+	if code := waitExit(t, exit, &logs.buf); code != ExitOK {
+		t.Fatalf("exit code = %d:\n%s", code, logs.String())
 	}
 }
 

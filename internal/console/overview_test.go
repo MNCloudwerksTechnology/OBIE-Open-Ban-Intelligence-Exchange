@@ -207,6 +207,9 @@ func TestOverviewJustStarted(t *testing.T) {
 	if k := numberOf(t, p, "Active overrides"); k.Value != "0" || k.State != "" {
 		t.Errorf("overrides = %+v: set by the operator, not arriving", k)
 	}
+	if p.Parts[0] != (part{Title: "Mesh", State: stateWaiting, Label: "Waiting for peers", Detail: "0 peers connected (0/2 bootstrap peers)"}) {
+		t.Errorf("mesh = %+v, want waiting for peers rather than degraded", p.Parts[0])
+	}
 
 	// Without configured peers and in observe mode.
 	in := justStarted()
@@ -251,6 +254,9 @@ func TestOverviewAfterStartupGrace(t *testing.T) {
 	}
 	if k := numberOf(t, p, "Peers connected"); k.Value != "0" || k.State != "" {
 		t.Errorf("peers = %+v", k)
+	}
+	if p.Parts[0].Label != "Degraded" || p.Parts[0].State != stateWarning {
+		t.Errorf("mesh after the grace = %+v, want degraded", p.Parts[0])
 	}
 
 	in.facts.Peers.Configured = 0

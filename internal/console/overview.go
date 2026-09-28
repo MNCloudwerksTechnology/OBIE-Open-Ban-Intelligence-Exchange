@@ -210,15 +210,26 @@ func (o *overview) parts() []part {
 	out := make([]part, 0, len(o.statuses))
 	for _, name := range partOrder {
 		if s, ok := o.status[name]; ok {
-			out = append(out, partOf(s))
+			out = append(out, o.partOf(s))
 		}
 	}
 	for _, s := range o.statuses {
 		if !slices.Contains(partOrder, s.Name) {
-			out = append(out, partOf(s))
+			out = append(out, o.partOf(s))
 		}
 	}
 	return out
+}
+
+// partOf describes the readiness of the subsystem with status s; a mesh
+// without peers on a node that has just started is waiting for them, not
+// degraded.
+func (o *overview) partOf(s lifecycle.Status) part {
+	p := partOf(s)
+	if o.fresh && s.Name == partMesh && p.Label == "Degraded" && o.facts.Peers.Connected == 0 {
+		p.State, p.Label = stateWaiting, "Waiting for peers"
+	}
+	return p
 }
 
 // partOf describes the readiness of the subsystem with status s.
