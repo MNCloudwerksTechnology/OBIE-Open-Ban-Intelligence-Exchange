@@ -1,0 +1,10 @@
+# Only the front-end and back-end sources are needed to build the image;
+# dependencies and build output are rebuilt inside it.
+*
+!frontend/
+!backend/
+frontend/node_modules/
+frontend/dist/
+frontend/.angular/
+frontend/coverage/
+backend/target/

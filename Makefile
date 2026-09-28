@@ -29,7 +29,7 @@ MARKDOWNLINT    := $(TOOLS_DIR)/markdownlint-cli2-$(MARKDOWNLINT_VERSION)/node_m
 RELEASE_DIR := $(CURDIR)/dist/release
 
 # The Gitea workflows are the source; the GitHub mirrors must be byte-identical.
-WORKFLOWS := ci.yml release.yml
+WORKFLOWS := ci.yml release.yml website-release.yml
 
 .DEFAULT_GOAL := build
 

@@ -36,7 +36,9 @@ directory format in
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
-[ADR 0012](documentation/adr/0012-landing-page-content-and-design-system.md).
+[ADR 0012](documentation/adr/0012-landing-page-content-and-design-system.md);
+the website's container image and deployment in
+[ADR 0018](documentation/adr/0018-website-container-and-deployment.md).
 
 The [whitepaper](documentation/whitepaper.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
