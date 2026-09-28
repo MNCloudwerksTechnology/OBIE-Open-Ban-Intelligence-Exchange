@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,24 @@ class WebsiteSmokeTest extends IntegrationTest {
     // Only prerendered output contains the rendered heading; the client-side
     // shell would contain just an empty <app-root>.
     assertThat(response.getBody()).containsPattern(heading(HOME_HEADING)).contains(PRERENDERED);
+  }
+
+  @Test
+  void homePageLoadsNothingFromThirdPartyOriginsAndOpensExternalLinksSafely() {
+    String html = getHtml("/").getBody();
+
+    assertThat(html)
+        .doesNotContainPattern("\\ssrcset=\"[^\"]*(https?:)?//")
+        .doesNotContainPattern("\\ssrc=\"(https?:)?//")
+        .doesNotContainPattern("<link\\s[^>]*href=\"(https?:)?//")
+        .doesNotContainPattern("url\\((['\"])?(https?:)?//");
+    Matcher anchors = Pattern.compile("<a\\s[^>]*href=\"https?://[^>]*>").matcher(html);
+    int external = 0;
+    while (anchors.find()) {
+      external++;
+      assertThat(anchors.group()).contains("rel=\"noopener\"");
+    }
+    assertThat(external).isGreaterThan(6);
   }
 
   @Test

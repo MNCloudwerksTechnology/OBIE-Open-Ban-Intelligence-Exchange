@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { LANDING_CONTENT_EN } from '../content/landing.content';
+import { LANDING_CONTENT_EN, REPOSITORY_URL } from '../content/landing.content';
 import { SiteFooter } from './site-footer';
 
 describe('SiteFooter', () => {
@@ -18,6 +18,13 @@ describe('SiteFooter', () => {
     expect(links.map((link) => [link.textContent?.trim(), link.getAttribute('href')])).toEqual(
       LANDING_CONTENT_EN.footer.links.map((link) => [link.label, link.href]),
     );
+  });
+
+  it('shows the "View on GitHub" button', () => {
+    const github = footer.querySelector('footer a.button.github');
+    expect(github?.getAttribute('href')).toBe(REPOSITORY_URL);
+    expect(github?.textContent?.trim()).toBe('View on GitHub');
+    expect(github?.getAttribute('rel')).toBe('noopener');
   });
 
   it('shows the attribution and the licence', () => {

@@ -1,13 +1,13 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 
 import { LANDING_CONTENT } from '../content/landing.content';
-import { ObieMark } from './icons';
+import { GithubIcon, ObieMark } from './icons';
 
-/** Site footer: project and legal links, attribution and licence. */
+/** Site footer: the GitHub button, project and legal links, attribution and licence. */
 @Component({
   selector: 'app-site-footer',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ObieMark],
+  imports: [GithubIcon, ObieMark],
   template: `
     <footer>
       <div class="container">
@@ -15,17 +15,21 @@ import { ObieMark } from './icons';
           <app-obie-mark />
           {{ footer.tagline }}
         </p>
+        <a class="button button--primary github" [href]="footer.github.href" rel="noopener">
+          <app-github-icon />
+          {{ footer.github.label }}
+        </a>
         <nav [attr.aria-label]="content.a11y.footerNav">
           <ul>
             @for (link of footer.links; track link.href) {
               <li>
-                <a [href]="link.href">{{ link.label }}</a>
+                <a [href]="link.href" rel="noopener">{{ link.label }}</a>
               </li>
             }
           </ul>
         </nav>
         <p class="small">
-          <a [href]="footer.attribution.href">{{ footer.attribution.text }}</a>
+          <a [href]="footer.attribution.href" rel="noopener">{{ footer.attribution.text }}</a>
         </p>
         <p class="small">{{ footer.licence }}</p>
       </div>
@@ -48,6 +52,10 @@ import { ObieMark } from './icons';
     app-obie-mark {
       width: 2rem;
       height: 2rem;
+    }
+
+    .github {
+      margin-top: var(--space-5);
     }
 
     ul {

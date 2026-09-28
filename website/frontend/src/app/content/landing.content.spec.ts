@@ -117,8 +117,8 @@ describe('Landing page content', () => {
   });
 
   it('links the footer to GitHub, spec, security policy, legal pages and licence', () => {
+    expect(content.footer.github).toEqual({ label: 'View on GitHub', href: LINKS.repository });
     expect(content.footer.links.map((link) => link.href)).toEqual([
-      LINKS.repository,
       LINKS.spec,
       LINKS.securityPolicy,
       LINKS.impressum,

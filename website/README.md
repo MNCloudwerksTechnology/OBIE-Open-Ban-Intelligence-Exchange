@@ -99,6 +99,11 @@ Durations use ISO-8601 (`PT3S` = 3 seconds, `PT1H` = 1 hour), periods too
 | `OBIE_MAIL_MAX_ATTEMPTS` | no | `10` | Delivery attempts per inquiry before the mails are given up (logged as an error; the inquiry stays stored). |
 | `OBIE_MAIL_RETRY_INITIAL_DELAY` | no | `PT1M` | Delay after the first failed delivery; doubled after each further failure. |
 | `OBIE_MAIL_RETRY_MAX_DELAY` | no | `PT6H` | Upper bound of the retry delay. |
+| `OBIE_GITHUB_REPOSITORY` | no | `MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange` | `owner/name` of the repository whose stats `GET /api/project` shows. |
+| `OBIE_GITHUB_TOKEN` | no | – | GitHub token for the stats requests (a fine-grained token with read-only access to public repositories is enough). Without one GitHub allows 60 requests per hour and IP, which the cache stays well below. |
+| `OBIE_GITHUB_CACHE_TTL` | no | `PT15M` | How long fetched stats are served before GitHub is asked again. |
+| `OBIE_GITHUB_RETRY_DELAY` | no | `PT1M` | After a failed fetch (error, timeout, rate limit), GitHub is not asked again before this has passed; meanwhile the last good stats are served. |
+| `OBIE_GITHUB_API_URL` | no | `https://api.github.com` | Base URL of the GitHub REST API. |
 | `SERVER_PORT` | no | `8080` | HTTP port (Spring Boot). |
 | `SERVER_FORWARD_HEADERS_STRATEGY` | no | – | Set to `native` behind a reverse proxy that sets `X-Forwarded-For`/`X-Forwarded-Proto`, so rate limit and IP hash see the visitor's address. Leave unset without a proxy: the headers could be forged. |
 
@@ -210,6 +215,29 @@ visitor a short plain-text confirmation that repeats nothing they typed. When
 the SMTP server fails, delivery is retried with exponential backoff and each
 failure is logged.
 
+## Project API
+
+**`GET /api/project`** returns the repository's live stats, which the back
+end fetches from the GitHub REST API and caches (see
+[Configuration](#configuration)); the visitor's browser never contacts
+GitHub ([ADR 0014](../documentation/adr/0014-website-github-project-stats.md)).
+It always answers `200`:
+
+```json
+{"available": true,
+ "repositoryUrl": "https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange",
+ "stars": 42, "forks": 7, "openIssues": 3,
+ "latestRelease": {"tag": "v0.1.0", "publishedAt": "2026-09-01T12:00:00Z", "url": "https://github.com/…/releases/tag/v0.1.0"},
+ "lastCommitAt": "2026-09-20T10:30:00Z"}
+```
+
+`latestRelease` is `null` while there is no release; `lastCommitAt` is the
+newest commit on the default branch; `openIssues` is GitHub's count, which
+includes pull requests. When GitHub fails or rate-limits, the last good
+stats are served; before the first success the answer is
+`{"available": false}` with every other field `null`, and the page leaves
+the stats strip out. Failures are logged as warnings.
+
 ## How it fits together
 
 - **Front end.** Angular builds in `outputMode: "static"`: every route listed
@@ -228,6 +256,12 @@ failure is logged.
   `core/inquiry-validators.ts` and the messages in the content file mirror
   `InquiryRequest.java`; change both together
   ([ADR 0013](../documentation/adr/0013-website-inquiry-form.md)).
+- **GitHub links and stats.** "View on GitHub" sits in the header, the hero
+  and the footer. `sections/github-strip.ts` (in "Get started") shows the
+  contributor links and, once `core/project-api.ts` has loaded them after
+  the first render in the browser, stars, the latest release and the last
+  commit. Every link that can leave the site has `rel="noopener"`; the
+  front-end and smoke tests fail otherwise.
 - **Landing page copy.** Every user-visible string of the landing page lives
   in `src/app/content/landing.content.ts`; templates only bind to it. Edit
   copy there. A German version is a second `LandingContent` object provided
@@ -242,7 +276,9 @@ failure is logged.
   routes; `NotFoundPageResolver` renders the 404 page. API endpoints live
   under `/api/**`; Actuator's health endpoint is the only one exposed
   (`/api/health`). The inquiry feature (`org.obie.website.inquiry`) is
-  described in [ADR 0012](../documentation/adr/0012-website-inquiry-backend.md).
+  described in [ADR 0012](../documentation/adr/0012-website-inquiry-backend.md),
+  the GitHub stats (`org.obie.website.project`) in
+  [ADR 0014](../documentation/adr/0014-website-github-project-stats.md).
 - **Security headers.** `SecurityHeadersFilter` sets CSP, HSTS,
   `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and
   `frame-ancestors 'none'` on every response. Inline scripts are allowed only

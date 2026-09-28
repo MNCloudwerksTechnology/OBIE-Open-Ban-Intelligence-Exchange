@@ -19,7 +19,7 @@ import { LANDING_CONTENT } from '../content/landing.content';
             </details>
           }
         </div>
-        <a class="next-step" [href]="faq.nextStep.href">{{ faq.nextStep.label }}</a>
+        <a class="next-step" [href]="faq.nextStep.href" rel="noopener">{{ faq.nextStep.label }}</a>
       </div>
     </section>
   `,

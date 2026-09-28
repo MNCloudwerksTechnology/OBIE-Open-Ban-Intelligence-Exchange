@@ -24,6 +24,7 @@ export const LINKS = {
   exampleConfig: `${DOCS_URL}/documentation/examples/obie.yaml`,
   licence: `${DOCS_URL}/LICENSE.md`,
   issues: `${REPOSITORY_URL}/issues`,
+  goodFirstIssues: `${REPOSITORY_URL}/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22`,
   securityPolicy: `${DOCS_URL}/SECURITY.md`,
   impressum: '/impressum',
   privacy: '/privacy',
@@ -42,6 +43,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
     title: 'OBIE: a neighbourhood watch for servers',
     description:
       'OBIE, the Open Ban Intelligence Exchange: servers share signed reports about attackers, and each server decides for itself what to block. Open source, no central authority.',
+    locale: 'en-GB',
   },
   a11y: {
     skipLink: 'Skip to content',
@@ -52,7 +54,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
     themeToLight: 'Switch to light theme',
   },
   header: {
-    github: { label: 'GitHub', href: LINKS.repository },
+    github: { label: 'View on GitHub', href: LINKS.repository },
     invite: { label: 'Invite Markus to speak', href: `#${CONTACT_ID}` },
   },
   hero: {
@@ -301,6 +303,20 @@ export const LANDING_CONTENT_EN: LandingContent = {
     ],
     note: 'Version 0.1 is still in development. Until decisions and blocking land (see Status), a node connects to its peers and stores reports, but decides and blocks nothing.',
     quickStart: { label: 'Example configuration with every option', href: LINKS.exampleConfig },
+    project: {
+      linksLabel: 'OBIE on GitHub',
+      links: [
+        { label: 'Repository', href: LINKS.repository },
+        { label: 'Quick start', href: LINKS.quickStart },
+        { label: 'Protocol specification', href: LINKS.spec },
+        { label: 'Good first issues', href: LINKS.goodFirstIssues },
+      ],
+      statsCaption: 'The project on GitHub',
+      stars: 'Stars',
+      latestRelease: 'Latest release',
+      noRelease: 'None yet',
+      lastActivity: 'Last commit',
+    },
     nextStep: { label: 'Open the quick start on GitHub', href: LINKS.quickStart },
   },
   // Founder facts come from the operator (work package #1675). Do not add
@@ -448,8 +464,8 @@ export const LANDING_CONTENT_EN: LandingContent = {
   },
   footer: {
     tagline: 'OBIE: Shared Intelligence, Sovereign Enforcement.',
+    github: { label: 'View on GitHub', href: LINKS.repository },
     links: [
-      { label: 'GitHub', href: LINKS.repository },
       { label: 'Specification', href: LINKS.spec },
       { label: 'Security policy', href: LINKS.securityPolicy },
       { label: 'Impressum', href: LINKS.impressum },

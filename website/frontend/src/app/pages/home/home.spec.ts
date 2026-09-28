@@ -69,11 +69,49 @@ describe('Home page', () => {
     expect(buttons[0].classList).toContain('button--primary');
   });
 
+  it('offers "View on GitHub" in the navigation bar, the hero and the footer', () => {
+    const buttons = Array.from(page.querySelectorAll('a.button')).filter(
+      (button) => button.textContent?.trim() === 'View on GitHub',
+    );
+    expect(buttons.map((button) => button.closest('header, main, footer')?.tagName)).toEqual([
+      'HEADER',
+      'MAIN',
+      'FOOTER',
+    ]);
+    for (const button of buttons) {
+      expect(button.getAttribute('href')).toBe(REPOSITORY_URL);
+    }
+  });
+
+  it('hides the stats strip in Get started while no stats have arrived', () => {
+    const start = page.querySelector('#get-started');
+    expect(start?.querySelector('app-github-strip ul.links')).not.toBeNull();
+    expect(start?.querySelector('app-github-strip .stats')).toBeNull();
+  });
+
   it('ends every section with a next step to GitHub', () => {
     for (const section of Array.from(page.querySelectorAll('main section[id]'))) {
       const links = section.querySelectorAll(':scope > .container > a.next-step');
       expect(links.length, section.id).toBe(1);
       expect(links[0].getAttribute('href')?.startsWith(REPOSITORY_URL), section.id).toBe(true);
+    }
+  });
+
+  it('marks every external link rel="noopener"', () => {
+    const external = Array.from(page.querySelectorAll('a[href^="http"]'));
+    expect(external.length).toBeGreaterThan(6);
+    for (const link of external) {
+      expect(link.getAttribute('rel')?.split(' '), link.getAttribute('href') as string).toContain(
+        'noopener',
+      );
+    }
+  });
+
+  it('loads no images, scripts or frames from other origins', () => {
+    expect(page.querySelectorAll('script, iframe, object, embed').length).toBe(0);
+    for (const element of Array.from(page.querySelectorAll('[src], [srcset]'))) {
+      const source = element.getAttribute('src') ?? element.getAttribute('srcset') ?? '';
+      expect(source.startsWith('/') && !source.startsWith('//'), source).toBe(true);
     }
   });
 
