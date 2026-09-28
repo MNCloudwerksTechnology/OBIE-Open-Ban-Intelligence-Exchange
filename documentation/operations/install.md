@@ -8,6 +8,10 @@ OBIE ships in three forms (ADR 0017):
 | Container image | observe/dryrun nodes, Kubernetes, trying it out | no (dryrun) |
 | Compose lab (`packaging/compose`) | three nodes on a laptop in minutes | no (dryrun) |
 
+New to OBIE? The [quick start](quickstart.md) walks through a first node
+step by step; [Operations](operations.md) covers upgrades, backups and
+uninstalling in more detail.
+
 ## Release artefacts
 
 Every `v*` tag publishes, for linux/amd64 and linux/arm64:
