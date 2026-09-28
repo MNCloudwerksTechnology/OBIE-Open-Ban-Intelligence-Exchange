@@ -40,7 +40,9 @@ make ci              # every check a change must pass
 
 A node is configured with one YAML file (default `/etc/obie/obie.yaml`);
 [documentation/examples/obie.yaml](documentation/examples/obie.yaml) documents
-every key and its default.
+every key and its default. To publish Fail2Ban bans as verdicts, add the
+ready-made action to your jails; see
+[documentation/guides/fail2ban.md](documentation/guides/fail2ban.md).
 
 Requires Go 1.26 or newer. Every pull request is gated by the same `make ci` in
 CI. See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical baseline and
