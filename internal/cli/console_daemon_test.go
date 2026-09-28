@@ -253,7 +253,7 @@ func TestConsoleOverviewEndToEnd(t *testing.T) {
 		`<code class="id">` + id.PeerID + "</code>",
 		`<code class="id">` + strings.ReplaceAll(id.Fingerprint, "+", "&#43;") + "</code>",
 		`<strong>Observe</strong>: The node decides and shows what it would block, but blocks nothing`,
-		`, at start</dd>`,
+		`, at start. <a href="/configuration">The configuration it runs with</a></dd>`,
 		`<strong class="summary-title">Just started</strong>`,
 		`<h2 id="starting-heading">This node has just started</h2>`,
 		`<span class="number-label">Peers connected</span> <span class="number-value">None yet</span>`,

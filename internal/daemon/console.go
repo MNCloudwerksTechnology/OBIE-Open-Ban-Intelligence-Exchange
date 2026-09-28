@@ -347,29 +347,14 @@ func (d *consoleDecisions) FirewallEntries(ctx context.Context, missing int) (co
 // keyOfRange returns the key of the indicator naming the range p, as the
 // engine keeps it; a range no indicator may name has no decision.
 func keyOfRange(p netip.Prefix) string {
-	p = p.Masked()
-	switch {
-	case p.Bits() < p.Addr().BitLen():
-		return obieproto.KindCIDR + ":" + p.String()
-	case p.Addr().Is4():
-		return obieproto.KindIPv4 + ":" + p.Addr().String()
-	default:
-		return obieproto.KindIPv6 + ":" + p.Addr().String()
-	}
+	return rangeIndicator(p).Key()
 }
 
 // indicatorOfRange returns the indicator naming the range p: an IPv4 or
 // IPv6 address, or a CIDR range; it fails for a range no indicator may
 // name, e.g. one broader than /16.
 func indicatorOfRange(p netip.Prefix) (obieproto.Indicator, error) {
-	ind := obieproto.Indicator{Kind: obieproto.KindCIDR, Value: p.Masked().String()}
-	switch {
-	case p.Bits() < p.Addr().BitLen():
-	case p.Addr().Is4():
-		ind = obieproto.Indicator{Kind: obieproto.KindIPv4, Value: p.Addr().String()}
-	default:
-		ind = obieproto.Indicator{Kind: obieproto.KindIPv6, Value: p.Addr().String()}
-	}
+	ind := rangeIndicator(p)
 	if err := ind.Normalize(); err != nil {
 		return obieproto.Indicator{}, err
 	}
