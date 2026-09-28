@@ -71,6 +71,9 @@ type Node struct {
 	// Activity reads the audit trail for the activity timeline; nil reads
 	// none (ADR 0025).
 	Activity ActivitySource
+	// Actions checks and carries out the operator's actions; nil carries
+	// out none (ADR 0026).
+	Actions ActionSource
 }
 
 // Options configures a Console.
@@ -100,6 +103,11 @@ type Console struct {
 	// signInLimit bounds sign-in attempts; warnLimit the warnings clients
 	// can provoke.
 	signInLimit, warnLimit *rate.Limiter
+	// actionMu makes checking the state an action acts on and carrying it
+	// out one step among all browser tabs; outcomes keeps what actions
+	// did for the pages the browsers return to (ADR 0026).
+	actionMu sync.Mutex
+	outcomes *outcomes
 
 	// applyMu serializes Start, Stop and Apply. It is held while a server
 	// starts or stops, which may wait for requests in flight; those only
@@ -120,7 +128,8 @@ var _ lifecycle.DetailReporter = (*Console)(nil)
 func New(cfg config.Console, opts Options, log *slog.Logger) *Console {
 	policy, err := peercred.NewPolicy(opts.Group)
 	c := &Console{log: log, node: opts.Node, policy: policy, policyErr: err, lookup: peercred.LoopbackTCP,
-		creds: newCredentials(), now: time.Now, signInLimit: newSignInLimit(), warnLimit: rate.NewLimiter(1, 10), cfg: cfg}
+		creds: newCredentials(), now: time.Now, signInLimit: newSignInLimit(), warnLimit: rate.NewLimiter(1, 10), cfg: cfg,
+		outcomes: newOutcomes()}
 	c.pages = c.views()
 	c.handler = c.routes()
 	return c

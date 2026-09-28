@@ -98,6 +98,8 @@ var (
 	configurationTemplate = pageTemplate("configuration.html")
 	// The activity timeline (ADR 0025).
 	activityTemplate = pageTemplate("activity.html", "activity_rows.html")
+	// The pages of the operator actions (ADR 0026).
+	actionTemplate = pageTemplate("action.html")
 )
 
 // pageTemplate returns the layout with the content of file, which may use
@@ -136,6 +138,11 @@ type layoutPage struct {
 	Mode      string
 	ModeLabel string
 	Health    Health
+	// Notice is the outcome of the action that led to the page; nil if
+	// none did (ADR 0026).
+	Notice *actionNotice
+	// Actions is set if the console carries out operator actions.
+	Actions bool
 	// Content is the data of the page's own template.
 	Content any
 }
@@ -168,6 +175,7 @@ func (c *Console) layout(title, current string, content any) layoutPage {
 		Mode:      mode,
 		ModeLabel: label,
 		Health:    nodeHealth(c.node.Status()),
+		Actions:   c.actionsOff() == "",
 		Content:   content,
 	}
 	for _, v := range c.pages {
@@ -183,6 +191,16 @@ func (c *Console) layout(title, current string, content any) layoutPage {
 	return p
 }
 
+// page returns the layout data like layout, with the outcome of the
+// action the request's done names, if it led here.
+func (c *Console) page(r *http.Request, title, current string, content any) layoutPage {
+	p := c.layout(title, current, content)
+	if n, ok := c.outcomes.get(r.URL.Query().Get("done"), c.now()); ok {
+		p.Notice = &n
+	}
+	return p
+}
+
 // shortPeerID abbreviates a peer ID for the top bar.
 func shortPeerID(id string) string {
 	if len(id) <= 16 {
@@ -194,7 +212,7 @@ func shortPeerID(id string) string {
 // serveView renders the view v.
 func (c *Console) serveView(v view) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c.render(w, http.StatusOK, v.template, c.layout(v.Title, v.Path, v.content(r)))
+		c.render(w, http.StatusOK, v.template, c.page(r, v.Title, v.Path, v.content(r)))
 	})
 }
 
@@ -220,11 +238,11 @@ func (c *Console) serveItem(v view) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		title, data, ok := v.item.content(r, false)
 		if !ok {
-			c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", "",
+			c.render(w, http.StatusNotFound, notFoundTemplate, c.page(r, "Page not found", "",
 				notFoundPage{Path: r.URL.Path, Message: v.item.missing}))
 			return
 		}
-		c.render(w, http.StatusOK, v.item.template, c.layout(title, r.URL.Path, data))
+		c.render(w, http.StatusOK, v.item.template, c.page(r, title, r.URL.Path, data))
 	})
 }
 
@@ -251,7 +269,7 @@ type notFoundPage struct {
 
 // notFound renders the page for a path the console does not serve.
 func (c *Console) notFound(w http.ResponseWriter, r *http.Request) {
-	c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", "", notFoundPage{Path: r.URL.Path}))
+	c.render(w, http.StatusNotFound, notFoundTemplate, c.page(r, "Page not found", "", notFoundPage{Path: r.URL.Path}))
 }
 
 // overviewContent reads the node and returns the data of the overview.

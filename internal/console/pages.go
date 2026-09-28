@@ -31,6 +31,9 @@ type signInPage struct {
 	Next string
 	// Error explains why the last attempt failed.
 	Error string
+	// Action is set when an action was not carried out because the
+	// session ended (ADR 0026).
+	Action bool
 }
 
 // render writes the page t with data and status code.
@@ -54,7 +57,7 @@ func (c *Console) showSignIn(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, next, http.StatusSeeOther) // #nosec G710 -- safeNext allows only paths on the console.
 		return
 	}
-	c.render(w, http.StatusOK, signInTemplate, signInPage{Next: next})
+	c.render(w, http.StatusOK, signInTemplate, signInPage{Next: next, Action: r.URL.Query().Get("reason") == "action"})
 }
 
 // signIn exchanges the token for a session.

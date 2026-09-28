@@ -35,12 +35,21 @@
     </ul>
   </nav>
   <main id="main" tabindex="-1">
+    {{- with .Notice}}
+    <div class="outcome" data-level="{{.Level}}" role="status">
+      <p><strong>{{.Title}}</strong></p>
+      {{- range .Lines}}
+      <p>{{.}}</p>
+      {{- end}}
+      <p class="outcome-links">{{range $i, $l := .Links}}{{if $i}} · {{end}}<a href="{{$l.Href}}">{{$l.Text}}</a>{{end}}</p>
+    </div>
+    {{- end}}
 {{template "content" .Content}}
     <p class="share" data-share hidden>Link to this view, for anyone who may sign in to this console on this host: <code data-share-url></code></p>
     <p class="visually-hidden" role="status" data-copy-status></p>
   </main>
 </div>
-<footer class="footer">Read-only view of this node, served only on this host. obied {{.Node.Version}}</footer>
+<footer class="footer">{{if .Actions}}View of this node, served only on this host; it acts only after you confirm. {{else}}Read-only view of this node, served only on this host. {{end}}obied {{.Node.Version}}</footer>
 </body>
 </html>
 {{- end}}
