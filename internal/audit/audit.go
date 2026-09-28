@@ -127,10 +127,10 @@ type Log struct {
 
 	mu sync.Mutex
 	f  *os.File
-	// readable is set if f was opened for reading too; gen counts the
-	// files opened, so a cursor into an earlier one is recognized.
-	readable bool
-	gen      uint64
+	// readErr says why f cannot be read back; nil if it can. gen counts
+	// the files opened, so a cursor into an earlier one is recognized.
+	readErr error
+	gen     uint64
 	// seq numbers the records from 1; tail holds the record with number n
 	// at (n-1) % MemoryEntries, the last MemoryEntries of them.
 	seq  uint64
@@ -172,7 +172,7 @@ func (l *Log) Start(context.Context) error {
 	if l.path == "" {
 		return nil
 	}
-	f, readable, err := l.open()
+	f, readErr, err := l.open()
 	if err != nil {
 		return err
 	}
@@ -182,18 +182,34 @@ func (l *Log) Start(context.Context) error {
 		_ = f.Close()
 		return errors.New("audit log already started")
 	}
-	l.use(f, readable)
+	l.use(f, readErr)
 	l.log.Info("audit log opened", "path", l.path)
 	return nil
 }
 
-// use makes f the file records are written to. The caller holds mu.
-func (l *Log) use(f *os.File, readable bool) {
-	l.f, l.readable = f, readable
-	l.gen++
-	if !readable {
-		l.log.Warn("the audit log is open for writing only, so the console cannot show its history", "path", l.path)
+// use makes f the file records are written to; readErr says why it
+// cannot be read back. A file other than the previous one starts a new
+// generation: positions in the previous one do not apply to it. The
+// caller holds mu.
+func (l *Log) use(f *os.File, readErr error) {
+	if !sameFile(l.f, f) {
+		l.gen++
 	}
+	l.f, l.readErr = f, readErr
+	if readErr != nil {
+		l.log.Warn("the console cannot show the audit log's history", "path", l.path, "reason", readErr)
+	}
+}
+
+// sameFile reports whether a and b are open on the same file, as when a
+// reload reopens a log that logrotate did not move.
+func sameFile(a, b *os.File) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	ia, errA := a.Stat()
+	ib, errB := b.Stat()
+	return errA == nil && errB == nil && os.SameFile(ia, ib)
 }
 
 // Stop closes the file.
@@ -218,14 +234,14 @@ func (l *Log) Reopen() error {
 	if l == nil || l.path == "" {
 		return nil
 	}
-	f, readable, err := l.open()
+	f, readErr, err := l.open()
 	if err != nil {
 		l.log.Error("reopening the audit log failed; writing on to the previous file", "path", l.path, "error", err)
 		return err
 	}
 	l.mu.Lock()
 	old := l.f
-	l.use(f, readable)
+	l.use(f, readErr)
 	l.mu.Unlock()
 	if old != nil {
 		if err := old.Close(); err != nil {
@@ -237,19 +253,20 @@ func (l *Log) Reopen() error {
 }
 
 // open opens the file for appending, and for reading back too if the
-// node may read it (ADR 0025); readable says which.
-func (l *Log) open() (f *os.File, readable bool, err error) {
+// node may read it (ADR 0025); readErr says why it cannot, nil if it can.
+func (l *Log) open() (f *os.File, readErr error, err error) {
 	f, err = os.OpenFile(l.path, os.O_RDWR|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- the operator chooses audit.path.
 	if errors.Is(err, fs.ErrPermission) {
 		f, err = os.OpenFile(l.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- as above.
-		if err == nil {
-			return f, false, nil
-		}
+		readErr = ErrWriteOnly
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("open audit log: %w", err)
+		return nil, nil, fmt.Errorf("open audit log: %w", err)
 	}
-	return f, true, nil
+	if info, statErr := f.Stat(); readErr == nil && (statErr != nil || !info.Mode().IsRegular()) {
+		readErr = ErrNotRegular // e.g. /dev/stdout: what was written cannot be read back
+	}
+	return f, readErr, nil
 }
 
 // Write appends r as one line and keeps it in memory. A failure is
@@ -259,6 +276,12 @@ func (l *Log) Write(r Record) {
 		return
 	}
 	e := l.entry(r)
+	if l.path == "" {
+		l.mu.Lock()
+		l.keep(&e)
+		l.mu.Unlock()
+		return
+	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf) // one line, ending in a newline
 	enc.SetEscapeHTML(false)     // reasons hold ">=" and "<"
@@ -269,9 +292,6 @@ func (l *Log) Write(r Record) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.keep(&e)
-	if l.path == "" {
-		return
-	}
 	if l.f == nil {
 		l.log.Error("audit log is not open; record lost", "action", r.Action, "indicator", indicatorKey(r.Indicator))
 		return

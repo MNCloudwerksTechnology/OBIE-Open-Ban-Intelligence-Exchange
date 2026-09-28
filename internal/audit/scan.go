@@ -7,19 +7,19 @@ import (
 )
 
 // scanChunk is how much of the file scanBack reads at once; maxLine the
-// longest line it assembles, beyond which a line is skipped unread.
-const (
-	scanChunk = 64 << 10
-	maxLine   = 1 << 20
+// longest line it assembles, beyond which a line is skipped unread. Tests
+// shrink them.
+var (
+	scanChunk int64 = 64 << 10
+	maxLine         = 1 << 20
 )
 
 // scanBack calls fn with the lines of r that end at or before the offset
-// end, the last first, without their newline, and with the offset where
-// each starts. It stops when fn returns false, before the line fn was
-// given, or once it read budget bytes, and returns the offset where the
-// lines it did not give fn end: 0 once it reached the start. A line longer
-// than maxLine is given as nil.
-func scanBack(r io.ReaderAt, end, budget int64, fn func(line []byte, start int64) bool) (int64, error) {
+// end, the last first, without their newline. It stops when fn returns
+// false, before the line fn was given, or once it read budget bytes, and
+// returns the offset where the lines it did not give fn end: 0 once it
+// reached the start. A line longer than maxLine is given as nil.
+func scanBack(r io.ReaderAt, end, budget int64, fn func(line []byte) bool) (int64, error) {
 	var (
 		pos     = end // data holds the bytes from pos to lineEnd
 		lineEnd = end
@@ -37,7 +37,7 @@ func scanBack(r io.ReaderAt, end, budget int64, fn func(line []byte, start int64
 				if long {
 					line = nil
 				}
-				if !fn(line, start) {
+				if !fn(line) {
 					return lineEnd, nil
 				}
 				lineEnd, data, long = start, data[:i+1], false
@@ -46,7 +46,10 @@ func scanBack(r io.ReaderAt, end, budget int64, fn func(line []byte, start int64
 		}
 		if read >= budget {
 			if lineEnd == end {
-				return pos, nil // not even one line fit: go on from here
+				// Not even one line fit: what was read is part of a line
+				// longer than the budget. Skip it, and go on before it.
+				fn(nil)
+				return pos, nil
 			}
 			return lineEnd, nil
 		}

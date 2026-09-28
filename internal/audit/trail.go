@@ -24,6 +24,9 @@ var (
 	ErrNoFile = errors.New("the audit log is off")
 	// ErrWriteOnly: the file could be opened for writing only.
 	ErrWriteOnly = errors.New("obied may write the audit log file but not read it")
+	// ErrNotRegular: the path is no regular file, e.g. /dev/stdout, so
+	// what was written to it cannot be read back.
+	ErrNotRegular = errors.New("the audit log is not a regular file, so what was written to it cannot be read back")
 	// ErrNotOpen: the file is not open, before Start or after Stop.
 	ErrNotOpen = errors.New("the audit log file is not open")
 	// ErrReopened: a cursor points into a file that was reopened since,
@@ -81,8 +84,8 @@ func (l *Log) Mark() Mark {
 		m.Err = ErrNoFile
 	case l.f == nil:
 		m.Err = ErrNotOpen
-	case !l.readable:
-		m.Err = ErrWriteOnly
+	case l.readErr != nil:
+		m.Err = l.readErr
 	default:
 		info, err := l.f.Stat()
 		if err != nil {
@@ -199,6 +202,9 @@ type Page struct {
 	SearchedTo time.Time
 	// Skipped counts the lines of the file that are no audit records.
 	Skipped int
+	// FileSince is the time of the first record of the file; zero for a
+	// page from memory, or if the file's first line is no record.
+	FileSince time.Time
 	// Forgotten is set if older records than those kept in memory were
 	// written, so a page from memory does not reach the first record.
 	Forgotten bool
@@ -265,7 +271,7 @@ func (l *Log) memoryPage(before uint64, limit int, match func(*Entry) bool) Page
 // or before the offset end, newest first.
 func (l *Log) filePage(m Mark, end int64, limit int, match func(*Entry) bool) Page {
 	var p Page
-	next, err := scanBack(m.f, end, ScanBytes, func(line []byte, start int64) bool {
+	next, err := scanBack(m.f, end, ScanBytes, func(line []byte) bool {
 		if line != nil && len(bytes.TrimSpace(line)) == 0 {
 			return true // an empty line
 		}
@@ -296,5 +302,25 @@ func (l *Log) filePage(m Mark, end int64, limit int, match func(*Entry) bool) Pa
 		p.Older = &Cursor{Gen: m.gen, At: next}
 		p.Searched = len(p.Entries) < limit
 	}
+	p.FileSince = firstTime(m.f, m.size)
 	return p
+}
+
+// firstTime returns the time of the record on the first line of the file
+// r of the given size; zero if that line is no record, or longer than a
+// scan's chunk.
+func firstTime(r io.ReaderAt, size int64) time.Time {
+	head := make([]byte, min(size, scanChunk))
+	if _, err := r.ReadAt(head, 0); err != nil {
+		return time.Time{}
+	}
+	line, _, ok := bytes.Cut(head, []byte{'\n'})
+	if !ok {
+		return time.Time{}
+	}
+	e, ok := parseEntry(line)
+	if !ok {
+		return time.Time{}
+	}
+	return e.Time()
 }

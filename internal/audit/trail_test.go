@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -193,6 +195,9 @@ func TestFileHistory(t *testing.T) {
 	if want := countdown(n, 1); !slices.Equal(numbers(got), want) {
 		t.Fatalf("pages = %v", numbers(got))
 	}
+	if p := l.History(m, nil, 1, all); !p.FileSince.Equal(t0) {
+		t.Errorf("file since %v, want %v", p.FileSince, t0)
+	}
 	for i, e := range got {
 		if line, _ := parseEntry([]byte(lines[n-1-i])); !reflect.DeepEqual(line, e) {
 			t.Fatalf("entry %d = %+v, line %s", i, e, lines[n-1-i])
@@ -206,7 +211,7 @@ func TestFileHistorySkipsOtherLines(t *testing.T) {
 	var logs bytes.Buffer
 	l, path := startLog(t, "enforce", &logs)
 	writeN(l, 1, 2)
-	appendFile(t, path, "not json\n\n"+`{"event":{"dataset":"other"}}`+"\n"+strings.Repeat("x", maxLine+scanChunk)+"\n")
+	appendFile(t, path, "not json\n\n"+`{"event":{"dataset":"other"}}`+"\n"+strings.Repeat("x", maxLine+int(scanChunk))+"\n")
 	writeN(l, 3, 1)
 	appendFile(t, path, `{"@timestamp":"2026-09-28T12:00:00Z","event":{"dataset":"obie.audit","action":"block-ad`)
 	p := l.History(l.Mark(), nil, 100, all)
@@ -261,6 +266,138 @@ func TestHistoryAfterReopen(t *testing.T) {
 	}
 }
 
+// TestReopenOfTheSameFileKeepsPositions: a reload that reopens a file
+// logrotate did not move keeps the positions of earlier pages valid.
+func TestReopenOfTheSameFileKeepsPositions(t *testing.T) {
+	var logs bytes.Buffer
+	l, _ := startLog(t, "enforce", &logs)
+	writeN(l, 1, 3)
+	p := l.History(l.Mark(), nil, 1, all)
+	if err := l.Reopen(); err != nil {
+		t.Fatal(err)
+	}
+	writeN(l, 4, 1)
+	p = l.History(l.Mark(), p.Older, 10, all)
+	if p.FileErr != nil || !slices.Equal(numbers(p.Entries), []int{2, 1}) {
+		t.Errorf("after reopening the same file: %v, err %v", numbers(p.Entries), p.FileErr)
+	}
+}
+
+// TestNotARegularFile: what is written to a device or a pipe, such as
+// /dev/stdout, cannot be read back; the history comes from memory.
+func TestNotARegularFile(t *testing.T) {
+	l := New(os.DevNull, Options{Mode: func() string { return "observe" }}, slog.New(slog.DiscardHandler))
+	if err := l.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Stop(context.Background()) })
+	writeN(l, 1, 2)
+	if p := l.History(l.Mark(), nil, 10, all); !errors.Is(p.FileErr, ErrNotRegular) || !p.Memory || len(p.Entries) != 2 {
+		t.Errorf("page = %+v", p)
+	}
+}
+
+// TestConcurrentWritesReopensAndReads: pages and the live feed read
+// while records are written and the file is reopened see every record
+// exactly once (run with -race).
+func TestConcurrentWritesReopensAndReads(t *testing.T) {
+	var logs bytes.Buffer
+	l, _ := startLog(t, "enforce", &logs)
+	const writers, each = 4, 300
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	for w := range writers {
+		wg.Go(func() { writeN(l, 1+w*each, each) })
+	}
+	wg.Go(func() {
+		for range 20 {
+			if err := l.Reopen(); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	go func() { wg.Wait(); close(done) }()
+	for reading := true; reading; {
+		select {
+		case <-done:
+			reading = false
+		default:
+		}
+		m := l.Mark()
+		seen := map[int]bool{}
+		for _, n := range numbers(l.History(m, nil, writers*each, all).Entries) {
+			seen[n] = true
+		}
+		live := numbers(l.Since(m.Seq, writers*each, all).Entries)
+		for _, n := range live {
+			if seen[n] {
+				t.Fatalf("record %d both on the page and in the live feed", n)
+			}
+			seen[n] = true
+		}
+		if uint64(len(seen)) != l.Mark().Seq && !reading {
+			t.Fatalf("page and live feed hold %d records, %d were written", len(seen), l.Mark().Seq)
+		}
+	}
+}
+
+// TestScanBackReadsEveryLine: with any chunk size, budget and stop, the
+// scanner gives every line once, the last first, and resumes where it
+// stopped.
+func TestScanBackReadsEveryLine(t *testing.T) {
+	defer func(chunk int64, long int) { scanChunk, maxLine = chunk, long }(scanChunk, maxLine)
+	rng := rand.New(rand.NewPCG(1688, 25)) // #nosec G404 -- a reproducible test input, no secret.
+	for round := range 2000 {
+		scanChunk, maxLine = int64(1+rng.IntN(16)), 8+rng.IntN(24)
+		var text strings.Builder
+		var want [][]byte
+		for i := range rng.IntN(20) {
+			line := strings.Repeat(string(rune('a'+i%26)), rng.IntN(maxLine))
+			text.WriteString(line + "\n")
+			want = append(want, []byte(line))
+		}
+		slices.Reverse(want)
+		r := strings.NewReader(text.String())
+		stopEvery := 1 + rng.IntN(5)
+		var got [][]byte
+		for end := int64(text.Len()); end > 0; {
+			n := 0
+			next, err := scanBack(r, end, int64(maxLine)+scanChunk*2+int64(rng.IntN(64)), func(line []byte) bool {
+				if n == stopEvery {
+					return false
+				}
+				n++
+				got = append(got, slices.Clone(line))
+				return true
+			})
+			if err != nil || next >= end {
+				t.Fatalf("round %d: scanBack(%d) = %d, %v", round, end, next, err)
+			}
+			end = next
+		}
+		if !slices.EqualFunc(got, want, bytes.Equal) {
+			t.Fatalf("round %d (chunk %d, max line %d): got %q, want %q", round, scanChunk, maxLine, got, want)
+		}
+	}
+}
+
+// TestScanBackSkipsALineOverTheBudget: a line longer than what one call
+// may read is reported as skipped, and the scan goes on before the part
+// it read.
+func TestScanBackSkipsALineOverTheBudget(t *testing.T) {
+	defer func(chunk int64) { scanChunk = chunk }(scanChunk)
+	scanChunk = 4
+	text := "ok\n" + strings.Repeat("x", 30) + "\n"
+	var lines [][]byte
+	next, err := scanBack(strings.NewReader(text), int64(len(text)), 8, func(line []byte) bool {
+		lines = append(lines, line)
+		return true
+	})
+	if err != nil || next != int64(len(text))-8 || len(lines) != 1 || lines[0] != nil {
+		t.Errorf("scanBack = %d, %v, lines %q", next, err, lines)
+	}
+}
+
 // TestWriteOnlyFile: a file obied may only write is written as before;
 // the history then comes from memory and says why.
 func TestWriteOnlyFile(t *testing.T) {
@@ -289,7 +426,7 @@ func TestWriteOnlyFile(t *testing.T) {
 	if got := readFile(t, path); strings.Count(got, "\n") != 2 {
 		t.Errorf("file:\n%s", got)
 	}
-	if !strings.Contains(logs.String(), "open for writing only") {
+	if !strings.Contains(logs.String(), `"msg":"the console cannot show the audit log's history"`) {
 		t.Errorf("not logged: %s", logs.String())
 	}
 }
