@@ -75,6 +75,7 @@ internal/           all non-public code (one package per concern listed above)
   logging/          slog JSON handler; per-component loggers
   mesh/             go-libp2p host, bootstrap peers with backoff, peer view
   ops/              /healthz, /readyz and Prometheus /metrics
+  statedir/         state directory format version (<state_dir>/FORMAT); refuses newer formats
   sovereignty/      allow-list (built-in, config, files, own and bootstrap addresses), override precedence
   store/            BadgerDB event and indicator state: dedupe, expiry, overrides
   verdicts/         this node's own verdicts: report (hash evidence, coalesce), revoke, list
