@@ -11,7 +11,7 @@ import (
 )
 
 var (
-	now   = time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	now     = time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 	forever = now.Add(100 * 365 * 24 * time.Hour)
 )
 

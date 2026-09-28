@@ -309,7 +309,7 @@ func (r *Reconciler) backoff(n int) time.Duration {
 }
 
 // Reconcile runs one pass. In enforce mode it sets the backend up if
-// needed and applies the difference between the desired and the listed
+// needed (at the first pass and after a failed one) and applies the difference between the desired and the listed
 // entries; in observe mode it only tears the backend down, once.
 func (r *Reconciler) Reconcile(ctx context.Context) error {
 	r.enfMu.Lock()
@@ -327,11 +327,13 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	want, skipped := r.desired(r.opts.Now())
 	have, err := r.enf.List(ctx)
 	if err != nil {
+		r.backend = backendUnknown // e.g. the table was changed by hand
 		return r.fail(mode, fmt.Errorf("list the applied entries: %w", err))
 	}
 	add, remove := Diff(want, have)
 	if len(add) > 0 || len(remove) > 0 {
 		if err := r.enf.Apply(ctx, add, remove); err != nil {
+			r.backend = backendUnknown
 			return r.fail(mode, fmt.Errorf("apply %d additions and %d removals: %w", len(add), len(remove), err))
 		}
 		r.log.Info("enforcement reconciled", "added", len(add), "removed", len(remove), "entries", len(want))
@@ -370,7 +372,7 @@ type candidate struct {
 // desired returns the entries to apply at now: the blocks of the gate
 // with at least MinTimeout left that the allow-list does not refuse, the
 // operator's force-blocks and then the highest scores first up to
-// MaxEntries, ordered by prefix. It logs newly skipped blocks and
+// MaxEntries, without those inside a wider one, ordered by prefix. It logs newly skipped blocks and
 // counts the skipped ones by reason. Callers hold enfMu.
 func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 	allow := r.opts.Allowlist()
@@ -432,11 +434,29 @@ func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 		want[i] = c.entry
 	}
 	sortEntries(want)
+	want = dropCovered(want)
 	counts := map[string]int{}
 	for _, reason := range skipped {
 		counts[reason]++
 	}
 	return want, counts
+}
+
+// dropCovered leaves out the entries inside a wider one of sorted: an
+// nftables interval set cannot hold overlapping ranges. A covered entry
+// that outlives the wider one returns with the first pass after the wider
+// one ended.
+func dropCovered(sorted []Entry) []Entry {
+	out := sorted[:0]
+	var cover netip.Prefix
+	for _, e := range sorted {
+		if cover.IsValid() && cover.Contains(e.Prefix.Addr()) {
+			continue
+		}
+		out = append(out, e)
+		cover = e.Prefix
+	}
+	return out
 }
 
 // compareForced orders force-blocks first.

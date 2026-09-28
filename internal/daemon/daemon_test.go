@@ -17,6 +17,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
+	"github.com/MNCloudwerksTechnology/obie/internal/enforce/nft"
 	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -297,10 +298,15 @@ func TestSovereigntyResponse(t *testing.T) {
 
 func TestNewEnforcer(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
-	if enf, err := newEnforcer(config.BackendDryRun, log); err != nil || enf == nil {
+	if enf, err := newEnforcer(config.Enforce{Backend: config.BackendDryRun}, log); err != nil || enf == nil {
 		t.Errorf("dryrun = %v, %v", enf, err)
 	}
-	if _, err := newEnforcer(config.BackendNFTables, log); err == nil || !strings.Contains(err.Error(), `enforce.backend "nftables" is not available`) {
-		t.Errorf("nftables error = %v", err)
+	if enf, err := newEnforcer(config.Enforce{Backend: config.BackendNFTables}, log); err != nil {
+		t.Errorf("nftables = %v, %v", enf, err)
+	} else if _, ok := enf.(*nft.Backend); !ok {
+		t.Errorf("nftables backend is %T", enf)
+	}
+	if _, err := newEnforcer(config.Enforce{Backend: "iptables"}, log); err == nil || !strings.Contains(err.Error(), `enforce.backend "iptables" is not available`) {
+		t.Errorf("unknown backend error = %v", err)
 	}
 }

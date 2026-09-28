@@ -191,12 +191,35 @@ func wantState(t *testing.T, enf *fakeEnforcer, want string) {
 	}
 }
 
+// TestCoveredPrefixesAreLeftOut: an interval set cannot hold overlapping
+// ranges, so a prefix inside a wider applied one is left out until the
+// wider one ends.
+func TestCoveredPrefixesAreLeftOut(t *testing.T) {
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{})
+	f.add("198.51.100.7", 3*time.Hour, 1)
+	f.add("198.51.100.0/24", time.Hour, 1)
+	f.add("198.51.100.0/25", 2*time.Hour, 1)
+	f.add("198.51.101.1", time.Hour, 1)
+	f.add("2001:db8::1", time.Hour, 1)
+	f.add("2001:db8::/32", time.Hour, 1)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.0/24@1h0m0s 198.51.101.1/32@1h0m0s 2001:db8::/32@1h0m0s")
+	if got := f.rec.Detail(); got != "enforcing via fake: 3 entries" {
+		t.Errorf("Detail = %q", got)
+	}
+
+	// When the /24 ends, the /25 and the address outside it come back.
+	f.gate.Handle(block("198.51.100.0/24", decision.ChangeRemoved, time.Time{}))
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.0/25@2h0m0s 198.51.101.1/32@1h0m0s 2001:db8::/32@1h0m0s")
+}
+
 func TestConvergeFromEmpty(t *testing.T) {
 	f := newFixture(t, config.ModeEnforce, newFake(), Options{})
-	f.add("198.51.100.7", time.Hour, 1)
+	f.add("192.0.2.7", time.Hour, 1)
 	f.add("198.51.100.0/24", 2*time.Hour, 1)
 	f.reconcile(t)
-	wantState(t, f.enf, "198.51.100.0/24@2h0m0s 198.51.100.7/32@1h0m0s")
+	wantState(t, f.enf, "192.0.2.7/32@1h0m0s 198.51.100.0/24@2h0m0s")
 	if got := f.enf.callsString(); got != "setup list apply" {
 		t.Errorf("calls = %q", got)
 	}
@@ -417,7 +440,8 @@ func TestDebounce(t *testing.T) {
 }
 
 // TestFailureRetry: a failed apply is retried with backoff, surfaced
-// through Ready meanwhile, and recovers.
+// through Ready meanwhile, and recovers. Every retry sets the backend up
+// again, restoring e.g. a table deleted by hand.
 func TestFailureRetry(t *testing.T) {
 	enf := newFake()
 	enf.failApply = 3
@@ -435,8 +459,8 @@ func TestFailureRetry(t *testing.T) {
 	if n := enf.count("apply"); n != 4 {
 		t.Errorf("applied %d times, want 4", n)
 	}
-	if n := enf.count("setup"); n != 1 {
-		t.Errorf("set up %d times, want 1", n)
+	if n := enf.count("setup"); n != 4 {
+		t.Errorf("set up %d times, want 4", n)
 	}
 	if n := strings.Count(f.logs.String(), "enforcement failed; retrying"); n != 3 {
 		t.Errorf("logged %d failures", n)
