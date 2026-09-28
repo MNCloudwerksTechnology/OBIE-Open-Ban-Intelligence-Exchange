@@ -100,7 +100,7 @@ func overviewNode(c *Console) {
 }
 
 // region matches the refreshing region of the overview page.
-var region = regexp.MustCompile(`(?s)<div class="refresh" data-refresh="/api/overview">\n(.*)\n</div>\n\s*</main>`)
+var region = regexp.MustCompile(`(?s)<div class="refresh" data-refresh="/api/overview">\n(.*)\n</div>\n\s*<p class="share" data-share hidden>`)
 
 func TestOverviewPage(t *testing.T) {
 	c, b := signedInBrowser(t)
@@ -429,6 +429,35 @@ func TestScriptInsertsOnlyInertFragments(t *testing.T) {
 	}
 	if markupFromString.MatchString(`return copy.innerHTML.trim();`) || markupFromString.MatchString(`a.innerHTML === b`) {
 		t.Error("markupFromString flags reading innerHTML")
+	}
+}
+
+// TestScriptCopiesAndShares: the script adds a Copy button to every
+// element marked data-copy and a Copy link button to every page; it
+// copies with the Clipboard API, selects the text where that fails, says
+// what it did in a live region, and neither lets its buttons make a
+// refreshed region look changed nor loses them in a swap (ADR 0022).
+func TestScriptCopiesAndShares(t *testing.T) {
+	script, err := fs.ReadFile(assetFiles, "assets/console.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"root.querySelectorAll('[data-copy]')", "el.getAttribute('data-copy') || el.textContent.trim()",
+		"navigator.clipboard.writeText(text)", "window.isSecureContext", "selectText(source)", "copyStatus.textContent =",
+		"copy.querySelectorAll('[data-copy-button]')", "addCopyButtons(region);", "focusCopy(region, focusedButton)",
+		"copyText(location.href)", "share.hidden = false", "addCopyButtons(document);",
+	} {
+		if !strings.Contains(string(script), want) {
+			t.Errorf("console.js lacks %q", want)
+		}
+	}
+	c, b := signedInBrowser(t)
+	for _, v := range c.pages {
+		_, page := b.get(v.Path)
+		wantAll(t, v.Path, page,
+			`<p class="share" data-share hidden>Link to this view, for anyone who may sign in to this console on this host: <code data-share-url></code></p>`,
+			`<p class="visually-hidden" role="status" data-copy-status></p>`)
 	}
 }
 

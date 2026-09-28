@@ -98,7 +98,7 @@ func TestPeersPage(t *testing.T) {
 }
 
 // peersRegion matches the refreshing region of the peers view.
-var peersRegion = regexp.MustCompile(`(?s)<div class="refresh" data-refresh="[^"]*">\n(.*)\n</div>\n\s*</main>`)
+var peersRegion = regexp.MustCompile(`(?s)<div class="refresh" data-refresh="[^"]*">\n(.*)\n</div>\n\s*<p class="share" data-share hidden>`)
 
 // TestPeersFragment: the region refreshes from a fragment with the same
 // filter, order and page, and renders exactly what the page shows there.

@@ -1,10 +1,12 @@
 // OBIE console (ADR 0019, ADR 0020): keeps the health indicator of every
 // page and the regions a view marks with data-refresh current, and tells
 // the operator when the session ended or the console can no longer be
-// reached, e.g. after a configuration reload. Every page works without
-// this script. It builds its own text with textContent only; a region's
-// new content is the console's escaped template output, parsed into an
-// inert document that runs no script.
+// reached, e.g. after a configuration reload. It adds a Copy button to
+// every element marked data-copy and a Copy link button to the page
+// (ADR 0022). Every page works without this script. It builds its own
+// text with textContent only; a region's new content is the console's
+// escaped template output, parsed into an inert document that runs no
+// script.
 (function () {
   'use strict';
 
@@ -22,6 +24,8 @@
   var banner = document.querySelector('[data-banner]');
   var regions = Array.prototype.slice.call(document.querySelectorAll('[data-refresh]'));
   var liveHints = Array.prototype.slice.call(document.querySelectorAll('[data-live]'));
+  var share = document.querySelector('[data-share]');
+  var copyStatus = document.querySelector('[data-copy-status]');
   var timer = 0;
   var polling = false;
   var signedOut = false;
@@ -87,11 +91,109 @@
     return true;
   }
 
+  // copyText writes text to the clipboard and resolves to whether it did.
+  // Loopback origins are secure contexts, so the Clipboard API is there.
+  function copyText(text) {
+    if (!navigator.clipboard || !window.isSecureContext) {
+      return Promise.resolve(false);
+    }
+    return navigator.clipboard.writeText(text).then(function () {
+      return true;
+    }, function () {
+      return false;
+    });
+  }
+
+  // selectText selects the text of el, for the operator to copy by hand.
+  function selectText(el) {
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  // copied tells on the button and to screen readers what copying what
+  // did; when it failed, the text in source is selected instead.
+  function copied(button, what, ok, source) {
+    var label = button.getAttribute('data-label');
+    button.textContent = ok ? 'Copied' : 'Press Ctrl+C';
+    copyStatus.textContent = ok ? 'Copied ' + what + '.' :
+      'Could not copy ' + what + '. It is selected: press Ctrl+C to copy it.';
+    if (!ok) {
+      selectText(source);
+    }
+    window.setTimeout(function () {
+      button.textContent = label;
+    }, 2000);
+  }
+
+  function makeButton(label, name) {
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'copy-button';
+    button.textContent = label;
+    button.setAttribute('data-label', label);
+    button.setAttribute('aria-label', name);
+    return button;
+  }
+
+  // copyButton returns a button that copies the text of el: its data-copy
+  // value, or else its text.
+  function copyButton(el) {
+    var text = el.getAttribute('data-copy') || el.textContent.trim();
+    var button = makeButton('Copy', 'Copy ' + text);
+    button.setAttribute('data-copy-button', text);
+    button.addEventListener('click', function () {
+      copyText(text).then(function (ok) {
+        copied(button, text, ok, el);
+      });
+    });
+    return button;
+  }
+
+  // addCopyButtons puts a copy button after every element marked data-copy
+  // inside root, or after the heading it is in, so the heading's name
+  // stays the address alone.
+  function addCopyButtons(root) {
+    Array.prototype.forEach.call(root.querySelectorAll('[data-copy]'), function (el) {
+      var anchor = el.closest('h1, h2, h3') || el;
+      var next = anchor.nextElementSibling;
+      if (!next || !next.hasAttribute('data-copy-button')) {
+        anchor.after(copyButton(el));
+      }
+    });
+  }
+
+  // addShare shows the link to this view with a button that copies it.
+  // The view is its URL, so the link opens the same view for anyone who
+  // may sign in on this host.
+  function addShare() {
+    if (!share) {
+      return;
+    }
+    var url = share.querySelector('[data-share-url]');
+    url.textContent = location.href;
+    var button = makeButton('Copy link', 'Copy the link to this view');
+    button.addEventListener('click', function () {
+      url.textContent = location.href;
+      copyText(location.href).then(function (ok) {
+        copied(button, 'the link to this view', ok, url);
+      });
+    });
+    share.appendChild(button);
+    share.hidden = false;
+  }
+
   // withoutTicks returns the markup of root without the text that changes
-  // with the time alone (data-tick: the update time, the uptime).
+  // with the time alone (data-tick: the update time, the uptime) and
+  // without the script's copy buttons.
   function withoutTicks(root) {
     var copy = root.cloneNode(true);
     Array.prototype.forEach.call(copy.querySelectorAll('[data-tick]'), function (el) {
+      el.remove();
+    });
+    Array.prototype.forEach.call(copy.querySelectorAll('[data-copy-button]'), function (el) {
       el.remove();
     });
     return copy.innerHTML.trim();
@@ -126,6 +228,34 @@
     }
   }
 
+  // copyButtonsFor returns the copy buttons inside region that copy text.
+  function copyButtonsFor(region, text) {
+    return Array.prototype.filter.call(region.querySelectorAll('[data-copy-button]'), function (b) {
+      return b.getAttribute('data-copy-button') === text;
+    });
+  }
+
+  // focusedCopy returns the text the focused copy button inside region
+  // copies and which of the buttons for it it is, or null.
+  function focusedCopy(region) {
+    var el = document.activeElement;
+    if (!el || !region.contains(el) || !el.hasAttribute('data-copy-button')) {
+      return null;
+    }
+    var text = el.getAttribute('data-copy-button');
+    return { text: text, index: copyButtonsFor(region, text).indexOf(el) };
+  }
+
+  // focusCopy focuses the same copy button again, or the first one for the
+  // same text.
+  function focusCopy(region, focused) {
+    var buttons = copyButtonsFor(region, focused.text);
+    var button = buttons[focused.index] || buttons[0];
+    if (button) {
+      button.focus({ preventScroll: true });
+    }
+  }
+
   // swap shows the fragment html in region: all of it when more than the
   // ticking text changed, keeping the focused link focused, else only the
   // ticking text, so a selection or a screen reader's place survives.
@@ -140,9 +270,14 @@
       return;
     }
     var focused = focusedLink(region);
+    var focusedButton = focusedCopy(region);
     region.replaceChildren.apply(region, Array.prototype.slice.call(incoming.childNodes));
+    addCopyButtons(region);
     if (focused !== null) {
       focusLink(region, focused);
+    }
+    if (focusedButton !== null) {
+      focusCopy(region, focusedButton);
     }
   }
 
@@ -208,5 +343,7 @@
     }
   });
   showLiveHints(true);
+  addCopyButtons(document);
+  addShare();
   schedule();
 })();

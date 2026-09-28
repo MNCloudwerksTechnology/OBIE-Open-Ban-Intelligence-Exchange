@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/http/cookiejar"
 	"net/netip"
 	"net/url"
 	"reflect"
@@ -513,5 +514,27 @@ func TestDecisionNotice(t *testing.T) {
 		!strings.Contains(decisionNotice(status(lifecycle.StateStarting)), "starting") ||
 		!strings.Contains(decisionNotice(status(lifecycle.StateStopped)), "not running") {
 		t.Error("decisionNotice")
+	}
+}
+
+// TestDecisionLinksSurviveSignIn: AC6 — a shared link to a view or an
+// explanation opens it after signing in on the same host.
+func TestDecisionLinksSurviveSignIn(t *testing.T) {
+	c, b := startConsole(t, &syncBuffer{})
+	explainNode(c)
+	for _, link := range []string{"/decisions?q=198.51.100.0%2F24&sort=address&state=block", "/decisions/198.51.100.0/24",
+		"/enforcement?page=2"} {
+		b.client.Jar, _ = cookiejar.New(nil)
+		resp, _ := b.get(link)
+		want := "/login?next=" + url.QueryEscape(link)
+		if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != want {
+			t.Fatalf("GET %s signed out = %d %s, want a redirect to %s", link, resp.StatusCode, resp.Header.Get("Location"), want)
+		}
+		if resp, _ := b.signIn(c.Token(), link); resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != link {
+			t.Errorf("sign-in with next %s = %d %s", link, resp.StatusCode, resp.Header.Get("Location"))
+		}
+		if resp, _ := b.get(link); resp.StatusCode != http.StatusOK {
+			t.Errorf("GET %s signed in = %d", link, resp.StatusCode)
+		}
 	}
 }
