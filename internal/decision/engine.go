@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unique"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
@@ -115,8 +116,10 @@ type Engine struct {
 	// verdicts, by key, without Publishers.
 	mu        sync.RWMutex
 	decisions map[string]Decision
-	// verdicts counts the active verdicts of every kept decision, by key.
-	verdicts map[string]int
+	// held lists the active verdicts of every kept decision, by key, and
+	// publishers counts them by publisher (ADR 0021).
+	held       map[string][]heldVerdict
+	publishers map[unique.Handle[string]]PublisherCount
 
 	// dirty holds the indicators changed in the store since the worker last
 	// ran, or whose evaluation failed, with the latest cause; wake signals
@@ -154,17 +157,18 @@ type Engine struct {
 // in opts.
 func New(st store.Store, p Policy, log *slog.Logger, opts Options) *Engine {
 	return &Engine{
-		store:     st,
-		policy:    p,
-		rules:     Rules{Allowlist: opts.Allowlist},
-		log:       log,
-		opts:      opts.withDefaults(),
-		decisions: map[string]Decision{},
-		verdicts:  map[string]int{},
-		dirty:     map[string]string{},
-		wake:      make(chan struct{}, 1),
-		subs:      map[int]func(Change){},
-		tsubs:     map[int]func(Transition){},
+		store:      st,
+		policy:     p,
+		rules:      Rules{Allowlist: opts.Allowlist},
+		log:        log,
+		opts:       opts.withDefaults(),
+		decisions:  map[string]Decision{},
+		held:       map[string][]heldVerdict{},
+		publishers: map[unique.Handle[string]]PublisherCount{},
+		dirty:      map[string]string{},
+		wake:       make(chan struct{}, 1),
+		subs:       map[int]func(Change){},
+		tsubs:      map[int]func(Transition){},
 	}
 }
 
@@ -630,17 +634,23 @@ func (e *Engine) indicatorOf(key string, verdicts []*obieproto.Event) (obieproto
 // block changed. Decisions without active verdicts are kept only while
 // they block (force-block). Callers hold workMu.
 func (e *Engine) apply(key string, d Decision, cause string) {
-	verdicts := len(d.Publishers)
-	active := verdicts > 0 || d.State == StateBlock
+	held := heldOf(d.Publishers)
+	active := len(held) > 0 || d.State == StateBlock
 	d.Publishers = nil
 	e.mu.Lock()
 	prev, had := e.decisions[key]
-	if active {
-		e.decisions[key], e.verdicts[key] = d, verdicts
-	} else {
+	e.count(e.held[key], -1)
+	switch {
+	case !active:
 		delete(e.decisions, key)
-		delete(e.verdicts, key)
+		delete(e.held, key)
+	case len(held) == 0:
+		e.decisions[key] = d
+		delete(e.held, key)
+	default:
+		e.decisions[key], e.held[key] = d, held
 	}
+	e.count(held, 1)
 	e.mu.Unlock()
 
 	from := StateNone
