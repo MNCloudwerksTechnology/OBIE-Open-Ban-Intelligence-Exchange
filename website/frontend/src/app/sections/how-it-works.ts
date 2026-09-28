@@ -25,7 +25,7 @@ import { FlowDiagram } from './flow-diagram';
           }
         </ol>
         <p class="note">{{ how.note }}</p>
-        <a class="next-step" [href]="how.nextStep.href">{{ how.nextStep.label }}</a>
+        <a class="next-step" [href]="how.nextStep.href" rel="noopener">{{ how.nextStep.label }}</a>
       </div>
     </section>
   `,

@@ -77,6 +77,24 @@ describe('Home page', () => {
     }
   });
 
+  it('marks every external link rel="noopener"', () => {
+    const external = Array.from(page.querySelectorAll('a[href^="http"]'));
+    expect(external.length).toBeGreaterThan(6);
+    for (const link of external) {
+      expect(link.getAttribute('rel')?.split(' '), link.getAttribute('href') as string).toContain(
+        'noopener',
+      );
+    }
+  });
+
+  it('loads no images, scripts or frames from other origins', () => {
+    expect(page.querySelectorAll('script, iframe, object, embed').length).toBe(0);
+    for (const element of Array.from(page.querySelectorAll('[src], [srcset]'))) {
+      const source = element.getAttribute('src') ?? element.getAttribute('srcset') ?? '';
+      expect(source.startsWith('/') && !source.startsWith('//'), source).toBe(true);
+    }
+  });
+
   it('has one h1 and never skips a heading level', () => {
     const headings = Array.from(page.querySelectorAll('h1, h2, h3')).map((h) =>
       Number(h.tagName[1]),

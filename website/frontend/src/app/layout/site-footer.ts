@@ -19,13 +19,13 @@ import { ObieMark } from './icons';
           <ul>
             @for (link of footer.links; track link.href) {
               <li>
-                <a [href]="link.href">{{ link.label }}</a>
+                <a [href]="link.href" rel="noopener">{{ link.label }}</a>
               </li>
             }
           </ul>
         </nav>
         <p class="small">
-          <a [href]="footer.attribution.href">{{ footer.attribution.text }}</a>
+          <a [href]="footer.attribution.href" rel="noopener">{{ footer.attribution.text }}</a>
         </p>
         <p class="small">{{ footer.licence }}</p>
       </div>

@@ -53,7 +53,9 @@ import { LANDING_CONTENT } from '../content/landing.content';
             founder.invite.label
           }}</a>
         </p>
-        <a class="next-step" [href]="founder.nextStep.href">{{ founder.nextStep.label }}</a>
+        <a class="next-step" [href]="founder.nextStep.href" rel="noopener">{{
+          founder.nextStep.label
+        }}</a>
       </div>
     </section>
   `,

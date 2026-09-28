@@ -16,7 +16,7 @@ import { GithubIcon, ObieMark } from '../layout/icons';
           <h1 id="hero-heading">{{ hero.heading }}</h1>
           <p class="lead">{{ hero.lead }}</p>
           <div class="actions">
-            <a class="button button--primary" [href]="hero.primary.href">
+            <a class="button button--primary" [href]="hero.primary.href" rel="noopener">
               <app-github-icon />
               {{ hero.primary.label }}
             </a>
@@ -25,7 +25,7 @@ import { GithubIcon, ObieMark } from '../layout/icons';
             </a>
           </div>
           <p class="challenge">
-            <a [href]="hero.challenge.href">{{ hero.challenge.label }}</a>
+            <a [href]="hero.challenge.href" rel="noopener">{{ hero.challenge.label }}</a>
           </p>
           <p class="no-tokens">{{ hero.noTokens }}</p>
         </div>
