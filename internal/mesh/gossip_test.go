@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
+
 	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -15,7 +17,7 @@ import (
 // counter counts accepted events.
 type counter struct{ accepted chan struct{} }
 
-func (c counter) Observe(o gossip.Outcome) {
+func (c counter) Observe(_ peer.ID, o gossip.Outcome) {
 	if o != gossip.Accepted {
 		return
 	}
