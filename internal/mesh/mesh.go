@@ -129,8 +129,8 @@ func New(id identity.Identity, opts Options, log *slog.Logger) (*Mesh, error) {
 		return nil, errors.New("no store")
 	}
 	opts = withDefaults(opts)
-	m := &Mesh{id: id, opts: opts, log: log, tally: gossip.NewTally(nil),
-		lastSeen: map[peer.ID]time.Time{}, dialFailures: map[peer.ID]dialFailure{}}
+	m := &Mesh{id: id, opts: opts, log: log, lastSeen: map[peer.ID]time.Time{}, dialFailures: map[peer.ID]dialFailure{}}
+	m.tally = gossip.NewTally(nil, m.isConfigured)
 
 	for _, s := range opts.Listen {
 		addr, err := ma.NewMultiaddr(s)
@@ -362,6 +362,10 @@ func (m *Mesh) Stop(ctx context.Context) error {
 		return nil
 	}
 	cancel()
+	// The watcher no longer sees the disconnects closing the host causes.
+	for _, id := range h.Network().Peers() {
+		m.disconnectedFrom(id)
+	}
 	g.Close()
 	err := h.Close()
 	peersConnected.Set(0)

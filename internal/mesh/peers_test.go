@@ -186,3 +186,20 @@ func TestKnownPeersConnected(t *testing.T) {
 	}
 	waitFor(t, 5*time.Second, "B's redial of A to fail", func() bool { return knownPeers(t, b)[idA.PeerID()].DialError != "" })
 }
+
+// TestKnownPeersAfterStop: a configured peer that was connected when the
+// mesh stopped was last seen then.
+func TestKnownPeersAfterStop(t *testing.T) {
+	idA, idB := newIdentity(t), newIdentity(t)
+	a := startMesh(t, idA, Options{Listen: []string{"/ip4/127.0.0.1/tcp/0"}})
+	b := startMesh(t, idB, Options{Listen: []string{"/ip4/127.0.0.1/tcp/0"},
+		Bootstrap: []string{listenAddr(t, a, ma.P_TCP) + "/p2p/" + idA.PeerID()}})
+	waitFor(t, 10*time.Second, "B to connect to A", func() bool { return knownPeers(t, b)[idA.PeerID()].Connected })
+	stopped := time.Now()
+	if err := b.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if k := knownPeers(t, b)[idA.PeerID()]; k.Connected || k.LastSeen.Before(stopped) || k.LastSeen.After(time.Now()) {
+		t.Errorf("B's view of A after B stopped = %+v, want last seen when B stopped", k)
+	}
+}

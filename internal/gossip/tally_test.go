@@ -38,7 +38,7 @@ func newTallyClock() *fakeClock {
 
 func TestTallyCountsPerPeerAndOutcome(t *testing.T) {
 	clk := newTallyClock()
-	tally := NewTally(clk.Now)
+	tally := NewTally(clk.Now, nil)
 	for range 3 {
 		tally.Observe(peerA, Accepted)
 	}
@@ -62,7 +62,7 @@ func TestTallyCountsPerPeerAndOutcome(t *testing.T) {
 // in 5-minute buckets, then drops out; buckets are reused.
 func TestTallyCountsTheLastHour(t *testing.T) {
 	clk := newTallyClock()
-	tally := NewTally(clk.Now)
+	tally := NewTally(clk.Now, nil)
 	tally.Observe(peerA, Accepted)
 	clk.Add(30 * time.Minute)
 	tally.Observe(peerA, Expired)
@@ -89,7 +89,7 @@ func TestTallyCountsTheLastHour(t *testing.T) {
 // counted at once.
 func TestTallyDropsSilentPeers(t *testing.T) {
 	clk := newTallyClock()
-	tally := NewTally(clk.Now)
+	tally := NewTally(clk.Now, nil)
 	for i := range MaxTalliedPeers {
 		tally.Observe(peer.ID(fmt.Sprintf("peer-%d", i)), Accepted)
 	}
@@ -111,11 +111,28 @@ func TestTallyDropsSilentPeers(t *testing.T) {
 	}
 }
 
+// TestTallyKeepsConfiguredPeers: peers the tally always keeps are counted
+// even when throwaway peers filled it.
+func TestTallyKeepsConfiguredPeers(t *testing.T) {
+	tally := NewTally(newTallyClock().Now, func(p peer.ID) bool { return p == peerB })
+	for i := range MaxTalliedPeers {
+		tally.Observe(peer.ID(fmt.Sprintf("throwaway-%d", i)), InvalidSchema)
+	}
+	tally.Observe(peerA, Accepted)
+	tally.Observe(peerB, Accepted)
+	if got := tally.Counts(peerA); got != nil {
+		t.Errorf("an unkept peer beyond the cap was counted: %v", got)
+	}
+	if got, want := tally.Counts(peerB), map[Outcome]int{Accepted: 1}; !maps.Equal(got, want) {
+		t.Errorf("Counts of the kept peer = %v, want %v", got, want)
+	}
+}
+
 // TestTallyToleratesAClockGoingBack: a clock set back counts into its
 // current bucket and never into the future.
 func TestTallyToleratesAClockGoingBack(t *testing.T) {
 	clk := newTallyClock()
-	tally := NewTally(clk.Now)
+	tally := NewTally(clk.Now, nil)
 	tally.Observe(peerA, Accepted)
 	clk.Add(-2 * time.Hour)
 	tally.Observe(peerA, Duplicate)
@@ -125,7 +142,7 @@ func TestTallyToleratesAClockGoingBack(t *testing.T) {
 }
 
 func TestTallyIsSafeForConcurrentUse(t *testing.T) {
-	tally := NewTally(nil)
+	tally := NewTally(nil, nil)
 	var wg sync.WaitGroup
 	for i := range 8 {
 		wg.Go(func() {

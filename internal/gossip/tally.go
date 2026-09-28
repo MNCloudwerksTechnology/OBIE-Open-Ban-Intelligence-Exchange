@@ -17,8 +17,9 @@ const (
 	tallySlots  = int64(TallyWindow / tallyBucket)
 )
 
-// MaxTalliedPeers bounds the peers a Tally counts at once. A peer beyond
-// it is not counted until others have sent nothing for a window.
+// MaxTalliedPeers bounds the peers a Tally counts at once, besides those
+// it always keeps. Another peer beyond it is not counted until others have
+// sent nothing for a window.
 const MaxTalliedPeers = 4096
 
 // Tally counts the outcomes of the messages each peer sent over the last
@@ -26,6 +27,9 @@ const MaxTalliedPeers = 4096
 // that sent nothing within the window are dropped.
 type Tally struct {
 	now func() time.Time
+	// keep reports the peers counted even beyond MaxTalliedPeers, so that
+	// throwaway peers cannot crowd them out; nil keeps none.
+	keep func(peer.ID) bool
 
 	mu    sync.Mutex
 	peers map[peer.ID]*tallyRing
@@ -44,12 +48,15 @@ type tallyCounts struct {
 	counts [len(Outcomes)]uint32
 }
 
-// NewTally returns an empty tally on the clock now; time.Now when nil.
-func NewTally(now func() time.Time) *Tally {
+// NewTally returns an empty tally on the clock now (time.Now when nil)
+// that counts the peers keep reports (e.g. the configured ones) even beyond
+// MaxTalliedPeers; keep may be nil. It is called while the tally is
+// locked and must not call the tally.
+func NewTally(now func() time.Time, keep func(peer.ID) bool) *Tally {
 	if now == nil {
 		now = time.Now
 	}
-	return &Tally{now: now, peers: map[peer.ID]*tallyRing{}}
+	return &Tally{now: now, keep: keep, peers: map[peer.ID]*tallyRing{}}
 }
 
 // Observe counts a message with outcome o that from sent.
@@ -64,7 +71,7 @@ func (t *Tally) Observe(from peer.ID, o Outcome) {
 	t.sweep(slot)
 	buckets, ok := t.peers[from]
 	if !ok {
-		if len(t.peers) >= MaxTalliedPeers {
+		if len(t.peers) >= MaxTalliedPeers && (t.keep == nil || !t.keep(from)) {
 			return
 		}
 		buckets = new(tallyRing)

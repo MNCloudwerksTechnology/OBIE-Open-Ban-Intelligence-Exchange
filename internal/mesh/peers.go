@@ -166,10 +166,16 @@ func (m *Mesh) connectedTo(id peer.ID) {
 	delete(m.dialFailures, id)
 }
 
+// isConfigured reports whether peer id is listed in mesh.bootstrap or in
+// trust.publishers.
+func (m *Mesh) isConfigured(id peer.ID) bool {
+	return m.isBootstrap(id) || m.isPublisher(id)
+}
+
 // disconnectedFrom records when peer id was last seen, if it is
 // configured.
 func (m *Mesh) disconnectedFrom(id peer.ID) {
-	if !m.isBootstrap(id) && !m.isPublisher(id) {
+	if !m.isConfigured(id) {
 		return
 	}
 	m.historyMu.Lock()
