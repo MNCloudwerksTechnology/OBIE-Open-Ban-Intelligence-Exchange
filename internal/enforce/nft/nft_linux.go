@@ -89,7 +89,7 @@ func ruleExprs(f family, setID uint32) []expr.Any {
 // otherwise it replaces it, deleting and recreating it in one transaction.
 // Only the table inet obie is ever touched.
 func (b *Backend) Setup(ctx context.Context) error {
-	conn, err := newConn(ctx)
+	conn, err := b.newConn(ctx)
 	if err != nil {
 		return err
 	}
@@ -224,7 +224,7 @@ func normalize(exprs []expr.Any) []expr.Any {
 // if the table is missing, is not as Setup made it or holds elements
 // obied did not add; the next Setup restores it.
 func (b *Backend) List(ctx context.Context) ([]enforce.Entry, error) {
-	conn, err := newConn(ctx)
+	conn, err := b.newConn(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -294,7 +294,7 @@ func (b *Backend) Apply(ctx context.Context, add, remove []enforce.Entry) error 
 		total += c.size
 	}
 	var bufs buffers
-	conn, err := newConn(ctx, nftables.AsLasting(), nftables.WithSockOptions(func(c *netlink.Conn) error {
+	conn, err := b.newConn(ctx, nftables.AsLasting(), nftables.WithSockOptions(func(c *netlink.Conn) error {
 		var err error
 		bufs, err = growBuffers(c, total, len(chunks))
 		return err
@@ -486,7 +486,7 @@ func grow(fd, opt, force, want int) (int, error) {
 // Teardown deletes the table inet obie with every entry; a missing table
 // is no error.
 func (b *Backend) Teardown(ctx context.Context) error {
-	conn, err := newConn(ctx)
+	conn, err := b.newConn(ctx)
 	if err != nil {
 		return err
 	}
@@ -502,10 +502,14 @@ func (b *Backend) Teardown(ctx context.Context) error {
 	return nil
 }
 
-// newConn returns a netlink connection bounded by ctx's deadline.
-func newConn(ctx context.Context, opts ...nftables.ConnOption) (*nftables.Conn, error) {
+// newConn returns a netlink connection to the backend's network
+// namespace, bounded by ctx's deadline.
+func (b *Backend) newConn(ctx context.Context, opts ...nftables.ConnOption) (*nftables.Conn, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if b.opts.NetNS != 0 {
+		opts = append(opts, nftables.WithNetNSFd(b.opts.NetNS))
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		opts = append(opts, nftables.WithSockOptions(func(c *netlink.Conn) error { return c.SetDeadline(deadline) }))

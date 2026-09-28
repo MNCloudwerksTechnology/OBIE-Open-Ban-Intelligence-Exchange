@@ -16,12 +16,14 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
+	"golang.org/x/sys/unix"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
 )
@@ -326,6 +328,66 @@ func TestTeardown(t *testing.T) {
 	}
 	if tbl, err := findTable(&nftables.Conn{}); err != nil || tbl != nil {
 		t.Errorf("table after Teardown: %v %v", tbl, err)
+	}
+}
+
+// newNetNS creates a network namespace and returns a file descriptor of
+// it, closed at the end of tb.
+func newNetNS(tb testing.TB) int {
+	tb.Helper()
+	type result struct {
+		fd  int
+		err error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		// The thread stays locked: it ends with the goroutine instead of
+		// running other goroutines in the new namespace.
+		runtime.LockOSThread()
+		if err := unix.Unshare(unix.CLONE_NEWNET); err != nil {
+			ch <- result{err: err}
+			return
+		}
+		fd, err := unix.Open("/proc/thread-self/ns/net", unix.O_RDONLY|unix.O_CLOEXEC, 0)
+		ch <- result{fd: fd, err: err}
+	}()
+	r := <-ch
+	if r.err != nil {
+		tb.Fatalf("create a network namespace: %v", r.err)
+	}
+	tb.Cleanup(func() { _ = unix.Close(r.fd) })
+	return r.fd
+}
+
+// TestNetNS programs another network namespace than the process's own.
+func TestNetNS(t *testing.T) {
+	requireNetns(t)
+	fd := newNetNS(t)
+	b := New(Options{NetNS: fd}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	ctx := context.Background()
+	if err := b.Setup(ctx); err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	want := []enforce.Entry{entry("198.51.100.7/32", time.Hour)}
+	if err := b.Apply(ctx, want, nil); err != nil {
+		t.Fatalf("Apply: %v", err)
+	}
+	assertEntries(t, list(t, b), want)
+	if tbl, err := findTable(&nftables.Conn{}); err != nil || tbl != nil {
+		t.Errorf("table in the process's own namespace: %v %v", tbl, err)
+	}
+	conn, err := nftables.New(nftables.WithNetNSFd(fd))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tbl, err := findTable(conn); err != nil || tbl == nil {
+		t.Errorf("table in the other namespace: %v %v", tbl, err)
+	}
+	if err := b.Teardown(ctx); err != nil {
+		t.Fatalf("Teardown: %v", err)
+	}
+	if tbl, err := findTable(conn); err != nil || tbl != nil {
+		t.Errorf("table in the other namespace after Teardown: %v %v", tbl, err)
 	}
 }
 

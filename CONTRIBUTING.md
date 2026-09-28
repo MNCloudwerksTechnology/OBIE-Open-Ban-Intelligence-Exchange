@@ -79,12 +79,16 @@ source of truth.
 
 ## Privileged tests
 
-Tests that need the kernel — today the nftables backend in
-`internal/enforce/nft` — carry the build tag `privileged`
+Tests that need the kernel — the nftables backend in
+`internal/enforce/nft` and the nftables variant of the end-to-end test in
+`test/e2e` — carry the build tag `privileged`
 (`//go:build privileged`), so `make test` and `make ci` never build them.
 They cover setup, applying and removing IPv4/IPv6 addresses and CIDRs,
 reading them back over netlink, kernel expiry, dropped traffic, leaving an
 unrelated table untouched, and applying 100k entries in under 5 seconds.
+The end-to-end variant runs report → block under quorum → revoke with every
+node programming the firewall of its own network namespace, and checks
+that connections from the blocked address are dropped and pass again.
 
 The tests never touch your host's firewall: their `TestMain` re-executes
 the test binary in a fresh network namespace with `unshare -rn` (an
@@ -94,6 +98,7 @@ you are root. If neither works, they are skipped.
 ```sh
 make test-privileged                                   # every package, with -race
 go test -tags privileged -count=1 -v ./internal/enforce/nft
+go test -tags privileged -count=1 -v -run NFTables ./test/e2e
 go test -tags privileged -run='^$' -bench=Apply100k ./internal/enforce/nft
 ```
 
@@ -103,6 +108,26 @@ Ubuntu 24.04+ also restricts them through AppArmor —
 `sysctl kernel.apparmor_restrict_unprivileged_userns=0` or run with
 `sudo`). The CI job "privileged tests" runs `make test-privileged` as root
 on a manual run.
+
+## End-to-end test
+
+`test/e2e` proves the whole path from a report to a block: four complete
+`obied` nodes in one process (A, B and C trust each other, D is unknown),
+each with its own configuration file, store, admin socket and libp2p host
+on `127.0.0.1`. It is an ordinary test, part of `make test` and `make ci`,
+needs no root and takes about 11 seconds:
+
+```sh
+go test -race -count=1 -v ./test/e2e
+```
+
+The scenarios build on each other and assert 5 s for propagation and 10 s
+for enforcement. When one fails, the test prints the end of every node's
+log and keeps the nodes' directories (`$TMPDIR/obie-e2e-*`) for
+inspection. Keep it free of sleeps: wait with the polling helpers
+`within` (until a condition holds, with a deadline) and `holds` (a
+condition keeps holding for a while). Test-only switches go into
+`daemon.Options.Testing`, never into the configuration (ADR 0016).
 
 ## Fuzz testing
 

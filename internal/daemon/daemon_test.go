@@ -298,15 +298,15 @@ func TestSovereigntyResponse(t *testing.T) {
 
 func TestNewEnforcer(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
-	if enf, err := newEnforcer(config.Enforce{Backend: config.BackendDryRun}, log); err != nil || enf == nil {
+	if enf, err := newEnforcer(config.Enforce{Backend: config.BackendDryRun}, 0, log); err != nil || enf == nil {
 		t.Errorf("dryrun = %v, %v", enf, err)
 	}
-	if enf, err := newEnforcer(config.Enforce{Backend: config.BackendNFTables}, log); err != nil {
+	if enf, err := newEnforcer(config.Enforce{Backend: config.BackendNFTables}, 0, log); err != nil {
 		t.Errorf("nftables = %v, %v", enf, err)
 	} else if _, ok := enf.(*nft.Backend); !ok {
 		t.Errorf("nftables backend is %T", enf)
 	}
-	if _, err := newEnforcer(config.Enforce{Backend: "iptables"}, log); err == nil || !strings.Contains(err.Error(), `enforce.backend "iptables" is not available`) {
+	if _, err := newEnforcer(config.Enforce{Backend: "iptables"}, 0, log); err == nil || !strings.Contains(err.Error(), `enforce.backend "iptables" is not available`) {
 		t.Errorf("unknown backend error = %v", err)
 	}
 }

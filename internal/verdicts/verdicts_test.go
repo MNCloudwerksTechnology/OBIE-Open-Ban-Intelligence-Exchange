@@ -51,6 +51,8 @@ type publisher struct {
 	db   *store.DB
 	now  func() time.Time
 	fail error
+	// receive are extra obieproto.Receive options, as the mesh's.
+	receive []obieproto.Option
 
 	mu   sync.Mutex
 	sent [][]byte
@@ -64,7 +66,7 @@ func (p *publisher) Publish(_ context.Context, ev *obieproto.Event) error {
 	if err != nil {
 		return err
 	}
-	checked, err := obieproto.Receive(data, obieproto.WithClock(p.now))
+	checked, err := obieproto.Receive(data, append(p.receive, obieproto.WithClock(p.now))...)
 	if err != nil {
 		return err
 	}
@@ -325,6 +327,21 @@ func TestPendingCountsOfExpiredVerdictsArePruned(t *testing.T) {
 	}
 	if len(f.svc.pending) != 0 {
 		t.Errorf("pending = %v, want empty", f.svc.pending)
+	}
+}
+
+func TestReportDocumentationRanges(t *testing.T) {
+	f := newFixture(t)
+	f.svc.opts.AllowDocumentationRanges = true
+	f.pub.receive = []obieproto.Option{obieproto.ReceiveDocumentationRanges()}
+	res := f.report(t, sshReport("203.0.113.7", 3))
+	if res.Event == nil || res.Event.Indicator.Value != "203.0.113.7" || f.pub.count() != 1 {
+		t.Errorf("Report(documentation address) with AllowDocumentationRanges = %+v, published %d; want one verdict",
+			res, f.pub.count())
+	}
+	r := sshReport("10.1.2.3", 1)
+	if _, err := f.svc.Report(context.Background(), r); !errors.Is(err, ErrRefused) {
+		t.Errorf("Report(private address) with AllowDocumentationRanges = %v, want ErrRefused", err)
 	}
 }
 

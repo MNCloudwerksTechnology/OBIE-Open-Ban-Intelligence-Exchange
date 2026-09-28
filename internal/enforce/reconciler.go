@@ -403,8 +403,9 @@ type candidate struct {
 // desired returns the entries to apply at now: the blocks of the gate
 // with at least MinTimeout left that the allow-list does not refuse, the
 // operator's force-blocks and then the highest scores first up to
-// MaxEntries, without those inside a wider one, ordered by prefix. It logs newly skipped blocks and
-// counts the skipped ones by reason. Callers hold enfMu.
+// MaxEntries, without those inside a wider one, ordered by prefix. It logs
+// and counts newly skipped blocks and counts the skipped ones by reason.
+// Callers hold enfMu.
 func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 	allow := r.opts.Allowlist()
 	byPrefix := map[netip.Prefix]candidate{}

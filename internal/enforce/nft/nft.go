@@ -33,6 +33,10 @@ type Options struct {
 	Forward bool
 	// Now is the clock; time.Now when nil.
 	Now func() time.Time
+	// NetNS is a file descriptor of the network namespace to program
+	// instead of obied's own; 0 for obied's own. Only multi-node tests on
+	// one host set it, to give every node a firewall of its own.
+	NetNS int
 }
 
 // ErrPermission is returned when the kernel refuses the netlink requests.

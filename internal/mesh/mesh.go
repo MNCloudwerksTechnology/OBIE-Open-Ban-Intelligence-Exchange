@@ -78,6 +78,9 @@ type Options struct {
 	// GossipMetrics observes the outcome of every received event; nil for
 	// none.
 	GossipMetrics gossip.Metrics
+	// AllowDocumentationRanges accepts events on documentation addresses
+	// (gossip.Options.AllowDocumentationRanges); only for tests.
+	AllowDocumentationRanges bool
 
 	// InitialBackoff and MaxBackoff bound the delay between dials of a
 	// disconnected bootstrap peer.
@@ -224,6 +227,8 @@ func (m *Mesh) Start(context.Context) error {
 		PublisherLimit: m.opts.RateLimit.Publisher,
 		PeerLimit:      m.opts.RateLimit.Peer,
 		Metrics:        m.opts.GossipMetrics,
+
+		AllowDocumentationRanges: m.opts.AllowDocumentationRanges,
 	}, m.log)
 	if err != nil {
 		_ = h.Close()

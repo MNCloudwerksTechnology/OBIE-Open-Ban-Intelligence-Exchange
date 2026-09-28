@@ -71,6 +71,10 @@ type Options struct {
 	Allowlist []netip.Prefix
 	// Now is the clock; time.Now when nil.
 	Now func() time.Time
+	// AllowDocumentationRanges issues verdicts on documentation addresses
+	// (obieproto.AllowDocumentationRanges). Only for multi-node tests;
+	// production nodes never set it.
+	AllowDocumentationRanges bool
 }
 
 // Report is a local detection to publish as a verdict.
@@ -200,7 +204,7 @@ func (s *Service) Report(ctx context.Context, r Report) (Result, error) {
 	}
 	// The report is validated on its own before counts are merged, so an
 	// invalid report never touches the active verdict.
-	if err := validate(ev, now); err != nil {
+	if err := s.validate(ev, now); err != nil {
 		return Result{}, err
 	}
 
@@ -265,7 +269,7 @@ func (s *Service) Revoke(ctx context.Context, r Revocation) ([]*obieproto.Event,
 			Reason:    r.Reason,
 			Publisher: obieproto.Publisher{PeerID: s.PeerID()},
 		}
-		if err := validate(ev, now); err != nil {
+		if err := s.validate(ev, now); err != nil {
 			return revocations, err
 		}
 		if err := s.publish(ctx, ev); err != nil {
@@ -381,8 +385,12 @@ func (s *Service) ttl(requested time.Duration) (time.Duration, error) {
 
 // validate checks an event this node is about to issue; a non-public
 // indicator is refused, other violations are invalid.
-func validate(ev *obieproto.Event, now time.Time) error {
-	err := ev.Validate(obieproto.WithClock(func() time.Time { return now }))
+func (s *Service) validate(ev *obieproto.Event, now time.Time) error {
+	opts := []obieproto.Option{obieproto.WithClock(func() time.Time { return now })}
+	if s.opts.AllowDocumentationRanges {
+		opts = append(opts, obieproto.AllowDocumentationRanges())
+	}
+	err := ev.Validate(opts...)
 	switch {
 	case err == nil:
 		return nil
