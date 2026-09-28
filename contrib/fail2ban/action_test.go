@@ -53,6 +53,16 @@ func TestActionBan(t *testing.T) {
 				"--protocol", "submission", "--reason", "password_bruteforce", "--events", "5", "--confidence", "0.9",
 				"--mitre", "T1110.001,T1110.003", "--ttl", "600s", "--evidence-from-stdin"},
 		},
+		"increased ban time": {
+			jail: "sshd", ticket: ban{ip: "203.0.113.7", failures: "5", bantime: "1234.5678"},
+			wantArgs: []string{"--socket", "/run/obie/obie.sock", "--timeout", "5s", "report", "--ip", "203.0.113.7",
+				"--protocol", "ssh", "--reason", "bruteforce", "--events", "5", "--mitre", "T1110", "--ttl", "1234s"},
+		},
+		"ban shorter than the minimum TTL": {
+			jail: "sshd", ticket: ban{ip: "203.0.113.7", failures: "5", bantime: "30"},
+			wantArgs: []string{"--socket", "/run/obie/obie.sock", "--timeout", "5s", "report", "--ip", "203.0.113.7",
+				"--protocol", "ssh", "--reason", "bruteforce", "--events", "5", "--mitre", "T1110", "--ttl", "60s"},
+		},
 		"permanent ban without matches or mitre": {
 			jail: "recidive", params: map[string]string{"mitre": ""},
 			ticket: ban{ip: "2001:db8::7", failures: "3", bantime: "-1"},
