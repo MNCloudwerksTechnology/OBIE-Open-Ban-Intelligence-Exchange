@@ -86,6 +86,17 @@ func TestStartDetectsCorruption(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, "MANIFEST is missing"},
+		{"key registry damaged", func(t *testing.T, dir string) {
+			overwrite(t, filepath.Join(dir, "KEYREGISTRY"), 0, garbage)
+		}, "KEYREGISTRY"},
+		{"value log header damaged", func(t *testing.T, dir string) {
+			overwrite(t, dataFile(t, dir, ".vlog"), 0, garbage)
+		}, "000001.vlog is damaged"},
+		{"value log empty", func(t *testing.T, dir string) {
+			if err := os.Truncate(dataFile(t, dir, ".vlog"), 0); err != nil {
+				t.Fatal(err)
+			}
+		}, "000001.vlog is empty"},
 		{"table block damaged", func(t *testing.T, dir string) {
 			overwrite(t, dataFile(t, dir, ".sst"), 100, garbage)
 		}, "checksum validation failed"},
@@ -93,6 +104,11 @@ func TestStartDetectsCorruption(t *testing.T) {
 			path := dataFile(t, dir, ".sst")
 			overwrite(t, path, fileSize(t, path)-200, garbage)
 		}, "000001.sst"},
+		{"table missing", func(t *testing.T, dir string) {
+			if err := os.Remove(dataFile(t, dir, ".sst")); err != nil {
+				t.Fatal(err)
+			}
+		}, "table 000001.sst listed in MANIFEST"},
 		{"table truncated", func(t *testing.T, dir string) {
 			if err := os.Truncate(dataFile(t, dir, ".sst"), 100); err != nil {
 				t.Fatal(err)
@@ -147,7 +163,7 @@ func TestStartReportsStoreInUse(t *testing.T) {
 // store: Start either opens it or reports it as corrupt, but never crashes
 // the process.
 func TestStartNeverCrashesOnDamage(t *testing.T) {
-	rounds := 30
+	rounds := 300
 	if testing.Short() {
 		rounds = 5
 	}

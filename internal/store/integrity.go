@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 
+	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
 	"github.com/dgraph-io/badger/v4/table"
 	"github.com/dgraph-io/ristretto/v2/z"
@@ -25,47 +28,121 @@ const manifestFile = "MANIFEST"
 // checkFiles looks for damage in the database directory before Badger
 // opens it, because Badger does not report all of it as an error: without
 // a MANIFEST it silently starts an empty database next to the old tables,
-// it does not verify the tables' block checksums when it opens them, and a
+// it does not verify the tables' block checksums when it opens them, a
 // damaged table makes it panic in a goroutine of its own, which no caller
-// can recover. So every table is opened and verified here first, where a
-// panic can be recovered. The MANIFEST itself Badger checks.
-func checkFiles(dir string) error {
+// can recover, and after most other damage it fails having started
+// goroutines it never stops. So the key registry, the MANIFEST and every
+// table it lists are read and verified here first, where a panic can be
+// recovered; opts are the options the database is opened with.
+func checkFiles(dir string, opts badger.Options) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
 	}
-	var tables []string
+	var logs []string
 	data, manifest := false, false
 	for _, e := range entries {
 		switch ext := filepath.Ext(e.Name()); {
 		case e.Name() == manifestFile:
 			manifest = true
-		case ext == ".sst":
-			tables = append(tables, e.Name())
-			data = true
 		case ext == ".vlog" || ext == ".mem":
+			logs = append(logs, e.Name())
+			data = true
+		case ext == ".sst":
 			data = true
 		}
 	}
-	if data && !manifest {
-		return fmt.Errorf("%w: %s is missing although the directory holds data files", ErrCorrupt, manifestFile)
+	if !manifest {
+		if data {
+			return fmt.Errorf("%w: %s is missing although the directory holds data files", ErrCorrupt, manifestFile)
+		}
+		return nil // a new database
 	}
-	for _, name := range tables {
-		path := filepath.Join(dir, name)
+	kr, err := badger.OpenKeyRegistry(badger.KeyRegistryOptions{Dir: dir, ReadOnly: true})
+	if err != nil {
+		return fmt.Errorf("%w: %s: %w", ErrCorrupt, badger.KeyRegistryFileName, err)
+	}
+	if err := kr.Close(); err != nil {
+		return err
+	}
+	for _, name := range logs {
+		if err := checkLogHeader(filepath.Join(dir, name), opts); err != nil {
+			return err
+		}
+	}
+	m, err := readManifest(filepath.Join(dir, manifestFile), opts)
+	if err != nil {
+		return err
+	}
+	ids := slices.Sorted(maps.Keys(m.Tables))
+	for _, id := range ids {
+		path := table.NewFilename(id, dir)
+		if _, err := os.Stat(path); err != nil {
+			return fmt.Errorf("%w: table %s listed in %s: %w", ErrCorrupt, filepath.Base(path), manifestFile, err)
+		}
 		if err := checkTableFooter(path); err != nil {
 			return err
 		}
-		if err := verifyTable(path); err != nil {
+		if err := verifyTable(path, m.Tables[id].Compression, opts.BlockSize); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
+// logHeaderSize is the length of the header of Badger's value-log and
+// memtable log files: [encryption key ID: 8][IV: 12].
+const logHeaderSize = 20
+
+// checkLogHeader reports the damage to a value-log or memtable log file
+// that Badger fails on: an empty value log, and a header naming an
+// encryption key although the database is not encrypted.
+func checkLogHeader(path string, opts badger.Options) error {
+	f, err := os.Open(path) // #nosec G304 -- a log file in the store directory.
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	name := filepath.Base(path)
+	switch {
+	case info.Size() == 0 && filepath.Ext(name) == ".vlog":
+		return fmt.Errorf("%w: value log %s is empty", ErrCorrupt, name)
+	case info.Size() < logHeaderSize || len(opts.EncryptionKey) > 0:
+		return nil // Badger truncates a short log; keys it checks itself.
+	}
+	var buf [8]byte
+	if _, err := f.ReadAt(buf[:], 0); err != nil {
+		return err
+	}
+	if id := binary.BigEndian.Uint64(buf[:]); id != 0 {
+		return fmt.Errorf("%w: log %s is damaged: its header names encryption key %d, but the store is not encrypted",
+			ErrCorrupt, name, id)
+	}
+	return nil
+}
+
+// readManifest replays the MANIFEST at path.
+func readManifest(path string, opts badger.Options) (badger.Manifest, error) {
+	f, err := os.Open(path) // #nosec G304 -- the MANIFEST in the store directory.
+	if err != nil {
+		return badger.Manifest{}, err
+	}
+	defer func() { _ = f.Close() }()
+	m, _, err := badger.ReplayManifestFile(f, opts.ExternalMagicVersion, opts)
+	if err != nil {
+		return badger.Manifest{}, fmt.Errorf("%w: %s: %w", ErrCorrupt, manifestFile, err)
+	}
+	return m, nil
+}
+
 // verifyTable opens a Badger table read-only and verifies the checksums of
 // its index and every block, recovering the panics Badger raises for some
 // damage.
-func verifyTable(path string) (err error) {
+func verifyTable(path string, compression options.CompressionType, blockSize int) (err error) {
 	name := filepath.Base(path)
 	mf, err := z.OpenMmapFile(path, os.O_RDONLY, 0)
 	if err != nil {
@@ -82,8 +159,8 @@ func verifyTable(path string) (err error) {
 	_, err = table.OpenTable(mf, table.Options{
 		ReadOnly:    true,
 		ChkMode:     options.OnTableRead,
-		BlockSize:   tableBlockSize,
-		Compression: tableCompression,
+		BlockSize:   blockSize,
+		Compression: compression,
 	})
 	if err != nil {
 		return fmt.Errorf("%w: table %s: %w", ErrCorrupt, name, err)

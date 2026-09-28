@@ -125,7 +125,7 @@ func (s *DB) Start(context.Context) error {
 		if err := os.MkdirAll(s.dir, 0o700); err != nil {
 			return fmt.Errorf("create database directory: %w", err)
 		}
-		if err := checkFiles(s.dir); err != nil {
+		if err := checkFiles(s.dir, s.badgerOptions()); err != nil {
 			return openError(s.dir, err)
 		}
 	}
@@ -307,12 +307,6 @@ func (s *DB) runValueLogGC() error {
 	}
 }
 
-// Table format settings, which checkFiles needs to read the tables.
-const (
-	tableBlockSize   = 4 << 10
-	tableCompression = options.Snappy
-)
-
 // badgerOptions sizes Badger for a small VPS (ADR 0008). Every block's
 // checksum is verified when it is read, so damage on disk is reported
 // instead of read as data; checkFiles verifies all tables before the
@@ -320,8 +314,6 @@ const (
 func (s *DB) badgerOptions() badger.Options {
 	opts := badger.DefaultOptions(s.dir).
 		WithChecksumVerificationMode(options.OnBlockRead).
-		WithBlockSize(tableBlockSize).
-		WithCompression(tableCompression).
 		WithLogger(badgerLogger{s.log}).
 		WithMetricsEnabled(false).
 		WithMemTableSize(16 << 20).
