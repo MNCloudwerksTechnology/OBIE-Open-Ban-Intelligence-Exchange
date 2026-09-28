@@ -58,9 +58,10 @@ func (e *Engine) Counts() Counts {
 func (e *Engine) publishMetrics() {
 	c := Counts{Decisions: make(map[State]int, len(States))}
 	e.mu.RLock()
-	for key, d := range e.decisions {
-		c.Decisions[d.State]++
-		if n := len(e.held[key]); n > 0 {
+	for i := range e.kept.items {
+		k := &e.kept.items[i]
+		c.Decisions[k.d.State]++
+		if n := len(k.held); n > 0 {
 			c.Indicators++
 			c.Verdicts += n
 		}

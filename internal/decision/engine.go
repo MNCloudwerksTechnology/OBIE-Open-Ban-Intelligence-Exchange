@@ -113,14 +113,12 @@ type Engine struct {
 	policy  Policy
 	rules   Rules
 
-	// mu guards decisions: the decision of every indicator with active
-	// verdicts, by key, without Publishers.
-	mu        sync.RWMutex
-	decisions map[string]Decision
-	// held lists the active verdicts of every kept decision, by key, and
-	// publishers counts them by publisher (ADR 0021); categories counts the
+	// mu guards kept: the decision of every indicator with active
+	// verdicts, without Publishers, with its active verdicts. publishers
+	// counts those by publisher (ADR 0021); categories counts the
 	// decisions holding a verdict of each category (ADR 0022).
-	held       map[string][]heldVerdict
+	mu         sync.RWMutex
+	kept       keptSet
 	publishers map[unique.Handle[string]]PublisherCount
 	categories map[unique.Handle[string]]int
 	// generation counts the evaluations that kept, replaced or dropped a
@@ -168,8 +166,6 @@ func New(st store.Store, p Policy, log *slog.Logger, opts Options) *Engine {
 		rules:      Rules{Allowlist: opts.Allowlist},
 		log:        log,
 		opts:       opts.withDefaults(),
-		decisions:  map[string]Decision{},
-		held:       map[string][]heldVerdict{},
 		publishers: map[unique.Handle[string]]PublisherCount{},
 		categories: map[unique.Handle[string]]int{},
 		dirty:      map[string]string{},
@@ -202,7 +198,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	e.stop, e.done = make(chan struct{}), make(chan struct{})
 	go e.loop(e.stop, e.done)
 	e.mu.RLock()
-	n := len(e.decisions)
+	n := e.kept.len()
 	e.mu.RUnlock()
 	e.log.Info("decision engine started", "indicators", n, "blocked", len(e.Decisions(StateBlock)))
 	return nil
@@ -353,8 +349,11 @@ func (e *Engine) Policy() Policy {
 func (e *Engine) Decision(key string) (Decision, bool) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	d, ok := e.decisions[key]
-	return d, ok
+	k, ok := e.kept.get(key)
+	if !ok {
+		return Decision{}, false
+	}
+	return k.d, true
 }
 
 // Generation counts the evaluations that kept, replaced or dropped a
@@ -397,9 +396,9 @@ func (e *Engine) refreshOverrides(now time.Time) ([]netip.Prefix, error) {
 func (e *Engine) keptKeys() []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	keys := make([]string, 0, len(e.decisions))
-	for key := range e.decisions {
-		keys = append(keys, key)
+	keys := make([]string, 0, e.kept.len())
+	for i := range e.kept.items {
+		keys = append(keys, e.kept.items[i].key)
 	}
 	return keys
 }
@@ -425,9 +424,9 @@ func (e *Engine) overlapping(ranges []netip.Prefix) []string {
 	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	for key, d := range e.decisions {
-		if overlaps(d.Indicator) {
-			keys = append(keys, key)
+	for i := range e.kept.items {
+		if k := &e.kept.items[i]; k.prefix.IsValid() && slices.ContainsFunc(ranges, k.prefix.Overlaps) {
+			keys = append(keys, k.key)
 		}
 	}
 	return keys
@@ -445,11 +444,12 @@ func (e *Engine) Decisions(state State) []Decision {
 func (e *Engine) list(state State, hideExpired bool) []Decision {
 	now := e.opts.Now()
 	e.mu.RLock()
-	out := make([]Decision, 0, len(e.decisions))
-	for _, d := range e.decisions {
+	out := make([]Decision, 0, e.kept.len())
+	for i := range e.kept.items {
+		d := &e.kept.items[i].d
 		expired := hideExpired && d.State == StateBlock && !now.Before(d.ExpiresAt)
 		if state == "" || (d.State == state && !expired) {
-			out = append(out, d)
+			out = append(out, *d)
 		}
 	}
 	e.mu.RUnlock()
@@ -594,11 +594,12 @@ func (e *Engine) refreshExpired() {
 	now := e.opts.Now()
 	var due []string
 	e.mu.RLock()
-	for key, d := range e.decisions {
+	for i := range e.kept.items {
+		d := &e.kept.items[i].d
 		blockEnded := d.State == StateBlock && !now.Before(d.ExpiresAt)
 		overrideEnded := !d.Sovereignty.ExpiresAt.IsZero() && !now.Before(d.Sovereignty.ExpiresAt)
 		if blockEnded || overrideEnded {
-			due = append(due, key)
+			due = append(due, e.kept.items[i].key)
 		}
 	}
 	e.mu.RUnlock()
@@ -650,10 +651,14 @@ func (e *Engine) indicatorOf(key string, verdicts []*obieproto.Event) (obieproto
 		return verdicts[0].Indicator, true
 	}
 	e.mu.RLock()
-	d, ok := e.decisions[key]
+	k, ok := e.kept.get(key)
+	var ind obieproto.Indicator
+	if ok {
+		ind = k.d.Indicator
+	}
 	e.mu.RUnlock()
 	if ok {
-		return d.Indicator, true
+		return ind, true
 	}
 	_, r := e.current()
 	o, ok := r.Overrides.Get(key)
@@ -668,17 +673,16 @@ func (e *Engine) apply(key string, d Decision, cause string) {
 	active := len(held) > 0 || d.State == StateBlock
 	d.Publishers = nil
 	e.mu.Lock()
-	prev, had := e.decisions[key]
-	e.count(e.held[key], -1)
-	switch {
-	case !active:
-		delete(e.decisions, key)
-		delete(e.held, key)
-	case len(held) == 0:
-		e.decisions[key] = d
-		delete(e.held, key)
-	default:
-		e.decisions[key], e.held[key] = d, held
+	var prev Decision
+	k, had := e.kept.get(key)
+	if had {
+		prev = k.d
+		e.count(k.held, -1)
+	}
+	if active {
+		e.kept.put(key, d, held)
+	} else {
+		e.kept.remove(key)
 	}
 	e.count(held, 1)
 	if active || had {

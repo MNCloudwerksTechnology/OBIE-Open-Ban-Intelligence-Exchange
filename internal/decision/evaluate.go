@@ -257,8 +257,8 @@ func reason(d *Decision, active int) string {
 		return "no active verdicts"
 	}
 	tally := fmt.Sprintf("score %s %s threshold %s, %d %s quorum %d",
-		formatFloat(d.Score), cmp(d.Score >= d.Threshold-scoreTolerance), formatFloat(d.Threshold),
-		d.Contributors, cmp(d.Contributors >= d.Quorum), d.Quorum)
+		formatFloat(d.Score), relation(d.Score >= d.Threshold-scoreTolerance), formatFloat(d.Threshold),
+		d.Contributors, relation(d.Contributors >= d.Quorum), d.Quorum)
 	switch {
 	case d.Autoblock:
 		return "local autoblock: this node's own ban verdict (" + tally + ")"
@@ -269,7 +269,7 @@ func reason(d *Decision, active int) string {
 	}
 }
 
-func cmp(reached bool) string {
+func relation(reached bool) string {
 	if reached {
 		return ">="
 	}
