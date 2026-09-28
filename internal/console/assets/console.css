@@ -523,7 +523,7 @@ h2 {
 
 .number-main {
   display: flex;
-  flex-direction: column-reverse;
+  flex-direction: column;
   color: var(--text);
   text-decoration: none;
 }
@@ -686,6 +686,10 @@ a.number-main .number-label {
 
   .facts dd {
     margin-bottom: 0.625rem;
+  }
+
+  .numbers {
+    grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
   }
 
   .starting-items {

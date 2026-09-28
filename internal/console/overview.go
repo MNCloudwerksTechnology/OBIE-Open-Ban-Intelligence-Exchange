@@ -485,8 +485,12 @@ func (o *overview) meshConditions() []condition {
 			Title: "No peer is configured, so this node hears only its own reports.",
 			Next:  "Add the peers of your mesh to mesh.bootstrap and restart obied; the federation guide explains how."})
 	default:
+		title := fmt.Sprintf("No peer is connected: none of the %s configured peers answers.", count(p.Configured))
+		if p.Configured == 1 {
+			title = "No peer is connected: the configured peer does not answer."
+		}
 		out = append(out, condition{Warning: true,
-			Title:   fmt.Sprintf("No peer is connected: none of the %s answers.", plural(p.Configured, "configured peer", "configured peers")),
+			Title:   title,
 			Next:    "Check that the peers run and that their mesh port is reachable from this host; the obied log names the failed dials.",
 			Command: "obiectl peers"})
 	}

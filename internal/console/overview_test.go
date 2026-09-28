@@ -259,6 +259,11 @@ func TestOverviewAfterStartupGrace(t *testing.T) {
 		t.Errorf("mesh after the grace = %+v, want degraded", p.Parts[0])
 	}
 
+	in.facts.Peers.Configured = 1
+	if p := buildOverview(in); p.Conditions[0].Title != "No peer is connected: the configured peer does not answer." {
+		t.Errorf("no-peer condition with one configured peer = %q", p.Conditions[0].Title)
+	}
+
 	in.facts.Peers.Configured = 0
 	in.facts.Store.EventsAccepted = 1 // arrived and expired: the node did receive one
 	p = buildOverview(in)
