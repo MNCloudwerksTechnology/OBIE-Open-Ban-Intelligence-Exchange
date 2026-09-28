@@ -155,9 +155,13 @@ Keep the privacy policy true to the deployment and the code:
   the default of `OBIE_INQUIRY_RETENTION`. A test checks it against the
   default; if the deployment sets another value, change `INQUIRY_RETENTION`.
 - **Server logs.** The policy promises that access logs are kept for at most
-  `SERVER_LOG_RETENTION` (7 days). The application writes no access log; set
-  the reverse proxy or web server in front of it to delete its logs after
-  7 days.
+  `SERVER_LOG_RETENTION` (7 days, the operator's setting). The application
+  writes no access log; set the reverse proxy or web server in front of it,
+  and the collection of the application's own log (stdout), to delete logs
+  after 7 days.
+- **Client IP.** Rate limit and IP hash use the visitor's address only if
+  `SERVER_FORWARD_HEADERS_STRATEGY=native` is set behind a reverse proxy (see
+  [Configuration](#configuration)); otherwise they see the proxy's address.
 - **No cookies, no tracking, no third-party requests.** That is why the site
   has no cookie banner. Adding any of them (analytics, embedded videos,
   externally hosted fonts or scripts, anything stored in the browser) needs

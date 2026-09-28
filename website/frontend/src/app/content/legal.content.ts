@@ -29,7 +29,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
   reviewPending: true,
   reviewNotice: {
     heading: 'Draft: pending the operator’s review',
-    text: 'This page must be reviewed by the operator before the site goes live. Until then it is a draft and not legal advice.',
+    text: 'This page must be reviewed by the operator before the site goes live. Until then it is a draft.',
   },
   impressum: {
     meta: {
@@ -180,6 +180,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
       {
         id: 'summary',
         heading: 'In short',
+        legalTerm: 'Kurzfassung',
         blocks: [
           {
             kind: 'list',
@@ -188,7 +189,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
               'No tracking and no analytics. We do not measure your visit, build profiles or use advertising services.',
               'No third-party requests. Fonts, images and scripts come from this website’s own server; your browser does not contact Google Fonts, content delivery networks or any other third party.',
               'Because there are no cookies and no tracking, this website shows no cookie banner: there is nothing to consent to.',
-              'We only receive what you type into the inquiry form, and we use it only to answer you.',
+              'Apart from the server logs and the protection against abuse described below, we only receive what you type into the inquiry form, and we use it only to answer you.',
             ],
           },
         ],
@@ -244,7 +245,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
           },
           {
             kind: 'paragraph',
-            text: `We need these logs to run the website securely and reliably, for example to detect and investigate attacks; this is our legitimate interest (Art. 6(1)(f) GDPR). The logs are kept for at most ${SERVER_LOG_RETENTION} and then deleted. Data needed as evidence of a specific incident is kept until the incident is resolved. The website application itself writes no access log; its own log records only technical events, such as the reference number of an inquiry, never your IP address or what you typed.`,
+            text: `We need these logs to run the website securely and reliably, for example to detect and investigate attacks; this is our legitimate interest (Art. 6(1)(f) GDPR). The logs are kept for at most ${SERVER_LOG_RETENTION} and then deleted. Data needed as evidence of a specific incident is kept until the incident is resolved. The website application itself writes no access log. Its own log records technical events, such as the reference number of an inquiry, but not your IP address or the content of your inquiry; only when an e-mail cannot be delivered may the mail server’s error message in this log contain your e-mail address. The application log is kept no longer than the server logs.`,
           },
         ],
       },
@@ -279,7 +280,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
               'your name and e-mail address',
               'optionally: your organisation, and for events the date, location and expected audience',
               'your message',
-              'the time the inquiry was received',
+              'the time the inquiry was received, its processing status and when the e-mails about it were sent',
             ],
           },
           {
@@ -288,15 +289,15 @@ export const LEGAL_CONTENT_EN: LegalContent = {
           },
           {
             kind: 'paragraph',
-            text: `Storage: the form is sent encrypted (HTTPS) to this website’s server, which stores the inquiry in its own PostgreSQL database. It is deleted automatically ${INQUIRY_RETENTION} after it was received.`,
+            text: `Storage: the form is sent encrypted (HTTPS) to this website’s server, which stores the inquiry in its own PostgreSQL database. It is deleted automatically ${INQUIRY_RETENTION} after it was received (by a daily job, so at the latest one day later).`,
           },
           {
             kind: 'paragraph',
-            text: 'Forwarding by e-mail: after storing it, the server e-mails the inquiry to us and sends you a short confirmation that repeats nothing you typed. The e-mails are sent encrypted (TLS) through TODO(operator): name and address of the e-mail (SMTP) provider, which processes them only on our behalf (processor, Art. 28 GDPR). The copy in our mailbox is kept TODO(operator): how long answered inquiries stay in the mailbox.',
+            text: 'Forwarding by e-mail: after storing it, the server e-mails the inquiry to us and sends you a short confirmation that repeats nothing you typed. The server connects to TODO(operator): name and address of the e-mail (SMTP) provider over an encrypted connection (TLS) and hands the e-mails to it for delivery; the provider processes them only on our behalf (processor, Art. 28 GDPR). The copy in our mailbox is kept TODO(operator): how long answered inquiries stay in the mailbox.',
           },
           {
             kind: 'paragraph',
-            text: 'Protection against abuse: to stop automated spam and floods of inquiries, the server limits the number of inquiries per IP address. For this, your IP address (for IPv6, its network part) is held in the server’s memory only, never written to disk, and removed once your allowance has refilled: with the default settings no later than 70 minutes after your last inquiry. With the inquiry itself we store your IP address only as a salted hash: a value from which the address cannot be read back, but which lets us recognise several inquiries from the same address. The hash is deleted together with the inquiry. The legal basis is our legitimate interest in protecting the form from abuse (Art. 6(1)(f) GDPR).',
+            text: 'Protection against abuse: to stop automated spam and floods of inquiries, the server limits the number of inquiries per IP address. For this, your IP address (for IPv6, its network part) is held in the server’s memory only, never written to disk, and removed once your allowance has refilled: with the default settings no later than 70 minutes after your last inquiry. With the inquiry itself we store your IP address only as a salted hash: a value from which the address cannot be read back without our secret key, but which lets us recognise several inquiries from the same address. The hash is still personal data (pseudonymised) and is deleted together with the inquiry. The legal basis is our legitimate interest in protecting the form from abuse (Art. 6(1)(f) GDPR).',
           },
           {
             kind: 'paragraph',
@@ -348,6 +349,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
       {
         id: 'privacy-contact',
         heading: 'Contact for privacy requests',
+        legalTerm: 'Kontakt für Datenschutzanfragen',
         blocks: [
           {
             kind: 'paragraph',

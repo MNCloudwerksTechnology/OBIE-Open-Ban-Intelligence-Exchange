@@ -363,7 +363,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
       consent: {
         before: 'I have read the ',
         link: { label: 'privacy notice', href: LINKS.privacy },
-        after: ' and agree that my inquiry is stored and used to answer me.',
+        after: ' and understand that my inquiry is stored to answer me.',
       },
       honeypot: 'Leave this field empty',
       submit: 'Send inquiry',
