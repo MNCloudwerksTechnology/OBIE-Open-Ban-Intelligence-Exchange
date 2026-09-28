@@ -114,6 +114,15 @@ type Status struct {
 	Applied int
 	// Skipped counts the decided blocks not applied, by skip reason.
 	Skipped map[string]int
+	// Blocks counts the decided blocks the last successful pass
+	// considered: those with an address range and at least MinTimeout
+	// left.
+	Blocks int
+	// Covered counts the considered blocks without an entry of their own
+	// because they share one with another block: the same range, or a
+	// range inside a wider one. Blocks is Applied plus Covered plus the
+	// Skipped counts.
+	Covered int
 	// Failures counts the consecutive failed passes; 0 after a success.
 	Failures int
 	// Err is the error of the last failed pass.
@@ -346,13 +355,13 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 		}
 		r.backend = backendSetUp
 	}
-	want, skipped := r.desired(r.opts.Now())
+	p := r.desired(r.opts.Now())
 	have, err := r.enf.List(ctx)
 	if err != nil {
 		r.backend = backendUnknown // e.g. the table was changed by hand
 		return r.fail(mode, fmt.Errorf("list the applied entries: %w", err))
 	}
-	add, remove := Diff(want, have)
+	add, remove := Diff(p.entries, have)
 	add, remove, deferred := settle(add, remove, have, r.opts.Now())
 	r.deferred = deferred > 0
 	if deferred > 0 {
@@ -366,9 +375,9 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 			r.backend = backendUnknown
 			return r.fail(mode, fmt.Errorf("apply %d additions and %d removals: %w", len(add), len(remove), err))
 		}
-		r.log.Info("enforcement reconciled", "added", len(add), "removed", len(remove), "entries", len(want))
+		r.log.Info("enforcement reconciled", "added", len(add), "removed", len(remove), "entries", len(p.entries))
 	}
-	r.succeed(mode, want, skipped)
+	r.succeed(mode, p)
 	return nil
 }
 
@@ -387,7 +396,7 @@ func (r *Reconciler) observe(ctx context.Context) error {
 	}
 	clear(r.skipped)
 	r.deferred = false
-	r.succeed(config.ModeObserve, nil, nil)
+	r.succeed(config.ModeObserve, plan{})
 	return nil
 }
 
@@ -400,16 +409,27 @@ type candidate struct {
 	forced bool
 }
 
+// plan is what desired decided: the entries to apply and how the decided
+// blocks came to them.
+type plan struct {
+	entries []Entry
+	// skipped counts the blocks not applied, by skip reason.
+	skipped map[string]int
+	// blocks and covered are Status.Blocks and Status.Covered.
+	blocks, covered int
+}
+
 // desired returns the entries to apply at now: the blocks of the gate
 // with at least MinTimeout left that the allow-list does not refuse, the
 // operator's force-blocks and then the highest scores first up to
 // MaxEntries, without those inside a wider one, ordered by prefix. It logs
 // and counts newly skipped blocks and counts the skipped ones by reason.
 // Callers hold enfMu.
-func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
+func (r *Reconciler) desired(now time.Time) plan {
 	allow := r.opts.Allowlist()
 	byPrefix := map[netip.Prefix]candidate{}
 	skipped := map[netip.Prefix]string{}
+	blocks := 0
 	for _, d := range r.gate.Blocks() {
 		if d.State != decision.StateBlock || d.ExpiresAt.Sub(now) < MinTimeout {
 			continue
@@ -419,6 +439,7 @@ func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 			r.log.Warn("block decision without an address range, not applied", "indicator", d.Indicator.Key(), "error", err)
 			continue
 		}
+		blocks++
 		if entry, refused := refusedBy(allow, p, &d); refused {
 			if _, known := r.skipped[p]; !known {
 				r.log.Warn("block decision refused by the allow-list right before apply", "prefix", p.String(),
@@ -476,7 +497,8 @@ func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 	for _, reason := range skipped {
 		counts[reason]++
 	}
-	return want, counts
+	// Each entry and each skipped prefix stands for at least one block.
+	return plan{entries: want, skipped: counts, blocks: blocks, covered: blocks - len(want) - len(skipped)}
 }
 
 // mergeCovered leaves out the candidates inside a wider one, since an
@@ -612,13 +634,13 @@ func (r *Reconciler) fail(mode config.Mode, err error) error {
 	return err
 }
 
-// succeed records a successful pass that left entries applied.
-func (r *Reconciler) succeed(mode config.Mode, entries []Entry, skipped map[string]int) {
+// succeed records a successful pass that left the entries of p applied.
+func (r *Reconciler) succeed(mode config.Mode, p plan) {
 	applyTotal.WithLabelValues(resultSuccess).Inc()
-	setEntriesMetric(entries)
+	setEntriesMetric(p.entries)
 	r.statusMu.Lock()
 	defer r.statusMu.Unlock()
-	r.status = Status{Mode: mode, Applied: len(entries), Skipped: skipped}
+	r.status = Status{Mode: mode, Applied: len(p.entries), Skipped: p.skipped, Blocks: p.blocks, Covered: p.covered}
 }
 
 // setFailure records the consecutive failures and the retry delay.

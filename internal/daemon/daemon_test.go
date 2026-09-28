@@ -246,6 +246,65 @@ func TestReloadRejects(t *testing.T) {
 	}
 }
 
+// TestReloadRecordsLoads: the console learns when the running
+// configuration was loaded, why the last reload was rejected and what
+// waits for a restart.
+func TestReloadRecordsLoads(t *testing.T) {
+	f := newReloadFixture(t)
+	started := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
+	clock := started
+	f.rl.loads = newConfigLoads(started, func() time.Time { return clock })
+	if got := f.rl.loads.record(); !got.LoadedAt.Equal(started) || got.Reloaded || got.Rejected != nil || got.RestartKeys != nil {
+		t.Errorf("at start: %+v", got)
+	}
+
+	clock = started.Add(time.Minute)
+	f.err = errors.New("invalid configuration: decision.quorum")
+	if err := f.rl.reload(context.Background()); err == nil {
+		t.Fatal("reload succeeded")
+	}
+	got := f.rl.loads.record()
+	if !got.LoadedAt.Equal(started) || got.Reloaded || !got.RejectedAt.Equal(clock) || !errors.Is(got.Rejected, f.err) {
+		t.Errorf("after a rejected reload: %+v", got)
+	}
+
+	clock = started.Add(2 * time.Minute)
+	f.err = nil
+	f.next.Log.Level = "debug"
+	f.next.Metrics.Listen = "127.0.0.1:9999"
+	if err := f.rl.reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got = f.rl.loads.record()
+	if !got.LoadedAt.Equal(clock) || !got.Reloaded || !got.RejectedAt.IsZero() || got.Rejected != nil ||
+		strings.Join(got.RestartKeys, ",") != "metrics,log" {
+		t.Errorf("after a reload with restart keys: %+v", got)
+	}
+	got.RestartKeys[0] = "changed"
+	if f.rl.loads.record().RestartKeys[0] != "metrics" {
+		t.Error("record shares its restart keys")
+	}
+
+	// A rejected reload keeps what waits for a restart.
+	f.mesh.fail = true
+	if err := f.rl.reload(context.Background()); err == nil {
+		t.Fatal("reload succeeded")
+	}
+	if got := f.rl.loads.record(); got.Rejected == nil || len(got.RestartKeys) != 2 {
+		t.Errorf("after another rejected reload: %+v", got)
+	}
+
+	// Reverting the file clears the restart keys.
+	f.mesh.fail = false
+	*f.next = config.Default()
+	if err := f.rl.reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.rl.loads.record(); got.Rejected != nil || got.RestartKeys != nil {
+		t.Errorf("after reverting: %+v", got)
+	}
+}
+
 func TestRestartKeys(t *testing.T) {
 	a, b := config.Default(), config.Default()
 	if keys := restartKeys(&a, &b); len(keys) != 0 {

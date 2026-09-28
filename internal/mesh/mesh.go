@@ -368,22 +368,42 @@ func (m *Mesh) Ready() error {
 
 // Detail summarizes the connected peers; zero peers is a degraded state.
 func (m *Mesh) Detail() string {
-	h := m.currentHost()
-	if h == nil {
+	if m.currentHost() == nil {
 		return ""
 	}
-	connected := len(h.Network().Peers())
-	bootstrap := 0
-	for _, pi := range m.bootstrap {
-		if h.Network().Connectedness(pi.ID) == network.Connected {
-			bootstrap++
-		}
-	}
-	summary := fmt.Sprintf("%d peers connected (%d/%d bootstrap peers)", connected, bootstrap, len(m.bootstrap))
-	if connected == 0 {
+	c := m.PeerCounts()
+	summary := fmt.Sprintf("%d peers connected (%d/%d bootstrap peers)", c.Connected, c.Bootstrap, c.Configured)
+	if c.Connected == 0 {
 		return "degraded: " + summary
 	}
 	return summary
+}
+
+// PeerCounts counts the mesh's peers.
+type PeerCounts struct {
+	// Connected counts the connected peers.
+	Connected int
+	// Bootstrap counts the connected peers among the configured ones.
+	Bootstrap int
+	// Configured counts the peers in mesh.bootstrap, without this node.
+	Configured int
+}
+
+// PeerCounts counts the connected and the configured peers; none are
+// connected before Start.
+func (m *Mesh) PeerCounts() PeerCounts {
+	c := PeerCounts{Configured: len(m.bootstrap)}
+	h := m.currentHost()
+	if h == nil {
+		return c
+	}
+	c.Connected = len(h.Network().Peers())
+	for _, pi := range m.bootstrap {
+		if h.Network().Connectedness(pi.ID) == network.Connected {
+			c.Bootstrap++
+		}
+	}
+	return c
 }
 
 // Publish stores ev, an event signed by this node, and sends it to the

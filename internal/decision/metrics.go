@@ -1,6 +1,10 @@
 package decision
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"maps"
+
+	"github.com/prometheus/client_golang/prometheus"
+)
 
 // States lists every decision State.
 var States = []State{StateBlock, StateNone, StateAllowed}
@@ -30,22 +34,44 @@ func init() {
 	prometheus.MustRegister(decisionsGauge, activeIndicators, activeVerdicts)
 }
 
-// publishMetrics sets the gauges from the kept decisions.
+// Counts are the numbers of the kept decisions after an evaluation pass.
+type Counts struct {
+	// Decisions counts the kept decisions by state.
+	Decisions map[State]int
+	// Indicators counts the indicators with at least one active verdict;
+	// Verdicts counts their active verdicts.
+	Indicators, Verdicts int
+}
+
+// Counts returns the numbers of the kept decisions after the last
+// evaluation pass, the same the metrics show; zero before Start. Reading
+// them costs nothing, however many decisions are kept.
+func (e *Engine) Counts() Counts {
+	e.countsMu.Lock()
+	defer e.countsMu.Unlock()
+	c := e.counts
+	c.Decisions = maps.Clone(c.Decisions)
+	return c
+}
+
+// publishMetrics counts the kept decisions for Counts and sets the gauges.
 func (e *Engine) publishMetrics() {
-	counts := make(map[State]int, len(States))
-	indicators, verdicts := 0, 0
+	c := Counts{Decisions: make(map[State]int, len(States))}
 	e.mu.RLock()
 	for key, d := range e.decisions {
-		counts[d.State]++
+		c.Decisions[d.State]++
 		if n := e.verdicts[key]; n > 0 {
-			indicators++
-			verdicts += n
+			c.Indicators++
+			c.Verdicts += n
 		}
 	}
 	e.mu.RUnlock()
+	e.countsMu.Lock()
+	e.counts = c
+	e.countsMu.Unlock()
 	for _, s := range States {
-		decisionsGauge.WithLabelValues(string(s)).Set(float64(counts[s]))
+		decisionsGauge.WithLabelValues(string(s)).Set(float64(c.Decisions[s]))
 	}
-	activeIndicators.Set(float64(indicators))
-	activeVerdicts.Set(float64(verdicts))
+	activeIndicators.Set(float64(c.Indicators))
+	activeVerdicts.Set(float64(c.Verdicts))
 }

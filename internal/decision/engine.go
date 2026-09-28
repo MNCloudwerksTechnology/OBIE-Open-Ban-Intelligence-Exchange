@@ -140,6 +140,10 @@ type Engine struct {
 	errMu   sync.Mutex
 	lastErr error
 
+	// countsMu guards counts, taken after every evaluation pass.
+	countsMu sync.Mutex
+	counts   Counts
+
 	runMu       sync.Mutex
 	unsubscribe func()
 	stop        chan struct{}
@@ -220,15 +224,15 @@ func (e *Engine) Ready() error {
 	return e.lastErr
 }
 
-// Detail summarizes the kept decisions for the node status.
+// Detail summarizes the kept decisions for the node status, from the
+// counts of the last evaluation pass.
 func (e *Engine) Detail() string {
-	return fmt.Sprintf("%d blocked of %d indicators", len(e.Decisions(StateBlock)), e.count())
-}
-
-func (e *Engine) count() int {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return len(e.decisions)
+	c := e.Counts()
+	total := 0
+	for _, n := range c.Decisions {
+		total += n
+	}
+	return fmt.Sprintf("%d blocked of %d indicators", c.Decisions[StateBlock], total)
 }
 
 // Subscribe registers fn for the block change stream. Every block that
