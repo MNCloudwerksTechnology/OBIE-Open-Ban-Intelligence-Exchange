@@ -15,6 +15,7 @@ import (
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/console"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce/nft"
@@ -243,6 +244,95 @@ func TestReloadRejects(t *testing.T) {
 				t.Errorf("no rejection logged:\n%s", f.logs)
 			}
 		})
+	}
+}
+
+// TestReloadRecordsLoads: the console learns when the running
+// configuration was loaded, why the last reload was rejected and what
+// waits for a restart.
+func TestReloadRecordsLoads(t *testing.T) {
+	f := newReloadFixture(t)
+	if got := f.rl.loads.record(); !got.LoadedAt.IsZero() {
+		t.Errorf("record of no configLoads = %+v", got)
+	}
+	f.rl.loads.reloaded(nil) // a nil configLoads records nothing
+	started := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
+	clock := started
+	f.rl.loads = newConfigLoads(started, func() time.Time { return clock })
+	if got := f.rl.loads.record(); !got.LoadedAt.Equal(started) || got.Reloaded || got.Rejected != nil || got.RestartKeys != nil {
+		t.Errorf("at start: %+v", got)
+	}
+
+	clock = started.Add(time.Minute)
+	f.err = errors.New("invalid configuration: decision.quorum")
+	if err := f.rl.reload(context.Background()); err == nil {
+		t.Fatal("reload succeeded")
+	}
+	got := f.rl.loads.record()
+	if !got.LoadedAt.Equal(started) || got.Reloaded || !got.RejectedAt.Equal(clock) || !errors.Is(got.Rejected, f.err) {
+		t.Errorf("after a rejected reload: %+v", got)
+	}
+
+	clock = started.Add(2 * time.Minute)
+	f.err = nil
+	f.next.Log.Level = "debug"
+	f.next.Metrics.Listen = "127.0.0.1:9999"
+	if err := f.rl.reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got = f.rl.loads.record()
+	if !got.LoadedAt.Equal(clock) || !got.Reloaded || !got.RejectedAt.IsZero() || got.Rejected != nil ||
+		strings.Join(got.RestartKeys, ",") != "metrics,log" {
+		t.Errorf("after a reload with restart keys: %+v", got)
+	}
+	got.RestartKeys[0] = "changed"
+	if f.rl.loads.record().RestartKeys[0] != "metrics" {
+		t.Error("record shares its restart keys")
+	}
+
+	// A rejected reload keeps what waits for a restart.
+	f.mesh.fail = true
+	if err := f.rl.reload(context.Background()); err == nil {
+		t.Fatal("reload succeeded")
+	}
+	if got := f.rl.loads.record(); got.Rejected == nil || len(got.RestartKeys) != 2 {
+		t.Errorf("after another rejected reload: %+v", got)
+	}
+
+	// Reverting the file clears the restart keys.
+	f.mesh.fail = false
+	*f.next = config.Default()
+	if err := f.rl.reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.rl.loads.record(); got.Rejected != nil || got.RestartKeys != nil {
+		t.Errorf("after reverting: %+v", got)
+	}
+}
+
+// TestConsoleFactsConversion: the console gets the enforcement's and the
+// reloads' numbers in its own types.
+func TestConsoleFactsConversion(t *testing.T) {
+	st := enforce.Status{Mode: config.ModeEnforce, Applied: 10, Blocks: 14, Covered: 1, Failures: 2, RetryIn: 4 * time.Second,
+		Skipped:       map[string]int{enforce.SkipAllowlist: 1, enforce.SkipMaxEntries: 1}, // ranges
+		SkippedBlocks: map[string]int{enforce.SkipAllowlist: 2, enforce.SkipMaxEntries: 1}, Err: errors.New("netlink: busy")}
+	got := enforceFacts(st, config.Enforce{Backend: config.BackendNFTables, MaxEntries: 10})
+	want := console.EnforceFacts{Backend: "nftables", MaxEntries: 10, Mode: "enforce", Applied: 10, Blocks: 14, Covered: 1,
+		Refused: 2, Capped: 1, Failures: 2, Err: "netlink: busy", RetryIn: 4 * time.Second}
+	if got != want {
+		t.Errorf("enforceFacts = %+v\nwant          %+v", got, want)
+	}
+	if got := enforceFacts(enforce.Status{}, config.Enforce{Backend: config.BackendDryRun}); got.Err != "" || got.Mode != "" || got.Backend != "dryrun" {
+		t.Errorf("enforceFacts before the first pass = %+v", got)
+	}
+
+	at := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
+	c := configFacts(loadRecord{LoadedAt: at, Reloaded: true, RejectedAt: at.Add(time.Minute), Rejected: errors.New("bad"), RestartKeys: []string{"store"}})
+	if !c.LoadedAt.Equal(at) || !c.Reloaded || !c.RejectedAt.Equal(at.Add(time.Minute)) || c.Rejected != "bad" || len(c.RestartKeys) != 1 {
+		t.Errorf("configFacts = %+v", c)
+	}
+	if c := configFacts(loadRecord{LoadedAt: at}); c.Rejected != "" || c.Reloaded {
+		t.Errorf("configFacts at start = %+v", c)
 	}
 }
 

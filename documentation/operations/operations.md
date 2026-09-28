@@ -28,7 +28,8 @@ per subsystem whether it runs and what it is doing.
 
 ## Web console
 
-For a view of the node in a browser, switch on the opt-in
+For an overview of the node in a browser — its health, key numbers and
+what needs your attention — switch on the opt-in
 [web console](console.md): `console.enabled: true` and a reload. It
 listens on `127.0.0.1:9465` only; `sudo obiectl console` shows its address
 and the token to sign in with, and from another machine you forward the

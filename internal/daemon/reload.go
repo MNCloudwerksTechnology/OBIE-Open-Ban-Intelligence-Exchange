@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"slices"
+	"sync"
+	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/audit"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
@@ -34,7 +37,9 @@ type reloader struct {
 	audit *audit.Log
 	// console applies the console settings; nil without console.
 	console func(config.Console)
-	log     *slog.Logger
+	// loads records the outcome of every reload; nil records nothing.
+	loads *configLoads
+	log   *slog.Logger
 }
 
 // reload reopens the audit log, then reads the configuration and applies
@@ -66,9 +71,11 @@ func (r *reloader) reload(ctx context.Context) error {
 		r.console(next.Console)
 	}
 
-	if keys := restartKeys(r.running, next); len(keys) > 0 {
+	keys := restartKeys(r.running, next)
+	if len(keys) > 0 {
 		r.log.Warn("configuration changes that need a restart were not applied", "keys", keys)
 	}
+	r.loads.reloaded(keys)
 	r.running.Node.Mode = next.Node.Mode
 	r.running.Trust, r.running.Decision, r.running.Allowlist = next.Trust, next.Decision, next.Allowlist
 	r.running.Console = next.Console
@@ -79,7 +86,73 @@ func (r *reloader) reload(ctx context.Context) error {
 
 func (r *reloader) reject(err error) error {
 	r.log.Error("configuration reload rejected; the running configuration is kept", "error", err)
+	r.loads.rejected(err)
 	return err
+}
+
+// configLoads records when the running configuration was loaded and how
+// the last reload went, for the web console; a nil *configLoads records
+// nothing. Reloads and console requests run concurrently.
+type configLoads struct {
+	now func() time.Time
+	mu  sync.Mutex
+	rec loadRecord
+}
+
+// loadRecord is what configLoads recorded.
+type loadRecord struct {
+	// LoadedAt is when the running configuration was loaded: at start,
+	// or by the last successful reload if Reloaded.
+	LoadedAt time.Time
+	Reloaded bool
+	// RejectedAt and Rejected are the time and the error of the last
+	// rejected reload; zero once a later reload succeeds.
+	RejectedAt time.Time
+	Rejected   error
+	// RestartKeys name the settings in which the configuration file, as
+	// of the last successful reload, differs from the running
+	// configuration and which only a restart applies.
+	RestartKeys []string
+}
+
+// newConfigLoads records a configuration loaded at start, at loadedAt.
+func newConfigLoads(loadedAt time.Time, now func() time.Time) *configLoads {
+	return &configLoads{now: now, rec: loadRecord{LoadedAt: loadedAt}}
+}
+
+// reloaded records a successful reload that left restartKeys unapplied.
+func (l *configLoads) reloaded(restartKeys []string) {
+	if l == nil {
+		return
+	}
+	now := l.now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.rec = loadRecord{LoadedAt: now, Reloaded: true, RestartKeys: slices.Clone(restartKeys)}
+}
+
+// rejected records a reload rejected with err; the running configuration
+// and its restart keys stay.
+func (l *configLoads) rejected(err error) {
+	if l == nil {
+		return
+	}
+	now := l.now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.rec.RejectedAt, l.rec.Rejected = now, err
+}
+
+// record returns what was recorded; nothing for a nil *configLoads.
+func (l *configLoads) record() loadRecord {
+	if l == nil {
+		return loadRecord{}
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	rec := l.rec
+	rec.RestartKeys = slices.Clone(rec.RestartKeys)
+	return rec
 }
 
 // restartKeys names the sections of next that differ from running in

@@ -42,10 +42,16 @@ const (
 type Node struct {
 	Version string
 	PeerID  string
+	// Fingerprint is the fingerprint of the node's public key.
+	Fingerprint string
+	// StartedAt is when obied started.
+	StartedAt time.Time
 	// Mode returns the current node.mode.
 	Mode func() string
 	// Status reports the status of every subsystem.
 	Status func() []lifecycle.Status
+	// Facts reads the node's numbers for the overview; nil reads none.
+	Facts func() Facts
 }
 
 // Options configures a Console.

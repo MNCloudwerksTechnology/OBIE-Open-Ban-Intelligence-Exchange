@@ -207,8 +207,12 @@ another host name (DNS rebinding), requests from other sites or other
 local ports (Fetch Metadata, `Origin`) and framing are refused; a strict
 content security policy allows no other origin and no inline code. The
 console is read-only, loads nothing from outside the node, and never
-stops or degrades the node. Details and the threats considered are in
-[ADR 0019](documentation/adr/0019-local-web-console.md).
+stops or degrades the node. Pages that refresh themselves fetch only the
+console's own escaped template output, behind the same session, and
+parse it into an inert document before showing it. Details and the
+threats considered are in
+[ADR 0019](documentation/adr/0019-local-web-console.md) and
+[ADR 0020](documentation/adr/0020-console-overview.md).
 
 **Remaining risk.** Through an SSH port forward, every user of the
 operator's workstation can reach the forwarded port, and on the node the

@@ -1,7 +1,10 @@
-// OBIE console (ADR 0019): keeps the health indicator of every page
-// current and tells the operator when the session ended or the console
-// can no longer be reached, e.g. after a configuration reload. Every page
-// works without this script. It builds text with textContent only.
+// OBIE console (ADR 0019, ADR 0020): keeps the health indicator of every
+// page and the regions a view marks with data-refresh current, and tells
+// the operator when the session ended or the console can no longer be
+// reached, e.g. after a configuration reload. Every page works without
+// this script. It builds its own text with textContent only; a region's
+// new content is the console's escaped template output, parsed into an
+// inert document that runs no script.
 (function () {
   'use strict';
 
@@ -17,8 +20,17 @@
   var mode = document.querySelector('[data-mode]');
   var modeLabel = document.querySelector('[data-mode-label]');
   var banner = document.querySelector('[data-banner]');
+  var regions = Array.prototype.slice.call(document.querySelectorAll('[data-refresh]'));
+  var liveHints = Array.prototype.slice.call(document.querySelectorAll('[data-live]'));
   var timer = 0;
+  var polling = false;
   var signedOut = false;
+
+  function showLiveHints(shown) {
+    liveHints.forEach(function (hint) {
+      hint.hidden = !shown;
+    });
+  }
 
   function showBanner(text, link) {
     var p = document.createElement('p');
@@ -56,38 +68,120 @@
 
   function signedOutBanner() {
     signedOut = true;
+    showLiveHints(false);
     showBanner(
       'You were signed out: the console token was replaced (obiectl console --rotate) or obied restarted.',
       { href: '/login?next=' + encodeURIComponent(location.pathname + location.search), text: 'Sign in again' });
   }
 
+  // answered reports whether resp succeeded, and shows why when it did not.
+  function answered(resp) {
+    if (resp.status === 401) {
+      signedOutBanner();
+      return false;
+    }
+    if (!resp.ok) {
+      showBanner('The console answered HTTP ' + resp.status + '. The obied log says why; this page keeps trying.');
+      return false;
+    }
+    return true;
+  }
+
+  // withoutTicks returns the markup of root without the text that changes
+  // with the time alone (data-tick: the update time, the uptime).
+  function withoutTicks(root) {
+    var copy = root.cloneNode(true);
+    Array.prototype.forEach.call(copy.querySelectorAll('[data-tick]'), function (el) {
+      el.remove();
+    });
+    return copy.innerHTML.trim();
+  }
+
+  // focusedLink returns the href of the focused link inside region, or null.
+  function focusedLink(region) {
+    var el = document.activeElement;
+    return el && region.contains(el) && el.hasAttribute('href') ? el.getAttribute('href') : null;
+  }
+
+  function focusLink(region, href) {
+    var links = region.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length; i++) {
+      if (links[i].getAttribute('href') === href) {
+        links[i].focus({ preventScroll: true });
+        return;
+      }
+    }
+  }
+
+  // swap shows the fragment html in region: all of it when more than the
+  // ticking text changed, keeping the focused link focused, else only the
+  // ticking text, so a selection or a screen reader's place survives.
+  function swap(region, html) {
+    var incoming = new DOMParser().parseFromString(html, 'text/html').body;
+    if (withoutTicks(region) === withoutTicks(incoming)) {
+      var ticks = region.querySelectorAll('[data-tick]');
+      var newTicks = incoming.querySelectorAll('[data-tick]');
+      for (var i = 0; i < ticks.length && i < newTicks.length; i++) {
+        ticks[i].replaceChildren.apply(ticks[i], Array.prototype.slice.call(newTicks[i].childNodes));
+      }
+      return;
+    }
+    var focused = focusedLink(region);
+    region.replaceChildren.apply(region, Array.prototype.slice.call(incoming.childNodes));
+    if (focused !== null) {
+      focusLink(region, focused);
+    }
+  }
+
+  // refresh brings region up to date from its fragment and resolves to
+  // whether it did.
+  function refresh(region) {
+    return fetch(region.getAttribute('data-refresh'), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'text/html' } })
+      .then(function (resp) {
+        if (!answered(resp)) {
+          return false;
+        }
+        return resp.text().then(function (html) {
+          swap(region, html);
+          return true;
+        });
+      });
+  }
+
   function poll() {
     timer = 0;
+    polling = true;
     fetch('/api/health', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
       .then(function (resp) {
-        if (resp.status === 401) {
-          signedOutBanner();
+        if (!answered(resp)) {
           return;
         }
-        if (!resp.ok) {
-          showBanner('The console answered HTTP ' + resp.status + '. The obied log says why; this page keeps trying.');
-          return;
-        }
-        return resp.json().then(function (h) {
-          update(h);
-          hideBanner();
-        });
+        return resp.json()
+          .then(function (h) {
+            update(h);
+            return Promise.all(regions.map(refresh));
+          })
+          .then(function (refreshed) {
+            if (refreshed.every(Boolean)) {
+              hideBanner();
+            }
+          });
       })
       .catch(function () {
         showBanner('The console is not reachable. A configuration reload switched it off or moved it to another ' +
           'address, or obied is stopping. This page keeps trying; on the node, obiectl console shows where the ' +
           'console is.');
       })
-      .then(schedule);
+      .then(function () {
+        polling = false;
+        schedule();
+      });
   }
 
+  // schedule polls once more in INTERVAL_MS unless a poll is pending or
+  // running, the page is hidden or the session ended.
   function schedule() {
-    if (!signedOut && !document.hidden && !timer) {
+    if (!signedOut && !document.hidden && !timer && !polling) {
       timer = window.setTimeout(poll, INTERVAL_MS);
     }
   }
@@ -100,5 +194,6 @@
       schedule();
     }
   });
+  showLiveHints(true);
   schedule();
 })();

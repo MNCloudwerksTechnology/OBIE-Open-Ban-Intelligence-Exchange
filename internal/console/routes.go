@@ -21,6 +21,9 @@ func (c *Console) routes() http.Handler {
 			pattern += "{$}" // exactly the path, not the subtree
 		}
 		mux.Handle(pattern, c.requirePage(c.serveView(v)))
+		if v.Fragment != "" {
+			mux.Handle("GET "+v.Fragment, c.requireAPI(c.serveFragment(v)))
+		}
 	}
 	mux.Handle("/", c.requirePage(http.HandlerFunc(c.notFound)))
 	return securityHeaders(c.hostGuard(c.localUser(c.fetchGuard(mux))))

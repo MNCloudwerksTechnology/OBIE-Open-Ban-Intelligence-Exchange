@@ -212,6 +212,7 @@ func TestCoveredPrefixesAreLeftOut(t *testing.T) {
 	if got := f.rec.Detail(); got != "enforcing via fake: 3 entries" {
 		t.Errorf("Detail = %q", got)
 	}
+	wantCounts(t, f.rec, 6, 3, 3, 0, 0)
 
 	// When the /24 ends, the /25 and the address outside it come back.
 	f.gate.Handle(block("198.51.100.0/24", decision.ChangeRemoved, time.Time{}))
@@ -232,6 +233,7 @@ func TestCoveredPrefixesAndTheCap(t *testing.T) {
 	if got := f.rec.Detail(); got != "enforcing via fake: 2 entries" {
 		t.Errorf("Detail = %q", got)
 	}
+	wantCounts(t, f.rec, 3, 2, 1, 0, 0)
 
 	g := newFixture(t, config.ModeEnforce, newFake(), Options{MaxEntries: 1})
 	g.add("198.51.100.0/24", time.Hour, 1)
@@ -239,6 +241,34 @@ func TestCoveredPrefixesAndTheCap(t *testing.T) {
 	g.add("192.0.2.1", time.Hour, 5)
 	g.reconcile(t)
 	wantState(t, g.enf, "198.51.100.0/24@1h0m0s")
+	wantCounts(t, g.rec, 3, 1, 1, 0, 1)
+
+	// A block inside a wider range left out over the cap is left out with
+	// it, not counted as sharing an applied entry.
+	h := newFixture(t, config.ModeEnforce, newFake(), Options{MaxEntries: 1})
+	h.add("198.51.100.0/24", time.Hour, 1)
+	h.add("198.51.100.7", time.Hour, 1)
+	h.add("192.0.2.1", time.Hour, 5)
+	h.reconcile(t)
+	wantState(t, h.enf, "192.0.2.1/32@1h0m0s")
+	wantCounts(t, h.rec, 3, 1, 0, 0, 2)
+	if s := h.rec.Status(); s.Skipped[SkipMaxEntries] != 1 {
+		t.Errorf("Skipped = %v, want the one range", s.Skipped)
+	}
+}
+
+// wantCounts checks how the last pass accounted for the decided blocks.
+func wantCounts(t *testing.T, rec *Reconciler, blocks, applied, covered, refused, capped int) {
+	t.Helper()
+	s := rec.Status()
+	if s.Blocks != blocks || s.Applied != applied || s.Covered != covered ||
+		s.SkippedBlocks[SkipAllowlist] != refused || s.SkippedBlocks[SkipMaxEntries] != capped {
+		t.Errorf("Status = %+v, want blocks=%d applied=%d covered=%d refused=%d capped=%d",
+			s, blocks, applied, covered, refused, capped)
+	}
+	if s.Blocks != s.Applied+s.Covered+s.SkippedBlocks[SkipAllowlist]+s.SkippedBlocks[SkipMaxEntries] {
+		t.Errorf("Status = %+v: the blocks do not add up", s)
+	}
 }
 
 // TestDeferNearExpiry: an entry about to expire is left to expire, not
@@ -396,6 +426,7 @@ func TestAllowlistDefence(t *testing.T) {
 	if got := f.rec.Detail(); got != "enforcing via fake: 2 entries, 2 refused by the allow-list" {
 		t.Errorf("Detail = %q", got)
 	}
+	wantCounts(t, f.rec, 4, 2, 0, 2, 0)
 	if n := strings.Count(f.logs.String(), "refused by the allow-list right before apply"); n != 2 {
 		t.Errorf("logged %d refusals:\n%s", n, f.logs)
 	}
@@ -414,6 +445,8 @@ func TestAllowlistDefence(t *testing.T) {
 	if got := f.rec.Detail(); got != "enforcing via fake: 3 entries, 1 refused by the allow-list" {
 		t.Errorf("Detail = %q", got)
 	}
+	// The refused 203.0.113.5 shares the entry of the force-blocked /32.
+	wantCounts(t, f.rec, 5, 3, 1, 1, 0)
 	f.gate.Handle(block("203.0.113.5/32", decision.ChangeRemoved, time.Time{}))
 
 	// A protected entry wins over a force-block.
@@ -432,9 +465,7 @@ func TestMaxEntries(t *testing.T) {
 	f.add("198.51.100.4", time.Hour, 0.5)
 	f.reconcile(t)
 	wantState(t, f.enf, "198.51.100.2/32@1h0m0s 198.51.100.3/32@1h0m0s")
-	if s := f.rec.Status(); s.Applied != 2 || s.Skipped[SkipMaxEntries] != 2 {
-		t.Errorf("Status = %+v", s)
-	}
+	wantCounts(t, f.rec, 4, 2, 0, 0, 2)
 	if got := f.rec.Detail(); got != "enforcing via fake: 2 entries, 2 skipped over enforce.max_entries" {
 		t.Errorf("Detail = %q", got)
 	}
@@ -480,6 +511,7 @@ func TestObserveNeverApplies(t *testing.T) {
 	if f.rec.Ready() != nil {
 		t.Errorf("Ready = %v", f.rec.Ready())
 	}
+	wantCounts(t, f.rec, 0, 0, 0, 0, 0) // observe mode considers no block
 }
 
 // TestModeSwitch: switching to enforce applies the blocks, switching back

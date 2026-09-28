@@ -132,6 +132,9 @@ func TestNew(t *testing.T) {
 	if len(m.bootstrap) != 1 || m.bootstrap[0].ID.String() != other.PeerID() || len(m.bootstrap[0].Addrs) != 2 {
 		t.Errorf("bootstrap = %v, want %s with both addresses and without this node", m.bootstrap, other.PeerID())
 	}
+	if got := m.PeerCounts(); got != (PeerCounts{Configured: 1}) {
+		t.Errorf("PeerCounts() before Start = %+v, want 1 configured", got)
+	}
 	if m.opts.InitialBackoff != DefaultInitialBackoff || m.opts.MaxBackoff != DefaultMaxBackoff {
 		t.Errorf("backoff = %v..%v, want the defaults", m.opts.InitialBackoff, m.opts.MaxBackoff)
 	}
@@ -285,6 +288,12 @@ func TestBootstrapMesh(t *testing.T) {
 	if d := b.Detail(); d != "1 peers connected (1/1 bootstrap peers)" {
 		t.Errorf("B Detail() = %q", d)
 	}
+	if got := b.PeerCounts(); got != (PeerCounts{Connected: 1, Bootstrap: 1, Configured: 1}) {
+		t.Errorf("B PeerCounts() = %+v", got)
+	}
+	if got := a.PeerCounts(); got != (PeerCounts{Connected: 2}) {
+		t.Errorf("A PeerCounts() = %+v, want 2 connected, none configured", got)
+	}
 	// A reload replaces names and weights.
 	if err := b.SetTrust(config.Trust{Publishers: []config.Publisher{{PeerID: idA.PeerID(), Name: "alpha2", Weight: 0.2}}}); err != nil {
 		t.Fatal(err)
@@ -307,6 +316,9 @@ func TestBootstrapMesh(t *testing.T) {
 	})
 	if d := b.Detail(); !strings.HasPrefix(d, "degraded:") || b.Ready() != nil {
 		t.Errorf("B without peers: Detail() = %q, Ready() = %v; want degraded but ready", d, b.Ready())
+	}
+	if got := b.PeerCounts(); got != (PeerCounts{Configured: 1}) {
+		t.Errorf("B PeerCounts() without peers = %+v", got)
 	}
 	// Let a few dials fail so that B and C back off to the cap.
 	time.Sleep(2 * backoffMax)
