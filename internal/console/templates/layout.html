@@ -1,0 +1,44 @@
+{{define "layout" -}}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>{{.Title}} · OBIE console</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/console.css">
+<script src="/assets/console.js" defer></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="topbar">
+  <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"></span>OBIE console</a>
+  <p class="node" title="Peer ID {{.Node.PeerID}}"><span class="visually-hidden">Node </span><span class="mono">{{.Node.ShortPeerID}}</span> · {{.Node.Version}}</p>
+  <div class="status">
+    <p class="mode" data-mode="{{.Mode}}"><span class="visually-hidden">Mode: </span><span data-mode-label>{{.ModeLabel}}</span></p>
+    <p class="health" data-health data-state="{{.Health.State}}" role="status"><span class="health-dot" aria-hidden="true"></span><span class="visually-hidden">Node health: </span><span data-health-label>{{.Health.Label}}</span></p>
+    <form method="post" action="/logout" class="signout"><button type="submit" class="link-button">Sign out</button></form>
+  </div>
+</header>
+<div class="notice" data-health-problems{{if not .Health.Problems}} hidden{{end}}>
+  <p><strong>Degraded:</strong></p>
+  <ul>{{range .Health.Problems}}<li>{{.}}</li>{{end}}</ul>
+</div>
+<div class="banner" data-banner role="alert" hidden></div>
+<div class="shell">
+  <nav class="nav" aria-label="Console">
+    <ul>
+      {{- range .Nav}}
+      <li><a href="{{.Path}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a></li>
+      {{- end}}
+    </ul>
+  </nav>
+  <main id="main" tabindex="-1">
+{{template "content" .Content}}
+  </main>
+</div>
+<footer class="footer">Read-only view of this node, served only on this host. obied {{.Node.Version}}</footer>
+</body>
+</html>
+{{- end}}

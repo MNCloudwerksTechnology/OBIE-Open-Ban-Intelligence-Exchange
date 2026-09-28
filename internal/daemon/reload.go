@@ -19,8 +19,8 @@ type trustSetter interface {
 }
 
 // reloader applies a new configuration to the running node: the trust
-// weights, the decision settings, the allow-list and the mode. Everything
-// else needs a restart.
+// weights, the decision settings, the allow-list, the mode and the web
+// console. Everything else needs a restart.
 type reloader struct {
 	// running is the configuration in effect; only reload changes it.
 	running *config.Config
@@ -32,7 +32,9 @@ type reloader struct {
 	mesh    trustSetter
 	// audit is reopened on every reload; nil without audit log.
 	audit *audit.Log
-	log   *slog.Logger
+	// console applies the console settings; nil without console.
+	console func(config.Console)
+	log     *slog.Logger
 }
 
 // reload reopens the audit log, then reads the configuration and applies
@@ -59,14 +61,19 @@ func (r *reloader) reload(ctx context.Context) error {
 	}
 	r.engine.Reload(decision.NewPolicy(r.self, next.Trust, next.Decision), allow)
 	r.gate.SetMode(next.Node.Mode)
+	// The console never fails a reload: it logs why it cannot serve.
+	if r.console != nil {
+		r.console(next.Console)
+	}
 
 	if keys := restartKeys(r.running, next); len(keys) > 0 {
 		r.log.Warn("configuration changes that need a restart were not applied", "keys", keys)
 	}
 	r.running.Node.Mode = next.Node.Mode
 	r.running.Trust, r.running.Decision, r.running.Allowlist = next.Trust, next.Decision, next.Allowlist
+	r.running.Console = next.Console
 	r.log.Info("configuration reloaded", "mode", next.Node.Mode, "allowlist_entries", len(allow.Entries()),
-		"publishers", len(next.Trust.Publishers))
+		"publishers", len(next.Trust.Publishers), "console_enabled", next.Console.Enabled)
 	return nil
 }
 

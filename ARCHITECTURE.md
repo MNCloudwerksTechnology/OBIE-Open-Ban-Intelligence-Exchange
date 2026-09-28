@@ -35,7 +35,9 @@ analysis and the soak test — in
 [ADR 0017](documentation/adr/0017-hardening-and-resource-limits.md); release
 packaging (tarballs, systemd unit, container image, compose lab) and the state
 directory format in
-[ADR 0017](documentation/adr/0017-packaging-and-state-format.md); the website
+[ADR 0017](documentation/adr/0017-packaging-and-state-format.md); the local
+web console, its security model and its technology in
+[ADR 0019](documentation/adr/0019-local-web-console.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -60,6 +62,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins (built-in ranges, own and bootstrap addresses, `allowlist.cidrs`, `allowlist.files`); operator force-allow / force-block overrides; mode `observe` (default) or `enforce`; SIGHUP reloads (ADR 0013).
 - **Enforcement:** pluggable enforcer (`Setup`/`List`/`Apply`/`Teardown`, entries with timeouts); `dryrun` (default) and `nftables` (netlink via google/nftables, own table `inet obie` with interval+timeout sets `obie_v4`/`obie_v6` and a priority -10 input chain, optional forward chain, CAP_NET_ADMIN only, `obied teardown-firewall`; ADR 0015) backends; reconcile loop with `enforce.max_entries` cap and allow-list re-check (ADR 0014).
 - **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015).
+- **Console:** opt-in (`console.enabled`, default off), read-only web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019).
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests, above all the four-node end-to-end test in `test/e2e` (ADR 0016); goleak in every package's `TestMain`; the soak test behind the `soak` build tag (`make soak`, ADR 0017); privileged tests behind the `privileged` build tag, run in a fresh network namespace (see [Privileged tests](CONTRIBUTING.md#privileged-tests)).
 
 ## Repository layout
@@ -73,6 +76,7 @@ internal/           all non-public code (one package per concern listed above)
   audit/            decision audit log: ECS JSON lines, reopened on SIGHUP
   cli/              flag handling and commands of both binaries
   config/           YAML configuration schema, defaults, strict decoding, validation
+  console/          local web console: loopback server, request guards, token and sessions, layout, views
   daemon/           wires the obied subsystems together and runs them
   decision/         trust-weighted consensus per indicator, explanations, block and transition streams
   enforce/          mode gate, reconciler and enforcement backends (dryrun)
@@ -83,6 +87,7 @@ internal/           all non-public code (one package per concern listed above)
   logging/          slog JSON handler; per-component loggers
   mesh/             go-libp2p host, bootstrap peers with backoff, peer view
   ops/              /healthz, /readyz and Prometheus /metrics
+  peercred/         local user of an admin socket or console connection; who may use them
   statedir/         state directory format version (<state_dir>/FORMAT); refuses newer formats
   sovereignty/      allow-list (built-in, config, files, own and bootstrap addresses), override precedence
   store/            BadgerDB event and indicator state: dedupe, expiry, overrides
@@ -223,7 +228,7 @@ Only the packages that exist today are listed in detail; the remaining
   notifies the reconciler; switching applies or withdraws the current
   blocks. The mode is set only in the configuration (`obiectl status` shows it first). SIGHUP
   re-reads the configuration and the allow-list files and applies
-  `node.mode`, `trust`, `decision` and `allowlist` at once; an invalid
+  `node.mode`, `trust`, `decision`, `allowlist` and `console` at once; an invalid
   configuration or allow-list file is logged and the running one kept;
   changes to other keys are logged as needing a restart (ADR 0013).
 - **Enforcement.** The `enforce` subsystem (`internal/enforce.Reconciler`,
@@ -258,6 +263,27 @@ Only the packages that exist today are listed in detail; the remaining
   request is checked against the peer's `SO_PEERCRED` credentials: only
   root, obied's own user and members of `admin.socket_group` get past 403
   (ADR 0012).
+- **Web console.** `internal/console` is the subsystem `console`, registered
+  first: it starts before and stops after every other subsystem, so it can
+  show the node starting and shutting down, and its views must cope with
+  subsystems that are not running. Its `Start` never fails and it is always
+  ready: a console that cannot listen is logged (`console not started; the
+  node runs without it`) and shown in its status detail. A reload applies
+  `console.enabled` and `console.listen` through `Console.Apply` without
+  restarting anything else. `console.listen` must be a loopback IP; the
+  server re-checks the bound address. Every request passes, in order, the
+  `Host` check (loopback literal or `localhost`: DNS rebinding), the
+  local-user check (`internal/peercred`: the admin API's policy, the client
+  socket's owner read from `/proc/self/net/tcp{,6}`) and the Fetch
+  Metadata/`Origin` check; every response carries a CSP that allows only
+  the console's own origin and no inline code. Pages need a session: an
+  HMAC-signed, `HttpOnly`, `SameSite=Strict` cookie (12 h) obtained by
+  posting the token, which `obied` keeps in memory only and replaces on
+  `POST /v1/console/token` (`obiectl console --rotate`) and on every
+  restart. Views are a path, a title and a template in the view list; the
+  navigation lists exactly that list. Every page shows the node's health
+  (starting, ready, degraded, shutting down) derived from the lifecycle
+  statuses, refreshed by a small script (ADR 0019).
 - **Observability.** Metrics are defined in the package that updates them
   and registered on the Prometheus default registry, which `internal/ops`
   serves; label values come from closed sets only (the admin endpoint label

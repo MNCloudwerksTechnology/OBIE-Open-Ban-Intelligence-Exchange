@@ -26,6 +26,14 @@ management network (not `0.0.0.0` on a public interface) and restart.
 `sudo obiectl status` gives the same picture interactively: the mode, and
 per subsystem whether it runs and what it is doing.
 
+## Web console
+
+For a view of the node in a browser, switch on the opt-in
+[web console](console.md): `console.enabled: true` and a reload. It
+listens on `127.0.0.1:9465` only; `sudo obiectl console` shows its address
+and the token to sign in with, and from another machine you forward the
+port over SSH.
+
 ## Audit log
 
 With `audit.path: /var/log/obie/audit.jsonl` every decision change is one

@@ -90,6 +90,7 @@ func (c *Config) validate(lines lineMap, decodeProblems problems) error {
 	v.positive("enforce.reconcile_interval", c.Enforce.ReconcileInterval)
 
 	v.hostPort("metrics.listen", c.Metrics.Listen)
+	v.loopbackHostPort("console.listen", c.Console.Listen)
 	v.absPath("audit.path", c.Audit.Path, true)
 
 	if _, err := logging.ParseLevel(c.Log.Level); err != nil {
@@ -224,7 +225,40 @@ func (v *validator) hostPort(path, value string) {
 			v.addf(path, "host %q must be an IP address", host)
 		}
 	}
+	v.port(path, port)
+}
+
+// loopbackHostPort requires ip:port with a loopback IP, so that a listener
+// is reachable from this host only. The message names the SSH port forward
+// that reaches it from another machine (ADR 0019).
+func (v *validator) loopbackHostPort(path, value string) {
+	host, port, err := net.SplitHostPort(value)
+	if err != nil {
+		v.addf(path, "must be a loopback ip:port such as 127.0.0.1:9465, got %q", value)
+		return
+	}
+	if !v.port(path, port) {
+		return
+	}
+	forward := fmt.Sprintf("reach it from another machine through an SSH port forward instead: ssh -L %s:127.0.0.1:%s <this host>", port, port)
+	addr, err := netip.ParseAddr(host)
+	switch {
+	case host == "":
+		v.addf(path, "%q listens on every interface and would expose the console to the network; "+
+			"use a loopback address such as 127.0.0.1:%s and %s", value, port, forward)
+	case err != nil:
+		v.addf(path, "host %q must be a loopback IP address (127.0.0.1 or ::1), not a name", host)
+	case !addr.IsLoopback():
+		v.addf(path, "%s is not a loopback address and would expose the console to the network; "+
+			"the console is only reachable from this host: use 127.0.0.1 or ::1 and %s", addr, forward)
+	}
+}
+
+// port requires a port number between 1 and 65535.
+func (v *validator) port(path, port string) bool {
 	if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
 		v.addf(path, "port %q must be a number between 1 and 65535", port)
+		return false
 	}
+	return true
 }

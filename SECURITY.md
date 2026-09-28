@@ -187,6 +187,39 @@ the Fail2Ban action refuse only addresses in `allowlist.cidrs` as loaded
 at start, so an address in `allowlist.files` or added with a reload can
 still be reported to your peers, and blocked on theirs.
 
+### Local web console
+
+Someone other than the operator reads the node through the web console:
+an attacker on the network, another user of the host, or a web page open
+in the operator's browser that forges requests or rebinds a DNS name to
+the host.
+
+**v0.1 mitigation.** The console is off unless `console.enabled` is set,
+and listens only on a loopback address; any other `console.listen` is a
+configuration error. It serves only root, the service user and members of
+the group `obie` — the connecting process's user is read from the
+kernel's socket table — and only browsers signed in with a 256-bit token
+that `obied` keeps in memory and hands out only through the admin socket
+(`obiectl console`; `--rotate` replaces it and ends every session, as
+does every restart). Sessions are HMAC-signed, `HttpOnly`,
+`SameSite=Strict` cookies that last 12 hours. Requests addressed to
+another host name (DNS rebinding), requests from other sites or other
+local ports (Fetch Metadata, `Origin`) and framing are refused; a strict
+content security policy allows no other origin and no inline code. The
+console is read-only, loads nothing from outside the node, and never
+stops or degrades the node. Details and the threats considered are in
+[ADR 0019](documentation/adr/0019-local-web-console.md).
+
+**Remaining risk.** Through an SSH port forward, every user of the
+operator's workstation can reach the forwarded port, and on the node the
+connection counts as the operator's login user: only the token protects
+it there. Cookies are not isolated by port, so on the workstation the
+session cookie also reaches other servers on its loopback interface. Use
+a workstation you control, sign out, and rotate the token when in doubt.
+On platforms without the Linux socket table, only the token protects the
+console. The console speaks plain HTTP; on the host, loopback traffic is
+visible to root only.
+
 ### Privacy leakage
 
 Verdicts and the mesh reveal more than the operator intends: about the
