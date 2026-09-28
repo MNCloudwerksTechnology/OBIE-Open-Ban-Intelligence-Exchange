@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"time"
 
+	ma "github.com/multiformats/go-multiaddr"
+
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/audit"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
@@ -61,6 +63,36 @@ type Options struct {
 	// Env is how the allow-list learns the host's addresses; the zero
 	// value uses the real host.
 	Env sovereignty.Env
+	// Testing holds the hooks of in-process multi-node tests; production
+	// leaves it zero.
+	Testing Testing
+}
+
+// Testing holds the hooks that let tests run several complete nodes in one
+// process. None of them is reachable from the configuration file.
+type Testing struct {
+	// AllowDocumentationRanges lets documentation addresses (e.g.
+	// 203.0.113.0/24) be reported, relayed, decided on and enforced, so
+	// that tests never block a real host.
+	AllowDocumentationRanges bool
+	// MetricsListen replaces metrics.listen, e.g. with "127.0.0.1:0" for a
+	// port chosen by the OS, which the configuration refuses.
+	MetricsListen string
+	// NFTablesNetNS is a file descriptor of the network namespace the
+	// nftables backend programs; 0 for the process's own.
+	NFTablesNetNS int
+	// Started is called once every subsystem runs, with the addresses they
+	// bound.
+	Started func(Endpoints)
+}
+
+// Endpoints are the addresses a running node bound.
+type Endpoints struct {
+	// Mesh are the multiaddrs the mesh listens on, with the bound ports
+	// and without /p2p.
+	Mesh []string
+	// Metrics is the host:port of the ops endpoints (/metrics).
+	Metrics string
 }
 
 // Run loads the node identity from node.state_dir, generating it on the
@@ -80,7 +112,9 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	if err != nil {
 		return err
 	}
-	allow, err := sovereignty.Build(ctx, cfg, opts.Env, logs.Logger(sovereigntyComponent))
+	env := opts.Env
+	env.OmitDocumentationRanges = opts.Testing.AllowDocumentationRanges
+	allow, err := sovereignty.Build(ctx, cfg, env, logs.Logger(sovereigntyComponent))
 	if err != nil {
 		return fmt.Errorf("allow-list: %w", err)
 	}
@@ -96,6 +130,8 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		UserAgent: "obied/" + version.Version,
 		Store:     db,
 		RateLimit: cfg.Mesh.RateLimit,
+
+		AllowDocumentationRanges: opts.Testing.AllowDocumentationRanges,
 	}, logs.Logger(mesh.Name))
 	if err != nil {
 		return fmt.Errorf("mesh: %w", err)
@@ -109,7 +145,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	// The gate is the only path to enforcement; it subscribes before the
 	// engine starts, so it sees the initial blocks. The reconciler applies
 	// them; it only notifies it once the engine runs.
-	backend, err := newEnforcer(cfg.Enforce, logs.Logger(enforceComponent))
+	backend, err := newEnforcer(cfg.Enforce, opts.Testing.NFTablesNetNS, logs.Logger(enforceComponent))
 	if err != nil {
 		return err
 	}
@@ -131,7 +167,12 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	}
 	mgr.Register(engine)
 	mgr.Register(reconciler)
-	mgr.Register(ops.New(cfg.Metrics.Listen, mgr.Status, logs.Logger(ops.Name)))
+	metricsListen := cfg.Metrics.Listen
+	if opts.Testing.MetricsListen != "" {
+		metricsListen = opts.Testing.MetricsListen
+	}
+	opsServer := ops.New(metricsListen, mgr.Status, logs.Logger(ops.Name))
+	mgr.Register(opsServer)
 	mgr.Register(m)
 	allowlist, err := parsePrefixes(cfg.Allowlist.CIDRs)
 	if err != nil {
@@ -144,6 +185,8 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		DefaultTTL: cfg.Decision.DefaultTTL.Std(),
 		MaxTTL:     cfg.Decision.MaxTTL.Std(),
 		Allowlist:  allowlist,
+
+		AllowDocumentationRanges: opts.Testing.AllowDocumentationRanges,
 	}, logs.Logger(verdicts.Name))
 	mgr.Register(admin.New(cfg.Admin.Socket, cfg.Admin.SocketGroup, admin.Info{
 		Version:   version.Version,
@@ -188,7 +231,11 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	log.Info("obied started", "version", version.Version, "mode", cfg.Node.Mode, "peer_id", id.PeerID(),
 		"admin_socket", cfg.Admin.Socket, "metrics_listen", cfg.Metrics.Listen, "audit_path", cfg.Audit.Path)
 
-	rl := &reloader{running: cfg, self: id.PeerID(), load: opts.LoadConfig, env: opts.Env,
+	if opts.Testing.Started != nil {
+		opts.Testing.Started(Endpoints{Mesh: multiaddrStrings(m.ListenAddrs()), Metrics: opsServer.Addr().String()})
+	}
+
+	rl := &reloader{running: cfg, self: id.PeerID(), load: opts.LoadConfig, env: env,
 		engine: engine, gate: gate, mesh: m, audit: auditLog, log: logs.Logger(reloadComponent)}
 	waitForShutdown(ctx, opts.Reload, rl)
 	log.Info("shutdown requested", "timeout", cfg.Node.ShutdownTimeout.String())
@@ -217,12 +264,12 @@ func loadIdentity(stateDir string, log *slog.Logger) (identity.Identity, error) 
 
 // newEnforcer returns the enforcement backend configured in
 // enforce.backend.
-func newEnforcer(cfg config.Enforce, log *slog.Logger) (enforce.Enforcer, error) {
+func newEnforcer(cfg config.Enforce, netns int, log *slog.Logger) (enforce.Enforcer, error) {
 	switch cfg.Backend {
 	case config.BackendDryRun:
 		return enforce.NewDryRun(log), nil
 	case config.BackendNFTables:
-		return nft.New(nft.Options{Forward: cfg.NFTables.Forward}, log), nil
+		return nft.New(nft.Options{Forward: cfg.NFTables.Forward, NetNS: netns}, log), nil
 	default:
 		return nil, fmt.Errorf("enforce.backend %q is not available in this build; use %q", cfg.Backend, config.BackendDryRun)
 	}
@@ -240,6 +287,15 @@ func enforcedEntries(ctx context.Context, rec *enforce.Reconciler) ([]admin.Enfo
 		out[i] = admin.EnforcedEntry{Prefix: e.Prefix.String(), ExpiresAt: e.Expires.UTC()}
 	}
 	return out, nil
+}
+
+// multiaddrStrings returns the text form of addrs.
+func multiaddrStrings(addrs []ma.Multiaddr) []string {
+	out := make([]string, len(addrs))
+	for i, a := range addrs {
+		out[i] = a.String()
+	}
+	return out
 }
 
 // parsePrefixes parses CIDR ranges that configuration validation accepted.
