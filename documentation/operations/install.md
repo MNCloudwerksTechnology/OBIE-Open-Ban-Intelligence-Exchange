@@ -5,10 +5,11 @@ OBIE ships in three forms (ADR 0017):
 | Form | For | Enforces with nftables |
 |------|-----|------------------------|
 | Release tarball + `install.sh` + systemd unit | production hosts | yes |
-| Container image | observe/dryrun nodes, Kubernetes, trying it out | no (dryrun) |
+| Container image | observe/dryrun [nodes](../glossary.md#node), Kubernetes, trying it out | no (dryrun) |
 | Compose lab (`packaging/compose`) | three nodes on a laptop in minutes | no (dryrun) |
 
-New to OBIE? The [quick start](quickstart.md) walks through a first node
+New to OBIE? [What is OBIE?](../introduction.md) explains it in five
+minutes, and the [quick start](quickstart.md) walks through a first node
 step by step; [Operations](operations.md) covers upgrades, backups and
 uninstalling in more detail.
 
@@ -76,7 +77,7 @@ capability (needed by the nftables backend) and these directories:
 
 | Directory | Setting | Contents |
 |-----------|---------|----------|
-| `/etc/obie` | `ConfigurationDirectory=obie` | `obie.yaml`, allow-list files (read-only for obied) |
+| `/etc/obie` | `ConfigurationDirectory=obie` | `obie.yaml`, [allow-list](../glossary.md#allow-list) files (read-only for obied) |
 | `/var/lib/obie` | `StateDirectory=obie` (0700) | `FORMAT`, `node.key`, `db/` |
 | `/run/obie` | `RuntimeDirectory=obie` (0750) | admin socket `obie.sock` |
 | `/var/log/obie` | `LogsDirectory=obie` (0750) | audit log, if configured |
@@ -99,7 +100,7 @@ findings are inherent to what obied does:
 | `RestrictAddressFamilies=~AF_(INET\|INET6)` | 0.3 | mesh and metrics |
 | `CapabilityBoundingSet=~CAP_NET_ADMIN` | 0.2 | nftables backend |
 | `PrivateUsers=` | 0.2 | would drop `CAP_NET_ADMIN` in the host's network namespace |
-| `IPAddressDeny=` | 0.2 | mesh peers are arbitrary addresses |
+| `IPAddressDeny=` | 0.2 | mesh [peers](../glossary.md#peer) are arbitrary addresses |
 | `SystemCallFilter=~@resources` | 0.2 | the Go runtime raises `RLIMIT_NOFILE` at start |
 | `AmbientCapabilities=` | 0.1 | how the unprivileged user gets `CAP_NET_ADMIN` |
 | `RestrictAddressFamilies=~AF_NETLINK` | 0.1 | nftables and interface addresses |

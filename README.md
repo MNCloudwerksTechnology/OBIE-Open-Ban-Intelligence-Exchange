@@ -2,30 +2,35 @@
 
 **Shared intelligence, sovereign enforcement.** OBIE lets servers you run
 tell each other which addresses attack them, and lets each server decide
-for itself whether to block them. There is no central service: every node
-signs what it reports, trusts only the peers its operator chose, and
-always has the last word over its own firewall.
+for itself whether to block them. There is no central service: every
+[node](documentation/glossary.md#node) signs what it reports, trusts only the
+[peers](documentation/glossary.md#peer) its operator chose, and always has the last
+word over its own firewall.
 
 OBIE is at **v0.1**, its first release. It works end to end, but it is
 young: read the [threat model](SECURITY.md#threat-model) before you trust
-it with a production firewall, and start in observe mode.
+it with a production firewall, and start in
+[observe mode](documentation/glossary.md#observe-mode).
 
 ## What v0.1 does
 
-- **Reports attacks as signed verdicts.** `obiectl report`, or one line in
-  a [Fail2Ban](documentation/guides/fail2ban.md) jail, turns a local
+- **Reports attacks as signed [verdicts](documentation/glossary.md#verdict).**
+  `obiectl report`, or one line in a
+  [Fail2Ban](documentation/guides/fail2ban.md) jail, turns a local
   detection into an Ed25519-signed verdict on an IPv4/IPv6 address or CIDR
   range. Log lines given as evidence are hashed on the node; only the hash
   and the counts leave it. `obiectl revoke` withdraws a verdict.
 - **Exchanges them with the peers you choose.** Nodes form a libp2p mesh
-  with static bootstrap peers and gossip verdicts and revocations
+  with static bootstrap peers and gossip verdicts and
+  [revocations](documentation/glossary.md#revocation)
   ([obie/0.1 protocol](documentation/spec/obie-0.1.md)). Invalid events
   are dropped and every publisher and relaying peer is rate-limited.
-- **Decides locally by weighted consensus.** Each node weights every
-  publisher with a trust value you set and blocks an address only when
-  the weighted score reaches a threshold *and* enough distinct publishers
-  agree (quorum). `obiectl explain` shows why an address is or is not
-  blocked.
+- **Decides locally by weighted consensus.** Each node gives every
+  publisher a [trust weight](documentation/glossary.md#trust-weight) you set
+  and blocks an address only when the weighted score reaches a
+  [threshold](documentation/glossary.md#threshold) *and* enough distinct
+  publishers agree ([quorum](documentation/glossary.md#quorum)).
+  `obiectl explain` shows why an address is or is not blocked.
 - **Never blocks what you protect.** Loopback, private, link-local and
   documentation ranges, the node's own addresses and its bootstrap peers
   are always allowed; you add your own networks. `obiectl allow` and

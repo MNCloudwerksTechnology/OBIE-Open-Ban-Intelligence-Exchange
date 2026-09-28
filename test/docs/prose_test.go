@@ -29,14 +29,15 @@ type proseRun struct {
 
 // prose returns the running text of a Markdown document, block by block:
 // paragraphs, list items and table rows outside code blocks, without
-// headings, inline code and images, with links reduced to their text.
+// headings, inline code and images, with links reduced to their text. The
+// lines of a block are joined, so a link or a term may span lines.
 func prose(doc string) [][]proseRun {
 	var blocks [][]proseRun
-	var block []proseRun
+	var lines []string
 	flush := func() {
-		if len(block) > 0 {
-			blocks = append(blocks, block)
-			block = nil
+		if len(lines) > 0 {
+			blocks = append(blocks, inlineRuns(strings.Join(lines, " ")))
+			lines = nil
 		}
 	}
 	inCode := false
@@ -53,17 +54,16 @@ func prose(doc string) [][]proseRun {
 		if blockStart.MatchString(line) {
 			flush()
 		}
-		block = append(block, lineRuns(line)...)
-		block = append(block, proseRun{text: " "})
+		lines = append(lines, strings.TrimSpace(line))
 	}
 	flush()
 	return blocks
 }
 
-// lineRuns splits one line of Markdown into runs of text.
-func lineRuns(line string) []proseRun {
+// inlineRuns splits a block of Markdown into runs of text.
+func inlineRuns(block string) []proseRun {
 	var runs []proseRun
-	rest := line
+	rest := block
 	for {
 		m := inlineToken.FindStringSubmatchIndex(rest)
 		if m == nil {

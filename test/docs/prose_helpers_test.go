@@ -32,9 +32,10 @@ func TestSentences(t *testing.T) {
 }
 
 // TestProse checks which parts of a Markdown document count as running
-// text, and that link text keeps its target.
+// text, that a paragraph's lines are joined, and that link text keeps its
+// target, also across a line break.
 func TestProse(t *testing.T) {
-	doc := "# Title\n\nA [node](glossary.md#node) and ![alt text](x.svg) `code`.\n\n```sh\nnode\n```\n\n- item one\n- item two\n"
+	doc := "# Title\n\nA [node](glossary.md#node) and ![alt text](x.svg) `code` in\nenforce mode.\n\n```sh\nnode\n```\n\n- item one\n- item [two\n  lines](x.md)\n"
 	blocks := prose(doc)
 	var texts []string
 	var links []proseRun
@@ -46,11 +47,12 @@ func TestProse(t *testing.T) {
 			}
 		}
 	}
-	want := []string{"A node and .", "- item one", "- item two"}
+	want := []string{"A node and in enforce mode.", "- item one", "- item two lines"}
 	if !slices.Equal(texts, want) {
 		t.Errorf("prose texts = %q, want %q", texts, want)
 	}
-	if len(links) != 1 || links[0] != (proseRun{text: "node", link: "glossary.md#node"}) {
-		t.Errorf("links = %+v, want the one link to glossary.md#node", links)
+	want2 := []proseRun{{text: "node", link: "glossary.md#node"}, {text: "two lines", link: "x.md"}}
+	if !slices.Equal(links, want2) {
+		t.Errorf("links = %+v, want %+v", links, want2)
 	}
 }

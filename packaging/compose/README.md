@@ -1,10 +1,11 @@
 # OBIE three-node lab
 
-Three OBIE nodes on one Docker bridge network, trying the whole mesh on a
-laptop in a few minutes: each node bootstraps to the other two and trusts
-them fully, and blocks an address once two of them report it. The nodes
-run in `enforce` mode with the `dryrun` backend, so a "block" is only
-logged and listed — nothing on your machine is ever blocked.
+Three OBIE [nodes](../../documentation/glossary.md#node) on one Docker
+bridge network, trying the whole mesh on a laptop in a few minutes: each
+node bootstraps to the other two and trusts them fully, and blocks an
+address once two of them report it. The nodes run in `enforce` mode with the
+`dryrun` backend, so a "block" is only logged and listed — nothing on your
+machine is ever blocked.
 
 You need Docker with the Compose plugin (`docker compose version`). No
 host networking, no root, no Go toolchain: the image is built from the
@@ -34,7 +35,7 @@ docker compose logs -f node3                       # JSON logs
 ## Block an address by consensus
 
 Report a (made-up) SSH brute-force from `1.2.3.4` on two nodes; the
-third decides on their signed verdicts:
+third decides on their signed [verdicts](../../documentation/glossary.md#verdict):
 
 ```sh
 docker compose exec node1 obiectl report --protocol ssh --reason bruteforce --events 5 1.2.3.4
@@ -43,18 +44,21 @@ docker compose exec node3 obiectl explain 1.2.3.4   # Decision: block, score 1.6
 docker compose exec node3 obiectl enforced          # what the dryrun backend "applies"
 ```
 
-With only one report, `node3` shows `below consensus` (quorum 2); the
-reporting node itself blocks at once (`decision.local_autoblock`).
-Withdraw one report and `node3` lifts the block, since consensus is gone
-(`node2` keeps its own local block until it revokes too):
+With only one report, `node3` shows `below consensus`
+([quorum](../../documentation/glossary.md#quorum) 2); the reporting node
+itself blocks at once (`decision.local_autoblock`). Withdraw one report and
+`node3` lifts the block, since consensus is gone (`node2` keeps its own
+local block until it [revokes](../../documentation/glossary.md#revocation)
+too):
 
 ```sh
 docker compose exec node1 obiectl revoke 1.2.3.4
 docker compose exec node3 obiectl explain 1.2.3.4   # Decision: none
 ```
 
-Private addresses such as the lab's own `172.x` network are on the
-built-in allow-list and can never be reported or blocked.
+Private addresses such as the lab's own `172.x` network are on the built-in
+[allow-list](../../documentation/glossary.md#allow-list) and can never be
+reported or blocked.
 
 ## Stop
 
@@ -75,7 +79,7 @@ runs it on every pull request.
 
 - `compose.yaml` — the lab: `init` plus three nodes on the network `lab`.
 - `lab-init.sh` — the `init` service (Dockerfile stage `lab-init`):
-  keys, peer IDs, configurations.
+  keys, [peer IDs](../../documentation/glossary.md#peer-id), configurations.
 - `smoke-test.sh` — the smoke test.
 
 The image itself (`docker build -t obie .` in the repository root) runs a

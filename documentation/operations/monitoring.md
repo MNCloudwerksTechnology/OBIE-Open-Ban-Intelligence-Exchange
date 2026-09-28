@@ -17,7 +17,7 @@ scrape_configs:
       - targets: ["127.0.0.1:9464"]
 ```
 
-No label ever carries an IP address or a peer ID.
+No label ever carries an IP address or a [peer ID](../glossary.md#peer-id).
 
 | Metric | Type | Labels | Meaning |
 |---|---|---|---|
@@ -26,18 +26,18 @@ No label ever carries an IP address or a peer ID.
 | `obie_peers_connected` | gauge | | Connected mesh peers. |
 | `obie_peers_configured` | gauge | | Bootstrap peers in `mesh.bootstrap`. |
 | `obie_events_received_total` | counter | `outcome` (`accepted`, `duplicate`, `rate_limited`, `expired`, `invalid_signature`, `invalid_schema`, `too_large`) | Events received from peers, by validation outcome. |
-| `obie_events_published_total` | counter | `type` (`verdict`, `revoke`) | Events this node published. |
-| `obie_store_active_indicators` | gauge | | Indicators with at least one active verdict. |
+| `obie_events_published_total` | counter | `type` (`verdict`, `revoke`) | Events this [node](../glossary.md#node) published. |
+| `obie_store_active_indicators` | gauge | | [Indicators](../glossary.md#indicator) with at least one active [verdict](../glossary.md#verdict). |
 | `obie_store_active_verdicts` | gauge | | Active verdicts (one per publisher and indicator). |
 | `obie_decisions` | gauge | `state` (`block`, `none`, `allowed`) | Decisions the engine keeps, by state. |
-| `obie_enforcer_entries` | gauge | `family` (`ipv4`, `ipv6`) | Entries the enforcement backend applies (0 in observe mode). |
+| `obie_enforcer_entries` | gauge | `family` (`ipv4`, `ipv6`) | Entries the enforcement backend applies (0 in [observe mode](../glossary.md#observe-mode)). |
 | `obie_enforcer_apply_total` | counter | `result` (`success`, `error`) | Reconciliation passes. |
 | `obie_enforcer_apply_duration_seconds` | histogram | | Duration of the backend calls that apply a change. |
 | `obie_enforcer_skipped_total` | counter | `reason` (`allowlist`, `max_entries`) | Decided blocks newly left out of the backend. |
 | `obie_propagation_delay_seconds` | histogram | | Receipt time minus `issued_at` of accepted events. `issued_at` has whole seconds, and the clocks of both nodes count in. |
 | `obie_admin_requests_total` | counter | `endpoint`, `code` | Admin API requests by endpoint pattern (e.g. `POST /v1/reports`; `unmatched` for none) and HTTP status. |
 | `obie_store_events_total` | counter | `result` | Events passed to the store, by outcome; `full` counts verdicts refused because the store was full and they would have expired first. |
-| `obie_store_verdict_records` | gauge | | Verdicts the store holds (active, revoked or expired but not yet swept), bounded by `store.max_indicators`. |
+| `obie_store_verdict_records` | gauge | | Verdicts the store holds (active, [revoked](../glossary.md#revocation) or expired but not yet swept), bounded by `store.max_indicators`. |
 | `obie_store_evictions_total` | counter | | Stored verdicts evicted, the one expiring first each, to keep the store within `store.max_indicators`. |
 
 Useful queries:
@@ -69,8 +69,8 @@ for every decision change:
 | `block-added` | An indicator became blocked (consensus, local autoblock or force-block). |
 | `block-updated` | A block's expiry, score, publishers or rule changed. |
 | `block-removed` | An indicator is no longer blocked. |
-| `allowed-by-allowlist` | The allow-list or a force-allow keeps an indicator with verdicts from being blocked. |
-| `override-set` / `override-removed` | The operator set or deleted an override (`obiectl allow`, `block`, `unoverride`). |
+| `allowed-by-allowlist` | The [allow-list](../glossary.md#allow-list) or a force-allow keeps an indicator with verdicts from being blocked. |
+| `override-set` / `override-removed` | The operator set or deleted an [override](../glossary.md#override) (`obiectl allow`, `block`, `unoverride`). |
 | `local-report` | This node issued a verdict (`obiectl report`, Fail2Ban). |
 | `revocation` | This node revoked one of its verdicts (`obiectl revoke`). |
 

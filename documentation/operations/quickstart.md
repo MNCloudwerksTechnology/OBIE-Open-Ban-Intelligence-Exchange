@@ -1,8 +1,8 @@
 # Quick start
 
-From nothing to a node that turns Fail2Ban bans into signed verdicts and,
-once you trust what it shows you, blocks attackers with nftables. Plan on
-half an hour. You need:
+From nothing to a [node](../glossary.md#node) that turns Fail2Ban bans
+into signed [verdicts](../glossary.md#verdict) and, once you trust what it
+shows you, blocks attackers with nftables. Plan on half an hour. You need:
 
 - a Linux host (amd64 or arm64) with systemd, nftables and root access;
 - Fail2Ban 0.10 or newer, already banning something (an `sshd` jail will
@@ -10,10 +10,11 @@ half an hour. You need:
 - a console to the host that does not depend on its network (provider
   console, IPMI, KVM), in case you lock yourself out in step 5.
 
-The steps are: [install](#1-install), [start in observe
-mode](#2-start-in-observe-mode), [connect Fail2Ban](#3-connect-fail2ban),
-[verify](#4-verify), [enforce](#5-enforce). Connecting to other nodes comes
-afterwards, in [Federation](federation.md).
+The steps are: [install](#1-install), [start](#2-start-in-observe-mode) in
+[observe mode](../glossary.md#observe-mode),
+[connect Fail2Ban](#3-connect-fail2ban), [verify](#4-verify),
+[enforce](#5-enforce). Connecting to other nodes comes afterwards, in
+[Federation](federation.md).
 
 ## 1. Install
 
@@ -38,10 +39,11 @@ in detail: [Installing and upgrading](install.md).
 
 The installed configuration is the annotated
 [example](../examples/obie.yaml): every key at its default, `node.mode:
-observe`. In observe mode the node decides and shows what it would block,
-but blocks nothing. Keep it that way for now; you only need to change
-something if port 4001 or 9464 is taken (`mesh.listen`, `metrics.listen`,
-see the [configuration reference](configuration.md)).
+observe`. In [observe mode](../glossary.md#observe-mode) the node decides
+and shows what it would block, but blocks nothing. Keep it that way for now;
+you only need to change something if port 4001 or 9464 is taken
+(`mesh.listen`, `metrics.listen`, see the [configuration
+reference](configuration.md)).
 
 It is worth turning on the audit log, which records every decision. Edit
 `/etc/obie/obie.yaml`:
@@ -59,12 +61,12 @@ sudo systemctl enable --now obied
 sudo obiectl status
 ```
 
-`--check-config` prints `obied: configuration /etc/obie/obie.yaml is
-valid`. `obiectl status` shows `Mode: OBSERVE`, `Ready: yes` and every
-subsystem `running`; `mesh` is `degraded: 0 peers connected` until you
-federate, which is fine. On its first start the node created its identity,
-an Ed25519 key in `/var/lib/obie/node.key`. Its peer ID is how other nodes
-will know it:
+`--check-config` prints `obied: configuration /etc/obie/obie.yaml is valid`.
+`obiectl status` shows `Mode: OBSERVE`, `Ready: yes` and every subsystem
+`running`; `mesh` is `degraded: 0 peers connected` until you federate, which
+is fine. On its first start the node created its identity, an Ed25519 key in
+`/var/lib/obie/node.key`. Its [peer ID](../glossary.md#peer-id) is how other
+nodes will know it:
 
 ```sh
 sudo obiectl identity
@@ -101,7 +103,8 @@ sudo fail2ban-client reload
 From now on every ban of the jail is also reported to `obied` and becomes
 a signed verdict. Matched log lines are hashed on the host; only the hash
 and the failure count are published. The [Fail2Ban guide](../guides/fail2ban.md)
-explains the jail parameters (reason, confidence, revoke on unban).
+explains the jail parameters (reason, confidence,
+[revoke](../glossary.md#revocation) on unban).
 
 ## 4. Verify
 
@@ -143,11 +146,12 @@ observe for a few days and read what it would have blocked, with
 
 ## 5. Enforce
 
-Before the node may touch the firewall, tell it what it must never block.
-Loopback, private and link-local ranges, the node's own addresses and its
-bootstrap peers are always safe. Add everything else you cannot afford to
-lose: the networks you administer from, monitoring, your DNS resolvers and
-gateways, and the host's public address if it sits behind NAT. In
+Before the node may touch the firewall in
+[enforce mode](../glossary.md#enforce-mode), tell it what it must never
+block. Loopback, private and link-local ranges, the node's own addresses and
+its bootstrap peers are always safe. Add everything else you cannot afford
+to lose: the networks you administer from, monitoring, your DNS resolvers
+and gateways, and the host's public address if it sits behind NAT. In
 `/etc/obie/obie.yaml`:
 
 ```yaml
@@ -197,7 +201,8 @@ sudo obied teardown-firewall
 ## Next steps
 
 - [Federate](federation.md) with a node you trust: exchange peer IDs,
-  choose trust weights and a quorum.
+  choose [trust weights](../glossary.md#trust-weight) and a
+  [quorum](../glossary.md#quorum).
 - [Operate](operations.md): metrics, audit log, upgrades, backing up the
   node key, uninstalling.
 - Read the [threat model](../../SECURITY.md#threat-model) to know what

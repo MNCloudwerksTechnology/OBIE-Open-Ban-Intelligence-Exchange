@@ -1,9 +1,11 @@
 # Enforcing with nftables
 
-With `enforce.backend: nftables` and `node.mode: enforce`, `obied` drops
-traffic from blocked addresses through its own nftables table. It never
-changes any other table, so it coexists with an existing ruleset,
-firewalld, Docker or iptables-nft. See ADR 0015 for the design.
+With `enforce.backend: nftables` in
+[enforce mode](../glossary.md#enforce-mode) (`node.mode: enforce`), the
+[node](../glossary.md#node) `obied` drops traffic from blocked addresses
+through its own nftables table. It never changes any other table, so it
+coexists with an existing ruleset, firewalld, Docker or iptables-nft. See
+ADR 0015 for the design.
 
 ## What obied creates
 
