@@ -294,3 +294,13 @@ func TestSovereigntyResponse(t *testing.T) {
 		t.Errorf("force-block = %+v", r)
 	}
 }
+
+func TestNewEnforcer(t *testing.T) {
+	log := slog.New(slog.DiscardHandler)
+	if enf, err := newEnforcer(config.BackendDryRun, log); err != nil || enf == nil {
+		t.Errorf("dryrun = %v, %v", enf, err)
+	}
+	if _, err := newEnforcer(config.BackendNFTables, log); err == nil || !strings.Contains(err.Error(), `enforce.backend "nftables" is not available`) {
+		t.Errorf("nftables error = %v", err)
+	}
+}

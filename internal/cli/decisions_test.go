@@ -216,8 +216,12 @@ func TestObiectlExplainAgainstInProcessDaemon(t *testing.T) {
 	if out := ctl("decisions"); !strings.Contains(out, "ipv4:198.18.0.8") || !strings.Contains(out, "ipv4:198.18.0.7") {
 		t.Errorf("decisions table:\n%s", out)
 	}
-	if out := ctl("status"); !strings.Contains(out, "decision   running  yes    -      1 blocked of 3 indicators") {
-		t.Errorf("status lacks the decision subsystem:\n%s", out)
+	if out := ctl("status"); !strings.Contains(out, "decision   running  yes    -      1 blocked of 3 indicators") ||
+		!strings.Contains(out, "enforce    running  yes    -      observing") {
+		t.Errorf("status lacks the decision or enforce subsystem:\n%s", out)
+	}
+	if out := ctl("enforced"); out != "No entries applied: the node is in observe mode.\n" {
+		t.Errorf("enforced in observe mode:\n%s", out)
 	}
 
 	var stdout, ctlStderr bytes.Buffer

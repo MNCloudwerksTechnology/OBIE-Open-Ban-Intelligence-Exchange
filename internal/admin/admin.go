@@ -4,6 +4,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -117,6 +118,9 @@ type Info struct {
 	// Verdicts reports, revokes and lists verdicts; those endpoints answer
 	// 503 when nil.
 	Verdicts VerdictService
+	// Enforced lists the entries the enforcement backend applies; the
+	// endpoint answers 503 when nil.
+	Enforced func(context.Context) ([]EnforcedEntry, error)
 	// Now returns the current time; time.Now when nil.
 	Now func() time.Time
 }
@@ -170,6 +174,7 @@ func Handler(info Info, log *slog.Logger) http.Handler {
 	handleDecisions(mux, info, log)
 	handleOverrides(mux, info, log)
 	handleVerdicts(mux, info, log)
+	handleEnforced(mux, info, log)
 	return mux
 }
 
