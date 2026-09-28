@@ -78,6 +78,10 @@ type Options struct {
 	// GossipMetrics observes the outcome of every received event; nil for
 	// none.
 	GossipMetrics gossip.Metrics
+	// Connections, if set, is called for every peer that connects or
+	// loses its last connection, one call at a time; it must be fast
+	// (ADR 0025).
+	Connections func(Connection)
 	// AllowDocumentationRanges accepts events on documentation addresses
 	// (gossip.Options.AllowDocumentationRanges); only for tests.
 	AllowDocumentationRanges bool

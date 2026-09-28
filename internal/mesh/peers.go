@@ -211,3 +211,25 @@ func (o observers) Observe(from peer.ID, outcome gossip.Outcome) {
 		m.Observe(from, outcome)
 	}
 }
+
+// Connection is a peer connecting, or losing its last connection.
+type Connection struct {
+	// ID is the peer's ID; Name its trust.publishers name, if any.
+	ID, Name string
+	// Bootstrap is set for a peer listed in mesh.bootstrap, Publisher for
+	// one listed in trust.publishers.
+	Bootstrap, Publisher bool
+	// Connected is set when it connected, clear when it disconnected.
+	Connected bool
+}
+
+// reportConnection passes a change of peer id's connectedness to
+// Options.Connections.
+func (m *Mesh) reportConnection(id peer.ID, connected bool) {
+	if m.opts.Connections == nil {
+		return
+	}
+	name, _ := m.trustOf(id)
+	m.opts.Connections(Connection{ID: id.String(), Name: name, Bootstrap: m.isBootstrap(id), Publisher: m.isPublisher(id),
+		Connected: connected})
+}

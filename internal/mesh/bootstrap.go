@@ -112,10 +112,10 @@ func sleep(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// watchConnections logs peers connecting and disconnecting, counts the
-// connected peers, pings new peers, records when configured peers were
-// last seen, and forwards connectedness changes of bootstrap peers to
-// changed.
+// watchConnections logs and reports peers connecting and disconnecting,
+// counts the connected peers, pings new peers, records when configured
+// peers were last seen, and forwards connectedness changes of bootstrap
+// peers to changed.
 func (m *Mesh) watchConnections(ctx context.Context, h host.Host, sub event.Subscription, changed map[peer.ID]chan struct{}) {
 	defer func() { _ = sub.Close() }()
 	for {
@@ -133,10 +133,12 @@ func (m *Mesh) watchConnections(ctx context.Context, h host.Host, sub event.Subs
 		case network.Connected:
 			m.log.Info("peer connected", "peer_id", e.Peer.String())
 			m.connectedTo(e.Peer)
+			m.reportConnection(e.Peer, true)
 			m.wg.Go(func() { m.ping(ctx, h, e.Peer) })
 		case network.NotConnected:
 			m.log.Info("peer disconnected", "peer_id", e.Peer.String())
 			m.disconnectedFrom(e.Peer)
+			m.reportConnection(e.Peer, false)
 		}
 		peersConnected.Set(float64(len(h.Network().Peers())))
 		if ch, ok := changed[e.Peer]; ok {
