@@ -1,0 +1,85 @@
+# OBIE node daemon — /etc/systemd/system/obied.service
+#
+# Installed by packaging/install.sh. Runs obied as the dedicated system user
+# obie with CAP_NET_ADMIN as its only capability (for the nftables backend)
+# and a sandbox that `systemd-analyze security obied.service` rates 1.7
+# (OK); see documentation/operations/install.md.
+#
+# Configuration: /etc/obie/obie.yaml (ConfigurationDirectory)
+# State:         /var/lib/obie     (StateDirectory: node key, event store)
+# Admin socket:  /run/obie/obie.sock (RuntimeDirectory; group obie may use obiectl)
+# Audit log:     /var/log/obie     (LogsDirectory; set audit.path to use it)
+#
+# Adjust settings with `systemctl edit obied` rather than editing this file.
+
+[Unit]
+Description=OBIE node daemon (Open Ban Intelligence Exchange)
+Documentation=https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange
+After=network-online.target nftables.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=obie
+Group=obie
+ExecStartPre=/usr/local/bin/obied --config /etc/obie/obie.yaml --check-config
+ExecStart=/usr/local/bin/obied --config /etc/obie/obie.yaml
+ExecReload=/bin/kill -HUP $MAINPID
+# Removes the table inet obie only with enforce.nftables.teardown_on_stop.
+ExecStopPost=-/usr/local/bin/obied teardown-firewall --on-stop --config /etc/obie/obie.yaml
+Restart=on-failure
+RestartSec=5s
+# obied stops within node.shutdown_timeout (10s by default).
+TimeoutStopSec=30s
+
+StateDirectory=obie
+StateDirectoryMode=0700
+RuntimeDirectory=obie
+RuntimeDirectoryMode=0750
+ConfigurationDirectory=obie
+ConfigurationDirectoryMode=0755
+LogsDirectory=obie
+LogsDirectoryMode=0750
+UMask=0027
+
+# CAP_NET_ADMIN programs the nftables table inet obie; nothing else.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+NoNewPrivileges=yes
+
+# File system: read-only everywhere but the directories above.
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+DevicePolicy=closed
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+KeyringMode=private
+RemoveIPC=yes
+
+# Networking: Unix (admin socket), IPv4/IPv6 (mesh, metrics) and netlink
+# (nftables, interface addresses for the allow-list).
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @mount @obsolete @debug @cpu-emulation
+SystemCallErrorNumber=EPERM
+
+# Resource limits for a small VPS.
+LimitNOFILE=65536
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target

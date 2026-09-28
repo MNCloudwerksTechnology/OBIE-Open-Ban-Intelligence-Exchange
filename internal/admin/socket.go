@@ -93,8 +93,31 @@ func setOwnership(path, group string, log *slog.Logger) error {
 	if err != nil {
 		return fmt.Errorf("group %s has non-numeric gid %q", group, g.Gid)
 	}
-	if err := os.Chown(path, -1, gid); err != nil {
+	if socketGID(path) == gid {
+		// The socket already belongs to the group when it is the process's
+		// group, as under the systemd unit (Group=obie); skipping the chown
+		// keeps obied working under a system call filter without @chown.
+		return nil
+	}
+	if err := chown(path, -1, gid); err != nil {
 		return fmt.Errorf("chgrp admin socket to %s: %w", group, err)
 	}
 	return nil
+}
+
+// chown changes the group of the socket; tests replace it.
+var chown = os.Chown
+
+// socketGID returns the group ID of the file at path, or -1 if it cannot be
+// determined.
+func socketGID(path string) int {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return -1
+	}
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return -1
+	}
+	return int(st.Gid)
 }

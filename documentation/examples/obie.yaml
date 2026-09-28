@@ -34,7 +34,9 @@ admin:
   # Unix socket of the local admin API used by obiectl. Its directory must
   # exist and should be accessible only to the obie user and group.
   socket: /run/obie/obie.sock
-  # Group that owns the socket; members may run obiectl. obied also checks
+  # Group that owns the socket; members may run obiectl. Under the shipped
+  # systemd unit it must be the unit's Group= (obie): its system call
+  # filter does not allow obied to change the socket's group. obied also checks
   # the connecting process (SO_PEERCRED): only root, its own user and members
   # of this group are served.
   socket_group: obie

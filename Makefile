@@ -12,16 +12,21 @@ TOOLS_DIR := $(BIN_DIR)/tools
 
 # Pinned tool versions. Tools are installed into a versioned directory under
 # ./bin/tools, so bumping a version here reinstalls it automatically.
-GOLANGCI_LINT_VERSION := v2.14.0
-GOVULNCHECK_VERSION   := v1.8.0
-ACTIONLINT_VERSION    := v1.7.12
+GOLANGCI_LINT_VERSION   := v2.14.0
+GOVULNCHECK_VERSION     := v1.8.0
+ACTIONLINT_VERSION      := v1.7.12
+CYCLONEDX_GOMOD_VERSION := v1.12.0
 
-GOLANGCI_LINT := $(TOOLS_DIR)/golangci-lint-$(GOLANGCI_LINT_VERSION)/golangci-lint
-GOVULNCHECK   := $(TOOLS_DIR)/govulncheck-$(GOVULNCHECK_VERSION)/govulncheck
-ACTIONLINT    := $(TOOLS_DIR)/actionlint-$(ACTIONLINT_VERSION)/actionlint
+GOLANGCI_LINT   := $(TOOLS_DIR)/golangci-lint-$(GOLANGCI_LINT_VERSION)/golangci-lint
+GOVULNCHECK     := $(TOOLS_DIR)/govulncheck-$(GOVULNCHECK_VERSION)/govulncheck
+ACTIONLINT      := $(TOOLS_DIR)/actionlint-$(ACTIONLINT_VERSION)/actionlint
+CYCLONEDX_GOMOD := $(TOOLS_DIR)/cyclonedx-gomod-$(CYCLONEDX_GOMOD_VERSION)/cyclonedx-gomod
 
-# The Gitea workflow is the source; the GitHub mirror must be byte-identical.
-WORKFLOWS := .gitea/workflows/ci.yml .github/workflows/ci.yml
+# Release artefacts (make release VERSION=x.y.z).
+RELEASE_DIR := $(CURDIR)/dist/release
+
+# The Gitea workflows are the source; the GitHub mirrors must be byte-identical.
+WORKFLOWS := ci.yml release.yml
 
 .DEFAULT_GOAL := build
 
@@ -68,18 +73,36 @@ vuln: $(GOVULNCHECK) ## Scan for known vulnerabilities with govulncheck
 
 .PHONY: lint-workflows
 lint-workflows: $(ACTIONLINT) ## Validate the CI workflows with actionlint and check they are identical
-	$(ACTIONLINT) $(WORKFLOWS)
-	@cmp -s $(WORKFLOWS) || { \
-		echo "$(word 1,$(WORKFLOWS)) and $(word 2,$(WORKFLOWS)) differ; keep them identical"; \
-		exit 1; \
-	}
+	$(ACTIONLINT) $(foreach w,$(WORKFLOWS),.gitea/workflows/$(w) .github/workflows/$(w))
+	@for w in $(WORKFLOWS); do \
+		cmp -s .gitea/workflows/$$w .github/workflows/$$w || { \
+			echo ".gitea/workflows/$$w and .github/workflows/$$w differ; keep them identical"; \
+			exit 1; \
+		}; \
+	done
+
+.PHONY: release
+release: $(CYCLONEDX_GOMOD) ## Build reproducible release tarballs, SBOMs and SHA256SUMS (VERSION=x.y.z)
+	VERSION='$(VERSION)' GO='$(GO)' CYCLONEDX_GOMOD='$(CYCLONEDX_GOMOD)' packaging/release.sh $(RELEASE_DIR)
+
+.PHONY: image
+image: ## Build the container image obie:$(VERSION) (docker)
+	docker build --build-arg VERSION='$(VERSION)' -t obie:$(VERSION) .
+
+.PHONY: lab-smoke
+lab-smoke: ## Start the 3-node compose lab, check the nodes see each other and block, remove it (docker)
+	packaging/compose/smoke-test.sh
+
+.PHONY: check-unit
+check-unit: build ## Check the systemd unit with systemd-analyze (verify, exposure <= 3.0)
+	packaging/systemd/check-unit.sh $(BIN_DIR)
 
 .PHONY: ci
 ci: fmt-check vet lint lint-workflows test vuln ## Run every check the CI gate runs
 
 .PHONY: clean
-clean: ## Remove build output and installed tools
-	rm -rf $(BIN_DIR)
+clean: ## Remove build output, release artefacts and installed tools
+	rm -rf $(BIN_DIR) $(RELEASE_DIR)
 
 $(GOLANGCI_LINT):
 	GOBIN=$(dir $@) $(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
@@ -89,3 +112,6 @@ $(GOVULNCHECK):
 
 $(ACTIONLINT):
 	GOBIN=$(dir $@) $(GO) install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+
+$(CYCLONEDX_GOMOD):
+	GOBIN=$(dir $@) $(GO) install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@$(CYCLONEDX_GOMOD_VERSION)
