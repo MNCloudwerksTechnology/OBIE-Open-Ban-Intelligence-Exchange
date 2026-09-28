@@ -47,7 +47,8 @@ class WebsiteSmokeTest extends IntegrationTest {
     assertThat(html)
         .doesNotContainPattern("\\ssrcset=\"[^\"]*(https?:)?//")
         .doesNotContainPattern("\\ssrc=\"(https?:)?//")
-        .doesNotContainPattern("<link\\s[^>]*href=\"(https?:)?//")
+        // The canonical link points to the site itself (obie.web.site-origin) and loads nothing.
+        .doesNotContainPattern("<link\\s[^>]*href=\"(https?:)?//(?!obie\\.example/)")
         .doesNotContainPattern("url\\((['\"])?(https?:)?//");
     Matcher anchors = Pattern.compile("<a\\s[^>]*href=\"https?://[^>]*>").matcher(html);
     int external = 0;

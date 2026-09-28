@@ -13,12 +13,19 @@ import org.springframework.web.servlet.resource.PathResourceResolver;
  * <p>Angular prerenders every route to {@code <route>/index.html}, so a request for a directory
  * path is answered with that file. Anything else that does not exist is a 404, which {@link
  * NotFoundPageResolver} renders with the prerendered not-found page; there is deliberately no
- * fallback to the index page.
+ * fallback to the index page. Pages are served with the configured origin in their absolute URLs
+ * ({@link SiteOrigin}).
  */
 @Configuration(proxyBeanMethods = false)
 public class StaticSiteConfig implements WebMvcConfigurer {
 
   static final String STATIC_LOCATION = "classpath:/static/";
+
+  private final SiteOrigin siteOrigin;
+
+  public StaticSiteConfig(SiteOrigin siteOrigin) {
+    this.siteOrigin = siteOrigin;
+  }
 
   @Override
   public void addResourceHandlers(ResourceHandlerRegistry registry) {
@@ -26,7 +33,8 @@ public class StaticSiteConfig implements WebMvcConfigurer {
         .addResourceHandler("/**")
         .addResourceLocations(STATIC_LOCATION)
         .resourceChain(true)
-        .addResolver(new PrerenderedPageResolver());
+        .addResolver(new PrerenderedPageResolver())
+        .addTransformer(new SiteOriginTransformer(siteOrigin));
   }
 
   /** Resolves a path to the file itself or, failing that, to its prerendered index page. */
