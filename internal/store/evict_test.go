@@ -85,7 +85,7 @@ func TestCapEvictsVerdictExpiringFirst(t *testing.T) {
 		t.Errorf("obie_store_evictions_total rose by %v, want 1", got)
 	}
 	if got := testutil.ToFloat64(verdictsGauge); got != 3 {
-		t.Errorf("obie_store_verdicts = %v, want 3", got)
+		t.Errorf("obie_store_verdict_records = %v, want 3", got)
 	}
 
 	// A replay of the evicted event is a duplicate, not a new verdict.
@@ -247,6 +247,37 @@ func TestCapShrinksLoweredStore(t *testing.T) {
 		mustPut(t, db, verdict(pubC, ipv4(fmt.Sprintf("85.0.1.%d", i+1)), now, 10*time.Hour), true)
 	}
 	checkVerdicts(t, db, 3)
+}
+
+// TestCapStoresVerdictAfterEvictingLastCandidate checks that a foreign
+// verdict that evicted a record is stored even if the store stays above a
+// lowered cap because only own verdicts are left: the eviction is not for
+// nothing.
+func TestCapStoresVerdictAfterEvictingLastCandidate(t *testing.T) {
+	clk := newClock()
+	dir := t.TempDir()
+	db := New(dir, discardLogger(), Options{Now: clk.Now, Self: pubA})
+	if err := db.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	now := clk.Now()
+	mustPut(t, db, verdict(pubB, ipv4("85.0.0.1"), now, time.Hour), true)
+	for i := range 3 {
+		mustPut(t, db, verdict(pubA, ipv4(fmt.Sprintf("85.0.1.%d", i+1)), now, time.Hour), true)
+	}
+	if err := db.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	db = startDB(t, New(dir, discardLogger(), Options{Now: clk.Now, MaxIndicators: 2, Self: pubA}))
+	mustPut(t, db, verdict(pubC, ipv4("85.0.2.1"), now, 10*time.Hour), true)
+	checkVerdicts(t, db, 4)
+	if ids := activeIDs(t, db, "ipv4:85.0.0.1", now); len(ids) != 0 {
+		t.Errorf("foreign verdict not evicted: %v", ids)
+	}
+	if st := db.Stats(); st.Evicted != 1 || st.Full != 0 {
+		t.Errorf("stats = %+v, want 1 evicted and none refused", st)
+	}
 }
 
 func TestVerdictCountFollowsEveryChange(t *testing.T) {

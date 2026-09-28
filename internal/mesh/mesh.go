@@ -283,11 +283,17 @@ func (m *Mesh) newHost() (host.Host, error) {
 		return nil, fmt.Errorf("resource manager: %w", err)
 	}
 
+	// The configured addresses are bound below: libp2p.New leaks the
+	// goroutines of the swarm it built when none of its listen addresses
+	// can be bound. Without any, libp2p's defaults (all interfaces, ports
+	// chosen by the OS) apply as before.
+	listen := libp2p.NoListenAddrs
+	if len(m.listen) == 0 {
+		listen = libp2p.DefaultListenAddrs
+	}
 	h, err := libp2p.New(
 		libp2p.Identity(key),
-		// Listening starts below: libp2p.New leaks the goroutines of the
-		// swarm it built when none of its listen addresses can be bound.
-		libp2p.NoListenAddrs,
+		listen,
 		libp2p.Transport(tcp.NewTCPTransport),
 		libp2p.Transport(quic.NewTransport),
 		libp2p.Security(noise.ID, noise.New),

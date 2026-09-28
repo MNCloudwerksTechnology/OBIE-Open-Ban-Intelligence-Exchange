@@ -84,6 +84,9 @@ type Testing struct {
 	// Started is called once every subsystem runs, with the addresses they
 	// bound.
 	Started func(Endpoints)
+	// Store, if set, is called with the node's store before it opens, e.g.
+	// to subscribe to its changes or to read its cache use.
+	Store func(*store.DB)
 }
 
 // Endpoints are the addresses a running node bound.
@@ -124,6 +127,9 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		MaxIndicators: cfg.Store.MaxIndicators,
 		Self:          id.PeerID(),
 	})
+	if opts.Testing.Store != nil {
+		opts.Testing.Store(db)
+	}
 	// go-libp2p's own logs join ours; below warn they are too chatty.
 	mesh.UseLogHandler(logs.Logger("libp2p").Handler(), slog.LevelWarn)
 	m, err := mesh.New(id, mesh.Options{

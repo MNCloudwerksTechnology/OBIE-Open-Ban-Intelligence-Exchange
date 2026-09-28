@@ -17,7 +17,8 @@ import (
 )
 
 // TestRunTestingHooks runs a node with the test hooks: the ops endpoints
-// on a port chosen by the OS and the bound addresses reported.
+// on a port chosen by the OS, the bound addresses reported and the store
+// handed out.
 func TestRunTestingHooks(t *testing.T) {
 	// Unix socket paths are limited to about 100 bytes; t.TempDir can exceed that.
 	dir, err := os.MkdirTemp("", "obie")
@@ -34,11 +35,13 @@ func TestRunTestingHooks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	started := make(chan Endpoints, 1)
 	done := make(chan error, 1)
+	var db *store.DB
 	go func() {
 		done <- Run(ctx, &cfg, logging.New(&syncBuffer{}, slog.LevelInfo), Options{Env: noHost, Testing: Testing{
 			AllowDocumentationRanges: true,
 			MetricsListen:            "127.0.0.1:0",
 			Started:                  func(e Endpoints) { started <- e },
+			Store:                    func(s *store.DB) { db = s },
 		}})
 	}()
 	select {
@@ -48,6 +51,9 @@ func TestRunTestingHooks(t *testing.T) {
 		}
 		if _, port, err := net.SplitHostPort(e.Metrics); err != nil || port == "0" {
 			t.Errorf("metrics endpoint = %q, want a bound port", e.Metrics)
+		}
+		if db == nil || db.Ready() != nil {
+			t.Errorf("Store hook gave %v, want the node's open store", db)
 		}
 	case err := <-done:
 		t.Fatalf("Run returned before starting: %v", err)

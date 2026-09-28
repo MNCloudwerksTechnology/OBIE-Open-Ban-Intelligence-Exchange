@@ -33,7 +33,7 @@ func (s *DB) makeRoom(txn *badger.Txn, ev *obieproto.Event, now time.Time, out *
 		index, at, ok := s.evictionCandidate(txn)
 		switch {
 		case !ok:
-			return own, nil
+			return own || out.evicted > 0, nil
 		case !own && !at.Before(ev.ExpiresAt()):
 			return out.evicted > 0, nil
 		}

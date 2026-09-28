@@ -13,6 +13,7 @@ import (
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/dgraph-io/badger/v4/options"
+	"github.com/dgraph-io/ristretto/v2"
 )
 
 // Default intervals of the background loops.
@@ -192,6 +193,23 @@ func (s *DB) Ready() error {
 	s.loopMu.Lock()
 	defer s.loopMu.Unlock()
 	return s.loopErr
+}
+
+// CacheBytes returns the bytes held in Badger's block and index caches,
+// which fill up to their configured sizes; 0 while the database is closed.
+func (s *DB) CacheBytes() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.db == nil {
+		return 0
+	}
+	var n int64
+	for _, m := range []*ristretto.Metrics{s.db.BlockCacheMetrics(), s.db.IndexCacheMetrics()} {
+		if m != nil {
+			n += int64(m.CostAdded()) - int64(m.CostEvicted()) // #nosec G115 -- bounded by the cache sizes.
+		}
+	}
+	return n
 }
 
 // Stats returns the Put outcomes counted so far.

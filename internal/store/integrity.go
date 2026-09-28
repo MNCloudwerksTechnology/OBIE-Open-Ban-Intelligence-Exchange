@@ -110,7 +110,8 @@ func checkLogHeader(path string, opts badger.Options) error {
 	name := filepath.Base(path)
 	switch {
 	case info.Size() == 0 && filepath.Ext(name) == ".vlog":
-		return fmt.Errorf("%w: value log %s is empty", ErrCorrupt, name)
+		return fmt.Errorf("%w: value log %s is empty; a crash before anything was written to it leaves it so, "+
+			"and then removing it (rm %s) loses nothing", ErrCorrupt, name, path)
 	case info.Size() < logHeaderSize || len(opts.EncryptionKey) > 0:
 		return nil // Badger truncates a short log; keys it checks itself.
 	}

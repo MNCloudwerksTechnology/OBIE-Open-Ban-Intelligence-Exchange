@@ -163,6 +163,15 @@ func TestStartFailsWhenNothingCanBeBound(t *testing.T) {
 	}
 }
 
+// TestStartWithoutListenAddresses checks that an empty mesh.listen keeps
+// libp2p's default listen addresses.
+func TestStartWithoutListenAddresses(t *testing.T) {
+	m := startMesh(t, newIdentity(t), Options{})
+	if err := m.Ready(); err != nil {
+		t.Errorf("Ready() = %v; want the default listen addresses bound", err)
+	}
+}
+
 func TestReadyWithoutPeers(t *testing.T) {
 	m := startMesh(t, newIdentity(t), Options{Listen: []string{"/ip4/127.0.0.1/tcp/0"}})
 	if err := m.Ready(); err != nil {

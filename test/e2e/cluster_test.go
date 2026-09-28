@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -81,6 +82,10 @@ type clusterOptions struct {
 	backend config.Backend
 	// hooks returns extra test hooks of the named node; nil for none.
 	hooks func(name string) daemon.Testing
+	// rateLimit is mesh.rate_limit of every node; the defaults if zero.
+	rateLimit config.RateLimit
+	// logLevel is log.level of every node; debug if empty.
+	logLevel string
 }
 
 // cluster is a set of running nodes. The first three names trust each
@@ -182,6 +187,10 @@ func (c *cluster) writeConfig(t *testing.T, n *node, bootstrap []*node) {
 			fmt.Fprintf(&b, "    - %s/p2p/%s\n", addr, peer.peerID)
 		}
 	}
+	if rl := c.opts.rateLimit; rl != (config.RateLimit{}) {
+		fmt.Fprintf(&b, "  rate_limit:\n    publisher: {events_per_second: %g, burst: %d}\n    peer: {events_per_second: %g, burst: %d}\n",
+			rl.Publisher.EventsPerSecond, rl.Publisher.Burst, rl.Peer.EventsPerSecond, rl.Peer.Burst)
+	}
 	b.WriteString("trust:\n  default_weight: 0\n  local_weight: 1.0\n  publishers:\n")
 	if trusts := c.trustedNames(); slices.Contains(trusts, n.name) {
 		for _, name := range trusts {
@@ -197,7 +206,7 @@ func (c *cluster) writeConfig(t *testing.T, n *node, bootstrap []*node) {
 	// one the OS chooses.
 	b.WriteString("metrics:\n  listen: 127.0.0.1:9464\n")
 	fmt.Fprintf(&b, "audit:\n  path: %s\n", filepath.Join(n.dir, "audit.log"))
-	b.WriteString("log:\n  level: debug\n")
+	fmt.Fprintf(&b, "log:\n  level: %s\n", cmp.Or(c.opts.logLevel, "debug"))
 	if err := os.WriteFile(n.config, []byte(b.String()), 0o600); err != nil {
 		t.Fatal(err)
 	}

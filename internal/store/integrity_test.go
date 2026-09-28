@@ -150,6 +150,25 @@ func TestStartOpensHealthyStore(t *testing.T) {
 	}
 }
 
+// TestStartOpensStoreAfterCrash copies a store while it is open, as a
+// crash or power loss leaves it: full memtable and value logs, no clean
+// shutdown. The copy must open with every verdict, not be reported as
+// corrupt.
+func TestStartOpensStoreAfterCrash(t *testing.T) {
+	clk := newClock()
+	db := startDB(t, New(filepath.Join(t.TempDir(), "db"), discardLogger(), Options{Now: clk.Now}))
+	for i := range 3000 {
+		mustPut(t, db, verdict(pubB, ipv4(fmt.Sprintf("85.0.%d.%d", i>>8, i&0xff)), clk.Now(), time.Hour), true)
+	}
+	crashed := filepath.Join(t.TempDir(), "db")
+	if err := os.CopyFS(crashed, os.DirFS(db.dir)); err != nil {
+		t.Fatal(err)
+	}
+	if got := startDB(t, New(crashed, discardLogger(), Options{Now: clk.Now})).Verdicts(); got != 3000 {
+		t.Errorf("Verdicts() after the crash = %d, want 3000", got)
+	}
+}
+
 func TestStartReportsStoreInUse(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "db")
 	startDB(t, New(dir, discardLogger(), Options{}))
@@ -205,5 +224,31 @@ func TestStartNeverCrashesOnDamage(t *testing.T) {
 		if err := db.Stop(context.Background()); err != nil {
 			t.Logf("round %d: stop: %v", round, err)
 		}
+	}
+}
+
+// TestCacheBytes checks that CacheBytes reports what reading tables puts
+// into Badger's caches, and 0 once the store is closed.
+func TestCacheBytes(t *testing.T) {
+	db := New(newDiskStore(t, 3000), discardLogger(), Options{})
+	if err := db.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ListIndicators(time.Now(), Filter{}, Page{Limit: MaxPageLimit}); err != nil {
+		t.Fatal(err)
+	}
+	// The caches admit entries asynchronously.
+	deadline := time.Now().Add(5 * time.Second)
+	for db.CacheBytes() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := db.CacheBytes(); n <= 0 {
+		t.Errorf("CacheBytes() = %d after reading the tables, want > 0", n)
+	}
+	if err := db.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := db.CacheBytes(); n != 0 {
+		t.Errorf("CacheBytes() = %d on a closed store, want 0", n)
 	}
 }
