@@ -111,7 +111,7 @@ func TestOverviewPage(t *testing.T) {
 		`<p class="lead">Is this node healthy, and what is it doing? <span data-live hidden>This page updates itself every 5 seconds.</span></p>`,
 		`<div class="refresh" data-refresh="/api/overview">`,
 		// AC5: when the data was read.
-		`<p class="updated" data-updated>Updated <time datetime="2026-09-28T12:00:00Z">2026-09-28 12:00:00 UTC</time></p>`,
+		`<p class="updated" data-tick>Updated <time datetime="2026-09-28T12:00:00Z">2026-09-28 12:00:00 UTC</time></p>`,
 		// AC4: conditions with a next step.
 		`<div class="summary" data-state="attention">`,
 		`<li class="condition" data-level="warning">`,
@@ -136,7 +136,7 @@ func TestOverviewPage(t *testing.T) {
 		`<dd><code class="id">` + testNode.PeerID + `</code></dd>`,
 		`<dd><code class="id">` + strings.ReplaceAll(testNode.Fingerprint, "+", "&#43;") + `</code></dd>`, // escaped, shown as +
 		"<dd>v0.1.0</dd>",
-		`<dd>3 h 0 min, since <time datetime="2026-09-28T09:00:00Z">2026-09-28 09:00:00 UTC</time></dd>`,
+		`<dd><span data-tick>3 h 0 min</span>, since <time datetime="2026-09-28T09:00:00Z">2026-09-28 09:00:00 UTC</time></dd>`,
 		`<dd><time datetime="2026-09-28T09:00:00Z">2026-09-28 09:00:00 UTC</time>, at start</dd>`,
 		// The shared layout.
 		`<span class="mono">12D3KooW…FhGyvd</span> · v0.1.0`,
@@ -407,7 +407,7 @@ func TestScriptInsertsOnlyInertFragments(t *testing.T) {
 		t.Errorf("console.js turns a string into markup: %q", m)
 	}
 	for _, want := range []string{"new DOMParser().parseFromString(html, 'text/html')", "getAttribute('data-refresh')",
-		"credentials: 'same-origin'", "document.hidden"} {
+		"credentials: 'same-origin'", "document.hidden", "querySelectorAll('[data-tick]')", "preventScroll: true"} {
 		if !strings.Contains(string(script), want) {
 			t.Errorf("console.js lacks %q", want)
 		}

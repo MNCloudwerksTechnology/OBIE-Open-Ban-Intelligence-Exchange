@@ -88,8 +88,8 @@ func enforceFacts(st enforce.Status, cfg config.Enforce) console.EnforceFacts {
 		Applied:    st.Applied,
 		Blocks:     st.Blocks,
 		Covered:    st.Covered,
-		Refused:    st.Skipped[enforce.SkipAllowlist],
-		Capped:     st.Skipped[enforce.SkipMaxEntries],
+		Refused:    st.SkippedBlocks[enforce.SkipAllowlist],
+		Capped:     st.SkippedBlocks[enforce.SkipMaxEntries],
 		Failures:   st.Failures,
 		RetryIn:    st.RetryIn,
 	}

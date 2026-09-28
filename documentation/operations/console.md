@@ -111,7 +111,7 @@ events shows that as a condition.
 |-----------|------------|
 | *No peer is configured* | Add the peers of your mesh to `mesh.bootstrap` and restart `obied` ([federation](federation.md)). |
 | *No peer is connected* | Check that the peers run and that their mesh port is reachable from this host; the `obied` log names the failed dials. `sudo obiectl peers` lists the connected peers. |
-| *No event received* | The node holds no verdict and none arrived since `obied` started. Connect it to peers that publish verdicts, or report attacks yourself, for example with the [Fail2Ban action](../guides/fail2ban.md). |
+| *No event received* | The node holds no verdict and has accepted none since `obied` started. Connect it to peers that publish verdicts, or report attacks yourself, for example with the [Fail2Ban action](../guides/fail2ban.md). |
 | *Enforce mode, but nothing is applied to the firewall* | `enforce.backend` is `dryrun`, which only logs blocks. Set it to `nftables` and restart `obied` ([nftables](../guides/nftables.md)). |
 | *Enforce mode, but nothing is applied* or *Decided blocks and applied entries may differ*: *enforcement failed* | The backend refuses the changes; the `obied` log says why (for nftables: may `obied` change the firewall?). `obied` retries on its own. |
 | *The firewall may still apply blocks of an earlier enforce run* | In observe mode, withdrawing the entries failed; the `obied` log says why. `obied` retries on its own. |

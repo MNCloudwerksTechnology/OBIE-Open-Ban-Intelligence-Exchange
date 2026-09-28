@@ -242,6 +242,19 @@ func TestCoveredPrefixesAndTheCap(t *testing.T) {
 	g.reconcile(t)
 	wantState(t, g.enf, "198.51.100.0/24@1h0m0s")
 	wantCounts(t, g.rec, 3, 1, 1, 0, 1)
+
+	// A block inside a wider range left out over the cap is left out with
+	// it, not counted as sharing an applied entry.
+	h := newFixture(t, config.ModeEnforce, newFake(), Options{MaxEntries: 1})
+	h.add("198.51.100.0/24", time.Hour, 1)
+	h.add("198.51.100.7", time.Hour, 1)
+	h.add("192.0.2.1", time.Hour, 5)
+	h.reconcile(t)
+	wantState(t, h.enf, "192.0.2.1/32@1h0m0s")
+	wantCounts(t, h.rec, 3, 1, 0, 0, 2)
+	if s := h.rec.Status(); s.Skipped[SkipMaxEntries] != 1 {
+		t.Errorf("Skipped = %v, want the one range", s.Skipped)
+	}
 }
 
 // wantCounts checks how the last pass accounted for the decided blocks.
@@ -249,9 +262,12 @@ func wantCounts(t *testing.T, rec *Reconciler, blocks, applied, covered, refused
 	t.Helper()
 	s := rec.Status()
 	if s.Blocks != blocks || s.Applied != applied || s.Covered != covered ||
-		s.Skipped[SkipAllowlist] != refused || s.Skipped[SkipMaxEntries] != capped {
+		s.SkippedBlocks[SkipAllowlist] != refused || s.SkippedBlocks[SkipMaxEntries] != capped {
 		t.Errorf("Status = %+v, want blocks=%d applied=%d covered=%d refused=%d capped=%d",
 			s, blocks, applied, covered, refused, capped)
+	}
+	if s.Blocks != s.Applied+s.Covered+s.SkippedBlocks[SkipAllowlist]+s.SkippedBlocks[SkipMaxEntries] {
+		t.Errorf("Status = %+v: the blocks do not add up", s)
 	}
 }
 

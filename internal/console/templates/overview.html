@@ -9,7 +9,7 @@
 {{define "region" -}}
 <div class="summary" data-state="{{.Summary.State}}">
   <p><strong class="summary-title">{{.Summary.Title}}</strong> {{.Summary.Text}}</p>
-  <p class="updated" data-updated>Updated <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time></p>
+  <p class="updated" data-tick>Updated <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time></p>
 </div>
 {{- if .Conditions}}
 <section class="section" aria-labelledby="attention-heading">
@@ -27,7 +27,7 @@
 {{- with .Starting}}
 <section class="section starting" aria-labelledby="starting-heading">
   <h2 id="starting-heading">This node has just started</h2>
-  <p>obied started {{.Uptime}} ago. Here is what will appear, and when:</p>
+  <p>obied started <span data-tick>{{.Uptime}}</span> ago. Here is what will appear, and when:</p>
   <dl class="starting-items">
     {{- range .Items}}
     <dt>{{.What}}</dt>
@@ -79,7 +79,7 @@
     <dt>Version</dt>
     <dd>{{.Node.Version}}</dd>
     <dt>Uptime</dt>
-    <dd>{{.Node.Uptime}}{{with .Node.StartedAt.Text}}, since <time datetime="{{$.Node.StartedAt.ISO}}">{{.}}</time>{{end}}</dd>
+    <dd><span data-tick>{{.Node.Uptime}}</span>{{with .Node.StartedAt.Text}}, since <time datetime="{{$.Node.StartedAt.ISO}}">{{.}}</time>{{end}}</dd>
     <dt>Configuration loaded</dt>
     <dd>{{with .Node.ConfigLoadedAt.Text}}<time datetime="{{$.Node.ConfigLoadedAt.ISO}}">{{.}}</time>, {{end}}{{.Node.ConfigLoadedBy}}</dd>
   </dl>

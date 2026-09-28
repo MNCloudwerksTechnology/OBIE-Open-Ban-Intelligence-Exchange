@@ -143,8 +143,11 @@ func (l *configLoads) rejected(err error) {
 	l.rec.RejectedAt, l.rec.Rejected = now, err
 }
 
-// record returns what was recorded.
+// record returns what was recorded; nothing for a nil *configLoads.
 func (l *configLoads) record() loadRecord {
+	if l == nil {
+		return loadRecord{}
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	rec := l.rec

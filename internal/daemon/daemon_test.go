@@ -252,6 +252,10 @@ func TestReloadRejects(t *testing.T) {
 // waits for a restart.
 func TestReloadRecordsLoads(t *testing.T) {
 	f := newReloadFixture(t)
+	if got := f.rl.loads.record(); !got.LoadedAt.IsZero() {
+		t.Errorf("record of no configLoads = %+v", got)
+	}
+	f.rl.loads.reloaded(nil) // a nil configLoads records nothing
 	started := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
 	clock := started
 	f.rl.loads = newConfigLoads(started, func() time.Time { return clock })
@@ -310,7 +314,8 @@ func TestReloadRecordsLoads(t *testing.T) {
 // reloads' numbers in its own types.
 func TestConsoleFactsConversion(t *testing.T) {
 	st := enforce.Status{Mode: config.ModeEnforce, Applied: 10, Blocks: 14, Covered: 1, Failures: 2, RetryIn: 4 * time.Second,
-		Skipped: map[string]int{enforce.SkipAllowlist: 2, enforce.SkipMaxEntries: 1}, Err: errors.New("netlink: busy")}
+		Skipped:       map[string]int{enforce.SkipAllowlist: 1, enforce.SkipMaxEntries: 1}, // ranges
+		SkippedBlocks: map[string]int{enforce.SkipAllowlist: 2, enforce.SkipMaxEntries: 1}, Err: errors.New("netlink: busy")}
 	got := enforceFacts(st, config.Enforce{Backend: config.BackendNFTables, MaxEntries: 10})
 	want := console.EnforceFacts{Backend: "nftables", MaxEntries: 10, Mode: "enforce", Applied: 10, Blocks: 14, Covered: 1,
 		Refused: 2, Capped: 1, Failures: 2, Err: "netlink: busy", RetryIn: 4 * time.Second}

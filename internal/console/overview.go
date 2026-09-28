@@ -189,6 +189,7 @@ func (o *overview) summary(conds []condition) summary {
 			warnings++
 		}
 	}
+	notes := len(conds) - warnings
 	switch h := nodeHealth(o.statuses); {
 	case h.State == HealthStopping:
 		return summary{stateStopped, "Shutting down", "obied is stopping its parts; the numbers below are the last ones read."}
@@ -200,6 +201,8 @@ func (o *overview) summary(conds []condition) summary {
 		return summary{stateAttention, "Needs attention", strconv.Itoa(warnings) + " conditions below need your attention."}
 	case o.fresh:
 		return summary{stateWaiting, "Just started", "Every part of the node runs; peers and data are still arriving."}
+	case notes > 0:
+		return summary{stateOK, "Healthy", "Every part of the node is ready and nothing needs action now; see the note below."}
 	default:
 		return summary{stateOK, "Healthy", "Every part of the node is ready and nothing needs your attention."}
 	}
@@ -309,7 +312,7 @@ func (o *overview) waiting(owner string) (value, note string, waiting bool) {
 	phrase := partPhrases[owner]
 	switch {
 	case !ok:
-		return "Not available", "this node runs no " + partTitle(owner), true
+		return "Not available", partTitle(owner) + " is not part of this node", true
 	case s.State == lifecycle.StateRunning:
 		return "", "", false
 	case s.State == lifecycle.StatePending || s.State == lifecycle.StateStarting:
@@ -363,7 +366,7 @@ func entriesNote(e EnforceFacts) string {
 	}
 	var why []string
 	if e.Covered > 0 {
-		why = append(why, count(e.Covered)+" share an entry with another block")
+		why = append(why, plural(e.Covered, "shares an entry with another block", "share an entry with another block"))
 	}
 	if e.Refused > 0 {
 		why = append(why, count(e.Refused)+" refused by the allow-list")
@@ -496,8 +499,7 @@ func (o *overview) meshConditions() []condition {
 	}
 	if s := o.facts.Store; o.running(partStore) && s.VerdictRecords == 0 && s.EventsAccepted == 0 {
 		out = append(out, condition{Warning: true,
-			Title: "No event received: this node holds no verdict, and none arrived since obied started " +
-				humanDuration(o.uptime) + " ago.",
+			Title: "No event received: this node holds no verdict and has accepted none since obied started.",
 			Next: "Connect it to peers that publish verdicts, or report attacks on this host yourself; " +
 				"the Fail2Ban action reports every ban.",
 			Command: "obiectl report --help"})

@@ -245,7 +245,7 @@ func TestOverviewAfterStartupGrace(t *testing.T) {
 	}
 	wantConditions(t, p,
 		"No peer is connected: none of the 2 configured peers answers.",
-		"No event received: this node holds no verdict, and none arrived since obied started 3 min 0 s ago.")
+		"No event received: this node holds no verdict and has accepted none since obied started.")
 	if c := p.Conditions[0]; !c.Warning || c.Command != "obiectl peers" || !strings.Contains(c.Next, "mesh port is reachable") {
 		t.Errorf("no-peer condition = %+v", c)
 	}
@@ -327,7 +327,8 @@ func TestOverviewPartsNotReady(t *testing.T) {
 		}
 	}
 	in.statuses = noMesh
-	if k := numberOf(t, buildOverview(in), "Peers connected"); k.Value != "Not available" || k.State != stateWaiting {
+	if k := numberOf(t, buildOverview(in), "Peers connected"); k.Value != "Not available" || k.State != stateWaiting ||
+		k.Note != "Mesh is not part of this node" {
 		t.Errorf("peers without a mesh = %+v", k)
 	}
 }
@@ -387,6 +388,10 @@ func TestOverviewEntries(t *testing.T) {
 		"2 share an entry with another block, 1 refused by the allow-list, 1 over enforce.max_entries" {
 		t.Errorf("entries = %+v", k)
 	}
+	in.facts.Enforce = EnforceFacts{Backend: "nftables", Mode: "enforce", Applied: 1, Blocks: 2, Covered: 1}
+	if k := numberOf(t, buildOverview(in), "Firewall entries"); k.Note != "applied by nftables for 2 decided blocks: 1 shares an entry with another block" {
+		t.Errorf("entries = %+v", k)
+	}
 	in.facts.Enforce = EnforceFacts{Backend: "dryrun", Mode: "enforce", Applied: 1, Blocks: 1}
 	if k := numberOf(t, buildOverview(in), "Firewall entries"); k.Note != "kept by the dry-run backend, which blocks nothing" {
 		t.Errorf("dry-run entries = %+v", k)
@@ -422,6 +427,12 @@ func TestOverviewConfigConditions(t *testing.T) {
 	}
 	if k := numberOf(t, p, "Active overrides"); k.Value != "Not available" || k.State != stateError || k.Note != "reading them failed: store closed" {
 		t.Errorf("overrides = %+v", k)
+	}
+
+	// A note alone leaves the node healthy.
+	in.facts.Config.Rejected = ""
+	if p := buildOverview(in); p.Summary != (summary{stateOK, "Healthy", "Every part of the node is ready and nothing needs action now; see the note below."}) {
+		t.Errorf("summary with a note = %+v", p.Summary)
 	}
 
 	// Warnings come before notes, whatever raised them.

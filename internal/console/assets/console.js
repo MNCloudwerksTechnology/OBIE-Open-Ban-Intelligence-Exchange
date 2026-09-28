@@ -23,6 +23,7 @@
   var regions = Array.prototype.slice.call(document.querySelectorAll('[data-refresh]'));
   var liveHints = Array.prototype.slice.call(document.querySelectorAll('[data-live]'));
   var timer = 0;
+  var polling = false;
   var signedOut = false;
 
   function showLiveHints(shown) {
@@ -86,11 +87,11 @@
     return true;
   }
 
-  // withoutUpdateTime returns the markup of root without its update time,
-  // which changes with every refresh.
-  function withoutUpdateTime(root) {
+  // withoutTicks returns the markup of root without the text that changes
+  // with the time alone (data-tick: the update time, the uptime).
+  function withoutTicks(root) {
     var copy = root.cloneNode(true);
-    Array.prototype.forEach.call(copy.querySelectorAll('[data-updated]'), function (el) {
+    Array.prototype.forEach.call(copy.querySelectorAll('[data-tick]'), function (el) {
       el.remove();
     });
     return copy.innerHTML.trim();
@@ -106,21 +107,23 @@
     var links = region.querySelectorAll('a[href]');
     for (var i = 0; i < links.length; i++) {
       if (links[i].getAttribute('href') === href) {
-        links[i].focus();
+        links[i].focus({ preventScroll: true });
         return;
       }
     }
   }
 
   // swap shows the fragment html in region: all of it when more than the
-  // update time changed, keeping the focused link focused, else only the
-  // update time.
+  // ticking text changed, keeping the focused link focused, else only the
+  // ticking text, so a selection or a screen reader's place survives.
   function swap(region, html) {
     var incoming = new DOMParser().parseFromString(html, 'text/html').body;
-    var time = region.querySelector('[data-updated]');
-    var newTime = incoming.querySelector('[data-updated]');
-    if (time && newTime && withoutUpdateTime(region) === withoutUpdateTime(incoming)) {
-      time.replaceChildren.apply(time, Array.prototype.slice.call(newTime.childNodes));
+    if (withoutTicks(region) === withoutTicks(incoming)) {
+      var ticks = region.querySelectorAll('[data-tick]');
+      var newTicks = incoming.querySelectorAll('[data-tick]');
+      for (var i = 0; i < ticks.length && i < newTicks.length; i++) {
+        ticks[i].replaceChildren.apply(ticks[i], Array.prototype.slice.call(newTicks[i].childNodes));
+      }
       return;
     }
     var focused = focusedLink(region);
@@ -147,6 +150,7 @@
 
   function poll() {
     timer = 0;
+    polling = true;
     fetch('/api/health', { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'application/json' } })
       .then(function (resp) {
         if (!answered(resp)) {
@@ -168,11 +172,16 @@
           'address, or obied is stopping. This page keeps trying; on the node, obiectl console shows where the ' +
           'console is.');
       })
-      .then(schedule);
+      .then(function () {
+        polling = false;
+        schedule();
+      });
   }
 
+  // schedule polls once more in INTERVAL_MS unless a poll is pending or
+  // running, the page is hidden or the session ended.
   function schedule() {
-    if (!signedOut && !document.hidden && !timer) {
+    if (!signedOut && !document.hidden && !timer && !polling) {
       timer = window.setTimeout(poll, INTERVAL_MS);
     }
   }

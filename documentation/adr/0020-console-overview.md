@@ -64,7 +64,7 @@ step, *warning* or *info*, warnings first:
 | Condition | When |
 |-----------|------|
 | No peer connected / no peer configured | The mesh runs with 0 peers, after the first 2 minutes |
-| No event received | The store holds no verdicts and none arrived since the start, after the first 2 minutes |
+| No event received | The store holds no verdicts and accepted none since the start, after the first 2 minutes |
 | Enforce mode, but nothing applied to the firewall | `node.mode: enforce` and `enforce.backend: dryrun` |
 | Enforce mode, nothing applied | Enforcement fails while blocks are decided and 0 entries are applied, or the allow-list refuses every decided block |
 | Decided blocks differ from applied entries | Enforcement fails, or blocks were refused by the allow-list right before apply |
@@ -88,8 +88,11 @@ every request, and answering 401 without a session like `/api/health`.
 The page marks the region with the fragment's path. While the page is
 visible, the script fetches the fragment with each health poll (every 5
 seconds), parses it into an inert document (`DOMParser`, which runs no
-script), and replaces the region's children when they changed, keeping
-the focused link focused. The region says when its data was read. The
+script), and replaces the region's children when more than the text that
+changes with the time alone (marked `data-tick`: the update time, the
+uptime) changed, keeping the focused link focused; otherwise it updates
+only that text, so a selection or a screen reader's place survives. The
+region says when its data was read. The
 HTML is the server's escaped template output from the console's own
 origin — the same bytes a reload would show — so the CSP and the escaping
 of ADR 0019 are unchanged. Without the script the page is still complete;
@@ -116,8 +119,9 @@ else.
 
 - The overview replaces the placeholder home page at `/`.
 - `enforce.Status` also reports how many decided blocks the last pass
-  considered and how many share an entry with another block, so the
-  overview can explain why decided blocks and applied entries differ.
+  considered, how many share an entry with another block and how many
+  were skipped by reason, counted per block, so the overview can explain
+  why decided blocks and applied entries differ.
 - The decision engine's status detail uses the counts of the last
   evaluation pass too, so reading the node's status no longer walks the
   decisions either.

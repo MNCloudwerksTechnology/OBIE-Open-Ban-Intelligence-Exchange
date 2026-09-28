@@ -124,12 +124,15 @@ func (c *Console) notFound(w http.ResponseWriter, r *http.Request) {
 }
 
 // overviewContent reads the node and returns the data of the overview.
+// The statuses are read first: a part that ran then also ran while its
+// numbers were read, or is stopping by now.
 func (c *Console) overviewContent(*http.Request) any {
+	statuses := c.node.Status()
 	var facts Facts
 	if c.node.Facts != nil {
 		facts = c.node.Facts()
 	}
-	return buildOverview(overviewInput{now: c.now(), node: c.node, mode: c.node.Mode(), statuses: c.node.Status(),
+	return buildOverview(overviewInput{now: c.now(), node: c.node, mode: c.node.Mode(), statuses: statuses,
 		facts: facts, link: c.detailLink})
 }
 
