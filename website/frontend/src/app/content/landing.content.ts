@@ -16,10 +16,10 @@ const DOCS_URL = `${REPOSITORY_URL}/blob/develop`;
 
 export const LINKS = {
   repository: REPOSITORY_URL,
-  quickStart: `${DOCS_URL}/README.md#status--building`,
+  quickStart: `${DOCS_URL}/documentation/operations/quickstart.md`,
   spec: `${DOCS_URL}/documentation/spec/obie-0.1.md`,
-  whitepaper: `${DOCS_URL}/README.md#1-introduction-the-centralization-trap`,
-  manifesto: `${DOCS_URL}/README.md#2-the-obie-manifesto-principles-and-philosophy`,
+  whitepaper: `${DOCS_URL}/documentation/whitepaper.md#1-introduction-the-centralization-trap`,
+  manifesto: `${DOCS_URL}/documentation/whitepaper.md#2-the-obie-manifesto-principles-and-philosophy`,
   architecture: `${DOCS_URL}/ARCHITECTURE.md#deviations-from-the-whitepaper`,
   exampleConfig: `${DOCS_URL}/documentation/examples/obie.yaml`,
   licence: `${DOCS_URL}/LICENSE.md`,
