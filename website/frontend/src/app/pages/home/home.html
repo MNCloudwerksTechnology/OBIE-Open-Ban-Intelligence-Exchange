@@ -5,5 +5,7 @@
 <app-status />
 <app-get-started />
 <app-founder />
-<app-contact />
+@defer (hydrate on viewport) {
+  <app-contact />
+}
 <app-faq />

@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import axe from 'axe-core';
 
+import { renderDeferBlocks } from '../testing/defer-blocks';
 import { stubSystemTheme } from '../testing/system-theme';
 import { App } from './app';
 import { routes } from './app.routes';
@@ -46,8 +47,15 @@ describe('Accessibility (axe)', () => {
         const themes = TestBed.inject(ThemeService);
         themes.toggle();
         fixture.detectChanges();
+        await renderDeferBlocks(fixture);
         await fixture.whenStable();
         expect(themes.theme()).toBe(theme);
+        if (url === '/') {
+          expect(
+            document.querySelector('#contact form'),
+            'the deferred inquiry form',
+          ).not.toBeNull();
+        }
         // index.html declares the language; the test document does not.
         document.documentElement.lang = 'en';
 

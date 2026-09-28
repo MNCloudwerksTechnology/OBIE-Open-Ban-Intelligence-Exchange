@@ -2,7 +2,11 @@
 //
 // 1. checks the performance budget: initial JavaScript at most 150 KB gzip;
 // 2. checks every <img> for explicit width and height and a modern format;
-// 3. preloads the fonts the first screen needs (their names carry the build hash);
+// 3. preloads the fonts the first screen needs (their names carry the build hash)
+//    and inlines the @font-face rules, which otherwise arrive only with the
+//    stylesheet that Angular loads after the first paint: without them the
+//    text is painted twice, first in the fallback font, and the second paint
+//    delays the Largest Contentful Paint;
 // 4. writes Brotli (.br) and gzip (.gz) variants of the text assets, which the
 //    back end serves to browsers that accept them (ADR 0015).
 //
@@ -26,8 +30,8 @@ const problems = [];
 
 checkInitialJs(join(dist, 'index.html'));
 pages.forEach(checkImages);
-const preloads = fontPreloads();
-pages.forEach((page) => addPreloads(page, preloads));
+const fontHead = [...fontPreloads(), `<style>${fontFaces()}</style>`].join('');
+pages.forEach((page) => addToHead(page, fontHead));
 const compressed = files.filter(shouldPrecompress).map(precompress);
 
 if (problems.length > 0) {
@@ -35,7 +39,7 @@ if (problems.length > 0) {
   process.exit(1);
 }
 console.log(
-  `postbuild: ${pages.length} pages with ${preloads.length} font preloads, ` +
+  `postbuild: ${pages.length} pages with ${PRELOADED_FONTS.length} font preloads, ` +
     `${compressed.length} assets precompressed`,
 );
 
@@ -89,8 +93,19 @@ function fontPreloads() {
   }).filter(Boolean);
 }
 
-/** Inserts the preloads after `<base>`, which the relative URLs resolve against. */
-function addPreloads(page, links) {
+/** The global stylesheet's @font-face rules, with URLs relative to `<base href="/">`. */
+function fontFaces() {
+  const stylesheet = readdirSync(dist).find((name) => /^styles-[A-Z0-9]+\.css$/.test(name));
+  const css = stylesheet ? readFileSync(join(dist, stylesheet), 'utf8') : '';
+  const rules = css.match(/@font-face\{[^}]*\}/g) ?? [];
+  if (rules.length === 0) {
+    problems.push('no @font-face rules found in the global stylesheet');
+  }
+  return rules.join('').replaceAll('url("./media/', 'url("media/');
+}
+
+/** Inserts `markup` after `<base>`, which its relative URLs resolve against. */
+function addToHead(page, markup) {
   const html = readFileSync(page, 'utf8');
   if (html.includes('rel="preload" href="media/')) {
     return; // already done by an earlier run on the same output
@@ -101,7 +116,7 @@ function addPreloads(page, links) {
     return;
   }
   const end = base.index + base[0].length;
-  writeFileSync(page, html.slice(0, end) + links.join('') + html.slice(end));
+  writeFileSync(page, html.slice(0, end) + markup + html.slice(end));
 }
 
 function shouldPrecompress(file) {
