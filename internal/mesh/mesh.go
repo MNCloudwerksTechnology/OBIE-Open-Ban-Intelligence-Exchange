@@ -253,6 +253,8 @@ func (m *Mesh) Start(context.Context) error {
 		m.wg.Go(func() { m.keepConnected(ctx, h, pi, changed[pi.ID]) })
 	}
 
+	peersConfigured.Set(float64(len(m.bootstrap)))
+	peersConnected.Set(float64(len(h.Network().Peers())))
 	m.log.Info("mesh listening", "peer_id", h.ID().String(), "addrs", addrStrings(h.Network().ListenAddresses()),
 		"bootstrap_peers", len(m.bootstrap))
 	return nil
@@ -320,6 +322,7 @@ func (m *Mesh) Stop(ctx context.Context) error {
 	cancel()
 	g.Close()
 	err := h.Close()
+	peersConnected.Set(0)
 
 	done := make(chan struct{})
 	go func() {

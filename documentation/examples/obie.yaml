@@ -145,13 +145,16 @@ enforce:
     teardown_on_stop: false
 
 metrics:
-  # ip:port of the Prometheus metrics and health endpoint. Use an IP
-  # address, not a hostname; ":9464" listens on all interfaces.
+  # ip:port of the Prometheus metrics (/metrics, namespace obie_) and health
+  # endpoints (/healthz, /readyz). Use an IP address, not a hostname;
+  # ":9464" listens on all interfaces.
   listen: 127.0.0.1:9464
 
 audit:
-  # JSON-lines audit log of every decision. Empty disables it; otherwise an
-  # absolute file path, e.g. /var/log/obie/audit.jsonl.
+  # JSON-lines audit log of every decision change, with ECS field names
+  # (see documentation/operations/monitoring.md). Empty disables it;
+  # otherwise an absolute file path in an existing directory, e.g.
+  # /var/log/obie/audit.jsonl. SIGHUP reopens it (logrotate).
   path: ""
 
 log:

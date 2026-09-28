@@ -33,6 +33,7 @@ type Gate struct {
 // must not call back into the Gate, when the reconciler has work; a nil
 // notify means no backend is configured.
 func NewGate(mode config.Mode, notify func(), log *slog.Logger) *Gate {
+	setModeMetric(mode)
 	return &Gate{log: log, notify: notify, mode: mode, blocks: map[string]decision.Decision{}}
 }
 
@@ -96,6 +97,7 @@ func (g *Gate) SetMode(mode config.Mode) {
 	}
 	g.log.Warn("node mode changed", "from", g.mode, "to", mode, "blocks", len(g.blocks))
 	g.mode = mode
+	setModeMetric(mode)
 	if g.notify != nil {
 		g.notify()
 	}

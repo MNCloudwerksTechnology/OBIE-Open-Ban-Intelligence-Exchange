@@ -6,16 +6,20 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/audit"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
-// storeOverrides serves the admin API's overrides from the store.
+// storeOverrides serves the admin API's overrides from the store and
+// records their changes in the audit log.
 type storeOverrides struct {
 	store store.Store
 	now   func() time.Time
+	// audit records set and deleted overrides; nil without audit log.
+	audit *audit.Log
 }
 
 func (s storeOverrides) List() ([]admin.OverrideResponse, error) {
@@ -47,11 +51,19 @@ func (s storeOverrides) Set(ind obieproto.Indicator, action string, ttl time.Dur
 	if err != nil {
 		return admin.OverrideResponse{}, err
 	}
+	s.audit.Write(audit.OverrideSet(&stored))
 	return overrideResponse(&stored), nil
 }
 
 func (s storeOverrides) Delete(ind obieproto.Indicator) (bool, error) {
-	return s.store.DeleteOverride(ind.Key())
+	// The action is only recorded; an override that cannot be read is
+	// deleted all the same.
+	old, _ := s.store.Override(ind.Key(), s.now())
+	deleted, err := s.store.DeleteOverride(ind.Key())
+	if deleted {
+		s.audit.Write(audit.OverrideRemoved(ind, old.Action))
+	}
+	return deleted, err
 }
 
 func overrideResponse(o *store.Override) admin.OverrideResponse {

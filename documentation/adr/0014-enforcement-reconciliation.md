@@ -60,7 +60,8 @@ or a gap in the allow-list must never lock the operator out.
 - **Visibility.** `GET /v1/enforced` / `obiectl enforced [--json]` lists
   the applied entries from `List`. Prometheus: `obie_enforce_entries`,
   `obie_enforce_skipped_entries{reason}`, `obie_enforce_enforcing`,
-  `obie_enforce_failures_total`.
+  `obie_enforce_failures_total` (replaced by `obie_enforcer_*` and
+  `obie_node_mode` in ADR 0015).
 
 ## Consequences
 

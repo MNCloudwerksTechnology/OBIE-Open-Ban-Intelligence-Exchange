@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/audit"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
@@ -38,7 +39,7 @@ const (
 )
 
 // waitForShutdown blocks until ctx is canceled, reloading the configuration
-// with rl whenever reload fires.
+// with rl whenever reload fires (the audit log is reopened first).
 func waitForShutdown(ctx context.Context, reload <-chan struct{}, rl *reloader) {
 	for {
 		select {
@@ -121,6 +122,13 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		Allowlist:  engine.Allowlist,
 	}, logs.Logger(enforceComponent))
 	engine.Subscribe(gate.Handle)
+	// The audit log opens before the engine starts and closes after
+	// everything that writes to it has stopped.
+	auditLog := newAuditLog(cfg.Audit.Path, gate, logs.Logger(audit.Name))
+	if auditLog != nil {
+		mgr.Register(auditLog)
+		subscribeAudit(engine, auditLog)
+	}
 	mgr.Register(engine)
 	mgr.Register(reconciler)
 	mgr.Register(ops.New(cfg.Metrics.Listen, mgr.Status, logs.Logger(ops.Name)))
@@ -159,11 +167,11 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 			}
 			return out
 		},
-		Overrides: storeOverrides{store: db, now: time.Now},
+		Overrides: storeOverrides{store: db, now: time.Now, audit: auditLog},
 		Enforced: func(ctx context.Context) ([]admin.EnforcedEntry, error) {
 			return enforcedEntries(ctx, reconciler)
 		},
-		Verdicts: reporter,
+		Verdicts: auditedVerdicts{VerdictService: reporter, audit: auditLog},
 	}, logs.Logger(admin.Name)))
 
 	if err := mgr.Start(ctx); err != nil {
@@ -178,10 +186,10 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		return fmt.Errorf("startup failed: %w", err)
 	}
 	log.Info("obied started", "version", version.Version, "mode", cfg.Node.Mode, "peer_id", id.PeerID(),
-		"admin_socket", cfg.Admin.Socket, "metrics_listen", cfg.Metrics.Listen)
+		"admin_socket", cfg.Admin.Socket, "metrics_listen", cfg.Metrics.Listen, "audit_path", cfg.Audit.Path)
 
 	rl := &reloader{running: cfg, self: id.PeerID(), load: opts.LoadConfig, env: opts.Env,
-		engine: engine, gate: gate, mesh: m, log: logs.Logger(reloadComponent)}
+		engine: engine, gate: gate, mesh: m, audit: auditLog, log: logs.Logger(reloadComponent)}
 	waitForShutdown(ctx, opts.Reload, rl)
 	log.Info("shutdown requested", "timeout", cfg.Node.ShutdownTimeout.String())
 	if err := mgr.Stop(context.WithoutCancel(ctx)); err != nil {

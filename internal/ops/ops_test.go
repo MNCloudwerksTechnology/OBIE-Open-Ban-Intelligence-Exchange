@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
+	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
 
 func discardLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard, nil)) }
@@ -84,6 +85,14 @@ func TestMetricsServesDefaultRegistry(t *testing.T) {
 	rec := get(t, h, http.MethodGet, "/metrics")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "go_goroutines") {
 		t.Errorf("GET /metrics = %d, body lacks default Go collector metrics", rec.Code)
+	}
+}
+
+func TestMetricsServesBuildInfo(t *testing.T) {
+	h := Handler(func() []lifecycle.Status { return nil }, discardLogger())
+	body := get(t, h, http.MethodGet, "/metrics").Body.String()
+	if want := `obie_build_info{version="` + version.Version + `"} 1`; !strings.Contains(body, want) {
+		t.Errorf("GET /metrics lacks %s", want)
 	}
 }
 
