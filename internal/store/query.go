@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -133,6 +134,54 @@ func (s *DB) ListIndicators(now time.Time, filter Filter, page Page) (IndicatorP
 	})
 	if err != nil {
 		return IndicatorPage{}, err
+	}
+	return out, nil
+}
+
+// PublisherVerdicts returns the active verdicts of publisher at now,
+// ordered by indicator key, one page at a time. It walks the verdict keys
+// and decodes only the publisher's records (ADR 0021): it stops once the
+// page is full, and walks all keys for a publisher with fewer verdicts.
+func (s *DB) PublisherVerdicts(publisher string, now time.Time, page Page) (VerdictPage, error) {
+	limit := page.Limit
+	if limit <= 0 {
+		limit = DefaultPageLimit
+	}
+	limit = min(limit, MaxPageLimit)
+	start := prefixVerdict
+	if page.After != "" {
+		// Every key of indicator After is below After + "\x01".
+		start = join(prefixVerdict, []byte(page.After), []byte{1})
+	}
+	// Indicator keys hold no NUL byte, so a key of the publisher ends
+	// with exactly this.
+	suffix := join(keySeparator, []byte(publisher))
+
+	var out VerdictPage
+	err := s.view(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.IteratorOptions{Prefix: prefixVerdict})
+		defer it.Close()
+		for it.Seek(start); it.Valid(); it.Next() {
+			if !bytes.HasSuffix(it.Item().Key(), suffix) {
+				continue
+			}
+			rec, err := decodeRecord(it.Item())
+			if err != nil {
+				return err
+			}
+			if !rec.active(now) {
+				continue
+			}
+			if len(out.Verdicts) == limit {
+				out.Next = out.Verdicts[limit-1].Key()
+				return nil
+			}
+			out.Verdicts = append(out.Verdicts, rec.Event)
+		}
+		return nil
+	})
+	if err != nil {
+		return VerdictPage{}, err
 	}
 	return out, nil
 }
