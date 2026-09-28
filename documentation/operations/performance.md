@@ -126,3 +126,38 @@ How to read it:
 While these tests were written, goleak found two goroutine leaks,
 both fixed (ADR 0017): Badger's goroutines after a failed open of a
 damaged store, and libp2p's swarm when no listen address could be bound.
+
+## Console
+
+The console's decisions list reads its page on the node, in one pass over
+the decisions the engine keeps, under the engine's read lock
+([ADR 0022](../adr/0022-console-decisions-and-firewall.md)). Measured on
+the test machine above on 2026-09-28 (WP-1685), Go 1.26.7, with 1,000,000
+kept decisions — a tenth networks, a fifth IPv6, a third blocks, four
+reason categories, eight publishers — for a page of 50:
+
+| Page | Time | Allocated |
+|---|---:|---:|
+| First page, the last decided first (the default) | 19 ms | 34 KiB |
+| First page by address | 21 ms | 32 KiB |
+| A deep page by address (cursor half way) | 22 ms | 32 KiB |
+| Last page by score | 33 ms | 33 KiB |
+| Blocks only | 29 ms | 28 KiB |
+| One reason category and one publisher | 26–29 ms | 37 KiB |
+| Search for an address (it and the networks around it) | 4–6 µs | 6 KiB |
+| Search for a /16 network | 13–15 ms | 34 KiB |
+| A filter on the range, e.g. IPv4 only | 16 ms | 34 KiB |
+| For comparison: the engine's own pass after every evaluation (metrics) | 11 ms | — |
+
+The firewall filter (*Applied by the firewall* or *Not applied*) asks the
+reconciler's last pass for every decision: 31 ns per decision with
+100,000 entries (the default `enforce.max_entries`), so about 31 ms more
+at 1,000,000 decisions. The time grows linearly with the decisions and
+the memory with the page only; a page deep in the list costs the same as
+the first. The list is read when the page opens, never refreshed on its
+own. Reproduce with:
+
+```sh
+go test ./internal/decision -run '^$' -bench 'BenchmarkBrowse|BenchmarkPublishMetrics' -benchtime 30x
+go test ./internal/enforce -run '^$' -bench BenchmarkSnapshotApplies
+```

@@ -40,7 +40,7 @@ func testExplain(ind obieproto.Indicator) (DecisionResponse, error) {
 	d.Indicator = ind
 	d.Publishers = []ContributionResponse{{
 		PeerID: testPeers[0].PeerID, Name: "seed", EventID: "01900000-0000-7000-8000-000000000001", Action: obieproto.ActionBan,
-		Weight: 1, Confidence: 0.9, Score: 0.9, Contributes: true, IssuedAt: started, ExpiresAt: blockedUntil,
+		Reason: "password_bruteforce", Protocol: "ssh", Weight: 1, Confidence: 0.9, Score: 0.9, Contributes: true, IssuedAt: started, ExpiresAt: blockedUntil,
 	}}
 	d.Sovereignty = &SovereigntyResponse{Applied: true, Note: "no allow-list entry or override applies"}
 	return d, nil
@@ -108,7 +108,7 @@ func TestDecisionHandler(t *testing.T) {
 		{name: "ipv6", path: "/v1/decisions/2001:db8::1", code: http.StatusOK, body: `"value":"2001:db8::1"`},
 		{name: "publishers and sovereignty", path: "/v1/decisions/203.0.113.9", code: http.StatusOK,
 			body: `"publishers":[{"peer_id":"12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd","name":"seed","local":false,` +
-				`"event_id":"01900000-0000-7000-8000-000000000001","action":"ban","weight":1,"confidence":0.9,"score":0.9,"contributes":true,` +
+				`"event_id":"01900000-0000-7000-8000-000000000001","action":"ban","reason":"password_bruteforce","protocol":"ssh","weight":1,"confidence":0.9,"score":0.9,"contributes":true,` +
 				`"issued_at":"2026-09-27T10:00:00Z","expires_at":"2026-09-27T11:00:00Z"}],` +
 				`"sovereignty":{"applied":true,"note":"no allow-list entry or override applies"}`},
 		{name: "invalid indicator", path: "/v1/decisions/not-an-ip", code: http.StatusBadRequest, body: "invalid indicator"},

@@ -36,6 +36,8 @@
   </nav>
   <main id="main" tabindex="-1">
 {{template "content" .Content}}
+    <p class="share" data-share hidden>Link to this view, for anyone who may sign in to this console on this host: <code data-share-url></code></p>
+    <p class="visually-hidden" role="status" data-copy-status></p>
   </main>
 </div>
 <footer class="footer">Read-only view of this node, served only on this host. obied {{.Node.Version}}</footer>

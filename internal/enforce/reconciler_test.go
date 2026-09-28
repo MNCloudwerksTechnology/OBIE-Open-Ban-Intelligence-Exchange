@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/netip"
 	"strings"
@@ -325,8 +326,8 @@ func TestSettle(t *testing.T) {
 	if got := entriesString(gotRemove); got != "203.0.113.0/24@1h0m0s" {
 		t.Errorf("remove = %s", got)
 	}
-	if deferred != 3 {
-		t.Errorf("deferred = %d, want 3", deferred)
+	if got := fmt.Sprint(deferred); got != "[198.51.100.128/25 2001::/16 2001:db8:1::/48]" {
+		t.Errorf("deferred = %s", got)
 	}
 }
 

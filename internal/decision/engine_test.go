@@ -142,10 +142,7 @@ func wantChanges(t *testing.T, got []Change, want ...string) {
 }
 
 func (f *fixture) decision(key string) (Decision, bool) {
-	f.engine.mu.RLock()
-	defer f.engine.mu.RUnlock()
-	d, ok := f.engine.decisions[key]
-	return d, ok
+	return f.engine.Decision(key)
 }
 
 func TestEngineStartupBuildsDecisions(t *testing.T) {
