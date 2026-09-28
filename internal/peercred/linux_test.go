@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -56,6 +57,53 @@ func TestLoopbackTCP(t *testing.T) {
 			t.Errorf("%s: LoopbackTCP = %+v, want uid %d and an unknown gid", addr, cred, os.Getuid())
 		}
 		_ = ln.Close()
+	}
+}
+
+// TestLoopbackTCPClosedClient: once the client closed its end, the socket
+// has no owner, and the lookup must fail rather than report uid 0.
+func TestLoopbackTCPClosedClient(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	server, client := connect(t, ln, "tcp", ln.Addr().String())
+	if _, err := LoopbackTCP(server); err != nil {
+		t.Fatalf("open client: %v", err)
+	}
+	_ = client.Close()
+	if cred, err := LoopbackTCP(server); err == nil {
+		t.Errorf("closed client: LoopbackTCP = %+v, want an error", cred)
+	}
+}
+
+// TestLoopbackTCPMappedClient: an IPv6 client socket connecting to
+// 127.0.0.1 is only listed in tcp6.
+func TestLoopbackTCPMappedClient(t *testing.T) {
+	ln, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	// Go does not dial IPv4-mapped addresses over IPv6; a raw socket does.
+	fd, err := syscall.Socket(syscall.AF_INET6, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		t.Skipf("no IPv6 sockets here: %v", err)
+	}
+	defer func() { _ = syscall.Close(fd) }()
+	sa := &syscall.SockaddrInet6{Port: ln.Addr().(*net.TCPAddr).Port}
+	copy(sa.Addr[:], net.ParseIP("::ffff:127.0.0.1").To16())
+	if err := syscall.Connect(fd, sa); err != nil {
+		t.Skipf("no IPv4-mapped IPv6 connections here: %v", err)
+	}
+	server, err := ln.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = server.Close() }()
+	if cred, err := LoopbackTCP(server); err != nil || int(cred.UID) != os.Getuid() {
+		t.Errorf("LoopbackTCP = %+v, %v; want uid %d", cred, err, os.Getuid())
 	}
 }
 

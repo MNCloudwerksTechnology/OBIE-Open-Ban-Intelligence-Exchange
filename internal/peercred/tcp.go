@@ -13,16 +13,23 @@ import (
 	"strings"
 )
 
+// lookups bounds the socket-table lookups that run at once: each reads the
+// whole table, and any local user can open connections.
+var lookups = make(chan struct{}, 2)
+
 // LoopbackTCP returns the owner of the client end of a TCP connection over
 // the loopback interface, c being the server end. Loopback TCP carries no
 // credentials, so the owner is looked up in the kernel's socket table. PID
-// is 0 and GID is UnknownGID: the table records only the owner's UID.
+// is 0 and GID is UnknownGID: the table records only the owner's UID. A
+// client that closed its end has no owner any more and yields an error.
 func LoopbackTCP(c net.Conn) (Cred, error) {
 	server, client, err := loopbackEnds(c)
 	if err != nil {
 		return Cred{}, err
 	}
+	lookups <- struct{}{}
 	uid, err := socketOwner(client, server)
+	<-lookups
 	if err != nil {
 		return Cred{}, err
 	}
@@ -48,25 +55,26 @@ func unmap(ap netip.AddrPort) netip.AddrPort {
 	return netip.AddrPortFrom(ap.Addr().Unmap(), ap.Port())
 }
 
-// Socket states of the kernel's socket table (include/net/tcp_states.h)
-// whose entries are not full sockets and show UID 0 rather than an owner.
-const (
-	stateTimeWait   = "06"
-	stateNewSynRecv = "0C"
-)
+// errNotInTable means the client socket has no entry with an owner in
+// the socket table, e.g. because the client already closed it.
+var errNotInTable = errors.New("is not in the socket table")
 
 // parseSocketTable finds the socket whose local address is client and
 // whose remote address is server in a socket table in the format of
 // /proc/net/tcp and /proc/net/tcp6, and returns the UID of its owner.
+//
+// A socket that no process holds any more — one in TIME_WAIT, or one its
+// client closed (FIN_WAIT2 and the like) — is listed with inode 0 and UID
+// 0; it has no owner and never matches, so it cannot pass for root.
 func parseSocketTable(r io.Reader, client, server netip.AddrPort) (uint32, error) {
 	sc := bufio.NewScanner(r)
 	if !sc.Scan() {
 		return 0, errors.Join(errors.New("socket table: no header"), sc.Err())
 	}
 	for sc.Scan() {
-		// sl local_address rem_address st tx_queue:rx_queue tr:tm->when retrnsmt uid ...
+		// sl local_address rem_address st tx_queue:rx_queue tr:tm->when retrnsmt uid timeout inode ...
 		f := strings.Fields(sc.Text())
-		if len(f) < 8 || f[3] == stateTimeWait || f[3] == stateNewSynRecv {
+		if len(f) < 10 || f[9] == "0" {
 			continue
 		}
 		if local, err := parseHexAddrPort(f[1]); err != nil || local != client {
@@ -84,7 +92,7 @@ func parseSocketTable(r io.Reader, client, server netip.AddrPort) (uint32, error
 	if err := sc.Err(); err != nil {
 		return 0, fmt.Errorf("socket table: %w", err)
 	}
-	return 0, fmt.Errorf("socket %s -> %s is not in the socket table", client, server)
+	return 0, fmt.Errorf("socket %s -> %s %w", client, server, errNotInTable)
 }
 
 // parseHexAddrPort parses an address of the socket table: the address as

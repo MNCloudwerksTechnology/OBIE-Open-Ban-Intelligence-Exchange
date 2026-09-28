@@ -21,8 +21,16 @@ func kernelAddr(ap netip.AddrPort) string {
 }
 
 func tableLine(local, remote netip.AddrPort, state string, uid int) string {
-	return fmt.Sprintf("   3: %s %s %s 00000000:00000000 00:00000000 00000000  %d        0 123456 1 0000000000000000 20 4 30 10 -1",
-		kernelAddr(local), kernelAddr(remote), state, uid)
+	inode := 123456
+	if uid == 0 && (state == "06" || state == "05") {
+		inode = 0 // no process holds the socket any more
+	}
+	return ownedLine(local, remote, state, uid, inode)
+}
+
+func ownedLine(local, remote netip.AddrPort, state string, uid, inode int) string {
+	return fmt.Sprintf("   3: %s %s %s 00000000:00000000 00:00000000 00000000  %d        0 %d 1 0000000000000000 20 4 30 10 -1",
+		kernelAddr(local), kernelAddr(remote), state, uid, inode)
 }
 
 const tableHeader = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode"
@@ -54,9 +62,13 @@ func TestParseSocketTable(t *testing.T) {
 		"ipv6 client end":       {table6, client6, server6, 1234, ""},
 		"not in table":          {table, netip.MustParseAddrPort("127.0.0.1:1"), server, 0, "is not in the socket table"},
 		"only in time wait":     {tableHeader + "\n" + tableLine(client, server, "06", 0), client, server, 0, "is not in the socket table"},
+		"client closed its end": {tableHeader + "\n" + tableLine(client, server, "05", 0), client, server, 0, "is not in the socket table"},
+		"orphan in any state":   {tableHeader + "\n" + ownedLine(client, server, "01", 0, 0), client, server, 0, "is not in the socket table"},
+		"root with an inode":    {tableHeader + "\n" + ownedLine(client, server, "01", 0, 42), client, server, 0, ""},
 		"empty":                 {"", client, server, 0, "no header"},
 		"garbage lines skipped": {tableHeader + "\n  0: xyz\n  1: 0100007F 00 01\n" + tableLine(client, server, "01", 5), client, server, 5, ""},
 		"invalid uid":           {tableHeader + "\n" + strings.Replace(tableLine(client, server, "01", 5), "  5  ", "  x  ", 1), client, server, 0, `invalid uid "x"`},
+		"short line":            {tableHeader + "\n" + strings.Join(strings.Fields(tableLine(client, server, "01", 5))[:9], " "), client, server, 0, "is not in the socket table"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			uid, err := parseSocketTable(strings.NewReader(tc.table), tc.client, tc.server)
