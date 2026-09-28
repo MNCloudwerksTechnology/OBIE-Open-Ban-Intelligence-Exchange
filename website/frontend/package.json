@@ -8,7 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test --watch=false",
     "lint": "ng lint && prettier --check .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "share-image": "node scripts/share-image.mjs"
   },
   "private": true,
   "packageManager": "npm@11.13.0",
