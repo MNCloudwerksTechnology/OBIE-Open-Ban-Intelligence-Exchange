@@ -293,7 +293,10 @@ Record the results of a full run in
 - Newcomers start at [What is OBIE?](documentation/introduction.md). Keep
   it in plain language: no commands, no configuration keys, no protocol
   details, short sentences and about five minutes of reading.
-  `TestIntroductionIsPlainLanguage` in `test/docs` checks it.
+  `TestIntroductionIsPlainLanguage` in `test/docs` checks it. When the
+  introduction changes substantially, repeat the
+  [reader check](documentation/validation/introduction-reader-check.md)
+  with a real reader without a networking background and record it there.
 - Every guide links a glossary term to the
   [glossary](documentation/glossary.md) the first time it uses it. A new
   term gets an entry of one or two sentences, in alphabetical order; a new
