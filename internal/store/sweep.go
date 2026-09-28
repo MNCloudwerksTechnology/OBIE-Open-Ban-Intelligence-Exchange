@@ -138,5 +138,8 @@ func expireOverride(txn *badger.Txn, key []byte, at time.Time) (Change, error) {
 	case o.ExpiresAt.Unix() != at.Unix():
 		return Change{}, nil
 	}
+	if err := archiveOverride(txn, &o); err != nil {
+		return Change{}, err
+	}
 	return change, txn.Delete(key)
 }

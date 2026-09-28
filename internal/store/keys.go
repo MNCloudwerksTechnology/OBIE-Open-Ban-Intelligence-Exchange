@@ -18,8 +18,10 @@ var (
 	// arrived before their verdict (ADR 0023).
 	prefixEnded             = []byte("h/")
 	prefixPendingRevocation = []byte("h/p/")
-	keySeparator            = []byte{0}
-	expiryKeyHeader         = len(prefixExpiry) + 8
+	// prefixExpiredOverride holds the overrides that expired (ADR 0024).
+	prefixExpiredOverride = []byte("h/o/")
+	keySeparator          = []byte{0}
+	expiryKeyHeader       = len(prefixExpiry) + 8
 )
 
 func join(parts ...[]byte) []byte {
@@ -92,6 +94,11 @@ func pendingRevocationKey(verdictID, publisher string) []byte {
 // overrideKey is the key of an indicator's operator override.
 func overrideKey(indicator string) []byte {
 	return join(prefixOverride, []byte(indicator))
+}
+
+// expiredOverrideKey is the key of an indicator's override that expired.
+func expiredOverrideKey(indicator string) []byte {
+	return join(prefixExpiredOverride, []byte(indicator))
 }
 
 // expiryKey indexes target (a verdict or override key) under its expiry, so
