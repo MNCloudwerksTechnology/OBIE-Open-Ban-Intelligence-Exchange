@@ -1,11 +1,13 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 
 import { LANDING_CONTENT } from '../content/landing.content';
+import { GithubStrip } from './github-strip';
 
-/** Three-step teaser: install, observe only, connect peers. */
+/** Three-step teaser (install, observe only, connect peers), contributor links and live stats. */
 @Component({
   selector: 'app-get-started',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [GithubStrip],
   template: `
     <section class="section section--alt" [id]="start.id" aria-labelledby="start-heading">
       <div class="container">
@@ -24,9 +26,12 @@ import { LANDING_CONTENT } from '../content/landing.content';
         </ol>
         <p class="note">{{ start.note }}</p>
         <p class="note">
-          <a [href]="start.quickStart.href">{{ start.quickStart.label }}</a>
+          <a [href]="start.quickStart.href" rel="noopener">{{ start.quickStart.label }}</a>
         </p>
-        <a class="next-step" [href]="start.nextStep.href">{{ start.nextStep.label }}</a>
+        <app-github-strip />
+        <a class="next-step" [href]="start.nextStep.href" rel="noopener">{{
+          start.nextStep.label
+        }}</a>
       </div>
     </section>
   `,

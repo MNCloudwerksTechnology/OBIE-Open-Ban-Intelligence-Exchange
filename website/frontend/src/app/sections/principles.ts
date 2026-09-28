@@ -21,7 +21,9 @@ import { LANDING_CONTENT } from '../content/landing.content';
             </li>
           }
         </ul>
-        <a class="next-step" [href]="principles.nextStep.href">{{ principles.nextStep.label }}</a>
+        <a class="next-step" [href]="principles.nextStep.href" rel="noopener">{{
+          principles.nextStep.label
+        }}</a>
       </div>
     </section>
   `,

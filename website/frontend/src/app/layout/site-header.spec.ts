@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { LANDING_CONTENT_EN } from '../content/landing.content';
+import { LANDING_CONTENT_EN, REPOSITORY_URL } from '../content/landing.content';
 import { stubSystemTheme } from '../../testing/system-theme';
 import { SiteHeader } from './site-header';
 
@@ -52,10 +52,11 @@ describe('SiteHeader', () => {
     expect(brand?.getAttribute('aria-label')).toBe('OBIE, back to the top of the page');
   });
 
-  it('shows the GitHub button', () => {
+  it('shows the "View on GitHub" button', () => {
     const github = header.querySelector('a.github');
-    expect(github?.getAttribute('href')).toBe(LANDING_CONTENT_EN.header.github.href);
-    expect(github?.textContent?.trim()).toBe('GitHub');
+    expect(github?.getAttribute('href')).toBe(REPOSITORY_URL);
+    expect(github?.textContent?.trim()).toBe('View on GitHub');
+    expect(github?.getAttribute('rel')).toBe('noopener');
   });
 
   it('contains the theme toggle', () => {

@@ -26,7 +26,9 @@ import { LANDING_CONTENT } from '../content/landing.content';
           }
         </ul>
         <p class="answer">{{ problem.answer }}</p>
-        <a class="next-step" [href]="problem.nextStep.href">{{ problem.nextStep.label }}</a>
+        <a class="next-step" [href]="problem.nextStep.href" rel="noopener">{{
+          problem.nextStep.label
+        }}</a>
       </div>
     </section>
   `,

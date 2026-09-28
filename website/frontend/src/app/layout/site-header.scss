@@ -83,6 +83,16 @@ nav li a {
   min-height: 2.75rem;
   padding-block: var(--space-2);
   padding-inline: var(--space-4);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+}
+
+// The narrowest phones: the mark alone names the brand (the link keeps its
+// accessible name), so "View on GitHub" stays on one line.
+@media (max-width: 22rem) {
+  .brand span {
+    display: none;
+  }
 }
 
 // Wide screens: one sticky row.

@@ -31,9 +31,11 @@ import { LANDING_CONTENT } from '../content/landing.content';
           }
         </div>
         <p class="details">
-          <a [href]="status.details.href">{{ status.details.label }}</a>
+          <a [href]="status.details.href" rel="noopener">{{ status.details.label }}</a>
         </p>
-        <a class="next-step" [href]="status.nextStep.href">{{ status.nextStep.label }}</a>
+        <a class="next-step" [href]="status.nextStep.href" rel="noopener">{{
+          status.nextStep.label
+        }}</a>
       </div>
     </section>
   `,

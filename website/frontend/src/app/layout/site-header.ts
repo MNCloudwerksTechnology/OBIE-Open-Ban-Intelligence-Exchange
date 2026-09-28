@@ -33,7 +33,11 @@ import { ThemeToggle } from './theme-toggle';
         </nav>
         <div class="actions">
           <app-theme-toggle />
-          <a class="button button--primary github" [href]="content.header.github.href">
+          <a
+            class="button button--primary github"
+            [href]="content.header.github.href"
+            rel="noopener"
+          >
             <app-github-icon />
             {{ content.header.github.label }}
           </a>
