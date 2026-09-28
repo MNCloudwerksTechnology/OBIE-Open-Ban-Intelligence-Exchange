@@ -24,6 +24,25 @@ type view struct {
 	template *template.Template
 	// content returns what the template shows.
 	content func(*http.Request) any
+	// item, if set, serves the pages of the view's items (e.g. one peer)
+	// at Path + "/{id}", marked as the view in the navigation, and their
+	// refreshing regions at Fragment + "/{id}" (ADR 0021).
+	item *item
+}
+
+// item is the page of one item of a view.
+type item struct {
+	// template renders the page's content inside the layout; its template
+	// "region" renders the refreshing region.
+	template *template.Template
+	// content returns the page's title and data for the item r names
+	// ({id}), and whether the console knows the item. With region set,
+	// only the data of the refreshing region is needed; it is rendered
+	// also for an item the console no longer knows, so an open page can
+	// say so.
+	content func(r *http.Request, region bool) (title string, data any, ok bool)
+	// missing explains that the console knows no such item.
+	missing string
 }
 
 // views returns the console's views in navigation order. The navigation
@@ -32,17 +51,29 @@ type view struct {
 func (c *Console) views() []view {
 	return []view{
 		{Path: "/", Title: "Overview", Fragment: "/api/overview", template: overviewTemplate, content: c.overviewContent},
+		{Path: "/peers", Title: "Peers", Fragment: "/api/peers", template: peersTemplate, content: c.peersContent,
+			item: &item{template: peerTemplate, content: c.peerContent,
+				missing: "This node knows no such peer: it is neither configured nor connected, and the node holds no verdict of it."}},
 	}
 }
 
 // Page templates: each is the shared layout with the page's content.
 var (
 	overviewTemplate = pageTemplate("overview.html")
+	peersTemplate    = pageTemplate("peers.html")
+	peerTemplate     = pageTemplate("peer.html")
 	notFoundTemplate = pageTemplate("notfound.html")
 )
 
 func pageTemplate(file string) *template.Template {
-	return template.Must(template.New(file).ParseFS(templateFiles, "templates/layout.html", "templates/"+file)).Lookup("layout")
+	return template.Must(template.New(file).Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+file)).
+		Lookup("layout")
+}
+
+// templateFuncs are the functions page templates may call.
+var templateFuncs = template.FuncMap{
+	// count formats a number with thousands separators.
+	"count": count,
 }
 
 // layoutPage is the data of the shared layout.
@@ -59,7 +90,9 @@ type layoutPage struct {
 
 type navItem struct {
 	Path, Title string
-	Current     bool
+	// Current is the link's aria-current: "page" on the view itself,
+	// "true" on the page of one of its items, empty elsewhere.
+	Current string
 }
 
 type nodeSummary struct {
@@ -69,8 +102,8 @@ type nodeSummary struct {
 // modeLabels name node.mode.
 var modeLabels = map[string]string{"observe": "Observe", "enforce": "Enforce"}
 
-// layout returns the layout data for a page titled title whose navigation
-// marks current.
+// layout returns the layout data for a page titled title at the path
+// current, whose navigation marks the view current is, or belongs to.
 func (c *Console) layout(title, current string, content any) layoutPage {
 	mode := c.node.Mode()
 	label, ok := modeLabels[mode]
@@ -86,7 +119,14 @@ func (c *Console) layout(title, current string, content any) layoutPage {
 		Content:   content,
 	}
 	for _, v := range c.pages {
-		p.Nav = append(p.Nav, navItem{Path: v.Path, Title: v.Title, Current: v.Path == current})
+		item := navItem{Path: v.Path, Title: v.Title}
+		switch {
+		case v.Path == current:
+			item.Current = "page"
+		case v.item != nil && strings.HasPrefix(current, v.Path+"/"):
+			item.Current = "true"
+		}
+		p.Nav = append(p.Nav, item)
 	}
 	return p
 }
@@ -118,9 +158,44 @@ func (c *Console) serveFragment(v view) http.Handler {
 	})
 }
 
+// serveItem renders the page of the item of view v that the request
+// names.
+func (c *Console) serveItem(v view) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		title, data, ok := v.item.content(r, false)
+		if !ok {
+			c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", "",
+				notFoundPage{Path: r.URL.Path, Message: v.item.missing}))
+			return
+		}
+		c.render(w, http.StatusOK, v.item.template, c.layout(title, r.URL.Path, data))
+	})
+}
+
+// serveItemFragment renders the refreshing region of an item's page
+// alone.
+func (c *Console) serveItemFragment(v view) http.Handler {
+	region := v.item.template.Lookup("region")
+	if region == nil {
+		panic("console view " + v.Path + " declares items with a fragment but their pages have no region template")
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, data, _ := v.item.content(r, true)
+		c.render(w, http.StatusOK, region, data)
+	})
+}
+
+// notFoundPage is the data of the page for a path the console does not
+// serve.
+type notFoundPage struct {
+	Path string
+	// Message says more about what is missing; empty for an unknown path.
+	Message string
+}
+
 // notFound renders the page for a path the console does not serve.
 func (c *Console) notFound(w http.ResponseWriter, r *http.Request) {
-	c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", "", struct{ Path string }{r.URL.Path}))
+	c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", "", notFoundPage{Path: r.URL.Path}))
 }
 
 // overviewContent reads the node and returns the data of the overview.

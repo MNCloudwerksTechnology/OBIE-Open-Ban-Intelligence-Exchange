@@ -211,8 +211,11 @@ stops or degrades the node. Pages that refresh themselves fetch only the
 console's own escaped template output, behind the same session, and
 parse it into an inert document before showing it. Details and the
 threats considered are in
-[ADR 0019](documentation/adr/0019-local-web-console.md) and
-[ADR 0020](documentation/adr/0020-console-overview.md).
+[ADR 0019](documentation/adr/0019-local-web-console.md),
+[ADR 0020](documentation/adr/0020-console-overview.md) and
+[ADR 0021](documentation/adr/0021-console-peers.md); the peers view shows
+peer names, addresses and dial errors as received from the configuration
+and the network, escaped like everything else.
 
 **Remaining risk.** Through an SSH port forward, every user of the
 operator's workstation can reach the forwarded port, and on the node the

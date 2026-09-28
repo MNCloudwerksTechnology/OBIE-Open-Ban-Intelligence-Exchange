@@ -60,7 +60,7 @@ func (e *Engine) publishMetrics() {
 	e.mu.RLock()
 	for key, d := range e.decisions {
 		c.Decisions[d.State]++
-		if n := e.verdicts[key]; n > 0 {
+		if n := len(e.held[key]); n > 0 {
 			c.Indicators++
 			c.Verdicts += n
 		}

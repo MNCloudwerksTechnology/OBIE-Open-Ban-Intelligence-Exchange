@@ -1,0 +1,96 @@
+{{define "content" -}}
+<p class="back"><a href="/peers">All peers</a></p>
+<h1>{{.Peer.Title}}{{if not .Peer.Named}} <span class="mono">{{.Peer.ShortID}}</span>{{end}}</h1>
+<p class="lead">A peer of this node: its connection, the trust placed in it, and what it sends. <span data-live hidden>This part of the page updates itself every 5 seconds.</span></p>
+<div class="refresh" data-refresh="{{.Fragment}}">
+{{template "region" .}}
+</div>
+{{- with .Verdicts}}
+<section class="section" aria-labelledby="verdicts-heading">
+  <h2 id="verdicts-heading">Verdicts held from this peer</h2>
+  <p>The active verdicts of this peer that the node holds, by address, read at <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time>; reload the page to read them again.
+  {{- with .ShowCommand}} Every verdict on one address: <code>{{.}}</code>.{{end}}
+  {{- with .All}} <a href="{{.}}">All its verdicts in the verdict view</a>{{end}}
+  {{- with .AllCommand}} All of them, page by page: <code>{{.}}</code>{{end}}</p>
+  {{- if .Err}}
+  <p class="callout" data-level="warning">The verdicts could not be read: {{.Err}}</p>
+  {{- else if .Rows}}
+  <table class="list verdicts">
+    <thead>
+      <tr><th scope="col">Address</th><th scope="col">Action</th><th scope="col">Confidence</th><th scope="col">Reason</th><th scope="col">Expires</th><th scope="col">Counts in decisions</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Rows}}
+      <tr>
+        <th scope="row">{{if .Href}}<a class="mono" href="{{.Href}}">{{.Address}}</a>{{else}}<span class="mono">{{.Address}}</span>{{end}}</th>
+        <td><span class="cell-label">Action</span> {{.Action}}</td>
+        <td><span class="cell-label">Confidence</span> {{.Confidence}}</td>
+        <td><span class="cell-label">Reason</span> {{.Reason}}</td>
+        <td><span class="cell-label">Expires</span> <time datetime="{{.Expires.ISO}}">{{.Expires.Text}}</time></td>
+        <td><span class="cell-label">Counts in decisions</span> <span{{if not .Counting}} class="cell-note"{{end}}>{{.Counts}}</span></td>
+      </tr>
+      {{- end}}
+    </tbody>
+  </table>
+  {{- else}}
+  <p class="empty">The node holds no active verdict of this peer.</p>
+  {{- end}}
+  {{- if or .First .Next}}
+  <nav class="pager" aria-label="Pages of verdicts">
+    {{- with .First}}
+    <a href="{{.}}">First page</a>
+    {{- end}}
+    {{- with .Next}}
+    <a href="{{.}}" rel="next">Next verdicts</a>
+    {{- end}}
+  </nav>
+  {{- end}}
+</section>
+{{- end}}
+{{- end}}
+
+{{define "region" -}}
+{{- with .Notice}}
+<p class="callout">{{.}}</p>
+{{- end}}
+{{- if .Gone}}
+<p class="callout" data-level="warning">This node knows this peer no longer: it is neither configured nor connected, and the node holds no verdict of it. <a href="/peers">All peers</a></p>
+{{- else}}
+<p class="updated" data-tick>Updated <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time></p>
+{{- with .Peer}}
+<dl class="facts">
+  <dt>Peer ID</dt>
+  <dd><code class="id">{{.ID}}</code></dd>
+  <dt>Name</dt>
+  <dd>{{if .Named}}{{.Title}}{{else}}None: the peer is not listed in trust.publishers{{end}}</dd>
+  <dt>Configured as</dt>
+  <dd><span class="roles">{{range .Roles}}<span class="role">{{.}}</span>{{end}}</span>{{if and (not .Configured) .Connected}} It connected to this node on its own.{{else if not .Configured}} It is neither configured nor connected: other peers relayed its verdicts.{{end}}</dd>
+  <dt>Connection</dt>
+  <dd><span class="peer-state" data-state="{{.State}}">{{.StateLabel}}</span> {{.SinceLabel}}{{if .Since.Text}} <time datetime="{{.Since.ISO}}">{{.Since.Text}}</time>{{end}}{{with .Latency}}; round trip {{.}}{{end}}</dd>
+  {{- if .DialError}}
+  <dt>Last failed dial</dt>
+  <dd><time datetime="{{.DialFailedAt.ISO}}">{{.DialFailedAt.Text}}</time>: <span class="mono dial-error">{{.DialError}}</span></dd>
+  {{- end}}
+  <dt>Addresses</dt>
+  <dd>{{with .Addrs}}<ul class="addrs">{{range .}}<li>{{.}}</li>{{end}}</ul>{{end}}<span class="cell-note">{{.AddrsFrom}}</span></dd>
+  <dt>Trust weight</dt>
+  <dd><strong>{{.Weight}}</strong>, {{if .Default}}the default weight (trust.default_weight): the peer is not listed in trust.publishers{{else}}set in trust.publishers{{end}}.
+    {{- if .NoInfluence}} <span class="badge">No influence on decisions</span> Its verdicts are held, but never count.{{end}}</dd>
+  <dt>Verdicts held</dt>
+  <dd>{{.Held}}{{with .HeldNote}}: {{.}}{{end}}</dd>
+  <dt>Events, {{.Window}}</dt>
+  <dd>
+    {{- if or .Accepted .Rejected .Duplicates}}
+    <ul class="events">
+      <li>{{count .Accepted}} accepted</li>
+      <li>{{if .Rejected}}<span class="rejected">{{count .Rejected}} rejected</span>{{with .Reasons}}: {{range $i, $r := .}}{{if $i}}, {{end}}{{count $r.Count}} {{$r.Reason}}{{end}}{{end}}{{else}}none rejected{{end}}</li>
+      <li>{{count .Duplicates}} already known (duplicates are normal in gossip)</li>
+    </ul>
+    {{- else}}
+    None: the peer sent this node no event in the {{.Window}}. A publisher's verdicts that other peers relay count for those peers.
+    {{- end}}
+  </dd>
+</dl>
+{{- end}}
+{{- end}}
+{{- end}}

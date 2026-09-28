@@ -72,3 +72,30 @@ func BenchmarkInsertList100k(b *testing.B) {
 		b.StartTimer()
 	}
 }
+
+// BenchmarkPublisherVerdicts100k lists the 10 verdicts of one publisher in
+// an on-disk store that holds 100k verdicts of another: the worst case of
+// PublisherVerdicts, a walk over every verdict key (ADR 0021).
+func BenchmarkPublisherVerdicts100k(b *testing.B) {
+	const n = 100_000
+	clk := newClock()
+	db := startDB(b, New(filepath.Join(b.TempDir(), "db"), discardLogger(), Options{Now: clk.Now}))
+	for i := range n {
+		if ok, err := db.Put(verdict(pubA, ipv4(ipv4Value(i)), clk.Now(), 24*time.Hour)); err != nil || !ok {
+			b.Fatalf("Put = %v, %v", ok, err)
+		}
+	}
+	for i := range 10 {
+		if ok, err := db.Put(verdict(pubB, ipv4(ipv4Value(i*9973)), clk.Now(), 24*time.Hour)); err != nil || !ok {
+			b.Fatalf("Put = %v, %v", ok, err)
+		}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		res, err := db.PublisherVerdicts(pubB, clk.Now(), Page{Limit: 50})
+		if err != nil || len(res.Verdicts) != 10 {
+			b.Fatalf("PublisherVerdicts = %d verdicts, %v", len(res.Verdicts), err)
+		}
+	}
+}

@@ -140,6 +140,14 @@ type IndicatorPage struct {
 	Next string
 }
 
+// VerdictPage is one page of DB.PublisherVerdicts.
+type VerdictPage struct {
+	// Verdicts are active verdicts of one publisher, by indicator key.
+	Verdicts []*obieproto.Event
+	// Next is the Page.After of the following page; empty on the last page.
+	Next string
+}
+
 // Action is what an operator override enforces.
 type Action string
 

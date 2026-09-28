@@ -24,6 +24,12 @@ func (c *Console) routes() http.Handler {
 		if v.Fragment != "" {
 			mux.Handle("GET "+v.Fragment, c.requireAPI(c.serveFragment(v)))
 		}
+		if v.item != nil {
+			mux.Handle("GET "+v.Path+"/{id}", c.requirePage(c.serveItem(v)))
+			if v.Fragment != "" {
+				mux.Handle("GET "+v.Fragment+"/{id}", c.requireAPI(c.serveItemFragment(v)))
+			}
+		}
 	}
 	mux.Handle("/", c.requirePage(http.HandlerFunc(c.notFound)))
 	return securityHeaders(c.hostGuard(c.localUser(c.fetchGuard(mux))))

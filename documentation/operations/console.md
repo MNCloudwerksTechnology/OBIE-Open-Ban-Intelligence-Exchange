@@ -11,9 +11,11 @@ the threats it was designed against are in
 Every page shows the node, its mode (observe or enforce) and its health:
 *Starting*, *Ready*, *Degraded* (naming the subsystem and why) or
 *Shutting down*. The first page, the [overview](#the-overview), tells you
-within seconds whether the node is healthy and what it is doing. The
-views of the node's peers, decisions, verdicts and configuration arrive
-with later releases; a view appears in the navigation once it exists.
+within seconds whether the node is healthy and what it is doing; the
+[peers view](#the-peers-view) shows every peer the node knows and the
+trust placed in it. The views of the node's decisions, verdicts and
+configuration arrive with later releases; a view appears in the
+navigation once it exists.
 
 ## Switch it on
 
@@ -84,9 +86,10 @@ numbers and decides what needs attention is recorded in
   `mesh.bootstrap` peers), held indicators with their active verdicts,
   decisions by state (`block`, `none`, `allowed`), the entries the firewall
   applies, and active overrides. Each number links to the view that
-  details it; until that view exists, it names the `obiectl` command that
-  shows the same (`obiectl peers`, `indicators`,
-  `decisions --state block`, `enforced`, `overrides`). *Firewall entries*
+  details it — *Peers connected* to the [peers view](#the-peers-view);
+  until a view exists, the number names the `obiectl` command that shows
+  the same (`obiectl indicators`, `decisions --state block`, `enforced`,
+  `overrides`). *Firewall entries*
   also says why they differ from the decided blocks: blocks that share an
   entry with another block (the same range, or one inside a wider range),
   that the allow-list refuses, or that are over `enforce.max_entries`.
@@ -110,7 +113,7 @@ events shows that as a condition.
 | Condition | What to do |
 |-----------|------------|
 | *No peer is configured* | Add the peers of your mesh to `mesh.bootstrap` and restart `obied` ([federation](federation.md)). |
-| *No peer is connected* | Check that the peers run and that their mesh port is reachable from this host; the `obied` log names the failed dials. `sudo obiectl peers` lists the connected peers. |
+| *No peer is connected* | Check that the peers run and that their mesh port is reachable from this host. The [peers view](#the-peers-view) shows why the last dial of each bootstrap peer failed; the `obied` log names every failed dial. |
 | *No event received* | The node holds no verdict and has accepted none since `obied` started. Connect it to peers that publish verdicts, or report attacks yourself, for example with the [Fail2Ban action](../guides/fail2ban.md). |
 | *Enforce mode, but nothing is applied to the firewall* | `enforce.backend` is `dryrun`, which only logs blocks. Set it to `nftables` and restart `obied` ([nftables](../guides/nftables.md)). |
 | *Enforce mode, but nothing is applied* or *Decided blocks and applied entries may differ*: *enforcement failed* | The backend refuses the changes; the `obied` log says why (for nftables: may `obied` change the firewall?). `obied` retries on its own. |
@@ -120,6 +123,66 @@ events shows that as a condition.
 | *… is not ready* or *… is degraded*, naming a part | The `obied` log says why; `sudo obiectl status` shows every part. |
 | *The configuration reload at … was rejected* | The node keeps the configuration it had. Fix the file, check it with `sudo obied --config /etc/obie/obie.yaml --check-config`, then reload again. |
 | *Changes to … wait for a restart* (note) | The configuration file changes settings that only a restart applies; restart `obied` when it suits you. |
+
+## The peers view
+
+*Peers* answers "Who is influencing my decisions, and is any peer broken
+or misbehaving?". It lists every peer the node knows: the bootstrap peers
+in `mesh.bootstrap`, the trusted publishers in `trust.publishers`, and
+every peer that is connected, including those that connected on their
+own — never the node itself. How the view reads its data is recorded in
+[ADR 0021](../adr/0021-console-peers.md). For each peer:
+
+- **Peer.** Its name from `trust.publishers` (or *Unnamed peer*), its
+  shortened peer ID (the full ID is on its page), how it is configured —
+  *Bootstrap peer*, *Trusted publisher*, both, or *Not configured* — and
+  its addresses: those of the open connections, or its `mesh.bootstrap`
+  addresses while it is not connected.
+- **Connection.** *Connected since* when, or *Disconnected* with when it
+  was *last seen*. A configured peer that has not been connected since
+  `obied` started says so; for a bootstrap peer, the view also says when
+  the last dial failed, and the peer's page says why. The node dials only
+  bootstrap peers: a trusted publisher that is not in `mesh.bootstrap`
+  connects only if it dials this node.
+- **Trust weight.** The weight its verdicts carry in decisions: its
+  `trust.publishers` weight, or the *default weight*
+  (`trust.default_weight`, 0 unless set) for a peer that is not listed.
+  A weight of 0 is marked *No influence on decisions*: the node holds the
+  peer's verdicts but never counts them.
+- **Verdicts held.** How many active verdicts of the peer the node holds,
+  and how many of them count in decisions — ban verdicts of a peer whose
+  weight is above 0.
+- **Events, last hour.** How many events the peer sent this node in the
+  last hour were accepted, and how many were rejected and why: invalid
+  signature, not a valid obie/0.1 event, too large, expired or dated in
+  the future, or over the rate limit (`mesh.rate_limit`). Events count for
+  the peer that sent them: a publisher's verdicts that other peers relay
+  count for those peers, and show up as its verdicts held. A peer that
+  keeps sending rejected events is misbehaving or broken — its clock, for
+  expired events; events with an invalid signature or format also lower
+  its standing in the mesh (peer scoring).
+
+The filters above the list show *All*, *Connected*, *Disconnected* or
+*Untrusted* peers (weight 0), each with how many peers it lists; a
+column heading sorts by that column (peer name, connection, trust weight
+most first, verdicts most first, rejected events most first). The list
+shows 50 peers per page. Filter, order and page are part of the address,
+so a view can be bookmarked. Verdicts from publishers that are neither
+configured nor connected are summed up under the list, with the weight
+they carry.
+
+**A peer's page** (choose its name) shows the same in full — the peer ID,
+the round-trip time, the error of the last failed dial, the rejection
+reasons and the duplicates — and the verdicts the node holds from the
+peer, 50 at a time and by address: action, confidence, reason and
+protocol, expiry, and whether each counts in decisions. The verdicts are
+read when the page opens; reload it to read them again. For every verdict
+on one address, use `sudo obiectl show <address>`; for all of the peer's
+verdicts, `sudo obiectl indicators --publisher <peer ID>`.
+
+Trust is configured, not set in the console: change `trust.publishers` or
+`trust.default_weight` in `/etc/obie/obie.yaml` and reload `obied`; the
+view follows. Adding a bootstrap peer needs a restart.
 
 ## Reach it from another machine
 

@@ -37,7 +37,7 @@ func (v *validator) validate(_ context.Context, from peer.ID, msg *pubsub.Messag
 	}
 	outcome, result := v.check(from, msg.GetData())
 	receivedTotal.WithLabelValues(string(outcome)).Inc()
-	v.metrics.Observe(outcome)
+	v.metrics.Observe(from, outcome)
 	return result
 }
 

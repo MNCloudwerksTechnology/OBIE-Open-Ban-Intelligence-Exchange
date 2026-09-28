@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -31,19 +32,20 @@ const (
 )
 
 // Outcomes lists every Outcome, e.g. to initialize counters.
-var Outcomes = []Outcome{Accepted, InvalidSignature, InvalidSchema, Expired, Duplicate, RateLimited, TooLarge}
+var Outcomes = [...]Outcome{Accepted, InvalidSignature, InvalidSchema, Expired, Duplicate, RateLimited, TooLarge}
 
-// Metrics observes the outcome of every message received from a peer; the
-// node's own publications are not observed. Observe is called concurrently
-// on the validation path and must be fast. It is an observer in addition
-// to the Prometheus metrics, which are always updated.
+// Metrics observes the outcome of every message received from a peer,
+// with the peer that sent it; the node's own publications are not
+// observed. Observe is called concurrently on the validation path and must
+// be fast. It is an observer in addition to the Prometheus metrics, which
+// are always updated.
 type Metrics interface {
-	Observe(Outcome)
+	Observe(from peer.ID, o Outcome)
 }
 
 type nopMetrics struct{}
 
-func (nopMetrics) Observe(Outcome) {}
+func (nopMetrics) Observe(peer.ID, Outcome) {}
 
 // Event types as the type label of obie_events_published_total.
 var eventTypes = []string{typeLabel(obieproto.TypeVerdict), typeLabel(obieproto.TypeRevoke)}
