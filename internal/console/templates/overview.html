@@ -56,6 +56,27 @@
     {{- end}}
   </ul>
 </section>
+{{- with .Activity}}
+<section class="section" aria-labelledby="activity-heading">
+  <h2 id="activity-heading">Recent activity</h2>
+  {{- with .Note}}
+  <p class="note">{{.}}</p>
+  {{- end}}
+  {{- if .Rows}}
+  <div class="table-scroll">
+  <table class="list activity">
+    {{template "activity-head"}}
+    <tbody>
+      {{- range .Rows}}
+      {{template "activity-row" .}}
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  {{- end}}
+  <p class="section-link"><a href="{{.Href}}">All activity, live</a></p>
+</section>
+{{- end}}
 <section class="section" aria-labelledby="parts-heading">
   <h2 id="parts-heading">Parts of the node</h2>
   <table class="parts">

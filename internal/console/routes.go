@@ -15,6 +15,7 @@ func (c *Console) routes() http.Handler {
 	mux.HandleFunc("POST /login", c.signIn)
 	mux.HandleFunc("POST /logout", c.signOut)
 	mux.Handle("GET /api/health", c.requireAPI(http.HandlerFunc(c.serveHealth)))
+	mux.Handle("GET /api/activity", c.requireAPI(http.HandlerFunc(c.serveActivityLive)))
 	for _, v := range c.pages {
 		pattern := "GET " + v.Path
 		if strings.HasSuffix(v.Path, "/") {

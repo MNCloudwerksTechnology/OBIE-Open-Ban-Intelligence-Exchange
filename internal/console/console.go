@@ -68,6 +68,9 @@ type Node struct {
 	// Rules reads the overrides, the allow-list and the configuration for
 	// their views; nil reads none (ADR 0024).
 	Rules RuleSource
+	// Activity reads the audit trail for the activity timeline; nil reads
+	// none (ADR 0025).
+	Activity ActivitySource
 }
 
 // Options configures a Console.

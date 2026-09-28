@@ -436,7 +436,7 @@ func TestDecisionsPage(t *testing.T) {
 		`<a href="/decisions?before=decided%3A1%2Cipv4%3A203.0.113.7&amp;firewall=applied&amp;publisher=`+idAlpha+`&amp;`+view+`&amp;state=block" rel="prev">Previous page</a>`,
 		`<a href="/decisions?after=decided%3A5%2Cipv4%3A198.51.100.9&amp;firewall=applied&amp;publisher=`+idAlpha+`&amp;`+view+`&amp;state=block" rel="next">Next page</a>`,
 	)
-	if nav := navOf(t, page); len(nav) < 3 || nav[2] != (navItem{Path: "/decisions", Title: "Decisions", Current: "page"}) {
+	if nav := navOf(t, page); len(nav) < 4 || nav[3] != (navItem{Path: "/decisions", Title: "Decisions", Current: "page"}) {
 		t.Errorf("navigation = %+v, want Decisions after Peers, marked", nav)
 	}
 }

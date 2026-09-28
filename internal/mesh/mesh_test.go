@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -335,5 +336,52 @@ func connected2(b, c *Mesh, a string) func() bool {
 		_, ba := peerIDs(b)[a]
 		_, ca := peerIDs(c)[a]
 		return ba && ca
+	}
+}
+
+// TestConnectionsAreReported: Options.Connections learns of a peer
+// connecting and disconnecting, with its name and role.
+func TestConnectionsAreReported(t *testing.T) {
+	idA, idB := newIdentity(t), newIdentity(t)
+	a, err := New(idA, Options{Listen: []string{"/ip4/127.0.0.1/tcp/0"}, Store: newStore(t)}, discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var got []Connection
+	startMesh(t, idB, Options{
+		Listen:    []string{"/ip4/127.0.0.1/tcp/0"},
+		Bootstrap: []string{listenAddr(t, a, ma.P_TCP) + "/p2p/" + idA.PeerID()},
+		Trust:     config.Trust{Publishers: []config.Publisher{{PeerID: idA.PeerID(), Name: "alpha", Weight: 0.5}}},
+		Connections: func(c Connection) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, c)
+		},
+	})
+	reported := func(n int) func() bool {
+		return func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(got) >= n
+		}
+	}
+	waitFor(t, 10*time.Second, "B to report A connected", reported(1))
+	if err := a.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 5*time.Second, "B to report A disconnected", reported(2))
+	mu.Lock()
+	defer mu.Unlock()
+	want := Connection{ID: idA.PeerID(), Name: "alpha", Bootstrap: true, Publisher: true, Connected: true}
+	if got[0] != want {
+		t.Errorf("connected = %+v, want %+v", got[0], want)
+	}
+	want.Connected = false
+	if got[1] != want {
+		t.Errorf("disconnected = %+v, want %+v", got[1], want)
 	}
 }

@@ -3,14 +3,16 @@
 // the operator when the session ended or the console can no longer be
 // reached, e.g. after a configuration reload. It adds a Copy button to
 // every element marked data-copy and a Copy link button to the page
-// (ADR 0022). Every page works without this script. It builds its own
-// text with textContent only; a region's new content is the console's
-// escaped template output, parsed into an inert document that runs no
-// script.
+// (ADR 0022), and follows the activity timeline's live feed (ADR 0025).
+// Every page works without this script. It builds its own text with
+// textContent only; a region's new content and new timeline rows are the
+// console's escaped template output, parsed into an inert document that
+// runs no script.
 (function () {
   'use strict';
 
   var INTERVAL_MS = 5000;
+  var LIVE_MS = 1000;
   var MODE_LABELS = { observe: 'Observe', enforce: 'Enforce' };
 
   var health = document.querySelector('[data-health]');
@@ -73,6 +75,9 @@
   function signedOutBanner() {
     signedOut = true;
     showLiveHints(false);
+    if (feed) {
+      feed.hidden = true; // the timeline no longer follows the node
+    }
     showBanner(
       'You were signed out: the console token was replaced (obiectl console --rotate) or obied restarted.',
       { href: '/login?next=' + encodeURIComponent(location.pathname + location.search), text: 'Sign in again' });
@@ -334,16 +339,162 @@
     }
   }
 
+  // The activity timeline's live feed (ADR 0025): while the page is
+  // visible and not paused, ask every LIVE_MS for the entries after the
+  // last one and put them on top, keeping at most data-max-rows rows.
+  var feed = document.querySelector('[data-live-feed]');
+  var feedRows = document.querySelector('[data-activity-rows]');
+  var feedStatus = document.querySelector('[data-live-status]');
+  var feedToggle = document.querySelector('[data-live-toggle]');
+  var liveTimer = 0;
+  var liveBusy = false;
+  var paused = false;
+  var failed = false;
+  var after = '';
+  var LIVE_TEXT = 'Live: new entries appear at the top as they happen.';
+
+  function liveURL() {
+    var url = new URL(feed.getAttribute('data-live-feed'), location.href);
+    url.searchParams.set('after', after);
+    return url.pathname + url.search;
+  }
+
+  function clockNow() {
+    return new Date().toISOString().slice(11, 19);
+  }
+
+  // trimRows takes the oldest rows off the page beyond its maximum, and
+  // says so; the page's pager and notes no longer fit what remains.
+  function trimRows() {
+    var max = parseInt(feed.getAttribute('data-max-rows'), 10);
+    if (feedRows.children.length <= max) {
+      return;
+    }
+    while (feedRows.children.length > max) {
+      feedRows.lastElementChild.remove();
+    }
+    document.querySelector('[data-activity-trimmed]').hidden = false;
+    document.querySelector('[data-activity-tail]').hidden = true;
+  }
+
+  // addEntries puts the rows of a live answer on top of the timeline.
+  function addEntries(html) {
+    var incoming = new DOMParser().parseFromString(html, 'text/html');
+    var next = incoming.querySelector('[data-next]');
+    if (!next) {
+      return;
+    }
+    after = next.getAttribute('data-next');
+    var rows = Array.prototype.slice.call(incoming.querySelectorAll('tbody > tr'));
+    if (rows.length === 0) {
+      return;
+    }
+    rows.forEach(function (row) {
+      row.classList.add('activity-new');
+    });
+    feedRows.prepend.apply(feedRows, rows);
+    document.querySelector('[data-activity-table]').hidden = false;
+    document.querySelector('[data-activity-empty]').hidden = true;
+    trimRows();
+    var entries = rows.filter(function (row) {
+      return !row.hasAttribute('data-burst');
+    }).length;
+    feedStatus.textContent = 'Live: ' + (entries === 1 ? '1 new entry' : entries + ' new entries') + ' at ' +
+      clockNow() + ' UTC.';
+  }
+
+  // pollLive asks for the entries after the last one. An answer that
+  // arrives after Pause is dropped, and asked for again on Resume. A
+  // failure is said in the live status: the health poll, which owns the
+  // banner, would hide it again.
+  function pollLive() {
+    liveTimer = 0;
+    liveBusy = true;
+    fetch(liveURL(), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'text/html' } })
+      .then(function (resp) {
+        if (resp.status === 401) {
+          signedOutBanner();
+          return;
+        }
+        if (!resp.ok) {
+          failed = true;
+          feedStatus.textContent = 'Live updates failed: the console answered HTTP ' + resp.status +
+            '. The obied log says why; this page keeps trying.';
+          return;
+        }
+        return resp.text().then(function (html) {
+          if (paused) {
+            return;
+          }
+          if (failed) {
+            failed = false;
+            feedStatus.textContent = LIVE_TEXT;
+          }
+          addEntries(html);
+        });
+      })
+      .catch(function () {
+        // The health poll tells when the console cannot be reached.
+      })
+      .then(function () {
+        liveBusy = false;
+        scheduleLive(LIVE_MS);
+      });
+  }
+
+  // scheduleLive asks for new entries in delay ms unless a request is
+  // pending or running, the page is hidden or paused, or the session
+  // ended.
+  function scheduleLive(delay) {
+    if (feed && !signedOut && !document.hidden && !paused && !liveTimer && !liveBusy) {
+      liveTimer = window.setTimeout(pollLive, delay);
+    }
+  }
+
+  function stopLive() {
+    window.clearTimeout(liveTimer);
+    liveTimer = 0;
+  }
+
+  function setPaused(p) {
+    paused = p;
+    feed.toggleAttribute('data-paused', p);
+    feedToggle.textContent = p ? 'Resume live updates' : 'Pause live updates';
+    if (p) {
+      stopLive();
+      feedStatus.textContent = 'Paused: new entries are not shown until you resume.';
+    } else {
+      feedStatus.textContent = LIVE_TEXT;
+      scheduleLive(0); // everything since the pause, at once
+    }
+  }
+
+  function startLive() {
+    if (!feed || !feedRows || !feedStatus || !feedToggle) {
+      feed = null;
+      return;
+    }
+    after = new URL(feed.getAttribute('data-live-feed'), location.href).searchParams.get('after') || '0';
+    feedToggle.addEventListener('click', function () {
+      setPaused(!paused);
+    });
+    feed.hidden = false;
+    scheduleLive(LIVE_MS);
+  }
+
   document.addEventListener('visibilitychange', function () {
     if (document.hidden) {
       window.clearTimeout(timer);
       timer = 0;
+      stopLive();
     } else {
       schedule();
+      scheduleLive(0);
     }
   });
   showLiveHints(true);
   addCopyButtons(document);
   addShare();
   schedule();
+  startLive();
 })();

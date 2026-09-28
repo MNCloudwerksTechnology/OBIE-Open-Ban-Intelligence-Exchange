@@ -62,6 +62,9 @@ type overviewPage struct {
 	// and still lacks peers or data; nil otherwise.
 	Starting *starting
 	Numbers  []keyNumber
+	// Activity is the last entries of the activity timeline; nil without
+	// one (ADR 0025).
+	Activity *recentActivity
 	Parts    []part
 	Node     nodeFacts
 }

@@ -34,7 +34,8 @@ type reloader struct {
 	engine  *decision.Engine
 	gate    *enforce.Gate
 	mesh    trustSetter
-	// audit is reopened on every reload; nil without audit log.
+	// audit is reopened on every reload and records reloads and mode
+	// changes; nil records nothing.
 	audit *audit.Log
 	// console applies the console settings; nil without console.
 	console func(config.Console)
@@ -43,9 +44,9 @@ type reloader struct {
 	log   *slog.Logger
 }
 
-// reload reopens the audit log, then reads the configuration and applies
-// it. If the configuration or an allow-list file is invalid, it logs why
-// and changes nothing.
+// reload reopens the audit log, then reads the configuration, applies it
+// and records it in the audit log. If the configuration or an allow-list
+// file is invalid, it logs why and changes nothing.
 func (r *reloader) reload(ctx context.Context) error {
 	_ = r.audit.Reopen() // a failure is logged and keeps the open file
 	r.log.Info("reloading the configuration")
@@ -67,7 +68,10 @@ func (r *reloader) reload(ctx context.Context) error {
 		return r.reject(err)
 	}
 	r.engine.Reload(decision.NewPolicy(r.self, next.Trust, next.Decision), allow)
-	r.gate.SetMode(next.Node.Mode)
+	if mode := r.gate.Mode(); mode != next.Node.Mode {
+		r.gate.SetMode(next.Node.Mode)
+		r.audit.Write(audit.ModeChanged(string(mode), string(next.Node.Mode)))
+	}
 	// The console never fails a reload: it logs why it cannot serve.
 	if r.console != nil {
 		r.console(next.Console)
@@ -77,8 +81,10 @@ func (r *reloader) reload(ctx context.Context) error {
 	if len(keys) > 0 {
 		r.log.Warn("configuration changes that need a restart were not applied", "keys", keys)
 	}
+	applied := config.ChangedOnReload(r.running.Config, next)
 	r.running = r.running.Reload(file)
 	r.loads.reloaded(r.running, keys)
+	r.audit.Write(audit.ConfigReloaded(file.Path, applied, keys))
 	r.log.Info("configuration reloaded", "mode", next.Node.Mode, "allowlist_entries", len(allow.Entries()),
 		"publishers", len(next.Trust.Publishers), "console_enabled", next.Console.Enabled)
 	return nil

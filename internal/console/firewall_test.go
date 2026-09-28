@@ -221,7 +221,7 @@ func TestFirewallPage(t *testing.T) {
 		`No decision <span class="badge">Differs</span>`,
 		`<p class="pager-text">4 entries</p>`,
 	)
-	if nav := navOf(t, page); len(nav) < 4 || nav[3] != (navItem{Path: "/enforcement", Title: "Firewall", Current: "page"}) {
+	if nav := navOf(t, page); len(nav) < 5 || nav[4] != (navItem{Path: "/enforcement", Title: "Firewall", Current: "page"}) {
 		t.Errorf("navigation = %+v, want Firewall after Decisions, marked", nav)
 	}
 	m := firewallRegion.FindStringSubmatch(page)

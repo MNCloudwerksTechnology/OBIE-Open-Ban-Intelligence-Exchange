@@ -174,10 +174,12 @@ console:
   listen: 127.0.0.1:9465
 
 audit:
-  # JSON-lines audit log of every decision change, with ECS field names
-  # (see documentation/operations/monitoring.md). Empty disables it;
-  # otherwise an absolute file path in an existing directory, e.g.
-  # /var/log/obie/audit.jsonl. SIGHUP reopens it (logrotate).
+  # JSON-lines audit log of every decision change, peer connection, reload
+  # and mode change, with ECS field names (see
+  # documentation/operations/monitoring.md); the web console's activity
+  # timeline reads it back. Empty disables it; otherwise an absolute file
+  # path in an existing directory, e.g. /var/log/obie/audit.jsonl. SIGHUP
+  # reopens it (logrotate).
   path: ""
 
 log:

@@ -2,7 +2,9 @@
 // for every decision change, with Elastic Common Schema (ECS) field names,
 // so Loki, Elasticsearch, Splunk and other SIEMs ingest it as is. The file
 // is only ever appended to and is reopened on SIGHUP, so logrotate can
-// move it away (ADR 0015).
+// move it away (ADR 0015). The last records are also kept in memory, with
+// or without a file, and both can be read back newest first for the
+// console's activity timeline (ADR 0025).
 package audit
 
 import (
@@ -11,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/netip"
 	"os"
@@ -52,6 +55,14 @@ const (
 	ActionLocalReport Action = "local-report"
 	// ActionRevocation: this node revoked one of its verdicts.
 	ActionRevocation Action = "revocation"
+	// ActionPeerConnected: the mesh connected to a peer.
+	ActionPeerConnected Action = "peer-connected"
+	// ActionPeerDisconnected: the mesh lost its last connection to a peer.
+	ActionPeerDisconnected Action = "peer-disconnected"
+	// ActionConfigReloaded: a reload of the configuration took effect.
+	ActionConfigReloaded Action = "config-reloaded"
+	// ActionModeChanged: a reload switched node.mode.
+	ActionModeChanged Action = "mode-changed"
 )
 
 // OutcomeSuccess is the event.outcome of every record: only changes that
@@ -66,9 +77,12 @@ type Scores struct {
 	Publishers int
 }
 
-// Record is one decision change.
+// Record is one change: of a decision, an override, a verdict this node
+// issued, a peer's connection, the configuration or the mode (ADR 0025).
 type Record struct {
-	Action    Action
+	Action Action
+	// Indicator is the address or range the change is about; zero for
+	// changes about no address.
 	Indicator obieproto.Indicator
 	// Rule names the rule behind the change (rule.name), e.g. "consensus",
 	// "allowlist" or "force_block".
@@ -90,12 +104,21 @@ type Record struct {
 	Revokes string
 	// Note is the operator's note on an override.
 	Note string
+	// PreviousMode is node.mode before a mode change.
+	PreviousMode string
+	// PeerID and PeerName are the peer of a connection change; PeerName
+	// is its trust.publishers name, if any.
+	PeerID, PeerName string
+	// Settings are the keys a reload changed and applied; RestartSettings
+	// the keys that wait for a restart.
+	Settings, RestartSettings []string
 }
 
-// Log appends Records to the audit log file. It implements
-// lifecycle.Subsystem: Start opens the file, Stop closes it. The methods of
-// a nil *Log do nothing, so callers need not check whether auditing is
-// enabled.
+// Log appends Records to the audit log file and keeps the last
+// MemoryEntries of them in memory. It implements lifecycle.Subsystem:
+// Start opens the file, Stop closes it. Without a path it keeps the
+// records in memory only. The methods of a nil *Log do nothing, so callers
+// need not check whether auditing is enabled.
 type Log struct {
 	path string
 	mode func() string
@@ -104,6 +127,14 @@ type Log struct {
 
 	mu sync.Mutex
 	f  *os.File
+	// readErr says why f cannot be read back; nil if it can. gen counts
+	// the files opened, so a cursor into an earlier one is recognized.
+	readErr error
+	gen     uint64
+	// seq numbers the records from 1; tail holds the record with number n
+	// at (n-1) % MemoryEntries, the last MemoryEntries of them.
+	seq  uint64
+	tail []*Entry
 }
 
 // Options configures a Log.
@@ -114,20 +145,34 @@ type Options struct {
 	Now func() time.Time
 }
 
-// New returns the audit log at path.
+// New returns the audit log at path; with an empty path, the records are
+// kept in memory only.
 func New(path string, opts Options, log *slog.Logger) *Log {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Log{path: path, mode: opts.Mode, now: opts.Now, log: log}
+	return &Log{path: path, mode: opts.Mode, now: opts.Now, log: log, tail: make([]*Entry, MemoryEntries)}
+}
+
+// Path returns the path of the audit log file; empty if the records are
+// kept in memory only.
+func (l *Log) Path() string {
+	if l == nil {
+		return ""
+	}
+	return l.path
 }
 
 // Name returns the subsystem name.
 func (l *Log) Name() string { return Name }
 
-// Start opens the file, creating it if needed.
+// Start opens the file, creating it if needed; without a path it does
+// nothing.
 func (l *Log) Start(context.Context) error {
-	f, err := l.open()
+	if l.path == "" {
+		return nil
+	}
+	f, readErr, err := l.open()
 	if err != nil {
 		return err
 	}
@@ -137,9 +182,34 @@ func (l *Log) Start(context.Context) error {
 		_ = f.Close()
 		return errors.New("audit log already started")
 	}
-	l.f = f
+	l.use(f, readErr)
 	l.log.Info("audit log opened", "path", l.path)
 	return nil
+}
+
+// use makes f the file records are written to; readErr says why it
+// cannot be read back. A file other than the previous one starts a new
+// generation: positions in the previous one do not apply to it. The
+// caller holds mu.
+func (l *Log) use(f *os.File, readErr error) {
+	if !sameFile(l.f, f) {
+		l.gen++
+	}
+	l.f, l.readErr = f, readErr
+	if readErr != nil {
+		l.log.Warn("the console cannot show the audit log's history", "path", l.path, "reason", readErr)
+	}
+}
+
+// sameFile reports whether a and b are open on the same file, as when a
+// reload reopens a log that logrotate did not move.
+func sameFile(a, b *os.File) bool {
+	if a == nil || b == nil {
+		return false
+	}
+	ia, errA := a.Stat()
+	ib, errB := b.Stat()
+	return errA == nil && errB == nil && os.SameFile(ia, ib)
 }
 
 // Stop closes the file.
@@ -161,17 +231,17 @@ func (l *Log) Stop(context.Context) error {
 // logrotate moved it away, and closes the previous one. If the file cannot
 // be opened, writing goes on to the previous one.
 func (l *Log) Reopen() error {
-	if l == nil {
+	if l == nil || l.path == "" {
 		return nil
 	}
-	f, err := l.open()
+	f, readErr, err := l.open()
 	if err != nil {
 		l.log.Error("reopening the audit log failed; writing on to the previous file", "path", l.path, "error", err)
 		return err
 	}
 	l.mu.Lock()
 	old := l.f
-	l.f = f
+	l.use(f, readErr)
 	l.mu.Unlock()
 	if old != nil {
 		if err := old.Close(); err != nil {
@@ -182,48 +252,68 @@ func (l *Log) Reopen() error {
 	return nil
 }
 
-func (l *Log) open() (*os.File, error) {
-	f, err := os.OpenFile(l.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- the operator chooses audit.path.
-	if err != nil {
-		return nil, fmt.Errorf("open audit log: %w", err)
+// open opens the file for appending, and for reading back too if the
+// node may read it (ADR 0025); readErr says why it cannot, nil if it can.
+func (l *Log) open() (f *os.File, readErr error, err error) {
+	f, err = os.OpenFile(l.path, os.O_RDWR|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- the operator chooses audit.path.
+	if errors.Is(err, fs.ErrPermission) {
+		f, err = os.OpenFile(l.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- as above.
+		readErr = ErrWriteOnly
 	}
-	return f, nil
+	if err != nil {
+		return nil, nil, fmt.Errorf("open audit log: %w", err)
+	}
+	if info, statErr := f.Stat(); readErr == nil && (statErr != nil || !info.Mode().IsRegular()) {
+		readErr = ErrNotRegular // e.g. /dev/stdout: what was written cannot be read back
+	}
+	return f, readErr, nil
 }
 
-// Write appends r as one line. A failure is logged; the change it records
-// takes effect anyway.
+// Write appends r as one line and keeps it in memory. A failure is
+// logged; the change it records takes effect anyway.
 func (l *Log) Write(r Record) {
 	if l == nil {
+		return
+	}
+	e := l.entry(r)
+	if l.path == "" {
+		l.mu.Lock()
+		l.keep(&e)
+		l.mu.Unlock()
 		return
 	}
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf) // one line, ending in a newline
 	enc.SetEscapeHTML(false)     // reasons hold ">=" and "<"
-	if err := enc.Encode(l.document(r)); err != nil {
+	if err := enc.Encode(e); err != nil {
 		l.log.Error("encoding an audit record failed", "action", r.Action, "error", err)
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.keep(&e)
 	if l.f == nil {
-		l.log.Error("audit log is not open; record lost", "action", r.Action, "indicator", r.Indicator.Key())
+		l.log.Error("audit log is not open; record lost", "action", r.Action, "indicator", indicatorKey(r.Indicator))
 		return
 	}
 	if _, err := l.f.Write(buf.Bytes()); err != nil {
-		l.log.Error("writing the audit log failed; record lost", "action", r.Action, "indicator", r.Indicator.Key(), "error", err)
+		l.log.Error("writing the audit log failed; record lost", "action", r.Action, "indicator", indicatorKey(r.Indicator),
+			"error", err)
 	}
 }
 
-// document is a record in ECS form.
-type document struct {
-	Timestamp string      `json:"@timestamp"`
-	Event     eventFields `json:"event"`
-	Source    *source     `json:"source,omitempty"`
-	Rule      *rule       `json:"rule,omitempty"`
-	Obie      obieFields  `json:"obie"`
+// Entry is a record in ECS form: one line of the audit log, and one entry
+// of the console's activity timeline (ADR 0025).
+type Entry struct {
+	Timestamp string        `json:"@timestamp"`
+	Event     EventFields   `json:"event"`
+	Source    *SourceFields `json:"source,omitempty"`
+	Rule      *RuleFields   `json:"rule,omitempty"`
+	Obie      ObieFields    `json:"obie"`
 }
 
-type eventFields struct {
+// EventFields are the ECS event.* fields.
+type EventFields struct {
 	Kind    string `json:"kind"`
 	Module  string `json:"module"`
 	Dataset string `json:"dataset"`
@@ -232,49 +322,76 @@ type eventFields struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
-type source struct {
+// SourceFields are the ECS source.* fields.
+type SourceFields struct {
 	IP string `json:"ip"`
 }
 
-type rule struct {
+// RuleFields are the ECS rule.* fields.
+type RuleFields struct {
 	Name string `json:"name"`
 }
 
-type obieFields struct {
-	Indicator  string   `json:"indicator"`
-	Mode       string   `json:"mode"`
-	State      string   `json:"state,omitempty"`
-	Score      *float64 `json:"score,omitempty"`
-	Threshold  *float64 `json:"threshold,omitempty"`
-	Publishers *int     `json:"publishers,omitempty"`
-	Cause      string   `json:"cause,omitempty"`
-	ExpiresAt  string   `json:"expires_at,omitempty"`
-	EventID    string   `json:"event_id,omitempty"`
-	Revokes    string   `json:"revokes,omitempty"`
-	Note       string   `json:"note,omitempty"`
+// ObieFields are OBIE's own fields.
+type ObieFields struct {
+	Indicator       string   `json:"indicator,omitempty"`
+	Mode            string   `json:"mode"`
+	State           string   `json:"state,omitempty"`
+	Score           *float64 `json:"score,omitempty"`
+	Threshold       *float64 `json:"threshold,omitempty"`
+	Publishers      *int     `json:"publishers,omitempty"`
+	Cause           string   `json:"cause,omitempty"`
+	ExpiresAt       string   `json:"expires_at,omitempty"`
+	EventID         string   `json:"event_id,omitempty"`
+	Revokes         string   `json:"revokes,omitempty"`
+	Note            string   `json:"note,omitempty"`
+	PreviousMode    string   `json:"previous_mode,omitempty"`
+	PeerID          string   `json:"peer_id,omitempty"`
+	PeerName        string   `json:"peer_name,omitempty"`
+	Settings        []string `json:"settings,omitempty"`
+	RestartSettings []string `json:"restart_settings,omitempty"`
 }
 
-func (l *Log) document(r Record) document {
-	d := document{
+// Time returns @timestamp as a time; zero if it is not one.
+func (e *Entry) Time() time.Time {
+	t, err := time.Parse(time.RFC3339Nano, e.Timestamp)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+func (l *Log) entry(r Record) Entry {
+	e := Entry{
 		Timestamp: l.now().UTC().Format(timeFormat),
-		Event: eventFields{Kind: "event", Module: "obie", Dataset: "obie.audit", Action: r.Action, Outcome: OutcomeSuccess,
+		Event: EventFields{Kind: "event", Module: "obie", Dataset: "obie.audit", Action: r.Action, Outcome: OutcomeSuccess,
 			Reason: r.Reason},
-		Obie: obieFields{Indicator: r.Indicator.Key(), Mode: l.mode(), State: r.State, Cause: r.Cause,
-			EventID: r.EventID, Revokes: r.Revokes, Note: r.Note},
+		Obie: ObieFields{Indicator: indicatorKey(r.Indicator), Mode: l.mode(), State: r.State, Cause: r.Cause,
+			EventID: r.EventID, Revokes: r.Revokes, Note: r.Note, PreviousMode: r.PreviousMode, PeerID: r.PeerID,
+			PeerName: r.PeerName, Settings: r.Settings, RestartSettings: r.RestartSettings},
 	}
 	if ip, ok := singleAddress(r.Indicator); ok {
-		d.Source = &source{IP: ip.String()}
+		e.Source = &SourceFields{IP: ip.String()}
 	}
 	if r.Rule != "" {
-		d.Rule = &rule{Name: r.Rule}
+		e.Rule = &RuleFields{Name: r.Rule}
 	}
 	if s := r.Scores; s != nil {
-		d.Obie.Score, d.Obie.Threshold, d.Obie.Publishers = &s.Score, &s.Threshold, &s.Publishers
+		e.Obie.Score, e.Obie.Threshold, e.Obie.Publishers = &s.Score, &s.Threshold, &s.Publishers
 	}
 	if !r.ExpiresAt.IsZero() {
-		d.Obie.ExpiresAt = r.ExpiresAt.UTC().Format(timeFormat)
+		e.Obie.ExpiresAt = r.ExpiresAt.UTC().Format(timeFormat)
 	}
-	return d
+	return e
+}
+
+// indicatorKey returns the key of ind, or "" for the zero indicator of a
+// record about no address.
+func indicatorKey(ind obieproto.Indicator) string {
+	if ind.Kind == "" {
+		return ""
+	}
+	return ind.Key()
 }
 
 // singleAddress returns the address of an indicator that names one

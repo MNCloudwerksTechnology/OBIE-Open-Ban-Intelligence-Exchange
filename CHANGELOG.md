@@ -115,6 +115,19 @@ The first release, v0.1.0 "Stable Base".
   previous configuration kept); and which changes in the file on disk are
   not active yet or wait for a restart. Secrets are never shown
   ([ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md)).
+  Its activity timeline shows what the node did, newest first — blocks
+  added, updated or removed, addresses spared by the allow-list,
+  overrides, its own reports and revocations, peers connecting and
+  disconnecting, configuration reloads and mode changes — filtered by kind
+  and address, each linking to its decision, verdicts, peer or setting,
+  and follows the node live within about a second, with a pause; bursts
+  are summed up instead of listed one by one. It reads the audit log, so
+  it tells the same story as the SIEM, also across restarts; without
+  `audit.path` it shows the last 10,000 entries since the start and says
+  what is missing. The overview shows the last 5 entries. The audit log
+  now also records `peer-connected`, `peer-disconnected`,
+  `config-reloaded` and `mode-changed`
+  ([ADR 0025](documentation/adr/0025-console-activity-timeline.md)).
 - **Packaging.** Reproducible static release tarballs for linux/amd64 and
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
   hardened systemd unit, a distroless container image, and a three-node

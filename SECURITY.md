@@ -215,8 +215,9 @@ threats considered are in
 [ADR 0020](documentation/adr/0020-console-overview.md),
 [ADR 0021](documentation/adr/0021-console-peers.md),
 [ADR 0022](documentation/adr/0022-console-decisions-and-firewall.md),
-[ADR 0023](documentation/adr/0023-console-verdicts.md) and
-[ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md); the
+[ADR 0023](documentation/adr/0023-console-verdicts.md),
+[ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md) and
+[ADR 0025](documentation/adr/0025-console-activity-timeline.md); the
 peers view shows peer names, addresses and dial errors as received from
 the configuration and the network, and the decisions and verdicts views
 show the reasons, protocols, log hashes and revocation reasons of
@@ -230,7 +231,12 @@ what the users of `obiectl` may already read — the configuration, never
 the node's private key or the console token — and would show a secret
 setting only as set or not set. It reads only the configuration file
 `obied` was started with and the allow-list files it loaded, never a path
-from a request, and the address lookup only parses an address.
+from a request, and the address lookup only parses an address. The
+activity timeline reads back only the audit log file `obied` writes, at
+most 16 MiB per page; a position in it from a request is only an offset
+into that file. Its live feed is one more fragment of escaped rows behind
+the session, asked for once a second only while its page is visible, and
+never lists more than 50 rows at once.
 
 **Remaining risk.** Through an SSH port forward, every user of the
 operator's workstation can reach the forwarded port, and on the node the

@@ -13,7 +13,9 @@ import (
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/audit"
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
+	"github.com/MNCloudwerksTechnology/obie/internal/mesh"
 	"github.com/MNCloudwerksTechnology/obie/internal/verdicts"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -91,7 +93,7 @@ func TestAuditDecisionChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "block-removed ipv4:198.18.0.11,allowed-by-allowlist ipv4:198.18.0.11," +
-		"block-removed ipv4:198.18.0.12,allowed-by-allowlist ipv4:198.18.0.12"
+		"block-removed ipv4:198.18.0.12,allowed-by-allowlist ipv4:198.18.0.12,config-reloaded "
 	if got := auditEntries(t, path); strings.Join(got, ",") != want {
 		t.Errorf("after the reload: %q\nwant %q", got, want)
 	}
@@ -158,12 +160,38 @@ func TestAuditedOverrides(t *testing.T) {
 	}
 }
 
+// TestNewAuditLog: without audit.path the trail keeps its records in
+// memory only; with it, it writes the file too. Both record the gate's
+// mode.
 func TestNewAuditLog(t *testing.T) {
 	gate := newReloadFixture(t).gate
-	if l := newAuditLog("", gate, slog.New(slog.DiscardHandler)); l != nil {
-		t.Errorf("newAuditLog without path = %v, want nil", l)
+	mode := func() config.Mode { return gate.Mode() }
+	l := newAuditLog("", mode, slog.New(slog.DiscardHandler))
+	if l == nil || l.Path() != "" {
+		t.Fatalf("newAuditLog without path = %v", l)
 	}
-	if l := newAuditLog("/var/log/obie/audit.jsonl", gate, slog.New(slog.DiscardHandler)); l == nil {
-		t.Error("newAuditLog with path = nil")
+	l.Write(audit.ModeChanged("enforce", "observe"))
+	if r := l.Since(0, 10, func(*audit.Entry) bool { return true }); len(r.Entries) != 1 || r.Entries[0].Obie.Mode != "observe" {
+		t.Errorf("memory = %+v", r.Entries)
+	}
+	if l := newAuditLog("/var/log/obie/audit.jsonl", mode, slog.New(slog.DiscardHandler)); l.Path() != "/var/log/obie/audit.jsonl" {
+		t.Errorf("newAuditLog with path = %q", l.Path())
+	}
+}
+
+// TestAuditConnections: peers connecting and disconnecting are recorded
+// with their name and role.
+func TestAuditConnections(t *testing.T) {
+	log, path := startAudit(t)
+	record := auditConnections(log)
+	record(mesh.Connection{ID: "12D3KooWB", Name: "beta", Bootstrap: true, Connected: true})
+	record(mesh.Connection{ID: "12D3KooWB", Name: "beta", Bootstrap: true})
+	if got, want := strings.Join(auditEntries(t, path), ","), "peer-connected ,peer-disconnected "; got != want {
+		t.Errorf("audit = %q, want %q", got, want)
+	}
+	data, _ := os.ReadFile(path) // #nosec G304 -- test file.
+	if strings.Count(string(data), `"peer_id":"12D3KooWB","peer_name":"beta"`) != 2 ||
+		!strings.Contains(string(data), "bootstrap peer beta (12D3KooWB) disconnected") {
+		t.Errorf("audit lacks the peer:\n%s", data)
 	}
 }

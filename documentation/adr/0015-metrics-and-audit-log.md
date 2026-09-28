@@ -61,6 +61,12 @@ per-package metrics (`obie_store_events_total`, `obie_enforce_*`), and
   (the new transition stream, below), `override-set`, `override-removed`,
   `local-report`, `revocation` (admin API). Blocks rebuilt at startup are
   no change and are not recorded.
+  *Extended by [ADR 0025](0025-console-activity-timeline.md):
+  `peer-connected`, `peer-disconnected`, `config-reloaded` and
+  `mode-changed` record peers, reloads and mode changes; `obie.indicator` is
+  left out of records about no address; the last 10,000 records are also
+  kept in memory, with or without `audit.path`, for the console's
+  timeline.*
 - **Transition stream.** `decision.Engine.SubscribeTransitions` streams every
   change of a decision's state (block/none/allowed) with the previous state;
   the block change stream of ADR 0011 is unchanged.
