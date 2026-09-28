@@ -60,8 +60,8 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 		_, _ = fmt.Fprintf(stderr, "obiectl: writing result: %v\n", err)
 		return ExitIOError
 	}
-	if action == admin.ActionForceBlock && res.Decision != nil && res.Decision.State != admin.StateBlock {
-		_, _ = fmt.Fprintf(stderr, "obiectl: warning: the force-block does not take effect: %s\n", res.Decision.Reason)
+	if res.Warning != "" {
+		_, _ = fmt.Fprintf(stderr, "obiectl: warning: %s\n", res.Warning)
 	}
 	return ExitOK
 }

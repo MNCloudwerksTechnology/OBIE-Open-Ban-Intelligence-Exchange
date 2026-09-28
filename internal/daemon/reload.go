@@ -40,7 +40,11 @@ func (r *reloader) reload(ctx context.Context) error {
 	if err != nil {
 		return r.reject(err)
 	}
-	allow, err := sovereignty.Build(ctx, next, r.env, r.log)
+	// The mesh keeps its listen addresses and bootstrap peers until a
+	// restart, so the allow-list protects those, not the new ones.
+	allowCfg := *next
+	allowCfg.Mesh = r.running.Mesh
+	allow, err := sovereignty.Build(ctx, &allowCfg, r.env, r.log)
 	if err != nil {
 		return r.reject(fmt.Errorf("allow-list: %w", err))
 	}

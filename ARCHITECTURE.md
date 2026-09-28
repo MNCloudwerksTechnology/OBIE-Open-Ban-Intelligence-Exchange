@@ -171,7 +171,7 @@ Only the packages that exist today are listed in detail; the remaining
   built-in ranges (loopback, RFC 1918, CGNAT, link-local, ULA, multicast,
   unspecified, broadcast, IPv4-mapped, documentation), `allowlist.cidrs`,
   the IPs of `mesh.listen` (all interface addresses for an unspecified
-  one), the `mesh.bootstrap` peers' IPs (DNS names resolved) and
+  one; a public IP behind NAT goes into `allowlist.cidrs`), the `mesh.bootstrap` peers' IPs (DNS names resolved) and
   `allowlist.files` (one IP/CIDR per line) — and judges an indicator
   against it and the stored overrides, first match wins: force-allow
   (overlapping) > built-in/own/bootstrap entry (overlapping) > force-block

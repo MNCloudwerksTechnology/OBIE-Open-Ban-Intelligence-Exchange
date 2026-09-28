@@ -5,6 +5,7 @@
 package enforce
 
 import (
+	"context"
 	"log/slog"
 	"slices"
 	"sync"
@@ -68,7 +69,11 @@ func (g *Gate) Handle(c decision.Change) {
 		attrs = append(attrs, "expires_at", c.Decision.ExpiresAt.UTC())
 	}
 	if g.mode != config.ModeEnforce {
-		g.log.Info("observe mode: block decision not enforced", attrs...)
+		level := slog.LevelInfo
+		if c.Type == decision.ChangeUpdated {
+			level = slog.LevelDebug // e.g. hourly refreshes of capped blocks
+		}
+		g.log.Log(context.Background(), level, "observe mode: block decision not enforced", attrs...)
 		return
 	}
 	g.forward(c, attrs)

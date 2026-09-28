@@ -168,6 +168,28 @@ func TestReloadApplies(t *testing.T) {
 	}
 }
 
+// TestReloadKeepsMeshAddresses: the mesh keeps its bootstrap peers until a
+// restart, so a reload keeps protecting them rather than the new ones.
+func TestReloadKeepsMeshAddresses(t *testing.T) {
+	f := newReloadFixture(t)
+	f.rl.running.Mesh.Bootstrap = []string{"/ip4/198.18.0.21/tcp/4001/p2p/" + self}
+	f.put(t, "198.18.0.21", self)
+	f.put(t, "198.18.0.22", self)
+	f.next.Mesh.Bootstrap = []string{"/ip4/198.18.0.22/tcp/4001/p2p/" + self}
+	if err := f.rl.reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if d := f.explain(t, "198.18.0.21"); d.State != decision.StateAllowed || d.Sovereignty.Source != sovereignty.SourceBootstrap {
+		t.Errorf("running bootstrap peer: %+v", d)
+	}
+	if d := f.explain(t, "198.18.0.22"); d.State != decision.StateBlock {
+		t.Errorf("new bootstrap peer: %+v", d)
+	}
+	if !strings.Contains(f.logs.String(), `"keys":["mesh.bootstrap"]`) {
+		t.Errorf("no restart warning:\n%s", f.logs)
+	}
+}
+
 func TestReloadRejects(t *testing.T) {
 	for name, breakIt := range map[string]func(*reloadFixture, *testing.T){
 		"invalid config": func(f *reloadFixture, _ *testing.T) { f.err = errors.New("invalid configuration: decision.quorum") },

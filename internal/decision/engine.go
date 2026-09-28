@@ -58,7 +58,8 @@ type Change struct {
 	// its State is StateNone and Reason says why.
 	Decision Decision
 	// Cause is what triggered the evaluation: a store.Reason, CauseStartup,
-	// CauseRefresh or CauseSnapshot.
+	// CauseRefresh, CauseSnapshot or CauseReload (and enforce.CauseMode for
+	// the changes the mode gate sends).
 	Cause string
 }
 
@@ -107,7 +108,10 @@ type Engine struct {
 	// the worker.
 	dirtyMu sync.Mutex
 	dirty   map[string]string
-	wake    chan struct{}
+	// overridesDirty is set when an override may have changed; unlike a
+	// cause in dirty, a later verdict on the same key cannot hide it.
+	overridesDirty bool
+	wake           chan struct{}
 
 	// workMu serializes evaluations, so decisions are applied in the order
 	// the store state was read.
@@ -417,6 +421,9 @@ func (e *Engine) load(ctx context.Context) error {
 func (e *Engine) markDirty(c store.Change) {
 	e.dirtyMu.Lock()
 	e.dirty[c.Key] = string(c.Reason)
+	if c.Reason == store.ReasonOverride || c.Reason == store.ReasonExpiry {
+		e.overridesDirty = true
+	}
 	e.dirtyMu.Unlock()
 	select {
 	case e.wake <- struct{}{}:
@@ -452,19 +459,22 @@ func (e *Engine) processDirty() {
 	e.dirtyMu.Lock()
 	dirty := e.dirty
 	e.dirty = make(map[string]string, len(dirty))
+	overridesChanged := e.overridesDirty
+	e.overridesDirty = false
 	e.dirtyMu.Unlock()
 
 	keys := make([]string, 0, len(dirty))
-	overridesChanged := false
-	for key, cause := range dirty {
+	for key := range dirty {
 		keys = append(keys, key)
-		overridesChanged = overridesChanged || cause == string(store.ReasonOverride) || cause == string(store.ReasonExpiry)
 	}
 	if overridesChanged {
 		ranges, err := e.refreshOverrides(e.opts.Now())
 		if err != nil {
 			e.log.Error("reading overrides failed; keeping the previous decisions and retrying", "error", err)
 			e.remark(dirty)
+			e.dirtyMu.Lock()
+			e.overridesDirty = true
+			e.dirtyMu.Unlock()
 			e.setErr(fmt.Errorf("read overrides: %w", err))
 			return
 		}
@@ -493,7 +503,9 @@ func (e *Engine) remark(keys map[string]string) {
 }
 
 // refreshExpired re-evaluates the blocks that reached their expiry, e.g.
-// because it was capped by decision.max_ttl while their verdicts live on.
+// because it was capped by decision.max_ttl while their verdicts live on,
+// and the decisions whose override ended, so an expired force-allow does
+// not wait for the store's sweep.
 func (e *Engine) refreshExpired() {
 	e.workMu.Lock()
 	defer e.workMu.Unlock()
@@ -501,7 +513,9 @@ func (e *Engine) refreshExpired() {
 	var due []string
 	e.mu.RLock()
 	for key, d := range e.decisions {
-		if d.State == StateBlock && !now.Before(d.ExpiresAt) {
+		blockEnded := d.State == StateBlock && !now.Before(d.ExpiresAt)
+		overrideEnded := !d.Sovereignty.ExpiresAt.IsZero() && !now.Before(d.Sovereignty.ExpiresAt)
+		if blockEnded || overrideEnded {
 			due = append(due, key)
 		}
 	}

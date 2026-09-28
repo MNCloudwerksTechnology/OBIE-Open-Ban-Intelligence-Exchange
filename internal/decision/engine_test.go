@@ -368,6 +368,43 @@ func TestEngineForceBlockWithoutVerdicts(t *testing.T) {
 	}
 }
 
+// TestEngineOverrideNotHiddenByVerdict: an override change followed by a
+// verdict on the same indicator before the worker runs is still applied.
+func TestEngineOverrideNotHiddenByVerdict(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	ind := ipv4("198.51.100.18")
+	if err := f.store.SetOverride(store.Override{Indicator: ind, Action: store.ForceBlock}); err != nil {
+		t.Fatal(err)
+	}
+	f.put(t, ind, pubA, 0.1, time.Hour)
+	// The engine is not started: deliver both notifications before the
+	// worker runs; the latest cause of ind is "verdict".
+	f.engine.markDirty(store.Change{Key: ind.Key(), Reason: store.ReasonOverride})
+	f.engine.markDirty(store.Change{Key: ind.Key(), Reason: store.ReasonVerdict})
+	f.engine.processDirty()
+	wantChanges(t, f.rec.take(), "added/verdict")
+	if d, ok := f.decision(ind.Key()); !ok || d.Sovereignty.Rule != sovereignty.RuleForceBlock {
+		t.Errorf("decision = %+v, %v", d, ok)
+	}
+}
+
+// TestEngineForceAllowExpiresOnRefresh: an expired force-allow is noticed
+// by the refresh, without waiting for the store's sweep.
+func TestEngineForceAllowExpiresOnRefresh(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	ind := ipv4("198.51.100.19")
+	f.put(t, ind, pubA, 1, 3*time.Hour)
+	f.put(t, ind, pubB, 1, 3*time.Hour)
+	if err := f.store.SetOverride(store.Override{Indicator: ind, Action: store.ForceAllow, ExpiresAt: f.clock.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	f.start(t)
+	wantChanges(t, f.rec.take())
+	f.clock.Advance(time.Hour)
+	f.engine.refreshExpired()
+	wantChanges(t, f.rec.take(), "added/refresh")
+}
+
 // TestEngineForceBlockExpires: an expired force-block is removed once the
 // store reports the expiry.
 func TestEngineForceBlockExpires(t *testing.T) {

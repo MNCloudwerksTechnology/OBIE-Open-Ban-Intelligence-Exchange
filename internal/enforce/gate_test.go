@@ -67,7 +67,8 @@ func TestObserveNeverReachesEnforcer(t *testing.T) {
 	g.Handle(block("ipv4:185.0.0.1", decision.ChangeUpdated, t0.Add(2*time.Hour)))
 	g.Handle(block("ipv4:185.0.0.1", decision.ChangeRemoved, time.Time{}))
 	wantSeq(t, enf.take())
-	if n := strings.Count(logs.String(), "observe mode: block decision not enforced"); n != 3 {
+	// Updates are logged at debug level, the rest at info.
+	if n := strings.Count(logs.String(), "observe mode: block decision not enforced"); n != 2 {
 		t.Errorf("logged %d observe lines:\n%s", n, logs)
 	}
 	if g.Mode() != config.ModeObserve {

@@ -23,11 +23,14 @@ any address — without restarting the node for every change.
   - *Built-in:* loopback (`127.0.0.0/8`, `::1/128`), RFC 1918, CGNAT
     (`100.64.0.0/10`), link-local (`169.254.0.0/16`, `fe80::/10`), ULA
     (`fc00::/7`), multicast (`224.0.0.0/4`, `ff00::/8`), unspecified /
-    "this network" (`0.0.0.0/8`, `::/128`), limited broadcast, and the
+    "this network" (`0.0.0.0/8`, `::/128`), limited broadcast, IPv4-mapped
+    IPv6 (`::ffff:0:0/96`), and the
     documentation ranges (`192.0.2.0/24`, `198.51.100.0/24`,
     `203.0.113.0/24`, `2001:db8::/32`, `3fff::/20`).
   - *Own addresses:* the IPs in `mesh.listen`; for an unspecified listen
-    address (`0.0.0.0`, `::`) every interface address of that family.
+    address (`0.0.0.0`, `::`) every interface address of that family. A
+    public address that is not on an interface (a node behind NAT) is not
+    known to the node: the operator lists it in `allowlist.cidrs`.
   - *Bootstrap peers:* the IPs in their multiaddrs; `/dns*` names are
     resolved when the allow-list is built (at start and on every reload,
     5 s timeout). A name that does not resolve is logged and skipped, it
@@ -63,8 +66,9 @@ any address — without restarting the node for every change.
 - **Engine:** the engine keeps a decision for every indicator with active
   verdicts or a `force_block`. It reads the overrides from the store at
   start and after every override change or expiry; when a `force_allow`
-  appears or disappears, every kept indicator overlapping it is
-  re-evaluated.
+  appears or disappears, every kept indicator and every `force_block`
+  overlapping it is re-evaluated. An override that ends is noticed by the
+  engine's refresh (every ten seconds), not only by the store's sweep.
 - **Mode gate:** `internal/enforce.Gate` subscribes to the block change
   stream and is the only path to the enforcer. In `observe` (default) it
   logs every change ("not enforced") and forwards nothing; in `enforce` it
@@ -72,14 +76,15 @@ any address — without restarting the node for every change.
   `added`, `enforce → observe` withdraws them as `removed` (cause `mode`).
   The mode cannot be changed through the admin API.
 - **Admin API:** `GET /v1/overrides`, `POST /v1/overrides`
-  (`{indicator, action, ttl, note}`), `DELETE /v1/overrides/{indicator}`;
+  (`{indicator, action, ttl_seconds, note}`), `DELETE /v1/overrides/{indicator}`;
   `obiectl allow|block <ip|cidr> [--ttl] [--note]`, `obiectl overrides`,
   `obiectl unoverride <ip|cidr>`. A `force_block` that the protected
   allow-list overrules is stored, but the response carries a warning.
   `GET /v1/status` reports the current mode; `obiectl status` prints it
   first and in capitals.
 - **Reload on SIGHUP:** `obied` re-reads its configuration file and builds
-  a new allow-list. If either is invalid, the error is logged and the
+  a new allow-list (with the running `mesh.listen` and `mesh.bootstrap`,
+  which the mesh keeps until a restart). If either is invalid, the error is logged and the
   running configuration is kept unchanged. Otherwise the trust weights,
   the decision settings, the allow-list and the mode take effect at once
   (every kept indicator is re-evaluated with cause `reload`); changes to

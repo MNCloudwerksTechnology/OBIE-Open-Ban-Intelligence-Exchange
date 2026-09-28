@@ -108,7 +108,8 @@ allowlist:
   # own or bootstrap addresses. `obiectl allow` beats everything.
   #
   # Networks in CIDR notation without host bits, e.g. [192.0.2.0/24,
-  # 2001:db8::/32]. Add your own management networks.
+  # 2001:db8::/32]. Add your own management networks, and this node's
+  # public address if it is not on an interface (e.g. behind NAT).
   cidrs: []
   # Absolute paths of files with one IP address or CIDR range per line
   # (blank lines and # comments allowed), e.g. [/etc/obie/allowlist.txt].

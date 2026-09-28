@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"strings"
@@ -26,6 +27,10 @@ const (
 
 // maxRequestBody bounds the body of a request to the admin API.
 const maxRequestBody = 16 << 10
+
+// MaxTTLSeconds is the longest override TTL, the most a time.Duration
+// holds.
+const MaxTTLSeconds = int64(math.MaxInt64 / time.Second)
 
 // ErrInvalid marks an override the node refuses, e.g. a note that is too
 // long; the API answers 400.
@@ -79,6 +84,9 @@ type OverridesResponse struct {
 type OverrideResult struct {
 	Override *OverrideResponse `json:"override,omitempty"`
 	Decision *DecisionResponse `json:"decision,omitempty"`
+	// Warning is set when a force-block does not take effect, e.g. on
+	// an address of the built-in allow-list.
+	Warning string `json:"warning,omitempty"`
 }
 
 // handleOverrides registers the override endpoints on mux.
@@ -122,7 +130,11 @@ func handleOverrides(mux *http.ServeMux, info Info, log *slog.Logger) {
 			return
 		}
 		log.Info("operator override set", "indicator", ind.Key(), "action", o.Action, "expires_at", o.ExpiresAt, "note", o.Note)
-		writeJSON(w, OverrideResult{Override: &o, Decision: explainAfter(info, ind, log)}, log)
+		res := OverrideResult{Override: &o, Decision: explainAfter(info, ind, log)}
+		if o.Action == ActionForceBlock && res.Decision != nil && res.Decision.State != StateBlock {
+			res.Warning = "the force-block does not take effect: " + res.Decision.Reason
+		}
+		writeJSON(w, res, log)
 	})
 	mux.HandleFunc("DELETE "+OverridesPath+"/{indicator...}", func(w http.ResponseWriter, r *http.Request) {
 		if !available(w) {
@@ -159,8 +171,8 @@ func decodeOverrideRequest(w http.ResponseWriter, r *http.Request) (OverrideRequ
 	if req.Action != ActionForceAllow && req.Action != ActionForceBlock {
 		return req, obieproto.Indicator{}, fmt.Errorf("invalid action %q: want %s or %s", req.Action, ActionForceAllow, ActionForceBlock)
 	}
-	if req.TTLSeconds < 0 {
-		return req, obieproto.Indicator{}, fmt.Errorf("invalid ttl_seconds %d: must not be negative", req.TTLSeconds)
+	if req.TTLSeconds < 0 || req.TTLSeconds > MaxTTLSeconds {
+		return req, obieproto.Indicator{}, fmt.Errorf("invalid ttl_seconds %d: must be between 0 and %d", req.TTLSeconds, MaxTTLSeconds)
 	}
 	ind, err := ParseIndicator(req.Indicator)
 	return req, ind, err

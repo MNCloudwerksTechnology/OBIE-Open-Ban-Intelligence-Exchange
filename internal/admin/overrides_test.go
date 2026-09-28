@@ -86,10 +86,20 @@ func TestOverrideHandlers(t *testing.T) {
 				i.Explain = func(obieproto.Indicator) (DecisionResponse, error) { return DecisionResponse{}, errStore }
 			},
 			body: `{"indicator":"185.0.0.1","action":"force_allow"}`, code: http.StatusOK, want: `"created_at":"2026-09-27T10:00:00Z"}}`},
+		{name: "ineffective force-block", method: http.MethodPost, path: OverridesPath,
+			info: func(i *Info) {
+				i.Explain = func(ind obieproto.Indicator) (DecisionResponse, error) {
+					return DecisionResponse{Indicator: ind, State: StateAllowed, Reason: "allow-listed: built-in range 10.0.0.0/8"}, nil
+				}
+			},
+			body: `{"indicator":"10.0.0.1","action":"force_block"}`, code: http.StatusOK,
+			want: `"warning":"the force-block does not take effect: allow-listed: built-in range 10.0.0.0/8"`},
 		{name: "bad action", method: http.MethodPost, path: OverridesPath, body: `{"indicator":"185.0.0.1","action":"ban"}`,
 			code: http.StatusBadRequest, want: `invalid action "ban": want force_allow or force_block`},
 		{name: "negative ttl", method: http.MethodPost, path: OverridesPath, body: `{"indicator":"185.0.0.1","action":"force_allow","ttl_seconds":-1}`,
-			code: http.StatusBadRequest, want: "must not be negative"},
+			code: http.StatusBadRequest, want: "must be between 0 and"},
+		{name: "overflowing ttl", method: http.MethodPost, path: OverridesPath, body: `{"indicator":"185.0.0.1","action":"force_allow","ttl_seconds":9300000000}`,
+			code: http.StatusBadRequest, want: "must be between 0 and 9223372036"},
 		{name: "unknown field", method: http.MethodPost, path: OverridesPath, body: `{"indicator":"185.0.0.1","action":"force_allow","mode":"enforce"}`,
 			code: http.StatusBadRequest, want: "invalid request body"},
 		{name: "bad indicator", method: http.MethodPost, path: OverridesPath, body: `{"indicator":"example.org","action":"force_allow"}`,
