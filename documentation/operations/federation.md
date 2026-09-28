@@ -44,7 +44,7 @@ listens on port 4001, TCP and QUIC:
 
 Use the public address or DNS name the other node can reach. The
 addresses a node actually listens on are in its start-up log:
-`journalctl -u obied | grep 'mesh listening'`.
+`sudo journalctl -u obied | grep 'mesh listening'`.
 
 Exchange peer IDs over a channel where you know who you are talking to
 (in person, a signed mail, a call where you read out the fingerprint). The
@@ -107,8 +107,9 @@ not arrive later, until the friend's Fail2Ban bans the address again.
 
 ## Choose trust weights and quorum
 
-For every address, each node computes a score over the latest active
-`ban` verdict of each distinct publisher:
+For every address, each node takes the latest active verdict of each
+distinct publisher and computes a score over those that are `ban`
+verdicts:
 
 > score = Σ weight × confidence
 
@@ -124,11 +125,11 @@ What that means with a Fail2Ban confidence of 0.8:
 
 | Setup | Weights | `threshold` | `quorum` | Blocks on your node when |
 |-------|---------|-------------|----------|--------------------------|
-| Default | any | 1.8 | 2 | three publishers at weight 0.8 or more agree (3 × 0.64 = 1.92), e.g. two peers and you |
+| Default | 0.8 each | 1.8 | 2 | three peers agree (3 × 0.64 = 1.92) |
 | Two nodes, start here | friend 0.8 | 1.8 | 2 | only your own detections; the friend's reports are visible in `obiectl explain` and the audit log but never block |
 | Two nodes, act on the friend | friend 1.0 | 0.8 | 1 | a single report of the friend blocks (1.0 × 0.8 = 0.8) |
-| Three to five nodes | 0.8 each | 1.2 | 2 | any two publishers agree (2 × 0.64 = 1.28), e.g. two peers, or a peer and you |
-| Larger | 0.5 to 0.8 | 1.8 | 3 | three or more publishers agree, with enough weight |
+| Three to five nodes | 0.8 each | 1.2 | 2 | two peers agree (2 × 0.64 = 1.28) |
+| Larger | 0.5 to 0.8 | 1.8 | 3 | three or more peers agree, with enough weight |
 
 Recommended start:
 

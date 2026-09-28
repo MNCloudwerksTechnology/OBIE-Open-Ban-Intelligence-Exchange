@@ -10,7 +10,9 @@ import (
 )
 
 var (
-	// mdLink matches the target of an inline Markdown link or image.
+	// mdLink matches the target of an inline Markdown link or image. Links
+	// with a title, reference-style links and <…> targets are not checked;
+	// the documentation does not use them.
 	mdLink = regexp.MustCompile(`\]\(([^)\s]+)\)`)
 	// fence opens or closes a code block.
 	fence = regexp.MustCompile("^\\s*```")

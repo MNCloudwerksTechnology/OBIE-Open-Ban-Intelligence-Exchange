@@ -111,13 +111,15 @@ for the refusal in the log:
 
 ```sh
 sudo fail2ban-client set sshd banip 203.0.113.7
-journalctl -t obie-fail2ban -n 5
+sudo journalctl -t obie-fail2ban -n 5
 sudo fail2ban-client set sshd unbanip 203.0.113.7
 ```
 
 The log line `could not report 203.0.113.7 of jail sshd to OBIE (obiectl
-exit code 1)` names the refusal, so the action reached `obied`. If it says
-`obied is not running` or `context deadline exceeded` instead, see
+exit code 1): …` must end with the refusal, `… is not a public address;
+OBIE never publishes internal or special-purpose addresses …`: the action
+reached `obied`. If it says `obied is not running` or `context deadline
+exceeded` instead, see
 [Troubleshooting](troubleshooting.md#fail2ban-reports-do-not-arrive).
 
 After the next real ban, the address shows up as a verdict of this node
@@ -181,10 +183,12 @@ removes every block at once:
 sudo systemctl reload obied
 ```
 
-If the node is not running or you are locked out, remove the table with
-every block from the console:
+If you are locked out, stop the node and remove the table with every
+block from the console. Stop it first: a running node in enforce mode
+restores its table within seconds.
 
 ```sh
+sudo systemctl stop obied
 sudo obied teardown-firewall
 ```
 
@@ -216,14 +220,15 @@ a test, file or CI step that does not exist.
 | `./obie-0.1.0-linux-amd64/install.sh` | `TestInstallIsIdempotent`, CI step `quickstart steps on the release tarball` |
 | `obied --config /etc/obie/obie.yaml --check-config` | `TestRunDaemonCheckConfig`, `TestExampleConfigPassesCheckConfig`, CI step `quickstart steps on the release tarball` |
 | `systemctl enable --now obied` | `make check-unit` (the unit passes `systemd-analyze verify`), `TestUnitSandbox`, `TestRunDaemonPersistsIdentity` |
+| `systemctl stop obied` | `make check-unit`, `TestRunDaemonStopsOnSIGTERM` |
 | `systemctl restart obied` | `make check-unit`, `TestRunDaemonGracefulShutdown`, `TestRunDaemonStopsOnSIGTERM` |
 | `systemctl reload obied` | `TestUnitSandbox` (`ExecReload` sends SIGHUP), `TestReloadSignals`, `TestSovereigntyAgainstInProcessDaemon` |
 | `obiectl status` | `TestObiectlStatusAgainstInProcessDaemon`, `Dockerfile` (the image's health check, which `make lab-smoke` waits for) |
 | `obiectl identity` | `TestObiectlIdentityMatchesKeyFile` |
 | `curl -s http://127.0.0.1:9464/readyz` | `TestReadyz` |
 | `curl -s http://127.0.0.1:9464/metrics` | `TestObservabilityAgainstInProcessDaemon` |
-| `fail2ban-client -t` | `TestFail2BanAcceptsAction` |
-| `fail2ban-client reload` | `TestFail2BanAcceptsAction` (the configuration it loads) |
+| `fail2ban-client -t` | `TestFail2BanAcceptsAction`, which CI runs with Fail2Ban installed (CI step `Install Fail2Ban`) |
+| `fail2ban-client reload` | `TestFail2BanAcceptsAction` (the configuration it loads), CI step `Install Fail2Ban` |
 | `fail2ban-client set sshd banip 203.0.113.7` | `TestActionBan`, `TestActionWithRealObiectl` |
 | `journalctl -t obie-fail2ban` | `TestActionWithRealObiectl`, `TestActionDaemonDown` (the logged message and tag) |
 | `fail2ban-client set sshd unbanip 203.0.113.7` | `TestActionUnban` |

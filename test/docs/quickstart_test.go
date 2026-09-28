@@ -17,7 +17,13 @@ var (
 	ciStepRef  = regexp.MustCompile("CI step `([^`]+)`")
 	codeRef    = regexp.MustCompile("`([^`]+)`")
 	testFunc   = regexp.MustCompile(`(?m)^func (Test\w+)\(`)
+	// shellFence opens a shell code block, also indented in a list item.
+	shellFence = regexp.MustCompile("^\\s*```(sh|bash|shell|console)\\s*$")
 )
+
+// ciWorkflows must both run every CI step the table names; `make
+// lint-workflows` keeps them identical.
+var ciWorkflows = []string{".gitea/workflows/ci.yml", ".github/workflows/ci.yml"}
 
 // TestQuickstartCommandsAreTested enforces the quick start's command
 // table: every shell command of the page has a row, every row matches a
@@ -43,13 +49,18 @@ func TestQuickstartCommandsAreTested(t *testing.T) {
 
 	tests := testFunctions(t)
 	makefile := readRepoFile(t, "Makefile")
-	ci := readRepoFile(t, ".gitea/workflows/ci.yml")
+	ci := map[string]string{}
+	for _, wf := range ciWorkflows {
+		ci[wf] = readRepoFile(t, wf)
+	}
 	for prefix, cell := range rows {
 		checked := 0
 		for _, m := range ciStepRef.FindAllStringSubmatch(cell, -1) {
 			checked++
-			if !strings.Contains(ci, "- name: "+m[1]+"\n") {
-				t.Errorf("row %q: CI step %q is not in .gitea/workflows/ci.yml", prefix, m[1])
+			for wf, content := range ci {
+				if !strings.Contains(content, "- name: "+m[1]+"\n") {
+					t.Errorf("row %q: CI step %q is not in %s", prefix, m[1], wf)
+				}
 			}
 		}
 		for _, m := range codeRef.FindAllStringSubmatch(ciStepRef.ReplaceAllString(cell, ""), -1) {
@@ -66,14 +77,18 @@ func TestQuickstartCommandsAreTested(t *testing.T) {
 				if !regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(target) + `:`).MatchString(makefile) {
 					t.Errorf("row %q: make target %s does not exist", prefix, target)
 				}
-				if !strings.Contains(ci, ref) {
-					t.Errorf("row %q: CI does not run %s", prefix, ref)
+				for wf, content := range ci {
+					if !strings.Contains(content, ref) {
+						t.Errorf("row %q: %s does not run %s", prefix, wf, ref)
+					}
 				}
 			case strings.Contains(ref, "/"):
 				checked++
 				if _, err := os.Stat(filepath.Join(repoRoot, ref)); err != nil {
 					t.Errorf("row %q: %v", prefix, err)
 				}
+			case isRepoFile(ref):
+				checked++ // a file in the repository root, e.g. Dockerfile
 			}
 		}
 		if checked == 0 {
@@ -82,16 +97,16 @@ func TestQuickstartCommandsAreTested(t *testing.T) {
 	}
 }
 
-// shellCommands returns the commands of the page's sh code blocks, with
-// continuation lines joined and a leading sudo removed.
+// shellCommands returns the commands of the page's shell code blocks,
+// with continuation lines joined and a leading sudo removed.
 func shellCommands(page string) []string {
 	var cmds []string
 	inBlock, pending := false, ""
 	for _, line := range strings.Split(page, "\n") {
 		switch {
-		case !inBlock && line == "```sh":
+		case !inBlock && shellFence.MatchString(line):
 			inBlock = true
-		case inBlock && line == "```":
+		case inBlock && strings.TrimSpace(line) == "```":
 			inBlock = false
 		case inBlock:
 			line = strings.TrimSpace(line)
@@ -119,6 +134,12 @@ func commandTable(page string) map[string]string {
 		}
 	}
 	return rows
+}
+
+// isRepoFile reports whether name is a file in the repository root.
+func isRepoFile(name string) bool {
+	info, err := os.Stat(filepath.Join(repoRoot, name))
+	return err == nil && !info.IsDir()
 }
 
 func matchingRow(rows map[string]string, cmd string) string {

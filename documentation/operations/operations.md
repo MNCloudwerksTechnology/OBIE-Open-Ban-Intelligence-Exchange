@@ -44,7 +44,7 @@ sudo obiectl overrides
 ```
 
 The process log (start, stop, reloads, peers, errors) goes to the journal:
-`journalctl -u obied`.
+`sudo journalctl -u obied`.
 
 ## Change the configuration
 
@@ -53,7 +53,7 @@ Edit `/etc/obie/obie.yaml`, check it, and reload or restart as the
 
 ```sh
 sudo obied --config /etc/obie/obie.yaml --check-config
-sudo systemctl reload obied     # node.mode, trust, decision, allowlist
+sudo systemctl reload obied     # node.mode, trust, decision, allowlist (with exceptions)
 sudo systemctl restart obied    # everything else
 ```
 
@@ -105,13 +105,14 @@ becomes a stranger to them; leak it and someone else can publish verdicts
 in your name. Back it up once, offline, readable only by root:
 
 ```sh
-sudo install -m 0600 /var/lib/obie/node.key /root/obie-node.key
-sudo obied identity --state-dir /root
+sudo install -d -m 0700 /root/obie-backup
+sudo install -m 0600 /var/lib/obie/node.key /root/obie-backup/node.key
+sudo obied identity --state-dir /root/obie-backup
 ```
 
 `obied identity` must print the same peer ID as `obiectl identity`
-(`--state-dir` reads `node.key` from that directory, so keep the copy's
-name). Move the copy off the host, e.g. into your password manager or an
+(`--state-dir` reads the file `node.key` in that directory). Move the copy
+off the host, e.g. into your password manager or an
 encrypted backup. The event store (`/var/lib/obie/db`) holds verdicts
 that expire within `decision.max_ttl` and your overrides; losing it costs
 the verdicts received so far (v0.1 has no catch-up, the node only learns of
@@ -123,7 +124,7 @@ To **restore** the key on a new host, before the first start (or with
 
 ```sh
 sudo install -d -o obie -g obie -m 0700 /var/lib/obie
-sudo install -o obie -g obie -m 0600 obie-node.key /var/lib/obie/node.key
+sudo install -o obie -g obie -m 0600 obie-backup/node.key /var/lib/obie/node.key
 ```
 
 `obied` refuses a key file that another user owns or that the group or
@@ -165,6 +166,7 @@ and the user (back up the key first if you may come back):
 ```sh
 sudo rm -r /var/lib/obie /etc/obie /var/log/obie
 sudo userdel obie
+sudo groupdel obie 2>/dev/null || true
 ```
 
 Tell your peers to remove your peer ID from `mesh.bootstrap` and

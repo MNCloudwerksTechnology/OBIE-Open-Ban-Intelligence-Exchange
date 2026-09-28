@@ -58,6 +58,16 @@ jobs:
           path: bin/tools
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
+      # TestFail2BanAcceptsAction checks the Fail2Ban action with
+      # `fail2ban-client -t` (a command of the quick start); it is skipped
+      # without Fail2Ban.
+      - name: Install Fail2Ban
+        run: |
+          if ! command -v fail2ban-client >/dev/null; then
+            sudo=; [ "$(id -u)" -eq 0 ] || sudo=sudo
+            $sudo apt-get update && $sudo apt-get install -y --no-install-recommends fail2ban
+          fi
+
       - name: make ci
         run: make ci
 

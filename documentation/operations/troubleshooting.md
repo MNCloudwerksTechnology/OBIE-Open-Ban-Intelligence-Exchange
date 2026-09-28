@@ -4,7 +4,7 @@ Start with the node's own view, then its log:
 
 ```sh
 sudo obiectl status
-journalctl -u obied -n 50
+sudo journalctl -u obied -n 50
 ```
 
 `obiectl status` names every subsystem that is not running or not ready,
@@ -106,12 +106,12 @@ degraded: 0 peers connected`.
   for QUIC) port 4001 from each other; cloud security groups count too.
 - **Is the multiaddr right?** It must end in `/p2p/<peer ID>` with the
   peer ID the other node shows in `obiectl identity`. A wrong peer ID makes
-  every connection fail after the handshake. `journalctl -u obied | grep
+  every connection fail after the handshake. `sudo journalctl -u obied | grep
   'bootstrap peer'` shows the dial errors (`bootstrap peer unreachable`).
 - **Did you restart?** `mesh.bootstrap` is only read at start; a reload
   logs `configuration changes that need a restart were not applied` with
   `mesh.bootstrap`.
-- **Is the node listening where you think?** `journalctl -u obied | grep
+- **Is the node listening where you think?** `sudo journalctl -u obied | grep
   'mesh listening'` shows the addresses. Behind NAT, forward port 4001 and
   give peers the public address.
 - **Is the address resolvable?** A `/dns4/` name is resolved at every
@@ -127,7 +127,7 @@ Fail2Ban bans, but `obiectl indicators --mine` stays empty. The action
 logs every failure with the tag `obie-fail2ban`:
 
 ```sh
-journalctl -t obie-fail2ban -n 20
+sudo journalctl -t obie-fail2ban -n 20
 ```
 
 | Message contains | Fix |
@@ -144,7 +144,7 @@ step-by-step check.
 
 ## obied does not start
 
-`systemctl status obied` and `journalctl -u obied -n 20` show the reason
+`sudo systemctl status obied` and `sudo journalctl -u obied -n 20` show the reason
 in the `obied failed` line. Common ones:
 
 | Error | Fix |

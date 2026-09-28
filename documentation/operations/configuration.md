@@ -75,11 +75,11 @@ if both admit it.
 
 | Key | Default | Applied on | Meaning |
 |-----|---------|------------|---------|
-| `decision.threshold` | `1.8` | reload | An address is blocked when its score reaches this value. The score is the sum of weight × confidence over the latest active `ban` verdict of each distinct publisher. Greater than 0. |
+| `decision.threshold` | `1.8` | reload | An address is blocked when its score reaches this value. The score is the sum of weight × confidence over the latest active verdict of each distinct publisher, where only `ban` verdicts count. Greater than 0. |
 | `decision.quorum` | `2` | reload | …and at least this many distinct publishers with a weight above 0 reported it. At least 1. |
 | `decision.local_autoblock` | `true` | reload | `true`: this node's own `ban` verdicts block without threshold and quorum, so a local detection protects this host at once (only while `trust.local_weight` > 0). |
-| `decision.max_ttl` | `30d` | reload | Longest a block may last from the moment it is decided, whatever the verdicts request; also the longest TTL `obiectl report` accepts. Greater than 0. |
-| `decision.default_ttl` | `7d` | reload | Block duration when a verdict requests none, and the TTL of `obiectl report` without `--ttl`. Greater than 0 and at most `decision.max_ttl`. |
+| `decision.max_ttl` | `30d` | reload | Longest a block may last from the moment it is decided, whatever the verdicts request. Also caps the TTL of the verdicts this node reports (`obiectl report`, Fail2Ban); that cap only changes on a restart. Greater than 0. |
+| `decision.default_ttl` | `7d` | restart | TTL of the verdicts this node reports without one: `obiectl report` without `--ttl`, permanent Fail2Ban bans. A reload does not apply it (and does not warn). Greater than 0 and at most `decision.max_ttl`. |
 
 `watch` verdicts are shown by `obiectl explain` but never count. The
 allow-list always wins over the score. How to choose these values for a
@@ -89,8 +89,8 @@ federation is described in [Federation](federation.md#choose-trust-weights-and-q
 
 | Key | Default | Applied on | Meaning |
 |-----|---------|------------|---------|
-| `allowlist.cidrs` | `[]` | reload | Networks never blocked, in CIDR notation without host bits, e.g. `[192.0.2.0/24, 2001:db8::/32]`. Add your management networks, monitoring, DNS resolvers, upstream gateways and this node's public address if it is not on an interface (NAT). |
-| `allowlist.files` | `[]` | reload | Absolute paths of files with one address or CIDR range per line (blank lines and `#` comments allowed). Re-read on every reload; a missing file or invalid line stops `obied` from starting, and a reload with one is rejected. |
+| `allowlist.cidrs` | `[]` | reload | Networks never blocked, in CIDR notation without host bits, e.g. `[192.0.2.0/24, 2001:db8::/32]`. Add your management networks, monitoring, DNS resolvers, upstream gateways and this node's public address if it is not on an interface (NAT). `obiectl report` refuses to report these networks, but checks the list loaded at start until a restart. |
+| `allowlist.files` | `[]` | reload | Absolute paths of files with one address or CIDR range per line (blank lines and `#` comments allowed). Re-read on every reload; a missing file or invalid line stops `obied` from starting, and a reload with one is rejected. Unlike `allowlist.cidrs`, these entries do not stop `obiectl report` from reporting an address to your peers. |
 
 Always allowed, whatever the configuration: loopback, private (RFC 1918),
 CGNAT (100.64.0.0/10), link-local, ULA (fc00::/7), multicast, unspecified
