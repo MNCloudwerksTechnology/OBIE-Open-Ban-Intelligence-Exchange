@@ -2,6 +2,8 @@ package enforce
 
 import (
 	"context"
+	"fmt"
+	"math/rand/v2"
 	"net/netip"
 	"slices"
 	"testing"
@@ -147,5 +149,88 @@ func TestSnapshotSeq(t *testing.T) {
 	f.reconcile(t)
 	if seq() != 4 {
 		t.Errorf("Seq = %d after another observe pass", seq())
+	}
+}
+
+// BenchmarkSnapshotApplies asks a snapshot of 100,000 entries (the
+// default enforce.max_entries) whether it applies an address: what the
+// decisions list's firewall filter asks of every decision
+// (performance.md).
+func BenchmarkSnapshotApplies(b *testing.B) {
+	s := &Snapshot{Entries: make([]Entry, 100_000)}
+	for i := range s.Entries {
+		s.Entries[i] = Entry{Prefix: netip.PrefixFrom(netip.AddrFrom4([4]byte{11, byte(i >> 16), byte(i >> 8), byte(i)}), 32)}
+	}
+	s.index()
+	addrs := make([]netip.Prefix, 1024)
+	for i := range addrs {
+		addrs[i] = netip.PrefixFrom(netip.AddrFrom4([4]byte{11, byte(i >> 4), byte(i), byte(i * 7)}), 32)
+	}
+	i := 0
+	for b.Loop() {
+		s.Applies(addrs[i%len(addrs)])
+		i++
+	}
+}
+
+func TestSpans(t *testing.T) {
+	for _, tc := range []struct {
+		p           string
+		first, last uint32
+	}{
+		{"0.0.0.0/0", 0, 0xffffffff},
+		{"198.51.100.0/24", 0xc6336400, 0xc63364ff},
+		{"198.51.100.7/32", 0xc6336407, 0xc6336407},
+	} {
+		if got := span4(netip.MustParsePrefix(tc.p)); got != (span[uint32]{tc.first, tc.last}) {
+			t.Errorf("span4(%s) = %x", tc.p, got)
+		}
+	}
+	for _, tc := range []struct {
+		p           string
+		first, last u128
+	}{
+		{"::/0", u128{}, u128{^uint64(0), ^uint64(0)}},
+		{"2001:db8::/32", u128{0x20010db800000000, 0}, u128{0x20010db8ffffffff, ^uint64(0)}},
+		{"2001:db8::/64", u128{0x20010db800000000, 0}, u128{0x20010db800000000, ^uint64(0)}},
+		{"2001:db8::8000:0:0:0/65", u128{0x20010db800000000, 0x8000000000000000}, u128{0x20010db800000000, ^uint64(0)}},
+		{"2001:db8::1/128", u128{0x20010db800000000, 1}, u128{0x20010db800000000, 1}},
+	} {
+		if got := span6(netip.MustParsePrefix(tc.p)); got != (span[u128]{tc.first, tc.last}) {
+			t.Errorf("span6(%s) = %x", tc.p, got)
+		}
+	}
+}
+
+// TestHolderMatchesContainment: the snapshot finds the entry holding a
+// range exactly when one of its disjoint entries contains it, for IPv4 and
+// IPv6 ranges of every length.
+func TestHolderMatchesContainment(t *testing.T) {
+	rng := rand.New(rand.NewPCG(3, 4)) // #nosec G404 -- reproducible test data.
+	random := func() netip.Prefix {
+		if rng.IntN(3) == 0 {
+			a := netip.MustParseAddr(fmt.Sprintf("2001:%x::%x", rng.IntN(4), rng.IntN(256)))
+			return netip.PrefixFrom(a, 16+rng.IntN(113)).Masked()
+		}
+		a := netip.MustParseAddr(fmt.Sprintf("198.51.%d.%d", rng.IntN(4), rng.IntN(256)))
+		return netip.PrefixFrom(a, 12+rng.IntN(21)).Masked()
+	}
+	var entries []Entry
+	for range 200 {
+		p := random()
+		if !slices.ContainsFunc(entries, func(e Entry) bool { return e.Prefix.Overlaps(p) }) {
+			entries = append(entries, Entry{Prefix: p})
+		}
+	}
+	sortEntries(entries)
+	s := &Snapshot{Entries: entries}
+	s.index()
+	for range 5000 {
+		q := random()
+		want := slices.IndexFunc(entries, func(e Entry) bool { return e.Prefix.Bits() <= q.Bits() && e.Prefix.Contains(q.Addr()) })
+		got, ok := s.holder(q)
+		if ok != (want >= 0) || (ok && got != entries[want]) {
+			t.Fatalf("holder(%s) = %v, %v; want entry %d of %v", q, got, ok, want, entries)
+		}
 	}
 }

@@ -675,6 +675,7 @@ func (r *Reconciler) succeed(mode config.Mode, p plan, snap *Snapshot) {
 	applyTotal.WithLabelValues(resultSuccess).Inc()
 	setEntriesMetric(p.entries)
 	snap.Mode, snap.At = mode, r.opts.Now()
+	snap.index()
 	switch prev := r.snapshot.Load(); {
 	case prev == nil:
 		snap.Seq = 1

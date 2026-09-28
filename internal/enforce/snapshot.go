@@ -1,6 +1,8 @@
 package enforce
 
 import (
+	"cmp"
+	"encoding/binary"
 	"maps"
 	"net/netip"
 	"slices"
@@ -11,7 +13,7 @@ import (
 
 // Snapshot is what the last successful pass left (ADR 0022): what the
 // backend holds and how the decided blocks came to it. It is immutable;
-// the next successful pass replaces it.
+// the next successful pass replaces it. Only the Reconciler makes one.
 type Snapshot struct {
 	// Mode is the mode of the pass; At is when it ended.
 	Mode config.Mode
@@ -30,6 +32,69 @@ type Snapshot struct {
 	// deferred ranges change, an entry's expiry only when it moved by more
 	// than ExpiryTolerance.
 	Seq uint64
+
+	// v4 and v6 are the first and last addresses of the IPv4 and the IPv6
+	// entries, in the order of Entries, which lists the IPv4 ones first:
+	// compact arrays to search (see index).
+	v4 []span[uint32]
+	v6 []span[u128]
+}
+
+// span is the first and the last address of a range, as integers.
+type span[T any] struct{ first, last T }
+
+// u128 is an IPv6 address as an integer.
+type u128 struct{ hi, lo uint64 }
+
+func compareU128(a, b u128) int { return cmp.Or(cmp.Compare(a.hi, b.hi), cmp.Compare(a.lo, b.lo)) }
+
+// span4 returns the first and last address of the IPv4 range p.
+func span4(p netip.Prefix) span[uint32] {
+	a := p.Addr().As4()
+	first := binary.BigEndian.Uint32(a[:])
+	return span[uint32]{first, first | ^uint32(0)>>p.Bits()}
+}
+
+// span6 returns the first and last address of the IPv6 range p.
+func span6(p netip.Prefix) span[u128] {
+	a := p.Addr().As16()
+	first := u128{binary.BigEndian.Uint64(a[:8]), binary.BigEndian.Uint64(a[8:])}
+	last := first
+	if bits := p.Bits(); bits < 64 {
+		last.hi |= ^uint64(0) >> bits
+		last.lo = ^uint64(0)
+	} else {
+		last.lo |= ^uint64(0) >> (bits - 64)
+	}
+	return span[u128]{first, last}
+}
+
+// index lays out the entries' spans for holder. The reconciler calls it
+// before it publishes the snapshot.
+func (s *Snapshot) index() {
+	s.v4, s.v6 = nil, nil
+	for _, e := range s.Entries {
+		if e.Prefix.Addr().Is4() {
+			s.v4 = append(s.v4, span4(e.Prefix))
+		} else {
+			s.v6 = append(s.v6, span6(e.Prefix))
+		}
+	}
+}
+
+// holding returns the index of the span in spans, ordered and disjoint,
+// that holds r: the last one starting at or before r, if it ends at or
+// after r's end.
+func holding[T any](spans []span[T], r span[T], compare func(a, b T) int) (int, bool) {
+	i, j := 0, len(spans)
+	for i < j {
+		if h := int(uint(i+j) >> 1); compare(spans[h].first, r.first) <= 0 {
+			i = h + 1
+		} else {
+			j = h
+		}
+	}
+	return i - 1, i > 0 && compare(spans[i-1].last, r.last) >= 0
 }
 
 // Coverage is how the last successful pass left a range.
@@ -76,19 +141,19 @@ func (s *Snapshot) Lookup(p netip.Prefix) Coverage {
 	return Coverage{Deferred: deferred}
 }
 
-// holder returns the entry holding p. Entries are disjoint and ordered by
-// prefix, so it is p's own or the one right before where p would be.
+// holder returns the entry holding p. Entries are disjoint, so it is the
+// last one starting at or before p, if it ends at or after p's end.
 func (s *Snapshot) holder(p netip.Prefix) (Entry, bool) {
 	if s == nil || !p.IsValid() {
 		return Entry{}, false
 	}
 	p = p.Masked()
-	i, found := slices.BinarySearchFunc(s.Entries, p, func(e Entry, p netip.Prefix) int { return comparePrefix(e.Prefix, p) })
-	switch {
-	case found:
-		return s.Entries[i], true
-	case i > 0 && s.Entries[i-1].Prefix.Bits() <= p.Bits() && s.Entries[i-1].Prefix.Contains(p.Addr()):
-		return s.Entries[i-1], true
+	if p.Addr().Is4() {
+		if i, ok := holding(s.v4, span4(p), cmp.Compare[uint32]); ok {
+			return s.Entries[i], true
+		}
+	} else if i, ok := holding(s.v6, span6(p), compareU128); ok {
+		return s.Entries[len(s.v4)+i], true
 	}
 	return Entry{}, false
 }
