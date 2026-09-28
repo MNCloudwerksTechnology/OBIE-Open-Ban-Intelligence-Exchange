@@ -1,0 +1,103 @@
+# OBIE release. This file lives in .gitea/workflows/ (Gitea Actions) and, byte
+# for byte, in .github/workflows/ (public GitHub mirror); `make lint-workflows`
+# fails if the two copies differ. It runs only for pushed tags v* — never for
+# branch pushes or pull requests — and publishes what `make release` builds
+# (ADR 0017) plus the multi-arch container image.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+
+# Two pushes of the same tag never publish concurrently.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GOTOOLCHAIN: auto
+
+jobs:
+  release:
+    name: publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: SOURCE_DATE_EPOCH is the tagged commit's time.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: Cache pinned tools
+        uses: actions/cache@v4
+        with:
+          path: bin/tools
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: Version and image name
+        id: meta
+        env:
+          TAG: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          version="${TAG#v}"
+          if [ "${GITEA_ACTIONS:-}" = true ]; then registry="${SERVER_URL#*://}"; else registry=ghcr.io; fi
+          image="$registry/$(echo "$REPO" | tr '[:upper:]' '[:lower:]')"
+          tags="$image:$version"
+          case "$version" in *-*) ;; *) tags="$tags,$image:latest" ;; esac
+          {
+            echo "version=$version"
+            echo "registry=$registry"
+            echo "tags=$tags"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: make ci
+        run: make ci
+
+      - name: make release
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: make release VERSION="$VERSION"
+
+      - name: make check-unit
+        run: |
+          command -v systemd-analyze >/dev/null || sudo apt-get install -y --no-install-recommends systemd
+          make check-unit
+
+      - name: Publish the release
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SERVER_URL: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: packaging/publish-release.sh dist/release
+
+      - uses: docker/setup-buildx-action@v3
+
+      # REGISTRY_TOKEN may replace the workflow token where that cannot push
+      # packages (e.g. on some Gitea instances).
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.meta.outputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          push: true

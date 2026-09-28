@@ -25,8 +25,8 @@ CYCLONEDX_GOMOD := $(TOOLS_DIR)/cyclonedx-gomod-$(CYCLONEDX_GOMOD_VERSION)/cyclo
 # Release artefacts (make release VERSION=x.y.z).
 RELEASE_DIR := $(CURDIR)/dist/release
 
-# The Gitea workflow is the source; the GitHub mirror must be byte-identical.
-WORKFLOWS := .gitea/workflows/ci.yml .github/workflows/ci.yml
+# The Gitea workflows are the source; the GitHub mirrors must be byte-identical.
+WORKFLOWS := ci.yml release.yml
 
 .DEFAULT_GOAL := build
 
@@ -73,11 +73,13 @@ vuln: $(GOVULNCHECK) ## Scan for known vulnerabilities with govulncheck
 
 .PHONY: lint-workflows
 lint-workflows: $(ACTIONLINT) ## Validate the CI workflows with actionlint and check they are identical
-	$(ACTIONLINT) $(WORKFLOWS)
-	@cmp -s $(WORKFLOWS) || { \
-		echo "$(word 1,$(WORKFLOWS)) and $(word 2,$(WORKFLOWS)) differ; keep them identical"; \
-		exit 1; \
-	}
+	$(ACTIONLINT) $(foreach w,$(WORKFLOWS),.gitea/workflows/$(w) .github/workflows/$(w))
+	@for w in $(WORKFLOWS); do \
+		cmp -s .gitea/workflows/$$w .github/workflows/$$w || { \
+			echo ".gitea/workflows/$$w and .github/workflows/$$w differ; keep them identical"; \
+			exit 1; \
+		}; \
+	done
 
 .PHONY: release
 release: $(CYCLONEDX_GOMOD) ## Build reproducible release tarballs, SBOMs and SHA256SUMS (VERSION=x.y.z)
