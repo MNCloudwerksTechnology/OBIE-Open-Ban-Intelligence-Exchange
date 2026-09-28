@@ -12,8 +12,34 @@ import (
 	"time"
 )
 
-// readHeaderTimeout protects the local servers against slow-header clients.
-const readHeaderTimeout = 5 * time.Second
+// Timeouts bound every phase of a request, so that no client — slow,
+// stalled or hostile — can hold a connection or its goroutine for long
+// (ADR 0017).
+type Timeouts struct {
+	// ReadHeader bounds reading the request headers.
+	ReadHeader time.Duration
+	// Read bounds reading the whole request, body included.
+	Read time.Duration
+	// Write bounds the time from the end of the request headers to the
+	// end of the response.
+	Write time.Duration
+	// Idle bounds how long a keep-alive connection waits for the next
+	// request.
+	Idle time.Duration
+}
+
+// DefaultTimeouts are the timeouts of every server. The endpoints answer
+// from memory or the local store: a request that takes longer is stuck.
+var DefaultTimeouts = Timeouts{
+	ReadHeader: 5 * time.Second,
+	Read:       10 * time.Second,
+	Write:      30 * time.Second,
+	Idle:       60 * time.Second,
+}
+
+// MaxHeaderBytes bounds the request headers; the endpoints need a few
+// hundred bytes.
+const MaxHeaderBytes = 16 << 10
 
 // ListenFunc opens the listener the server accepts connections on.
 type ListenFunc func(ctx context.Context) (net.Listener, error)
@@ -28,6 +54,13 @@ func TCP(addr string) ListenFunc {
 
 // Option configures the http.Server of a Server.
 type Option func(*http.Server)
+
+// WithTimeouts replaces DefaultTimeouts.
+func WithTimeouts(t Timeouts) Option {
+	return func(srv *http.Server) {
+		srv.ReadHeaderTimeout, srv.ReadTimeout, srv.WriteTimeout, srv.IdleTimeout = t.ReadHeader, t.Read, t.Write, t.Idle
+	}
+}
 
 // ConnContext sets http.Server.ConnContext: fn derives the context of every
 // request on a connection, e.g. to attach the peer's credentials.
@@ -65,9 +98,14 @@ func (s *Server) Start(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	d := DefaultTimeouts
 	srv := &http.Server{
 		Handler:           s.handler,
-		ReadHeaderTimeout: readHeaderTimeout,
+		ReadHeaderTimeout: d.ReadHeader,
+		ReadTimeout:       d.Read,
+		WriteTimeout:      d.Write,
+		IdleTimeout:       d.Idle,
+		MaxHeaderBytes:    MaxHeaderBytes,
 		ErrorLog:          slog.NewLogLogger(s.log.Handler(), slog.LevelWarn),
 	}
 	for _, opt := range s.opts {
