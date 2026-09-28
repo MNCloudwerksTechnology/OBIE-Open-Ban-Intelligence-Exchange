@@ -68,6 +68,15 @@ mesh:
       events_per_second: 50
       burst: 250
 
+store:
+  # Most verdicts the event store holds (>= 1): one per publisher and
+  # indicator, so a flood of unique indicators — even from a trusted peer —
+  # cannot fill the disk. When the store is full, the verdict that expires
+  # first makes room (counted in obie_store_evictions_total); a new verdict
+  # that would expire before all stored ones is refused instead. This node's
+  # own verdicts are never evicted. About 3 KiB of disk per verdict.
+  max_indicators: 1000000
+
 trust:
   # Publishers whose verdicts count towards a decision, each with a weight
   # between 0 (ignored) and 1 (fully trusted). Peer IDs must be unique.

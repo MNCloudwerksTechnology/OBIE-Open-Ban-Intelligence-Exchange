@@ -88,6 +88,9 @@ const (
 	ReasonExpiry Reason = "expiry"
 	// ReasonOverride: an override was set or deleted.
 	ReasonOverride Reason = "override"
+	// ReasonEvict: an active verdict was evicted to keep the store within
+	// its capacity (Options.MaxIndicators).
+	ReasonEvict Reason = "evict"
 )
 
 // Change notifies that the state of an indicator changed. It carries no
@@ -173,4 +176,9 @@ type Stats struct {
 	Expired       uint64
 	ForeignRevoke uint64
 	InvalidRevoke uint64
+	// Full counts new verdicts refused because the store was full and
+	// every stored verdict expires later.
+	Full uint64
+	// Evicted counts stored verdicts evicted to make room.
+	Evicted uint64
 }

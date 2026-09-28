@@ -52,6 +52,12 @@ func indicatorOfVerdictKey(key []byte) string {
 	return string(rest)
 }
 
+// publisherOfVerdictKey returns the publisher part of a verdict key.
+func publisherOfVerdictKey(key []byte) string {
+	_, publisher, _ := bytes.Cut(key[len(prefixVerdict):], keySeparator)
+	return string(publisher)
+}
+
 // revokeKey marks that publisher revoked a verdict the store has not seen.
 func revokeKey(verdictID, publisher string) []byte {
 	return join(prefixRevoke, []byte(verdictID), keySeparator, []byte(publisher))

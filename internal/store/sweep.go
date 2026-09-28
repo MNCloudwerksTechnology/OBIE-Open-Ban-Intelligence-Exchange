@@ -31,11 +31,15 @@ func (s *DB) Sweep(now time.Time) error {
 func (s *DB) sweepBatch(now time.Time) (changes []Change, more bool, err error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	removed := 0
 	err = s.update(func(txn *badger.Txn) error {
 		due, dueMore := dueExpiries(txn, now)
 		more = dueMore
 		seen := make(map[string]bool)
 		for _, key := range due {
+			if _, target := parseExpiryKey(key); bytes.HasPrefix(target, prefixVerdict) {
+				removed++
+			}
 			c, err := expire(txn, key)
 			if errors.Is(err, errCorrupt) {
 				// Drop the index entry, so one bad value cannot stall expiry.
@@ -55,6 +59,7 @@ func (s *DB) sweepBatch(now time.Time) (changes []Change, more bool, err error) 
 	if err != nil {
 		return nil, false, err
 	}
+	s.addVerdicts(-removed)
 	return changes, more, nil
 }
 
@@ -102,9 +107,12 @@ func expireVerdict(txn *badger.Txn, key []byte, at time.Time) (Change, error) {
 		return change, nil
 	case err != nil:
 		return Change{}, err
-	case rec.Revoked || rec.Event.ExpiresAt().Unix() != at.Unix():
+	case rec.Event.ExpiresAt().Unix() != at.Unix():
 		// Stale index entry; the record's own entry handles it.
 		return Change{}, nil
+	case rec.Revoked:
+		// Nothing active changes.
+		return Change{}, txn.Delete(key)
 	}
 	return change, txn.Delete(key)
 }

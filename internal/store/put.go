@@ -28,8 +28,13 @@ func (r *record) active(now time.Time) bool {
 // outcome is what a Put changed.
 type outcome struct {
 	result result
-	// change is the notification to send; empty Key for none.
-	change Change
+	// changes are the notifications to send.
+	changes []Change
+	// verdicts is the change in the number of verdict records; evicted
+	// counts the records evicted to make room.
+	verdicts, evicted int
+	// evictedIndex is the expiry index key of the last record evicted.
+	evictedIndex []byte
 	// foreignRevokes and invalidRevokes count revocations of a verdict that
 	// arrived before it and are now known to be ignored.
 	foreignRevokes, invalidRevokes int
@@ -53,6 +58,12 @@ func (s *DB) Put(ev *obieproto.Event) (bool, error) {
 		out, err = s.put(txn, ev, now)
 		return err
 	})
+	if err == nil {
+		s.addVerdicts(out.verdicts)
+		if out.evictedIndex != nil {
+			s.evictFrom = out.evictedIndex
+		}
+	}
 	s.writeMu.Unlock()
 	if err != nil {
 		return false, fmt.Errorf("put event %s: %w", ev.ID, err)
@@ -65,9 +76,8 @@ func (s *DB) Put(ev *obieproto.Event) (bool, error) {
 	for range out.invalidRevokes {
 		s.counters.add(resultInvalidRevoke)
 	}
-	if out.change.Key != "" {
-		s.notify([]Change{out.change})
-	}
+	s.counters.evict(out.evicted)
+	s.notify(out.changes)
 	return out.result == resultAccepted, nil
 }
 
@@ -127,28 +137,39 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 	if cur != nil && !newer(ev, cur.Event) {
 		return outcome{result: resultStale}, nil
 	}
+	var out outcome
+	if cur == nil {
+		room, err := s.makeRoom(txn, ev, now, &out)
+		if err != nil || !room {
+			out.result = resultFull
+			return out, err
+		}
+	}
 
 	rec := record{Event: ev}
-	var foreign, invalid int
-	rec.Revoked, foreign, invalid, err = earlyRevocations(txn, ev)
+	rec.Revoked, out.foreignRevokes, out.invalidRevokes, err = earlyRevocations(txn, ev)
 	if err != nil {
 		return outcome{}, err
 	}
 	if err := setEvent(txn, ev); err != nil {
 		return outcome{}, err
 	}
-	if cur != nil && !cur.Revoked {
-		if err := txn.Delete(expiryKey(cur.Event.ExpiresAt(), key)); err != nil {
+	if cur != nil {
+		removed, err := deleteIndex(txn, expiryKey(cur.Event.ExpiresAt(), key))
+		if err != nil {
 			return outcome{}, err
 		}
+		out.verdicts -= removed
 	}
-	if err := setRecord(txn, key, &rec); err != nil {
+	added, err := s.setRecord(txn, key, &rec)
+	if err != nil {
 		return outcome{}, err
 	}
+	out.verdicts += added
 
-	out := outcome{result: resultAccepted, foreignRevokes: foreign, invalidRevokes: invalid}
+	out.result = resultAccepted
 	if !rec.Revoked || (cur != nil && cur.active(now)) {
-		out.change = Change{Key: ev.Key(), Reason: ReasonVerdict}
+		out.changes = append(out.changes, Change{Key: ev.Key(), Reason: ReasonVerdict})
 	}
 	return out, nil
 }
@@ -233,15 +254,13 @@ func (s *DB) putRevoke(txn *badger.Txn, ev *obieproto.Event, now time.Time) (out
 	}
 	wasActive := cur.active(now)
 	cur.Revoked = true
-	if err := setRecord(txn, key, cur); err != nil {
+	added, err := s.setRecord(txn, key, cur)
+	if err != nil {
 		return outcome{}, err
 	}
-	if err := txn.Delete(expiryKey(cur.Event.ExpiresAt(), key)); err != nil {
-		return outcome{}, err
-	}
-	out := outcome{result: resultAccepted}
+	out := outcome{result: resultAccepted, verdicts: added}
 	if wasActive {
-		out.change = Change{Key: target.Key(), Reason: ReasonRevoke}
+		out.changes = append(out.changes, Change{Key: target.Key(), Reason: ReasonRevoke})
 	}
 	return out, nil
 }
@@ -257,23 +276,44 @@ func setEvent(txn *badger.Txn, ev *obieproto.Event) error {
 	return txn.SetEntry(e)
 }
 
-// setRecord stores rec under key until its verdict expires. An unrevoked
-// record is also entered into the expiry index.
-func setRecord(txn *badger.Txn, key []byte, rec *record) error {
+// setRecord stores rec under key until its verdict expires and enters it
+// into the expiry index, revoked or not: the index holds exactly one entry
+// per verdict record, which the sweep and the eviction rely on. It returns
+// 1 if the index entry is new, else 0. Callers hold writeMu.
+func (s *DB) setRecord(txn *badger.Txn, key []byte, rec *record) (int, error) {
 	data, err := json.Marshal(rec)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	expires := rec.Event.ExpiresAt()
 	e := badger.NewEntry(key, data)
 	e.ExpiresAt = badgerExpiry(expires)
 	if err := txn.SetEntry(e); err != nil {
-		return err
+		return 0, err
 	}
-	if rec.Revoked {
-		return nil
+	index := expiryKey(expires, key)
+	if bytes.Compare(index, s.evictFrom) < 0 {
+		s.evictFrom = index // keep it a lower bound of the candidates
 	}
-	return txn.Set(expiryKey(expires, key), nil)
+	switch _, err := txn.Get(index); {
+	case err == nil:
+		return 0, nil
+	case !errors.Is(err, badger.ErrKeyNotFound):
+		return 0, err
+	}
+	return 1, txn.Set(index, nil)
+}
+
+// deleteIndex removes an expiry index entry and returns 1 if it existed,
+// else 0.
+func deleteIndex(txn *badger.Txn, index []byte) (int, error) {
+	switch _, err := txn.Get(index); {
+	case errors.Is(err, badger.ErrKeyNotFound):
+		return 0, nil
+	case err != nil:
+		return 0, err
+	}
+	return 1, txn.Delete(index)
 }
 
 func getEvent(txn *badger.Txn, id string) (*obieproto.Event, error) {

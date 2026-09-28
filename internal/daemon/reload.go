@@ -90,6 +90,7 @@ func restartKeys(running, next *config.Config) []string {
 	differs("mesh.listen", running.Mesh.Listen, next.Mesh.Listen)
 	differs("mesh.bootstrap", running.Mesh.Bootstrap, next.Mesh.Bootstrap)
 	differs("mesh.rate_limit", running.Mesh.RateLimit, next.Mesh.RateLimit)
+	differs("store", running.Store, next.Store)
 	differs("enforce", running.Enforce, next.Enforce)
 	differs("metrics", running.Metrics, next.Metrics)
 	differs("audit", running.Audit, next.Audit)

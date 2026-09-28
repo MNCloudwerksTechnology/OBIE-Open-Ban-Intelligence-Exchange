@@ -56,6 +56,10 @@ func (c *Config) validate(lines lineMap, decodeProblems problems) error {
 	v.tokenBucket("mesh.rate_limit.publisher", c.Mesh.RateLimit.Publisher)
 	v.tokenBucket("mesh.rate_limit.peer", c.Mesh.RateLimit.Peer)
 
+	if c.Store.MaxIndicators < 1 {
+		v.addf("store.max_indicators", "must be at least 1, got %d", c.Store.MaxIndicators)
+	}
+
 	v.publishers(c.Trust.Publishers)
 	v.weight("trust.default_weight", c.Trust.DefaultWeight)
 	v.weight("trust.local_weight", c.Trust.LocalWeight)

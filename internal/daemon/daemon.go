@@ -120,7 +120,10 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	}
 	log.Info("allow-list loaded", "entries", len(allow.Entries()))
 
-	db := store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{})
+	db := store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{
+		MaxIndicators: cfg.Store.MaxIndicators,
+		Self:          id.PeerID(),
+	})
 	// go-libp2p's own logs join ours; below warn they are too chatty.
 	mesh.UseLogHandler(logs.Logger("libp2p").Handler(), slog.LevelWarn)
 	m, err := mesh.New(id, mesh.Options{

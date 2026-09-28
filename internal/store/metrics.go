@@ -16,6 +16,7 @@ const (
 	resultExpired
 	resultForeignRevoke
 	resultInvalidRevoke
+	resultFull
 	numResults
 )
 
@@ -26,6 +27,7 @@ var resultNames = [numResults]string{
 	resultExpired:       "expired",
 	resultForeignRevoke: "foreign_revoke",
 	resultInvalidRevoke: "invalid_revoke",
+	resultFull:          "full",
 }
 
 var eventsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -35,28 +37,56 @@ var eventsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 	Help:      "Events passed to the store, by outcome.",
 }, []string{"result"})
 
+var evictionsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	Namespace: "obie",
+	Subsystem: "store",
+	Name:      "evictions_total",
+	Help:      "Stored verdicts evicted because the store reached store.max_indicators.",
+})
+
+var verdictsGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+	Namespace: "obie",
+	Subsystem: "store",
+	Name:      "verdict_records",
+	Help:      "Verdicts held by the store (one per publisher and indicator; active, revoked or expired but not yet swept), bounded by store.max_indicators.",
+})
+
 func init() {
 	for _, name := range resultNames {
 		eventsTotal.WithLabelValues(name)
 	}
-	prometheus.MustRegister(eventsTotal)
+	prometheus.MustRegister(eventsTotal, evictionsTotal, verdictsGauge)
 }
 
 // counters holds the per-database Put outcomes behind Stats.
-type counters [numResults]atomic.Uint64
+type counters struct {
+	results [numResults]atomic.Uint64
+	evicted atomic.Uint64
+}
 
 func (c *counters) add(r result) {
-	c[r].Add(1)
+	c.results[r].Add(1)
 	eventsTotal.WithLabelValues(resultNames[r]).Inc()
 }
 
+// evict counts n evicted verdicts.
+func (c *counters) evict(n int) {
+	if n > 0 {
+		c.evicted.Add(uint64(n))
+		evictionsTotal.Add(float64(n))
+	}
+}
+
 func (c *counters) stats() Stats {
+	r := &c.results
 	return Stats{
-		Accepted:      c[resultAccepted].Load(),
-		Duplicate:     c[resultDuplicate].Load(),
-		Stale:         c[resultStale].Load(),
-		Expired:       c[resultExpired].Load(),
-		ForeignRevoke: c[resultForeignRevoke].Load(),
-		InvalidRevoke: c[resultInvalidRevoke].Load(),
+		Accepted:      r[resultAccepted].Load(),
+		Duplicate:     r[resultDuplicate].Load(),
+		Stale:         r[resultStale].Load(),
+		Expired:       r[resultExpired].Load(),
+		ForeignRevoke: r[resultForeignRevoke].Load(),
+		InvalidRevoke: r[resultInvalidRevoke].Load(),
+		Full:          r[resultFull].Load(),
+		Evicted:       c.evicted.Load(),
 	}
 }
