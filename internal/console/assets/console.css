@@ -1228,8 +1228,19 @@ main:has(.verdict-list) {
   font-weight: 600;
 }
 
+/* Five columns fit the page when a time may break between day and
+   clock; a note on a force-block needs the room it frees. */
+.list.overrides time {
+  white-space: normal;
+}
+
+.list.overrides .day {
+  white-space: nowrap;
+}
+
 .no-effect {
   display: block;
+  min-width: 12rem;
   margin-top: 0.25rem;
   color: var(--danger);
   font-size: 0.8125rem;
@@ -1280,8 +1291,14 @@ main:has(.verdict-list) {
   list-style: none;
 }
 
+/* Entries, warnings and reload errors quote multiaddrs, paths and errors
+   that are longer than a narrow window. */
 .entry-list li,
-.value-list li {
+.value-list li,
+.list.allow-entries td,
+.lookup-answer dd,
+.callout,
+.config-status .condition-title {
   overflow-wrap: anywhere;
 }
 
