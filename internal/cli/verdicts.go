@@ -31,19 +31,42 @@ func runReport(ctx context.Context, client *admin.Client, args []string, stdout,
 	protocol := fs.String("protocol", "", "attacked `service`, e.g. ssh (required)")
 	reason := fs.String("reason", "", "behavior `class`, e.g. password_bruteforce (required)")
 	events := fs.Int64("events", 1, "`number` of malicious events observed")
+	ip := fs.String("ip", "", "attacking `address` or CIDR range, instead of the argument")
 	evidence := fs.String("evidence-file", "", "`file` with the log lines behind the report (- for stdin); only their SHA-256 hash leaves this host")
+	evidenceStdin := fs.Bool("evidence-from-stdin", false, "read the log lines behind the report from stdin, like --evidence-file -")
 	confidence := fs.Float64("confidence", 0.8, "confidence in [0, 1]")
 	ttl := fs.String("ttl", "", "verdict `lifetime`, e.g. 12h or 7d (default decision.default_ttl, capped at decision.max_ttl)")
 	action := fs.String("action", obieproto.ActionBan, "suggested `action`: ban or watch")
 	mitre := fs.String("mitre", "", "comma-separated MITRE ATT&CK technique `IDs`, e.g. T1110")
 	asJSON := fs.Bool("json", false, "print the response as JSON")
 	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: %s --protocol <service> --reason <class> [flags] <ip | cidr>\n\nFlags:\n", program)
+		_, _ = fmt.Fprintf(fs.Output(), "Usage: %s --protocol <service> --reason <class> [flags] <ip | cidr>\n"+
+			"       %s --protocol <service> --reason <class> [flags] --ip <ip | cidr>\n\nFlags:\n", program, program)
 		fs.PrintDefaults()
 	}
-	target, code, done := parseTarget(fs, program, args, stderr)
+	positional, code, done := parseInterspersed(fs, args)
 	if done {
 		return code
+	}
+	if *ip != "" {
+		if len(positional) > 0 {
+			_, _ = fmt.Fprintf(stderr, "%s: give the address either with --ip or as the argument\n", program)
+			return ExitUsage
+		}
+		positional = []string{*ip}
+	}
+	target, code, done := oneTarget(fs, program, positional, stderr)
+	if done {
+		return code
+	}
+	evidenceFlag := "--evidence-file"
+	if *evidenceStdin {
+		evidenceFlag = "--evidence-from-stdin"
+		if *evidence != "" && *evidence != "-" {
+			_, _ = fmt.Fprintf(stderr, "%s: give only one of --evidence-file and --evidence-from-stdin\n", program)
+			return ExitUsage
+		}
+		*evidence = "-"
 	}
 	req := admin.ReportRequest{Protocol: *protocol, Reason: *reason, Events: *events, Action: *action}
 	if strings.Contains(target, "/") {
@@ -70,7 +93,7 @@ func runReport(ctx context.Context, client *admin.Client, args []string, stdout,
 	if *evidence != "" {
 		lines, err := readEvidence(*evidence)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "%s: --evidence-file: %v\n", program, err)
+			_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", program, evidenceFlag, err)
 			return ExitFailure
 		}
 		req.EvidenceLines = lines
@@ -202,26 +225,39 @@ func runShow(ctx context.Context, client *admin.Client, args []string, stdout, s
 // parseTarget parses a command's flags, which may also follow its single
 // positional argument, and returns that argument.
 func parseTarget(fs *flag.FlagSet, program string, args []string, stderr io.Writer) (target string, code int, done bool) {
-	var positional []string
+	positional, code, done := parseInterspersed(fs, args)
+	if done {
+		return "", code, true
+	}
+	return oneTarget(fs, program, positional, stderr)
+}
+
+// parseInterspersed parses a command's flags, which may also follow its positional
+// arguments, and returns those arguments.
+func parseInterspersed(fs *flag.FlagSet, args []string) (positional []string, code int, done bool) {
 	for {
 		if err := fs.Parse(args); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
-				return "", ExitOK, true
+				return nil, ExitOK, true
 			}
-			return "", ExitUsage, true
+			return nil, ExitUsage, true
 		}
 		if fs.NArg() == 0 {
-			break
+			return positional, 0, false
 		}
 		positional = append(positional, fs.Arg(0))
 		args = fs.Args()[1:]
 	}
-	if len(positional) != 1 {
-		_, _ = fmt.Fprintf(stderr, "%s: want 1 argument, got %d\n", program, len(positional))
+}
+
+// oneTarget returns the single target of a command, or a usage error.
+func oneTarget(fs *flag.FlagSet, program string, targets []string, stderr io.Writer) (target string, code int, done bool) {
+	if len(targets) != 1 {
+		_, _ = fmt.Fprintf(stderr, "%s: want 1 argument, got %d\n", program, len(targets))
 		fs.Usage()
 		return "", ExitUsage, true
 	}
-	return positional[0], 0, false
+	return targets[0], 0, false
 }
 
 // flagSet reports whether the flag name was given on the command line.

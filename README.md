@@ -24,13 +24,14 @@ make build           # static binaries in ./bin/
 ./bin/obied --config /etc/obie/obie.yaml
 ./bin/obied keygen [--force] [--config file | --state-dir dir]   # offline, as the service user
 ./bin/obied identity [--json] [--config file | --state-dir dir]  # offline: peer ID + fingerprint
-./bin/obiectl --socket /run/obie/obie.sock status [--json]
+./bin/obiectl [--socket /run/obie/obie.sock] [--timeout 10s] status [--json]
 ./bin/obiectl --socket /run/obie/obie.sock identity [--json]
 ./bin/obiectl --socket /run/obie/obie.sock peers [--json]      # connected mesh peers
 ./bin/obiectl --socket /run/obie/obie.sock explain [--json] 203.0.113.7   # why (not) blocked
 ./bin/obiectl --socket /run/obie/obie.sock decisions [--state block] [--json]
 ./bin/obiectl report --protocol ssh --reason password_bruteforce --events 5 \
-    [--evidence-file auth.log] [--ttl 12h] [--action watch] [--json] <ip | cidr>  # publish a verdict
+    [--evidence-file auth.log | --evidence-from-stdin] [--ttl 12h] [--action watch] \
+    [--json] <ip | cidr>                     # publish a verdict (or --ip <ip | cidr>)
 ./bin/obiectl revoke [--reason false_positive] <ip | cidr | event-id>             # withdraw it
 ./bin/obiectl indicators [--mine | --publisher <peer-id>] [--json]                # active verdicts
 ./bin/obiectl show [--json] <ip | cidr>                                            # verdicts on one
@@ -39,7 +40,9 @@ make ci              # every check a change must pass
 
 A node is configured with one YAML file (default `/etc/obie/obie.yaml`);
 [documentation/examples/obie.yaml](documentation/examples/obie.yaml) documents
-every key and its default.
+every key and its default. To publish Fail2Ban bans as verdicts, add the
+ready-made action to your jails; see
+[documentation/guides/fail2ban.md](documentation/guides/fail2ban.md).
 
 Requires Go 1.26 or newer. Every pull request is gated by the same `make ci` in
 CI. See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical baseline and
