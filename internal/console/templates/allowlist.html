@@ -1,0 +1,145 @@
+{{define "content" -}}
+<h1>Allow-list</h1>
+<p class="lead">Every address and network this node never blocks, grouped by where the entry comes from, in the order they take precedence. The console only shows the allow-list: change it in the configuration file or the allow-list files, then reload obied. The page is read when it opens; reload it to read it again.</p>
+<p class="updated">Read at <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time>{{with .LoadedAt.Text}}; loaded with the running configuration at <time datetime="{{$.LoadedAt.ISO}}">{{.}}</time>{{end}}</p>
+{{- if .Err}}
+<p class="callout" data-level="warning">The allow-list could not be read: {{.Err}}</p>
+{{- else}}
+
+<section class="section" aria-labelledby="lookup-heading">
+  <h2 id="lookup-heading">Is this address protected?</h2>
+  <form class="filter-form" method="get" action="/allowlist" role="search" aria-label="Is this address protected?">
+    <div class="field field-wide">
+      <label for="lookup-address">Address or network</label>
+      <input id="lookup-address" name="address" type="search" value="{{.Address}}" placeholder="203.0.113.7 or 198.51.100.0/24" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="button">Look up</button>
+    </div>
+  </form>
+  {{- with .AddressErr}}
+  <p class="callout" data-level="warning">{{.}}</p>
+  {{- end}}
+  {{- with .Lookup}}
+  <div class="lookup-answer" data-state="{{.State}}">
+    <p class="lookup-title">{{.Answer}}</p>
+    <dl class="facts">
+      <dt>Address</dt>
+      <dd><span class="mono" data-copy>{{.Address}}</span></dd>
+      <dt>Deciding rule</dt>
+      <dd>{{if .Ruling.Rule}}<strong>{{.Ruling.Rule}}</strong>: {{end}}{{.Ruling.Text}}</dd>
+      {{- with .Ruling.Match}}
+      <dt>Matching</dt>
+      <dd><code>{{.}}</code></dd>
+      {{- end}}
+      {{- with .Ruling.Label}}
+      <dt>Entry</dt>
+      <dd>{{.}}</dd>
+      {{- end}}
+      {{- with .Ruling.Note}}
+      <dt>Override note</dt>
+      <dd>{{.}}</dd>
+      {{- end}}
+      {{- if .Ruling.Expires.Text}}
+      <dt>Override ends</dt>
+      <dd><time datetime="{{.Ruling.Expires.ISO}}">{{.Ruling.Expires.Text}}</time></dd>
+      {{- end}}
+      {{- if .Others}}
+      <dt>Other entries</dt>
+      <dd>
+        <ul class="entry-list">
+          {{- range .Others}}
+          <li><span class="mono">{{.Range}}</span> <span class="cell-note">{{.Label}}</span></li>
+          {{- end}}
+        </ul>
+      </dd>
+      {{- end}}
+    </dl>
+    {{- with .DecisionHref}}
+    <p><a href="{{.}}">Its decision and the full explanation</a>, with the verdicts and the networks around it.</p>
+    {{- end}}
+  </div>
+  {{- end}}
+</section>
+{{- if .Warnings}}
+
+<section class="section" aria-labelledby="warnings-heading">
+  <h2 id="warnings-heading">Not protected</h2>
+  {{- range .Warnings}}
+  <p class="callout" data-level="warning">{{.}}</p>
+  {{- end}}
+</section>
+{{- end}}
+{{- range .Groups}}
+
+<section class="section allow-group" aria-labelledby="group-{{.ID}}">
+  <h2 id="group-{{.ID}}">{{if .File}}Allow-list file <code>{{.File.Path}}</code>{{else}}{{.Title}}{{end}}</h2>
+  <p class="group-text">{{if .Protected}}<span class="protected-mark">Protected</span> {{end}}{{.Text}}{{if .Protected}} Not even an always-block override blocks them.{{end}}</p>
+  {{- with .File}}
+  <p class="callout"{{if eq .State "warning"}} data-level="warning"{{end}} data-file-state="{{.State}}">{{.Loaded}}. {{.Status}}</p>
+  {{- if .Rejected}}
+  <div class="table-scroll">
+  <table class="list rejected-lines">
+    <caption class="visually-hidden">Lines of {{.Path}} the node rejects</caption>
+    <thead>
+      <tr><th scope="col">Line</th><th scope="col">Entry</th><th scope="col">Why it is rejected</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Rejected}}
+      <tr><th scope="row">{{.Line}}</th><td><span class="cell-label">Entry</span> <code>{{.Text}}</code></td><td><span class="cell-label">Why it is rejected</span> {{.Err}}</td></tr>
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  {{- with .MoreRejected}}
+  <p class="note">{{plural . "more line is" "more lines are"}} rejected, too; <code>obied --check-config</code> names the first.</p>
+  {{- end}}
+  {{- end}}
+  {{- end}}
+  {{- if .Classes}}
+  <div class="table-scroll">
+  <table class="list allow-entries">
+    <thead>
+      <tr><th scope="col">Class</th><th scope="col">Ranges</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Classes}}
+      <tr>
+        <th scope="row">{{.Class}}</th>
+        <td>
+          <span class="cell-label">Ranges</span>
+          <ul class="entry-list">
+            {{- range .Ranges}}
+            <li><span class="mono">{{.Range}}</span>{{with .Label}} <span class="cell-note">{{.}}</span>{{end}}</li>
+            {{- end}}
+          </ul>
+        </td>
+      </tr>
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  {{- else if .Rows}}
+  <div class="table-scroll">
+  <table class="list allow-entries">
+    <thead>
+      <tr><th scope="col">Address or network</th><th scope="col">From</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Rows}}
+      <tr><th scope="row"><span class="mono address" data-copy>{{.Range}}</span></th><td><span class="cell-label">From</span> {{with .Label}}<span class="mono">{{.}}</span>{{else}}allowlist.cidrs{{end}}</td></tr>
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  {{- with .More}}
+  <p class="note">{{plural . "more entry is" "more entries are"}} not listed here; the lookup above finds every one.</p>
+  {{- end}}
+  {{- else}}
+  <p class="empty">{{.Empty}}</p>
+  {{- end}}
+</section>
+{{- end}}
+<p class="note">{{plural .Total "entry" "entries"}} in all. A network that contains one of them is never blocked either: blocking it would block the entry too.</p>
+{{- end}}
+{{- end}}

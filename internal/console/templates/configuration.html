@@ -1,0 +1,76 @@
+{{define "content" -}}
+<h1>Configuration</h1>
+<p class="lead">The configuration this node runs with: every setting, also those the file leaves to their defaults, with what it does and whether a reload applies a change or only a restart does. The console only shows it: change the file, then reload obied. The page is read when it opens; reload it to read it again.</p>
+<p class="updated">Read at <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time></p>
+{{- if .Err}}
+<p class="callout" data-level="warning">The configuration could not be read: {{.Err}}</p>
+{{- else}}
+
+<section class="section" aria-labelledby="load-heading">
+  <h2 id="load-heading">Loaded</h2>
+  <dl class="facts">
+    <dt>File</dt>
+    <dd>{{if .Path}}<code data-copy>{{.Path}}</code>{{else}}None{{end}}</dd>
+    <dt>Running since</dt>
+    <dd>{{with .LoadedAt.Text}}<time datetime="{{$.LoadedAt.ISO}}">{{.}}</time>, {{end}}{{.LoadedBy}}</dd>
+    <dt>Defaults</dt>
+    <dd>{{plural .Defaults "setting is" "settings are"}} left to {{if eq .Defaults 1}}its default{{else}}their defaults{{end}}: the file does not set {{if eq .Defaults 1}}it{{else}}them{{end}}.</dd>
+  </dl>
+  <ul class="conditions config-status">
+    <li class="condition" data-level="{{if eq .Reload.State "warning"}}warning{{else}}note{{end}}" data-state="{{.Reload.State}}">
+      <p class="condition-title"><span class="condition-level">Last reload:</span> {{.Reload.Text}}</p>
+      {{- if eq .Reload.State "warning"}}
+      <p class="condition-next"><strong>Next step:</strong> Fix the file, check it, then reload obied again. <code>obied --check-config</code></p>
+      {{- end}}
+    </li>
+    <li class="condition" data-level="{{if or (eq .Disk.State "warning") (eq .Disk.State "changed")}}warning{{else}}note{{end}}" data-state="{{.Disk.State}}">
+      <p class="condition-title"><span class="condition-level">File on disk:</span> {{.Disk.Text}}</p>
+      {{- with .Pending}}
+      <p class="condition-next"><strong>Not active until a reload:</strong> {{range $i, $k := .}}{{if $i}}, {{end}}<code>{{$k}}</code>{{end}}. Reload obied to apply {{if eq (len .) 1}}it{{else}}them{{end}}: <code>sudo systemctl reload obied</code></p>
+      {{- end}}
+      {{- with .Restart}}
+      <p class="condition-next"><strong>Waiting for a restart:</strong> {{range $i, $k := .}}{{if $i}}, {{end}}<code>{{$k}}</code>{{end}}. A reload does not apply {{if eq (len .) 1}}it{{else}}them{{end}}; restart obied when it suits you: <code>sudo systemctl restart obied</code></p>
+      {{- end}}
+      {{- if eq .Disk.State "warning"}}
+      <p class="condition-next"><strong>Next step:</strong> Fix the file and check it before the next reload or restart. <code>obied --check-config</code></p>
+      {{- end}}
+    </li>
+  </ul>
+</section>
+
+<section class="section" aria-labelledby="settings-heading">
+  <h2 id="settings-heading">Settings</h2>
+  <p class="note"><span class="default-mark">Default</span> The file does not set the setting, so its built-in default applies. <strong>Reload</strong>: <code>sudo systemctl reload obied</code> applies a change at once. <strong>Restart</strong>: only a restart of obied applies it. The node's private key and the console token are not part of the configuration and are never shown.</p>
+  {{- range .Sections}}
+  <section class="settings-section" aria-labelledby="section-{{.Name}}">
+    <h3 id="section-{{.Name}}"><code>{{.Name}}</code></h3>
+    <p class="group-text">{{.Text}}</p>
+    <div class="table-scroll">
+    <table class="list settings">
+      <thead>
+        <tr><th scope="col">Setting</th><th scope="col">Value</th><th scope="col">A change applies on</th></tr>
+      </thead>
+      <tbody>
+        {{- range .Rows}}
+        <tr{{with .Disk}} data-pending{{end}}>
+          <th scope="row"><code class="setting-key">{{.Key}}</code><span class="cell-note">{{.Summary}}</span></th>
+          <td>
+            <span class="cell-label">Value</span>
+            {{template "value" .Value}}{{if .Default}} <span class="default-mark">Default</span>{{end}}
+            {{- if .Disk}}
+            <span class="pending"><strong>{{.Pending}}</strong> On disk: {{template "value" .Disk}}</span>
+            {{- end}}
+          </td>
+          <td><span class="cell-label">A change applies on</span> <span class="applied" data-applied="{{.Applied}}">{{.AppliedText}}</span></td>
+        </tr>
+        {{- end}}
+      </tbody>
+    </table>
+    </div>
+  </section>
+  {{- end}}
+</section>
+{{- end}}
+{{- end}}
+
+{{define "value"}}{{if .Secret}}<span class="secret">{{.Text}}</span>{{else if .List}}{{if .Empty}}<span class="empty-value">None</span>{{else}}<ul class="value-list">{{range .Items}}<li><code>{{.}}</code></li>{{end}}</ul>{{end}}{{else}}<code class="value">{{.Text}}</code>{{end}}{{end}}
