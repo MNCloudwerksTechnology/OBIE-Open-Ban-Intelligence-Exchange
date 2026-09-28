@@ -286,20 +286,48 @@ func keys(p BrowsePage) []string {
 }
 
 func TestCoveringKeys(t *testing.T) {
-	keys, ok := coveringKeys(netip.MustParsePrefix("203.0.113.7/32"))
-	if !ok || len(keys) != 17 || keys[0] != "ipv4:203.0.113.7" || keys[1] != "cidr:203.0.113.6/31" ||
-		keys[16] != "cidr:203.0.0.0/16" {
-		t.Errorf("coveringKeys(IPv4) = %v, %v", keys, ok)
+	keys := coveringKeys(netip.MustParsePrefix("203.0.113.7/32"))
+	if len(keys) != 17 || keys[0] != "ipv4:203.0.113.7" || keys[1] != "cidr:203.0.113.6/31" || keys[16] != "cidr:203.0.0.0/16" {
+		t.Errorf("coveringKeys(IPv4) = %v", keys)
 	}
-	keys, ok = coveringKeys(netip.MustParsePrefix("2001:db8::1/128"))
-	if !ok || len(keys) != 97 || keys[0] != "ipv6:2001:db8::1" || keys[96] != "cidr:2001:db8::/32" {
-		t.Errorf("coveringKeys(IPv6) = %d keys, %v", len(keys), ok)
+	keys = coveringKeys(netip.MustParsePrefix("2001:db8::1/128"))
+	if len(keys) != 97 || keys[0] != "ipv6:2001:db8::1" || keys[96] != "cidr:2001:db8::/32" {
+		t.Errorf("coveringKeys(IPv6) = %d keys", len(keys))
 	}
-	if _, ok := coveringKeys(netip.MustParsePrefix("203.0.113.0/24")); ok {
-		t.Error("coveringKeys of a network")
+	keys = coveringKeys(netip.MustParsePrefix("203.0.113.0/24"))
+	if len(keys) != 9 || keys[0] != "cidr:203.0.113.0/24" || keys[1] != "cidr:203.0.112.0/23" || keys[8] != "cidr:203.0.0.0/16" {
+		t.Errorf("coveringKeys(a network) = %v", keys)
 	}
-	if _, ok := coveringKeys(netip.Prefix{}); ok {
-		t.Error("coveringKeys of nothing")
+	if keys := coveringKeys(netip.MustParsePrefix("10.0.0.0/8")); len(keys) != 1 || keys[0] != "cidr:10.0.0.0/8" {
+		t.Errorf("coveringKeys(a network wider than any indicator) = %v", keys)
+	}
+	if keys := coveringKeys(netip.Prefix{}); keys != nil {
+		t.Errorf("coveringKeys(nothing) = %v", keys)
+	}
+}
+
+// TestCovering: the decisions on the networks around a range, the widest
+// first, for IPv4 and IPv6 addresses and networks.
+func TestCovering(t *testing.T) {
+	e := keptEngine(append(browseSet(), kept("203.0.0.0/16", 0, StateNone, about(pubD, "spam", "smtp", 1, 2*time.Hour)))...)
+	for _, tc := range []struct {
+		p    string
+		want []string
+	}{
+		{"203.0.113.7/32", []string{"203.0.0.0/16", "203.0.113.0/24"}},
+		{"203.0.113.0/25", []string{"203.0.0.0/16", "203.0.113.0/24"}},
+		{"203.0.113.0/24", []string{"203.0.0.0/16"}},
+		{"2001:db8::1/128", []string{"2001:db8::/48"}},
+		{"198.51.100.9/32", nil},
+		{"10.0.0.0/8", nil},
+	} {
+		var got []string
+		for _, d := range e.Covering(netip.MustParsePrefix(tc.p)) {
+			got = append(got, d.Indicator.Value)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("Covering(%s) = %v, want %v", tc.p, got, tc.want)
+		}
 	}
 }
 

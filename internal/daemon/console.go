@@ -1,6 +1,9 @@
 package daemon
 
 import (
+	"context"
+	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
@@ -10,6 +13,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
 	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
 	"github.com/MNCloudwerksTechnology/obie/internal/mesh"
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -203,4 +207,157 @@ func consoleVerdict(ev *obieproto.Event) console.Verdict {
 		v.Reason = ev.Evidence.Reason
 	}
 	return v
+}
+
+// consoleDecisions reads the decisions, explanations and the firewall for
+// the console's decisions and firewall views, with cheap reads only: a
+// page of the engine's decisions, one indicator's verdicts, the
+// reconciler's snapshot, and on request the backend's entries (ADR 0022).
+// Every read works while its subsystem is stopped. The engine and the
+// reconciler are set before anything starts.
+type consoleDecisions struct {
+	engine     *decision.Engine
+	reconciler *enforce.Reconciler
+	enforce    config.Enforce
+}
+
+var _ console.DecisionSource = (*consoleDecisions)(nil)
+
+// Decisions reads the page of the kept decisions q selects; the firewall
+// filter asks the reconciler's last pass.
+func (d *consoleDecisions) Decisions(q console.DecisionQuery) console.DecisionPage {
+	snap := d.reconciler.Snapshot()
+	dq := decision.Query{State: decision.State(q.State), Category: q.Category, Publisher: q.Publisher, Overlapping: q.Search,
+		Sort: decision.Sort(q.Sort), After: q.After, Before: q.Before, Last: q.Last, Limit: q.Limit}
+	switch q.Firewall {
+	case console.FirewallApplied:
+		dq.Where = snap.Applies
+	case console.FirewallNotApplied:
+		dq.Where = func(p netip.Prefix) bool { return !snap.Applies(p) }
+	}
+	page := d.engine.Browse(dq)
+	out := console.DecisionPage{Items: make([]console.DecisionItem, len(page.Items)), Total: page.Total, Offset: page.Offset,
+		States: make(map[string]int, len(page.States)), Generation: page.Generation}
+	for s, n := range page.States {
+		out.States[string(s)] = n
+	}
+	for i := range page.Items {
+		it := &page.Items[i]
+		out.Items[i] = consoleDecisionItem(&it.Decision, snap)
+		out.Items[i].Categories, out.Items[i].Verdicts, out.Items[i].Cursor = it.Categories, it.Verdicts, it.Cursor
+	}
+	return out
+}
+
+// Generation is the engine's count of re-evaluations.
+func (d *consoleDecisions) Generation() uint64 { return d.engine.Generation() }
+
+// Categories counts the kept decisions by the categories of their
+// verdicts.
+func (d *consoleDecisions) Categories() map[string]int { return d.engine.Categories() }
+
+// Explain re-evaluates the range p like obiectl explain, with the kept
+// decisions on the networks around it and the firewall's last pass.
+func (d *consoleDecisions) Explain(p netip.Prefix) (console.Explanation, error) {
+	ind, err := indicatorOfRange(p)
+	if err != nil {
+		return console.Explanation{}, fmt.Errorf("%w: %w", console.ErrNoIndicator, err)
+	}
+	dec, err := d.engine.Explain(ind)
+	if err != nil {
+		return console.Explanation{}, err
+	}
+	snap := d.reconciler.Snapshot()
+	policy := d.engine.Policy()
+	ex := console.Explanation{
+		Key: ind.Key(), Range: p, State: string(dec.State), Score: dec.Score, Threshold: dec.Threshold,
+		Contributors: dec.Contributors, Quorum: dec.Quorum, Autoblock: dec.Autoblock, LocalAutoblock: policy.LocalAutoblock,
+		Reason: dec.Reason, ExpiresAt: dec.ExpiresAt, EvaluatedAt: dec.EvaluatedAt,
+		Verdicts: make([]console.Contribution, len(dec.Publishers)), Ruling: consoleRuling(&dec.Sovereignty),
+		Firewall: consoleCoverage(snap.Lookup(p)),
+	}
+	for i, c := range dec.Publishers {
+		_, listed := policy.Weights[c.PeerID]
+		ex.Verdicts[i] = console.Contribution{PeerID: c.PeerID, Name: c.Name, Local: c.Local, Listed: listed && !c.Local,
+			Action: c.Action, Reason: c.Reason, Protocol: c.Protocol, Weight: c.Weight, Confidence: c.Confidence,
+			Score: c.Score, Contributes: c.Contributes, IssuedAt: c.IssuedAt, ExpiresAt: c.ExpiresAt}
+	}
+	if kept, ok := d.engine.Decision(ind.Key()); ok {
+		ex.Kept, ex.KeptState, ex.KeptAt = true, string(kept.State), kept.EvaluatedAt
+	}
+	for _, around := range d.engine.Covering(p) {
+		ex.Around = append(ex.Around, consoleDecisionItem(&around, snap))
+	}
+	return ex, nil
+}
+
+// Firewall reads the reconciler's condition and its last pass.
+func (d *consoleDecisions) Firewall() console.Firewall {
+	fw := console.Firewall{Facts: enforceFacts(d.reconciler.Status(), d.enforce), ExpiryTolerance: enforce.ExpiryTolerance}
+	if snap := d.reconciler.Snapshot(); snap != nil {
+		fw.Pass = &console.FirewallPass{Mode: string(snap.Mode), At: snap.At, Entries: len(snap.Entries),
+			Deferred: len(snap.Deferred), Seq: snap.Seq}
+	}
+	return fw
+}
+
+// FirewallEntries lists the entries the backend applies right now, each
+// with the kept decision on its range.
+func (d *consoleDecisions) FirewallEntries(ctx context.Context) ([]console.FirewallEntry, error) {
+	entries, err := d.reconciler.Entries(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]console.FirewallEntry, len(entries))
+	for i, e := range entries {
+		out[i] = console.FirewallEntry{Range: e.Prefix, Expires: e.Expires}
+		ind, err := indicatorOfRange(e.Prefix)
+		if err != nil {
+			continue // no indicator names it, so no decision stands behind it
+		}
+		if kept, ok := d.engine.Decision(ind.Key()); ok {
+			out[i].Key, out[i].State, out[i].ExpiresAt = ind.Key(), string(kept.State), kept.ExpiresAt
+		}
+	}
+	return out, nil
+}
+
+// indicatorOfRange returns the indicator naming the range p: an IPv4 or
+// IPv6 address, or a CIDR range; it fails for a range no indicator may
+// name, e.g. one broader than /16.
+func indicatorOfRange(p netip.Prefix) (obieproto.Indicator, error) {
+	ind := obieproto.Indicator{Kind: obieproto.KindCIDR, Value: p.Masked().String()}
+	switch {
+	case p.Bits() < p.Addr().BitLen():
+	case p.Addr().Is4():
+		ind = obieproto.Indicator{Kind: obieproto.KindIPv4, Value: p.Addr().String()}
+	default:
+		ind = obieproto.Indicator{Kind: obieproto.KindIPv6, Value: p.Addr().String()}
+	}
+	if err := ind.Normalize(); err != nil {
+		return obieproto.Indicator{}, err
+	}
+	return ind, nil
+}
+
+// consoleDecisionItem converts a kept decision for the console, with how
+// the firewall's last pass left its range.
+func consoleDecisionItem(d *decision.Decision, snap *enforce.Snapshot) console.DecisionItem {
+	p, _ := sovereignty.PrefixOf(d.Indicator)
+	return console.DecisionItem{Key: d.Indicator.Key(), Range: p, State: string(d.State), Score: d.Score, Threshold: d.Threshold,
+		Contributors: d.Contributors, Quorum: d.Quorum, Autoblock: d.Autoblock, Rule: string(d.Sovereignty.Rule),
+		Source: string(d.Sovereignty.Source), DecidedAt: d.EvaluatedAt, ExpiresAt: d.ExpiresAt,
+		Firewall: consoleCoverage(snap.Lookup(p))}
+}
+
+// consoleCoverage converts how the firewall's last pass left a range.
+func consoleCoverage(c enforce.Coverage) console.Coverage {
+	return console.Coverage{Applied: c.Applied, Entry: c.Entry.Prefix, EntryExpires: c.Entry.Expires, Skipped: c.Skipped,
+		Within: c.Within, Deferred: c.Deferred}
+}
+
+// consoleRuling converts what the allow-list and the overrides do.
+func consoleRuling(r *sovereignty.Ruling) console.Ruling {
+	return console.Ruling{Effect: string(r.Effect), Rule: string(r.Rule), Source: string(r.Source), Protected: r.Source.Protected(),
+		Match: r.Match, Label: r.Label, Note: r.Note, ExpiresAt: r.ExpiresAt, Reason: r.Reason}
 }

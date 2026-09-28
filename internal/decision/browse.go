@@ -184,8 +184,9 @@ func (e *Engine) Browse(q Query) BrowsePage {
 
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	if keys, ok := coveringKeys(q.Overlapping); ok {
-		for _, key := range keys {
+	if p := q.Overlapping; p.IsValid() && p.Bits() == p.Addr().BitLen() {
+		// An address overlaps only the ranges that contain it.
+		for _, key := range coveringKeys(p) {
 			if k, ok := e.kept.get(key); ok {
 				br.visit(k)
 			}
@@ -296,23 +297,47 @@ func (s *selected) item(order Sort) Item {
 	return it
 }
 
-// coveringKeys returns the keys of the indicators that contain the
-// address p — p itself and every CIDR range around it that an indicator
-// may name — and whether p is a single address.
-func coveringKeys(p netip.Prefix) ([]string, bool) {
-	if !p.IsValid() || p.Bits() != p.Addr().BitLen() {
-		return nil, false
+// Covering returns the kept decisions on the networks that contain the
+// address range p, p's own aside, the widest first, without Publishers.
+// It looks them up by key: at most 16 for IPv4, 96 for IPv6.
+func (e *Engine) Covering(p netip.Prefix) []Decision {
+	keys := coveringKeys(p)
+	if len(keys) < 2 {
+		return nil
 	}
-	addr := p.Addr()
+	var out []Decision
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for _, key := range slices.Backward(keys[1:]) {
+		if k, ok := e.kept.get(key); ok {
+			out = append(out, k.d)
+		}
+	}
+	return out
+}
+
+// coveringKeys returns the keys of the indicators whose range contains
+// the range p: p's own first, then every CIDR range around it that an
+// indicator may name, the narrowest first. None for an invalid p.
+func coveringKeys(p netip.Prefix) []string {
+	if !p.IsValid() {
+		return nil
+	}
+	addr := p.Masked().Addr()
 	kind, minBits := obieproto.KindIPv6, obieproto.MinIPv6Prefix
 	if addr.Is4() {
 		kind, minBits = obieproto.KindIPv4, obieproto.MinIPv4Prefix
 	}
-	keys := []string{obieproto.Indicator{Kind: kind, Value: addr.String()}.Key()}
-	for bits := addr.BitLen() - 1; bits >= minBits; bits-- {
+	var keys []string
+	if p.Bits() == addr.BitLen() {
+		keys = append(keys, obieproto.Indicator{Kind: kind, Value: addr.String()}.Key())
+	} else {
+		keys = append(keys, obieproto.Indicator{Kind: obieproto.KindCIDR, Value: p.Masked().String()}.Key())
+	}
+	for bits := min(p.Bits(), addr.BitLen()) - 1; bits >= minBits; bits-- {
 		keys = append(keys, obieproto.Indicator{Kind: obieproto.KindCIDR, Value: netip.PrefixFrom(addr, bits).Masked().String()}.Key())
 	}
-	return keys, true
+	return keys
 }
 
 // compare orders a before b in the order s, then by key.
