@@ -26,7 +26,7 @@ CYCLONEDX_GOMOD := $(TOOLS_DIR)/cyclonedx-gomod-$(CYCLONEDX_GOMOD_VERSION)/cyclo
 RELEASE_DIR := $(CURDIR)/dist/release
 
 # The Gitea workflows are the source; the GitHub mirrors must be byte-identical.
-WORKFLOWS := ci.yml release.yml
+WORKFLOWS := ci.yml release.yml website-release.yml
 
 .DEFAULT_GOAL := build
 

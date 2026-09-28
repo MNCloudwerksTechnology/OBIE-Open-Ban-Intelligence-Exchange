@@ -3,7 +3,8 @@
 # fails if the two copies differ. The local `make ci` is the source of truth —
 # this pipeline only runs it (and `make -C website ci` for the website), plus
 # the packaging checks (`make release`, `check-unit`, `image`, `lab-smoke`)
-# without publishing anything; release.yml publishes on v* tags.
+# without publishing anything; release.yml publishes on v* tags,
+# website-release.yml the website image on website-v* tags.
 name: ci
 
 on:
@@ -150,7 +151,7 @@ jobs:
     # `make -C website ci`. The job always runs so it can be a required check,
     # but its steps are skipped unless something under website/ changed.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     outputs:
       changed: ${{ steps.changes.outputs.changed }}
     steps:
@@ -214,6 +215,12 @@ jobs:
       - if: steps.changes.outputs.changed == 'true'
         name: make -C website ci
         run: make -C website ci
+
+      # The container image and the production compose stack, checked but
+      # never pushed; website-release.yml publishes on website-v* tags.
+      - if: steps.changes.outputs.changed == 'true'
+        name: make -C website smoke
+        run: make -C website smoke
 
   lighthouse:
     name: website lighthouse (non-blocking)

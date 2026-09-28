@@ -1,0 +1,102 @@
+# OBIE website release. This file lives in .gitea/workflows/ (Gitea Actions)
+# and, byte for byte, in .github/workflows/ (public GitHub mirror); `make
+# lint-workflows` fails if the two copies differ. It runs only for pushed
+# tags website-v* — never for branch pushes, pull requests or the node's v*
+# tags — and publishes the website's multi-arch container image (ADR 0018):
+# website-v1.2.3 → <registry>/<owner>/obie-website:1.2.3 (and :latest unless
+# the version has a pre-release suffix such as 1.2.3-rc.1).
+name: website-release
+
+on:
+  push:
+    tags: ['website-v*']
+
+permissions:
+  contents: read
+  packages: write
+
+# Two pushes of the same tag never publish concurrently.
+concurrency:
+  group: website-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  image:
+    name: publish ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # make ci runs third-party tools and tests; they must not find the
+          # write token in .git/config.
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: website/backend/pom.xml
+
+      # Go is only needed to install the pinned osv-scanner.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Version and image name
+        id: meta
+        env:
+          TAG: ${{ github.ref_name }}
+          SERVER_URL: ${{ github.server_url }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          version="${TAG#website-v}"
+          if [ "${GITEA_ACTIONS:-}" = true ]; then registry="${SERVER_URL#*://}"; else registry=ghcr.io; fi
+          # <registry>/<owner>/obie-website, whatever the repository is called.
+          image="$registry/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')/obie-website"
+          tags="$image:$version"
+          case "$version" in *-*) ;; *) tags="$tags,$image:latest" ;; esac
+          {
+            echo "version=$version"
+            echo "registry=$registry"
+            echo "tags=$tags"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: make -C website ci
+        run: make -C website ci
+
+      # Builds the image for the runner's platform and checks it in the
+      # production compose stack before anything is pushed.
+      - name: make -C website smoke
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: make -C website smoke VERSION="$VERSION"
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      # REGISTRY_TOKEN may replace the workflow token where that cannot push
+      # packages (e.g. on some Gitea instances).
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ steps.meta.outputs.registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        uses: docker/build-push-action@v6
+        with:
+          context: website
+          platforms: linux/amd64,linux/arm64
+          build-args: VERSION=${{ steps.meta.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          push: true
