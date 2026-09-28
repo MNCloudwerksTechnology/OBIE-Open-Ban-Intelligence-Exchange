@@ -52,6 +52,14 @@ const (
 	ActionLocalReport Action = "local-report"
 	// ActionRevocation: this node revoked one of its verdicts.
 	ActionRevocation Action = "revocation"
+	// ActionPeerConnected: the mesh connected to a peer.
+	ActionPeerConnected Action = "peer-connected"
+	// ActionPeerDisconnected: the mesh lost its last connection to a peer.
+	ActionPeerDisconnected Action = "peer-disconnected"
+	// ActionConfigReloaded: a reload of the configuration took effect.
+	ActionConfigReloaded Action = "config-reloaded"
+	// ActionModeChanged: a reload switched node.mode.
+	ActionModeChanged Action = "mode-changed"
 )
 
 // OutcomeSuccess is the event.outcome of every record: only changes that
@@ -66,9 +74,12 @@ type Scores struct {
 	Publishers int
 }
 
-// Record is one decision change.
+// Record is one change: of a decision, an override, a verdict this node
+// issued, a peer's connection, the configuration or the mode (ADR 0025).
 type Record struct {
-	Action    Action
+	Action Action
+	// Indicator is the address or range the change is about; zero for
+	// changes about no address.
 	Indicator obieproto.Indicator
 	// Rule names the rule behind the change (rule.name), e.g. "consensus",
 	// "allowlist" or "force_block".
@@ -90,6 +101,14 @@ type Record struct {
 	Revokes string
 	// Note is the operator's note on an override.
 	Note string
+	// PreviousMode is node.mode before a mode change.
+	PreviousMode string
+	// PeerID and PeerName are the peer of a connection change; PeerName
+	// is its trust.publishers name, if any.
+	PeerID, PeerName string
+	// Settings are the keys a reload changed and applied; RestartSettings
+	// the keys that wait for a restart.
+	Settings, RestartSettings []string
 }
 
 // Log appends Records to the audit log file. It implements
@@ -199,31 +218,34 @@ func (l *Log) Write(r Record) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf) // one line, ending in a newline
 	enc.SetEscapeHTML(false)     // reasons hold ">=" and "<"
-	if err := enc.Encode(l.document(r)); err != nil {
+	if err := enc.Encode(l.entry(r)); err != nil {
 		l.log.Error("encoding an audit record failed", "action", r.Action, "error", err)
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.f == nil {
-		l.log.Error("audit log is not open; record lost", "action", r.Action, "indicator", r.Indicator.Key())
+		l.log.Error("audit log is not open; record lost", "action", r.Action, "indicator", indicatorKey(r.Indicator))
 		return
 	}
 	if _, err := l.f.Write(buf.Bytes()); err != nil {
-		l.log.Error("writing the audit log failed; record lost", "action", r.Action, "indicator", r.Indicator.Key(), "error", err)
+		l.log.Error("writing the audit log failed; record lost", "action", r.Action, "indicator", indicatorKey(r.Indicator),
+			"error", err)
 	}
 }
 
-// document is a record in ECS form.
-type document struct {
-	Timestamp string      `json:"@timestamp"`
-	Event     eventFields `json:"event"`
-	Source    *source     `json:"source,omitempty"`
-	Rule      *rule       `json:"rule,omitempty"`
-	Obie      obieFields  `json:"obie"`
+// Entry is a record in ECS form: one line of the audit log, and one entry
+// of the console's activity timeline (ADR 0025).
+type Entry struct {
+	Timestamp string        `json:"@timestamp"`
+	Event     EventFields   `json:"event"`
+	Source    *SourceFields `json:"source,omitempty"`
+	Rule      *RuleFields   `json:"rule,omitempty"`
+	Obie      ObieFields    `json:"obie"`
 }
 
-type eventFields struct {
+// EventFields are the ECS event.* fields.
+type EventFields struct {
 	Kind    string `json:"kind"`
 	Module  string `json:"module"`
 	Dataset string `json:"dataset"`
@@ -232,49 +254,76 @@ type eventFields struct {
 	Reason  string `json:"reason,omitempty"`
 }
 
-type source struct {
+// SourceFields are the ECS source.* fields.
+type SourceFields struct {
 	IP string `json:"ip"`
 }
 
-type rule struct {
+// RuleFields are the ECS rule.* fields.
+type RuleFields struct {
 	Name string `json:"name"`
 }
 
-type obieFields struct {
-	Indicator  string   `json:"indicator"`
-	Mode       string   `json:"mode"`
-	State      string   `json:"state,omitempty"`
-	Score      *float64 `json:"score,omitempty"`
-	Threshold  *float64 `json:"threshold,omitempty"`
-	Publishers *int     `json:"publishers,omitempty"`
-	Cause      string   `json:"cause,omitempty"`
-	ExpiresAt  string   `json:"expires_at,omitempty"`
-	EventID    string   `json:"event_id,omitempty"`
-	Revokes    string   `json:"revokes,omitempty"`
-	Note       string   `json:"note,omitempty"`
+// ObieFields are OBIE's own fields.
+type ObieFields struct {
+	Indicator       string   `json:"indicator,omitempty"`
+	Mode            string   `json:"mode"`
+	State           string   `json:"state,omitempty"`
+	Score           *float64 `json:"score,omitempty"`
+	Threshold       *float64 `json:"threshold,omitempty"`
+	Publishers      *int     `json:"publishers,omitempty"`
+	Cause           string   `json:"cause,omitempty"`
+	ExpiresAt       string   `json:"expires_at,omitempty"`
+	EventID         string   `json:"event_id,omitempty"`
+	Revokes         string   `json:"revokes,omitempty"`
+	Note            string   `json:"note,omitempty"`
+	PreviousMode    string   `json:"previous_mode,omitempty"`
+	PeerID          string   `json:"peer_id,omitempty"`
+	PeerName        string   `json:"peer_name,omitempty"`
+	Settings        []string `json:"settings,omitempty"`
+	RestartSettings []string `json:"restart_settings,omitempty"`
 }
 
-func (l *Log) document(r Record) document {
-	d := document{
+// Time returns @timestamp as a time; zero if it is not one.
+func (e *Entry) Time() time.Time {
+	t, err := time.Parse(time.RFC3339Nano, e.Timestamp)
+	if err != nil {
+		return time.Time{}
+	}
+	return t
+}
+
+func (l *Log) entry(r Record) Entry {
+	e := Entry{
 		Timestamp: l.now().UTC().Format(timeFormat),
-		Event: eventFields{Kind: "event", Module: "obie", Dataset: "obie.audit", Action: r.Action, Outcome: OutcomeSuccess,
+		Event: EventFields{Kind: "event", Module: "obie", Dataset: "obie.audit", Action: r.Action, Outcome: OutcomeSuccess,
 			Reason: r.Reason},
-		Obie: obieFields{Indicator: r.Indicator.Key(), Mode: l.mode(), State: r.State, Cause: r.Cause,
-			EventID: r.EventID, Revokes: r.Revokes, Note: r.Note},
+		Obie: ObieFields{Indicator: indicatorKey(r.Indicator), Mode: l.mode(), State: r.State, Cause: r.Cause,
+			EventID: r.EventID, Revokes: r.Revokes, Note: r.Note, PreviousMode: r.PreviousMode, PeerID: r.PeerID,
+			PeerName: r.PeerName, Settings: r.Settings, RestartSettings: r.RestartSettings},
 	}
 	if ip, ok := singleAddress(r.Indicator); ok {
-		d.Source = &source{IP: ip.String()}
+		e.Source = &SourceFields{IP: ip.String()}
 	}
 	if r.Rule != "" {
-		d.Rule = &rule{Name: r.Rule}
+		e.Rule = &RuleFields{Name: r.Rule}
 	}
 	if s := r.Scores; s != nil {
-		d.Obie.Score, d.Obie.Threshold, d.Obie.Publishers = &s.Score, &s.Threshold, &s.Publishers
+		e.Obie.Score, e.Obie.Threshold, e.Obie.Publishers = &s.Score, &s.Threshold, &s.Publishers
 	}
 	if !r.ExpiresAt.IsZero() {
-		d.Obie.ExpiresAt = r.ExpiresAt.UTC().Format(timeFormat)
+		e.Obie.ExpiresAt = r.ExpiresAt.UTC().Format(timeFormat)
 	}
-	return d
+	return e
+}
+
+// indicatorKey returns the key of ind, or "" for the zero indicator of a
+// record about no address.
+func indicatorKey(ind obieproto.Indicator) string {
+	if ind.Kind == "" {
+		return ""
+	}
+	return ind.Key()
 }
 
 // singleAddress returns the address of an indicator that names one

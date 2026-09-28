@@ -3,6 +3,7 @@ package audit
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
@@ -98,4 +99,77 @@ func LocalReport(ev *obieproto.Event) Record {
 func Revocation(ev *obieproto.Event) Record {
 	return Record{Action: ActionRevocation, Indicator: ev.Indicator, Rule: RuleRevocation, Reason: ev.Reason,
 		EventID: ev.ID, Revokes: ev.Revokes}
+}
+
+// Peer is the peer of a connection change.
+type Peer struct {
+	ID string
+	// Name is its trust.publishers name; empty if it has none.
+	Name string
+	// Bootstrap is set for a peer listed in mesh.bootstrap, Publisher for
+	// one listed in trust.publishers.
+	Bootstrap, Publisher bool
+}
+
+// PeerConnection returns the record of peer p connecting, or losing its
+// last connection.
+func PeerConnection(p Peer, connected bool) Record {
+	r := Record{Action: ActionPeerDisconnected, PeerID: p.ID, PeerName: p.Name}
+	verb := "disconnected"
+	if connected {
+		r.Action, verb = ActionPeerConnected, "connected"
+	}
+	role := "peer"
+	switch {
+	case p.Bootstrap:
+		role = "bootstrap peer"
+	case p.Publisher:
+		role = "publisher"
+	}
+	name := p.ID
+	if p.Name != "" {
+		name = p.Name + " (" + p.ID + ")"
+	}
+	r.Reason = role + " " + name + " " + verb
+	return r
+}
+
+// ConfigReloaded returns the record of a reload of the configuration file
+// path that changed and applied the keys settings and left the keys
+// restartSettings for a restart.
+func ConfigReloaded(path string, settings, restartSettings []string) Record {
+	r := Record{Action: ActionConfigReloaded, Settings: settings, RestartSettings: restartSettings,
+		Reason: "configuration reloaded"}
+	if path != "" {
+		r.Reason += " from " + path
+	}
+	switch n := len(settings); n {
+	case 0:
+		r.Reason += ": no setting changed"
+	case 1:
+		r.Reason += ": " + settings[0] + " changed"
+	default:
+		r.Reason += fmt.Sprintf(": %d settings changed (%s)", n, strings.Join(settings, ", "))
+	}
+	switch n := len(restartSettings); n {
+	case 0:
+	case 1:
+		r.Reason += "; " + restartSettings[0] + " waits for a restart"
+	default:
+		r.Reason += fmt.Sprintf("; %d settings wait for a restart (%s)", n, strings.Join(restartSettings, ", "))
+	}
+	return r
+}
+
+// ModeChanged returns the record of node.mode switching from from to to.
+func ModeChanged(from, to string) Record {
+	r := Record{Action: ActionModeChanged, PreviousMode: from,
+		Reason: "node.mode changed from " + from + " to " + to}
+	switch to {
+	case "enforce":
+		r.Reason += ": blocks are applied to the firewall"
+	case "observe":
+		r.Reason += ": blocks are only logged, and withdrawn from the firewall"
+	}
+	return r
 }

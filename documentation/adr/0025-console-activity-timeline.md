@@ -36,15 +36,16 @@ story as the decision audit log a SIEM reads. Four things need a decision:
 
   | `event.action` | When | Fields |
   |---|---|---|
-  | `peer-connected` / `peer-disconnected` | The mesh connects to a peer or loses its last connection to it | `obie.peer_id`, `obie.peer_name` (its `trust.publishers` name, if any), `rule.name` `bootstrap`, `publisher` or `peer` |
+  | `peer-connected` / `peer-disconnected` | The mesh connects to a peer or loses its last connection to it | `obie.peer_id`, `obie.peer_name` (its `trust.publishers` name, if any) |
   | `config-reloaded` | A reload (SIGHUP) took effect, also one that changed nothing, e.g. logrotate's | `obie.settings` (the keys it changed and applied), `obie.restart_settings` (the keys that wait for a restart) |
   | `mode-changed` | A reload switched `node.mode` | `obie.mode` (the new mode), `obie.previous_mode` |
 
   `event.reason` says the same in one line. A rejected reload changes
   nothing and is not recorded, like before; the overview and the
   configuration view show it.
-- `obie.indicator` is left out of records that are about no address; every
-  record that has one keeps it, so existing SIEM queries are unchanged.
+- `obie.indicator`, `source.ip` and `rule.name` are left out of records
+  that are about no address; every record that has one keeps them, so
+  existing SIEM queries are unchanged.
 - The reloader records the reload after applying it (and after the audit
   log was reopened, so a rotated log starts with it) and the mode change
   after the gate switched. The mesh calls a function for every change of a
