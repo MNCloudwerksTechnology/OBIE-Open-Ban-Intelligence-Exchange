@@ -123,6 +123,9 @@ type verdictsPage struct {
 	// Retention says how long the node keeps a verdict that ended, e.g.
 	// "24 hours".
 	Retention string
+	// Report links to reporting an address; ActionsOff says why there are
+	// no actions instead (ADR 0026).
+	Report, ActionsOff string
 }
 
 // whoseLine names the one publisher whose verdicts are listed.
@@ -178,6 +181,9 @@ type verdictItemRow struct {
 	// Counts says whether an active verdict counts in its decision, and if
 	// not, why.
 	Counts string
+	// Revoke links to revoking this node's own active verdict; empty for
+	// others and without actions (ADR 0026).
+	Revoke string
 }
 
 // verdictTotalsView counts the verdicts of this node and of every other
@@ -231,6 +237,8 @@ type verdictsInput struct {
 	totalsErr  error
 	categories map[string]int
 	notice     string
+	// links lead to the actions.
+	links actionLinks
 }
 
 // buildVerdicts builds the verdicts view from a page of verdicts and the
@@ -249,6 +257,8 @@ func buildVerdicts(in verdictsInput) verdictsPage {
 		Publishers: publisherOptions(withTotals(in.peers, in.totals), in.self, q.publisher),
 		Retention:  retentionText(in.totals.Retention),
 		Heading:    verdictsHeading(q, in.self, names, in.searched),
+		Report:     in.links.href(ActionReport, q.address),
+		ActionsOff: in.links.offNote(),
 	}
 	p.StateNote = stateNoteOf(q.state, p.Retention)
 	if q.state != "" && in.totals.EndedFull[q.state] {
@@ -292,7 +302,11 @@ func buildVerdicts(in verdictsInput) verdictsPage {
 		p.Clear = verdictsHref(verdictsQuery{from: q.from, state: q.state})
 	}
 	for i := range in.list.Items {
-		p.Rows = append(p.Rows, newVerdictItemRow(&in.list.Items[i], in.self, names))
+		row := newVerdictItemRow(&in.list.Items[i], in.self, names)
+		if it := &in.list.Items[i]; it.State == VerdictActive && (it.Local || it.Publisher == in.self) {
+			row.Revoke = in.links.href(ActionRevoke, row.Address)
+		}
+		p.Rows = append(p.Rows, row)
 	}
 	p.Pager = verdictsPagerOf(q, &in.list)
 	if len(p.Rows) == 0 && in.listErr == nil {
@@ -607,7 +621,7 @@ func verdictsNotice(statuses []lifecycle.Status, state string) string {
 func (c *Console) verdictsContent(r *http.Request) any {
 	q := parseVerdictsQuery(r.URL.Query())
 	in := verdictsInput{now: c.now(), query: q, self: c.node.PeerID, peers: c.peerSet(),
-		notice: verdictsNotice(c.node.Status(), q.state)}
+		notice: verdictsNotice(c.node.Status(), q.state), links: c.actionLinks(r)}
 	src := c.node.Verdicts
 	if src == nil {
 		in.listErr, in.totalsErr = errNoVerdicts, errNoVerdicts

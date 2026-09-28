@@ -40,7 +40,7 @@
 {{- with .Err}}
 <p class="callout" data-level="warning" role="alert"><strong>Not carried out.</strong> {{.}}</p>
 {{- end}}
-<form method="get" action="{{.Path}}" class="action-form">
+<form method="get" action="{{.Path}}" class="filter-form action-form">
   <input type="hidden" name="review" value="1">
   {{- with .Return}}
   <input type="hidden" name="return" value="{{.}}">
@@ -82,7 +82,7 @@
   {{- if .Has "ttl"}}
   <div class="field">
     <label for="action-ttl">{{if eq .Kind "report"}}Lifetime{{else}}Ends after{{end}}</label>
-    <input id="action-ttl" name="ttl" type="text" value="{{.Form.TTL}}" placeholder="{{if eq .Kind "report"}}7d{{else}}never{{end}}" list="action-ttls" autocomplete="off" spellcheck="false" aria-describedby="action-ttl-hint">
+    <input id="action-ttl" name="ttl" type="text" value="{{.Form.TTL}}" placeholder="{{if eq .Kind "report"}}default{{else}}never{{end}}" list="action-ttls" autocomplete="off" spellcheck="false" aria-describedby="action-ttl-hint">
     <datalist id="action-ttls"><option value="1h"><option value="24h"><option value="7d"><option value="30d"></datalist>
     <p class="hint" id="action-ttl-hint">{{if eq .Kind "report"}}A duration such as 12h or 7d; empty for decision.default_ttl, at most decision.max_ttl.{{else}}A duration such as 90m, 36h or 7d; empty for never.{{end}}</p>
   </div>

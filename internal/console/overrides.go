@@ -92,6 +92,11 @@ type overridesPage struct {
 	// Retention says how long the store keeps an expired override, e.g.
 	// "7 days".
 	Retention string
+	// Allow and Block link to setting an override, Removable is set if
+	// the rows link to removing theirs; ActionsOff says why there are no
+	// actions instead (ADR 0026).
+	Allow, Block, ActionsOff string
+	Removable                bool
 }
 
 // overrideRow is an override as the list shows it.
@@ -109,6 +114,9 @@ type overrideRow struct {
 	// NoEffect says why a force-block has no effect; empty if it takes
 	// effect.
 	NoEffect string
+	// Remove links to removing it; empty for an expired one and without
+	// actions.
+	Remove string
 }
 
 // overridesInput is what the overrides view is built from.
@@ -125,6 +133,8 @@ type overridesInput struct {
 	addressErr error
 	retention  time.Duration
 	notice     string
+	// links lead to the actions.
+	links actionLinks
 }
 
 // kindOptions are the options of the kind filter.
@@ -135,7 +145,9 @@ var kindOptions = []struct{ value, label string }{{"", "Always allow and always 
 func buildOverrides(in overridesInput) overridesPage {
 	q := in.query
 	p := overridesPage{ReadAt: stamp(in.now), Notice: in.notice, Address: q.address, State: q.state,
-		Retention: retentionText(in.retention)}
+		Retention: retentionText(in.retention), Allow: in.links.href(ActionAllow, q.address),
+		Block: in.links.href(ActionBlock, q.address), ActionsOff: in.links.offNote()}
+	p.Removable = q.state != stateExpired && in.links.on
 	if in.err != nil {
 		p.Err = in.err.Error()
 	}
@@ -171,7 +183,11 @@ func buildOverrides(in overridesInput) overridesPage {
 		p.More, list = len(list)-maxRuleRows, list[:maxRuleRows]
 	}
 	for i := range list {
-		p.Rows = append(p.Rows, newOverrideRow(&list[i], q.state == stateExpired))
+		row := newOverrideRow(&list[i], q.state == stateExpired)
+		if p.Removable {
+			row.Remove = in.links.href(ActionUnoverride, row.Address)
+		}
+		p.Rows = append(p.Rows, row)
 	}
 	if len(p.Rows) == 0 && in.err == nil {
 		p.Empty = emptyOverrides(q, p.Retention)
@@ -301,7 +317,7 @@ func partNotice(statuses []lifecycle.Status, part, what, starting, stopped strin
 func (c *Console) overridesContent(r *http.Request) any {
 	q := parseOverridesQuery(r.URL.Query())
 	in := overridesInput{now: c.now(), query: q, notice: partNotice(c.node.Status(), partStore, "The store",
-		"the overrides appear once it runs", "the overrides cannot be read until it runs again")}
+		"the overrides appear once it runs", "the overrides cannot be read until it runs again"), links: c.actionLinks(r)}
 	if q.address != "" {
 		p, err := parseRange(q.address)
 		if err != nil {

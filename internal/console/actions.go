@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -265,6 +266,101 @@ func (c *Console) actionsOff() string {
 	default:
 		return ""
 	}
+}
+
+// actionsOffNote is what a view says where it would offer the actions
+// that are switched off.
+const actionsOffNote = "The console is read-only here: act on the node with sudo obiectl allow, block, unoverride, report or revoke."
+
+// actionLinks lead from a view to the action pages, which return to it.
+// The zero value leads nowhere and says nothing.
+type actionLinks struct {
+	// back is the view to return to; on is set if there are actions, and
+	// off says why not.
+	back string
+	on   bool
+	off  string
+}
+
+// actionLinks returns the links from the view r shows to the actions.
+func (c *Console) actionLinks(r *http.Request) actionLinks {
+	if c.actionsOff() != "" {
+		return actionLinks{off: actionsOffNote}
+	}
+	return actionLinks{back: returnHere(r), on: true}
+}
+
+// href links to the action kind on address, or on one to enter for "";
+// empty if there are no actions.
+func (l actionLinks) href(kind, address string) string {
+	if !l.on {
+		return ""
+	}
+	v := url.Values{"return": {l.back}}
+	if address != "" {
+		v.Set("address", address)
+	}
+	return "/actions/" + kind + "?" + v.Encode()
+}
+
+// offNote says why the view offers no actions; empty if it does.
+func (l actionLinks) offNote() string { return l.off }
+
+// returnHere returns the path and query of r, without the outcome of an
+// earlier action, for an action to return to.
+func returnHere(r *http.Request) string {
+	q := r.URL.Query()
+	q.Del("done")
+	if len(q) == 0 {
+		return r.URL.Path
+	}
+	return r.URL.Path + "?" + q.Encode()
+}
+
+// actionBar is the actions on one address or network on its decision.
+type actionBar struct {
+	// Links are the actions that apply; Off says why there are none.
+	Links []link
+	Off   string
+}
+
+// actionBarOf returns the actions on p: always allow and block, and
+// report; remove if an override is set on p, revoke if own, this node
+// holds an active verdict on it.
+func (c *Console) actionBarOf(r *http.Request, p netip.Prefix, own bool) *actionBar {
+	l := c.actionLinks(r)
+	if !l.on {
+		return &actionBar{Off: l.off}
+	}
+	addr := rangeText(p)
+	bar := &actionBar{Links: []link{{Text: "Always allow…", Href: l.href(ActionAllow, addr)},
+		{Text: "Always block…", Href: l.href(ActionBlock, addr)}}}
+	if c.overrideOn(p) {
+		bar.Links = append(bar.Links, link{Text: "Remove the override…", Href: l.href(ActionUnoverride, addr)})
+	}
+	bar.Links = append(bar.Links, link{Text: "Report…", Href: l.href(ActionReport, addr)})
+	if own {
+		bar.Links = append(bar.Links, link{Text: "Revoke my verdict…", Href: l.href(ActionRevoke, addr)})
+	}
+	return bar
+}
+
+// overrideOn reports whether an override is set on exactly p; true if the
+// console cannot tell, since the action's page says so.
+func (c *Console) overrideOn(p netip.Prefix) bool {
+	if c.node.Rules == nil {
+		return true
+	}
+	list, err := c.node.Rules.Overrides(false)
+	if err != nil {
+		return true
+	}
+	for _, o := range list {
+		if o.Range == p {
+			return true
+		}
+	}
+	return false
 }
 
 // crossSiteNavigation reports whether r is a navigation from another site

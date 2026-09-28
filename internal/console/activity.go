@@ -228,6 +228,9 @@ func addressLinks(e *ActivityEntry, addr string) []link {
 // entryFacts says in a few words what else the record holds.
 func entryFacts(e *ActivityEntry) []string {
 	var facts []string
+	if who := originText(e); who != "" {
+		facts = append(facts, who)
+	}
 	switch e.Action {
 	case actionBlockAdded, actionBlockUpdated, actionOverrideSet, actionLocalReport:
 		if !e.ExpiresAt.IsZero() {
@@ -246,6 +249,28 @@ func entryFacts(e *ActivityEntry) []string {
 		facts = append(facts, "Observe mode: not applied to the firewall")
 	}
 	return facts
+}
+
+// originText says who carried out an operator action and through which
+// door; empty for changes no operator made (ADR 0026).
+func originText(e *ActivityEntry) string {
+	var door string
+	switch e.Origin {
+	case "console":
+		door = "in the console"
+	case "admin-api":
+		door = "with obiectl or another client of the admin socket"
+	default:
+		return ""
+	}
+	who := "an operator"
+	switch {
+	case e.UserName != "" && e.UserID != "":
+		who = e.UserName + " (uid " + e.UserID + ")"
+	case e.UserID != "":
+		who = "uid " + e.UserID
+	}
+	return "By " + who + " " + door
 }
 
 // activityPage is the data of the activity timeline.

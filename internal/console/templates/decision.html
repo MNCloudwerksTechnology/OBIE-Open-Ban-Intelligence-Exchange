@@ -1,6 +1,17 @@
 {{define "content" -}}
 <p class="back"><a href="/decisions">All decisions</a></p>
 <div class="item-head"><h1><span class="mono" data-copy>{{.Address}}</span></h1></div>
+{{- with .Actions}}
+{{- if .Links}}
+<ul class="actions" aria-label="Act on this {{if $.Network}}network{{else}}address{{end}}">
+  {{- range .Links}}
+  <li><a class="button button-secondary" href="{{.Href}}">{{.Text}}</a></li>
+  {{- end}}
+</ul>
+{{- else}}
+<p class="note">{{.Off}}</p>
+{{- end}}
+{{- end}}
 <p class="lead">Why this node decides as it does on this {{if .Network}}network{{else}}address{{end}}: the same facts as <code>obiectl explain {{.Address}}</code>. <span data-live hidden>It is evaluated again every 5 seconds, so a change shows here.</span></p>
 <div class="refresh" data-refresh="{{.Fragment}}">
 {{template "region" .}}

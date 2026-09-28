@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"slices"
 	"time"
 )
 
@@ -54,6 +55,9 @@ type decisionPage struct {
 	Firewall firewallView
 	// Around are the decisions on the networks around it.
 	Around []aroundRow
+	// Actions are the operator's actions on it; nil in the refreshing
+	// region (ADR 0026).
+	Actions *actionBar
 }
 
 // verdictView is a publisher's verdict in an explanation.
@@ -365,7 +369,7 @@ func newFirewallView(ex *Explanation, fw *Firewall, mode string, now time.Time) 
 
 // decisionContent explains the address or network r names, and whether it
 // is one. With region set, the page is the refreshing region.
-func (c *Console) decisionContent(r *http.Request, _ bool) (string, any, bool) {
+func (c *Console) decisionContent(r *http.Request, region bool) (string, any, bool) {
 	p, err := parseRange(r.PathValue("id"))
 	if err != nil {
 		return "", decisionPage{Err: err.Error()}, false
@@ -390,8 +394,13 @@ func (c *Console) decisionContent(r *http.Request, _ bool) (string, any, bool) {
 		names[peer.ID] = peer.Name
 	}
 	all, _ := c.detailLink(verdictsHref(verdictsQuery{address: rangeText(p)}), "")
-	return title, buildDecision(decisionInput{now: c.now(), ex: ex, firewall: src.Firewall(), mode: c.node.Mode(),
-		notice: decisionNotice(c.node.Status()), self: c.node.PeerID, names: names, allVerdicts: all}), true
+	page := buildDecision(decisionInput{now: c.now(), ex: ex, firewall: src.Firewall(), mode: c.node.Mode(),
+		notice: decisionNotice(c.node.Status()), self: c.node.PeerID, names: names, allVerdicts: all})
+	if !region {
+		own := slices.ContainsFunc(ex.Verdicts, func(v Contribution) bool { return v.Local })
+		page.Actions = c.actionBarOf(r, p, own)
+	}
+	return title, page, true
 }
 
 // isNetwork reports whether p is a network rather than one address.
