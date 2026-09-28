@@ -68,14 +68,16 @@ with 1,000,000 held indicators. Three things need a decision:
   walk over the keys.
 - **Size.** An entry holds about 1 KB. With 1,000,000 indicators and the
   default verdict lifetime of 7 days about 150,000 verdicts expire a day,
-  about 150 MB on disk; a walk over their keys takes about 0.1 s (see
-  [performance](../operations/performance.md#console)). Evicted verdicts
+  about 150 MB on disk; a walk over the keys of 100,000 takes about 41 ms
+  (see [performance](../operations/performance.md#console)). Evicted verdicts
   (store full) and verdicts superseded by a newer one of the same
   publisher are not kept: they did not end.
 - **No state format change** (ADR 0017): an older `obied` ignores the `h/`
-  keyspace and the new field of a record. After a rollback, a record kept
-  past its expiry is read as inactive, as it is now; the older sweep no
-  longer finds its expiry entry, and Badger's TTL removes it.
+  keyspace and the new field of a record, and Badger's TTL removes the
+  ended verdicts. After a rollback, a record past its expiry that the
+  sweep has not removed yet (at most a sweep interval, or a downtime) is
+  read as inactive, as every read ignores inactive records, and the older
+  sweep deletes it as before.
 
 ### Active verdicts from the decision engine
 
@@ -88,7 +90,8 @@ with 1,000,000 held indicators. Three things need a decision:
   the cursor means the same for ended verdicts — counts the matches and
   those before the cursor, and keeps the page in a bounded selection:
   O(n log page) time, O(page) memory. Each verdict comes with whether it
-  counts and the state of its decision.
+  counts and the state of its decision. A page over the 2,000,000 active
+  verdicts of 1,000,000 decisions takes about 22 ms.
 - The daemon reads the page's events from the store, one indicator at a
   time (at most 50), and the publishers' trust weights from the engine's
   policy.

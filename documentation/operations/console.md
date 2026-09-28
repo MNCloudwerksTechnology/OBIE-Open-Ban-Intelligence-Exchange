@@ -16,9 +16,10 @@ within seconds whether the node is healthy and what it is doing; the
 trust placed in it; the [decisions view](#the-decisions-view) lists every
 address the node decided on and [explains](#why-an-address-is-or-is-not-blocked)
 why it is or is not blocked; the [firewall view](#the-firewall-view) shows
-what the firewall applies. The views of the node's verdicts and
-configuration arrive with later releases; a view appears in the
-navigation once it exists.
+what the firewall applies; the [verdicts view](#the-verdicts-view) shows
+what this node told the mesh and what the mesh told it. The view of the
+node's overrides and configuration arrives with a later release; a view
+appears in the navigation once it exists.
 
 ## Switch it on
 
@@ -90,10 +91,11 @@ numbers and decides what needs attention is recorded in
   decisions by state (`block`, `none`, `allowed`), the entries the firewall
   applies, and active overrides. Each number links to the view that
   details it — *Peers connected* to the [peers view](#the-peers-view),
-  the decisions to the [decisions view](#the-decisions-view) in that
+  *Indicators held* to the [verdicts view](#the-verdicts-view), the
+  decisions to the [decisions view](#the-decisions-view) in that
   state, *Firewall entries* to the [firewall view](#the-firewall-view);
   until a view exists, the number names the `obiectl` command that shows
-  the same (`obiectl indicators`, `overrides`). *Firewall entries*
+  the same (`obiectl overrides`). *Firewall entries*
   also says why they differ from the decided blocks: blocks that share an
   entry with another block (the same range, or one inside a wider range),
   that the allow-list refuses, or that are over `enforce.max_entries`.
@@ -180,9 +182,10 @@ the round-trip time, the error of the last failed dial, the rejection
 reasons and the duplicates — and the verdicts the node holds from the
 peer, 50 at a time and by address: action, confidence, reason and
 protocol, expiry, and whether each counts in decisions. The verdicts are
-read when the page opens; reload it to read them again. For every verdict
-on one address, use `sudo obiectl show <address>`; for all of the peer's
-verdicts, `sudo obiectl indicators --publisher <peer ID>`.
+read when the page opens; reload it to read them again. An address leads
+to every verdict on it, and *All its verdicts in the verdict view* to the
+peer's verdicts in the [verdicts view](#the-verdicts-view), also the
+revoked and expired ones.
 
 Trust is configured, not set in the console: change `trust.publishers` or
 `trust.default_weight` in `/etc/obie/obie.yaml` and reload `obied`; the
@@ -308,6 +311,55 @@ Read when the page opens:
 In observe mode the view says so: the firewall applies nothing, by
 design, and the decided blocks are not compared with it.
 
+## The verdicts view
+
+*Verdicts* answers "What has my node told the mesh, and what has the mesh
+told my node?". How the view and the node read the verdicts is recorded
+in [ADR 0023](../adr/0023-console-verdicts.md).
+
+- **Totals.** How many verdicts this node published that are active,
+  revoked and expired, and the same for every other publisher — the 20
+  with the most active verdicts one by one, with their trust weight, and
+  every other publisher summed up. Each number opens the list of those
+  verdicts.
+- **Whose.** The tabs show the verdicts of *All publishers*, of *This
+  node* or those *Received* from every other publisher; the *Publisher*
+  filter shows one publisher's, with its trust weight and a link to its
+  peer page.
+- **State.** The tabs show the *Active* verdicts (the default), the
+  *Revoked* ones or the *Expired* ones, each with how many match the
+  other filters. Revoked and expired verdicts count in no decision; they
+  are shown only under their tab, marked as such (an expired verdict is
+  greyed out), and the node keeps them for 24 hours after the verdict's
+  expiry, then forgets them.
+- **Filters.** By **address or network** — the verdicts on exactly that
+  address or network, from every publisher, as
+  `sudo obiectl show <address>` lists the active ones, with a link to its
+  decision; the explanation covers the networks around it — by
+  **reason** and by **publisher**.
+
+For each verdict the list shows the address (choose it for every verdict
+on it), the publisher — *This node*, a named peer or an unnamed one,
+linking to its peer page — with its trust weight, marked *No weight* if
+it is 0: the node holds such a publisher's verdicts but never counts
+them. Then the action (ban or watch) and confidence; the reason and the
+attacked protocol; the evidence: how many events are behind the verdict
+and the hash of the log lines — the lines themselves never left the node
+that reported them — and the verdict's event ID; when it was issued and
+when it expires; its state: whether an active verdict counts in its
+decision (and if not, why: a watch verdict, weight 0), when and why a
+revoked one was revoked and the revocation's event ID, when an expired
+one expired; and the state of the decision on its address, linking to
+the [explanation](#why-an-address-is-or-is-not-blocked).
+
+The list shows 50 verdicts per page, ordered by address and publisher like
+`obiectl indicators`, with *First page* and *Next page*. Everything is
+read when the page opens, on the node, fast with 1,000,000 held
+indicators (see [performance](performance.md#console)); reload it to read
+again. The explanation of an address links to its verdicts too.
+Publishing and revoking verdicts stays with `obiectl report` and
+`obiectl revoke`.
+
 ## Copy and share
 
 Next to every address the console shows a *Copy* button; *Copy link* at
@@ -358,7 +410,8 @@ The open page refreshes the health indicator every 5 seconds while it is
 visible, and the overview, the peers view, an explanation and the
 firewall view's summary refresh their content with it; *Updated* says
 when its data was read, and a focused link or button stays focused. The
-decisions list only says when the decisions changed. Without
+decisions list only says when the decisions changed; the verdicts view
+is read when it opens. Without
 JavaScript the page is still complete: reload it for current data. When a
 reload changes the mode or a subsystem's health, the page follows. When the console is switched off or moved to another address, or
 `obied` stops, the page says it cannot reach the console and keeps trying;

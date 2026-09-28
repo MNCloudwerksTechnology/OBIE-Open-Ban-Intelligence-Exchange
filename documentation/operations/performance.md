@@ -161,3 +161,31 @@ own. Reproduce with:
 go test ./internal/decision -run '^$' -bench 'BenchmarkBrowse|BenchmarkPublishMetrics' -benchtime 30x
 go test ./internal/enforce -run '^$' -bench BenchmarkSnapshotApplies
 ```
+
+The verdicts view pages the active verdicts the same way, in one pass over
+the engine's decisions and their verdicts
+([ADR 0023](../adr/0023-console-verdicts.md)). Measured on the same machine
+on 2026-09-28 (WP-1686), with the 1,000,000 decisions above holding
+2,000,000 active verdicts, for a page of 50:
+
+| Page | Time | Allocated |
+|---|---:|---:|
+| First page, by address and publisher | 22 ms | 13 KiB |
+| A deep page (cursor half way) | 20 ms | 13 KiB |
+| One publisher | 23 ms | 13 KiB |
+| Received: every publisher but this node | 22 ms | 13 KiB |
+| One reason category | 22 ms | 13 KiB |
+| The verdicts on one address | 1 µs | 4 KiB |
+
+The verdicts that were revoked or expired are read from the store, which
+keeps them for 24 hours after their expiry. A walk over the keys of
+100,000 of them — about what 700,000 indicators with the default 7-day
+lifetime leave in a day — takes 41 ms, with the page's 50 decoded, and so
+does counting them by publisher for the totals; both grow linearly with
+the ended verdicts. Opening the verdicts view costs one engine pass and
+two such walks. Reproduce with:
+
+```sh
+go test ./internal/decision -run '^$' -bench BenchmarkVerdicts -benchtime 30x
+go test ./internal/store -run '^$' -bench BenchmarkEnded100k -benchtime 30x
+```

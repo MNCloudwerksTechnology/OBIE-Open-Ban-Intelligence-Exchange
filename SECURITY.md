@@ -213,12 +213,14 @@ parse it into an inert document before showing it. Details and the
 threats considered are in
 [ADR 0019](documentation/adr/0019-local-web-console.md),
 [ADR 0020](documentation/adr/0020-console-overview.md),
-[ADR 0021](documentation/adr/0021-console-peers.md) and
-[ADR 0022](documentation/adr/0022-console-decisions-and-firewall.md); the
+[ADR 0021](documentation/adr/0021-console-peers.md),
+[ADR 0022](documentation/adr/0022-console-decisions-and-firewall.md) and
+[ADR 0023](documentation/adr/0023-console-verdicts.md); the
 peers view shows peer names, addresses and dial errors as received from
-the configuration and the network, and the decisions views show the
-reasons and protocols of verdicts as received, escaped like everything
-else. The copy buttons write only text to the clipboard; a shared link
+the configuration and the network, and the decisions and verdicts views
+show the reasons, protocols, log hashes and revocation reasons of
+verdicts as received, escaped like everything else. The evidence behind
+a verdict is never shown: only its hash ever left the reporting node. The copy buttons write only text to the clipboard; a shared link
 holds no secret and still needs a session.
 
 **Remaining risk.** Through an SSH port forward, every user of the
