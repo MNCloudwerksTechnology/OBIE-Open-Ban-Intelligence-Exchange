@@ -14,7 +14,7 @@ import (
 // it.
 func consensusExplanation() Explanation {
 	return Explanation{
-		Key: "ipv4:203.0.113.7", Range: pfx("203.0.113.7/32"), State: StateBlock, Score: 2.4000000000000004, Threshold: 1.8,
+		Range: pfx("203.0.113.7/32"), State: StateBlock, Score: 2.4000000000000004, Threshold: 1.8,
 		Contributors: 3, Quorum: 2, LocalAutoblock: true,
 		Reason:    "consensus: score 2.4 >= threshold 1.8, 3 >= quorum 2",
 		ExpiresAt: decisionsNow.Add(2 * time.Hour), EvaluatedAt: decisionsNow,
@@ -42,12 +42,12 @@ func explainNode(c *Console) *fakeDecisions {
 	src := decisionsNode(c)
 	c.node.Mode = func() string { return "enforce" }
 	src.explained[pfx("203.0.113.7/32")] = consensusExplanation()
-	src.explained[pfx("198.51.100.0/24")] = Explanation{Key: "cidr:198.51.100.0/24", Range: pfx("198.51.100.0/24"),
+	src.explained[pfx("198.51.100.0/24")] = Explanation{Range: pfx("198.51.100.0/24"),
 		State: StateNone, Score: 0.7, Threshold: 1.8, Contributors: 1, Quorum: 2, EvaluatedAt: decisionsNow,
 		Verdicts: consensusExplanation().Verdicts[1:2], Kept: true, KeptState: StateNone}
-	src.explained[pfx("198.51.100.200/32")] = Explanation{Key: "ipv4:198.51.100.200", Range: pfx("198.51.100.200/32"),
+	src.explained[pfx("198.51.100.200/32")] = Explanation{Range: pfx("198.51.100.200/32"),
 		State: StateNone, Threshold: 1.8, Quorum: 2, Reason: "no active verdicts", EvaluatedAt: decisionsNow}
-	src.explained[pfx("2001:db8::1/128")] = Explanation{Key: "ipv6:2001:db8::1", Range: pfx("2001:db8::1/128"),
+	src.explained[pfx("2001:db8::1/128")] = Explanation{Range: pfx("2001:db8::1/128"),
 		State: StateAllowed, EvaluatedAt: decisionsNow, Ruling: Ruling{Effect: "allow", Rule: ruleAllowlist, Source: "self",
 			Protected: true, Match: "2001:db8::1/128", Label: "this node's address", Reason: "allow-listed: 2001:db8::1/128 (this node's address)"}}
 	return src
@@ -256,6 +256,9 @@ func TestDecisionFirewallView(t *testing.T) {
 		{"not kept yet", fresh, Firewall{Pass: enforcingPass}, "enforce", "Not applied yet",
 			"Not applied yet: decided after the last pass; the next one applies it."},
 		{"not a block", Explanation{Range: pfx("203.0.113.7/32"), State: StateNone}, Firewall{Pass: enforcingPass}, "enforce",
+			"Not applied", "It is not a block, and no firewall entry covers it."},
+		{"not a block inside a capped network", Explanation{Range: pfx("203.0.113.7/32"), State: StateNone,
+			Firewall: Coverage{Skipped: SkipMaxEntries, Within: pfx("203.0.0.0/16")}}, Firewall{Pass: enforcingPass}, "enforce",
 			"Not applied", "It is not a block, and no firewall entry covers it."},
 	} {
 		v := newFirewallView(&tc.ex, &tc.fw, tc.mode, decisionsNow)

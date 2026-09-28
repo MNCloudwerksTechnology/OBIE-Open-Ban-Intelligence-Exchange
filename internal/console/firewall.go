@@ -15,8 +15,9 @@ const (
 	entriesPageSize = 50
 	// differencesShown is how many rows each kind of difference lists.
 	differencesShown = 20
-	// entriesTimeout bounds reading the backend's entries, which waits for
-	// a pass in progress.
+	// entriesTimeout bounds listing the backend's entries. The listing
+	// first waits for a pass in progress, which the reconciler bounds
+	// itself (enforce.PassTimeout).
 	entriesTimeout = 10 * time.Second
 )
 
@@ -92,20 +93,24 @@ type firewallInput struct {
 	now      time.Time
 	mode     string
 	firewall Firewall
-	// entries are the backend's entries, read at now; entriesErr why they
-	// could not be.
-	entries    []FirewallEntry
+	// listing is what the backend applies, read at now; entriesErr why it
+	// could not be read.
+	listing    FirewallListing
 	entriesErr error
-	// missing is the first page of the decided blocks the firewall does
-	// not apply.
-	missing DecisionPage
-	page    int
+	page       int
 }
 
-// buildFirewall builds the firewall view.
+// observing reports whether nothing is applied by design: the node is in
+// observe mode, or its last pass was.
+func observing(mode string, fw *Firewall) bool {
+	return mode == modeObserve || (fw.Pass != nil && fw.Pass.Mode == modeObserve)
+}
+
+// buildFirewall builds the firewall view. It compares every entry with
+// its decision, but formats only the differences shown and the page of
+// entries shown.
 func buildFirewall(in firewallInput) firewallPage {
 	fw := &in.firewall
-	notApplied := decisionsQuery{state: StateBlock, firewall: FirewallNotApplied, sort: sortDecided}.href("/decisions")
 	p := firewallPage{
 		Fragment: "/api/enforcement",
 		Summary:  buildFirewallSummary(in.now, in.mode, fw),
@@ -115,52 +120,87 @@ func buildFirewall(in firewallInput) firewallPage {
 	if in.entriesErr != nil {
 		p.EntriesErr = in.entriesErr.Error()
 	}
-	for i := range in.entries {
-		e := &in.entries[i]
-		row := entryRow{Href: decisionHref(e.Range), Address: rangeText(e.Range), Expires: stamp(e.Expires)}
-		switch {
-		case e.State != StateBlock:
-			row.Differs = true
-			row.Decision, row.Note = strayText(e)
-			p.Stray.add(differenceRow{Href: row.Href, Address: row.Address, Label: row.Decision, Note: row.Note})
-		case e.Expires.Sub(e.ExpiresAt).Abs() > fw.ExpiryTolerance:
-			row.Differs = true
-			row.Decision = "Block"
-			row.Note = "decided until " + stamp(e.ExpiresAt).Text
-			p.Expiry.add(differenceRow{Href: row.Href, Address: row.Address,
-				Label: "Applied until " + stamp(e.Expires).Text, Note: row.Note})
-		default:
-			row.Decision, row.Note = "Block", "until the same time"
+	entries := in.listing.Entries
+	shown, pg := pageOf(len(entries), in.page)
+	p.Pager = pg
+	for i := range entries {
+		e := &entries[i]
+		kind := entryDifference(e, fw.ExpiryTolerance)
+		switch kind {
+		case differsStray:
+			p.Stray.Count++
+			if len(p.Stray.Rows) < differencesShown {
+				row := newEntryRow(e, kind)
+				p.Stray.Rows = append(p.Stray.Rows, differenceRow{Href: row.Href, Address: row.Address, Label: row.Decision, Note: row.Note})
+			}
+		case differsExpiry:
+			p.Expiry.Count++
+			if len(p.Expiry.Rows) < differencesShown {
+				row := newEntryRow(e, kind)
+				p.Expiry.Rows = append(p.Expiry.Rows, differenceRow{Href: row.Href, Address: row.Address,
+					Label: "Applied until " + row.Expires.Text, Note: row.Note})
+			}
 		}
-		p.Entries = append(p.Entries, row)
+		if i >= shown.first && i < shown.end {
+			p.Entries = append(p.Entries, newEntryRow(e, kind))
+		}
 	}
-	if in.mode == modeObserve || (fw.Pass != nil && fw.Pass.Mode == modeObserve) {
+	if observing(in.mode, fw) {
 		p.Observe = "Observe mode: the firewall applies nothing, by design. The node decides and logs every block, " +
 			"but none reaches the firewall, so the decided blocks and the entries are not compared. Set node.mode to " +
 			"enforce to apply them."
-	} else {
-		p.Missing.Count = in.missing.Total
-		for i := range in.missing.Items {
-			it := &in.missing.Items[i]
-			_, label, note := firewallCell(it, fw, in.now)
-			p.Missing.Rows = append(p.Missing.Rows, differenceRow{Href: decisionHref(it.Range), Address: rangeText(it.Range),
-				Label: label, Note: note})
-		}
-		if p.Missing.Count > len(p.Missing.Rows) {
-			p.Missing.More = notApplied
-		}
-		p.Same = p.Missing.Count == 0 && p.Stray.Count == 0 && p.Expiry.Count == 0 && p.EntriesErr == ""
+		return p
 	}
-	p.Entries, p.Pager = pageEntries(p.Entries, in.page)
+	missing := &in.listing.Missing
+	p.Missing.Count = missing.Total
+	for i := range missing.Items {
+		it := &missing.Items[i]
+		_, label, note := firewallCell(it, fw, in.now)
+		p.Missing.Rows = append(p.Missing.Rows, differenceRow{Href: decisionHref(it.Range), Address: rangeText(it.Range),
+			Label: label, Note: note})
+	}
+	if p.Missing.Count > len(p.Missing.Rows) {
+		p.Missing.More = decisionsQuery{state: StateBlock, firewall: FirewallNotApplied, sort: sortDecided}.href("/decisions")
+	}
+	p.Same = p.Missing.Count == 0 && p.Stray.Count == 0 && p.Expiry.Count == 0 && p.EntriesErr == ""
 	return p
 }
 
-// add counts d and lists it among the first ones.
-func (d *differences) add(row differenceRow) {
-	d.Count++
-	if len(d.Rows) < differencesShown {
-		d.Rows = append(d.Rows, row)
+// How an entry differs from the decision on its range.
+const (
+	differsNot = iota
+	// differsStray: no decided block stands behind the entry.
+	differsStray
+	// differsExpiry: the entry expires at another time than decided.
+	differsExpiry
+)
+
+// entryDifference says how the entry e differs from the decision on its
+// range, expiries within tolerance aside.
+func entryDifference(e *FirewallEntry, tolerance time.Duration) int {
+	switch {
+	case e.State != StateBlock:
+		return differsStray
+	case e.Expires.Sub(e.ExpiresAt).Abs() > tolerance:
+		return differsExpiry
+	default:
+		return differsNot
 	}
+}
+
+// newEntryRow describes the entry e, which differs from its decision as
+// kind says.
+func newEntryRow(e *FirewallEntry, kind int) entryRow {
+	row := entryRow{Href: decisionHref(e.Range), Address: rangeText(e.Range), Expires: stamp(e.Expires), Differs: kind != differsNot}
+	switch kind {
+	case differsStray:
+		row.Decision, row.Note = strayText(e)
+	case differsExpiry:
+		row.Decision, row.Note = "Block", "decided until "+stamp(e.ExpiresAt).Text
+	default:
+		row.Decision, row.Note = "Block", "until the same time"
+	}
+	return row
 }
 
 // strayText says what the node decided on the range of an entry that no
@@ -176,19 +216,23 @@ func strayText(e *FirewallEntry) (decision, note string) {
 	}
 }
 
-// pageEntries returns page n of rows, and the pager around it.
-func pageEntries(rows []entryRow, n int) ([]entryRow, pager) {
-	pages := max((len(rows)+entriesPageSize-1)/entriesPageSize, 1)
-	n = min(max(n, 1), pages)
-	first := (n - 1) * entriesPageSize
-	shown := rows[first:min(first+entriesPageSize, len(rows))]
+// span is the part of a list a page shows: from first up to end.
+type span struct{ first, end int }
+
+// pageOf returns the part of n entries that page n shows, and the pager
+// around it.
+func pageOf(n, page int) (span, pager) {
+	pages := max((n+entriesPageSize-1)/entriesPageSize, 1)
+	page = min(max(page, 1), pages)
+	first := (page - 1) * entriesPageSize
+	shown := span{first, min(first+entriesPageSize, n)}
 	var pg pager
 	switch {
-	case len(rows) == 0:
+	case n == 0:
 	case pages > 1:
-		pg.Text = fmt.Sprintf("Entries %s–%s of %s, page %d of %d", count(first+1), count(first+len(shown)), count(len(rows)), n, pages)
+		pg.Text = fmt.Sprintf("Entries %s–%s of %s, page %d of %d", count(first+1), count(shown.end), count(n), page, pages)
 	default:
-		pg.Text = plural(len(rows), "entry", "entries")
+		pg.Text = plural(n, "entry", "entries")
 	}
 	href := func(page int) string {
 		if page == 1 {
@@ -196,11 +240,11 @@ func pageEntries(rows []entryRow, n int) ([]entryRow, pager) {
 		}
 		return "/enforcement?" + url.Values{"page": {strconv.Itoa(page)}}.Encode() + "#entries"
 	}
-	if n > 1 {
-		pg.Prev = href(n - 1)
+	if page > 1 {
+		pg.Prev = href(page - 1)
 	}
-	if n < pages {
-		pg.Next = href(n + 1)
+	if page < pages {
+		pg.Next = href(page + 1)
 	}
 	return shown, pg
 }
@@ -270,10 +314,13 @@ func (c *Console) firewallContent(r *http.Request) any {
 		return buildFirewall(in)
 	}
 	in.firewall = src.Firewall()
+	missing := differencesShown
+	if observing(in.mode, &in.firewall) {
+		missing = 0 // nothing is compared
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), entriesTimeout)
 	defer cancel()
-	in.entries, in.entriesErr = src.FirewallEntries(ctx)
-	in.missing = src.Decisions(DecisionQuery{State: StateBlock, Firewall: FirewallNotApplied, Limit: differencesShown})
+	in.listing, in.entriesErr = src.FirewallEntries(ctx, missing)
 	return buildFirewall(in)
 }
 

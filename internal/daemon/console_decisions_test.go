@@ -53,7 +53,7 @@ func putBan(t *testing.T, st *store.DB, publisher, s string, issued time.Time) {
 // the dry-run backend in enforce mode: blocks on an IPv4 address, an IPv4
 // network and an IPv6 address, and decisions below consensus on an
 // address outside and one inside the blocked network.
-func decisionsFixture(t *testing.T) *consoleDecisions {
+func decisionsFixture(t *testing.T) (*consoleDecisions, *enforce.DryRun) {
 	t.Helper()
 	st := newStore(t)
 	now := time.Now().UTC().Truncate(time.Second)
@@ -76,12 +76,13 @@ func decisionsFixture(t *testing.T) *consoleDecisions {
 	}
 	t.Cleanup(func() { _ = engine.Stop(context.Background()) })
 	cfg := config.Enforce{Backend: config.BackendDryRun, MaxEntries: 100, ReconcileInterval: config.Duration(time.Hour)}
-	rec := enforce.NewReconciler(gate, enforce.NewDryRun(log), enforce.Options{Backend: "dryrun", MaxEntries: cfg.MaxEntries,
+	backend := enforce.NewDryRun(log)
+	rec := enforce.NewReconciler(gate, backend, enforce.Options{Backend: "dryrun", MaxEntries: cfg.MaxEntries,
 		Interval: time.Hour}, log)
 	if err := rec.Reconcile(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	return &consoleDecisions{engine: engine, reconciler: rec, enforce: cfg}
+	return &consoleDecisions{engine: engine, reconciler: rec, enforce: cfg}, backend
 }
 
 func ranges(items []console.DecisionItem) []string {
@@ -96,7 +97,7 @@ func ranges(items []console.DecisionItem) []string {
 // decisions with the firewall's last pass, filtered, searched, sorted and
 // paged (ADR 0022).
 func TestConsoleDecisions(t *testing.T) {
-	d := decisionsFixture(t)
+	d, _ := decisionsFixture(t)
 	page := d.Decisions(console.DecisionQuery{Sort: "address", Limit: 50})
 	if got, want := ranges(page.Items), []string{"85.10.20.1/32", "85.10.20.2/32", "85.10.30.0/24", "85.10.30.7/32", "2a01:4f8::1/128"}; !slices.Equal(got, want) {
 		t.Fatalf("decisions by address = %v, want %v", got, want)
@@ -106,7 +107,7 @@ func TestConsoleDecisions(t *testing.T) {
 		t.Errorf("page = %+v", page)
 	}
 	block, none, inside := page.Items[0], page.Items[1], page.Items[3]
-	if block.Key != "ipv4:85.10.20.1" || block.State != "block" || block.Score != 1.8 || block.Contributors != 2 || block.Quorum != 2 ||
+	if block.Range != netip.MustParsePrefix("85.10.20.1/32") || block.State != "block" || block.Score != 1.8 || block.Contributors != 2 || block.Quorum != 2 ||
 		!slices.Equal(block.Categories, []string{"password_bruteforce/ssh"}) || block.Verdicts != 2 || block.Cursor == "" ||
 		block.ExpiresAt.IsZero() || block.DecidedAt.IsZero() {
 		t.Errorf("block = %+v", block)
@@ -153,12 +154,12 @@ func TestConsoleDecisions(t *testing.T) {
 // TestConsoleExplain: the console's explanation is the engine's, with the
 // kept decision, the networks around it and the firewall's last pass.
 func TestConsoleExplain(t *testing.T) {
-	d := decisionsFixture(t)
+	d, _ := decisionsFixture(t)
 	ex, err := d.Explain(netip.MustParsePrefix("85.10.30.7/32"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ex.Key != "ipv4:85.10.30.7" || ex.State != "none" || ex.Score != 0.9 || ex.Threshold != 1.5 || ex.Quorum != 2 ||
+	if ex.Range != netip.MustParsePrefix("85.10.30.7/32") || ex.State != "none" || ex.Score != 0.9 || ex.Threshold != 1.5 || ex.Quorum != 2 ||
 		!ex.Kept || ex.KeptState != "none" || ex.KeptAt.IsZero() || ex.Ruling.Rule != "" || len(ex.Verdicts) != 1 {
 		t.Fatalf("explanation = %+v", ex)
 	}
@@ -190,25 +191,56 @@ func TestConsoleExplain(t *testing.T) {
 }
 
 // TestConsoleFirewall: the firewall view reads the reconciler's last pass
-// and the backend's entries with the decision on each.
+// and the backend's entries with the decision on each, and compares the
+// decided blocks with what the backend lists right now.
 func TestConsoleFirewall(t *testing.T) {
-	d := decisionsFixture(t)
+	d, backend := decisionsFixture(t)
 	fw := d.Firewall()
 	if fw.Pass == nil || fw.Pass.Mode != "enforce" || fw.Pass.Entries != 3 || fw.Pass.Seq != 1 || fw.Pass.At.IsZero() ||
 		fw.Facts.Backend != "dryrun" || fw.Facts.Blocks != 3 || fw.Facts.Applied != 3 || fw.ExpiryTolerance != enforce.ExpiryTolerance {
 		t.Errorf("firewall = %+v, pass %+v", fw, fw.Pass)
 	}
-	entries, err := d.FirewallEntries(context.Background())
+	listing, err := d.FirewallEntries(context.Background(), 20)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got []string
-	for _, e := range entries {
+	for _, e := range listing.Entries {
 		got = append(got, fmt.Sprintf("%s %s %s %v", e.Range, e.Key, e.State, e.Expires.Equal(e.ExpiresAt)))
 	}
 	if want := []string{"85.10.20.1/32 ipv4:85.10.20.1 block true", "85.10.30.0/24 cidr:85.10.30.0/24 block true",
 		"2a01:4f8::1/128 ipv6:2a01:4f8::1 block true"}; !slices.Equal(got, want) {
 		t.Errorf("entries = %v, want %v", got, want)
+	}
+	if listing.Missing.Total != 0 || len(listing.Missing.Items) != 0 {
+		t.Errorf("missing = %+v, want none", listing.Missing)
+	}
+
+	// Entries removed behind the reconciler's back are missing blocks
+	// until its next pass, though its last pass applied them.
+	entries, err := backend.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Apply(context.Background(), nil, entries[:2]); err != nil {
+		t.Fatal(err)
+	}
+	listing, err = d.FirewallEntries(context.Background(), 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missing := ranges(listing.Missing.Items)
+	slices.Sort(missing)
+	if len(listing.Entries) != 1 || listing.Missing.Total != 2 || !slices.Equal(missing, []string{"85.10.20.1/32", "85.10.30.0/24"}) {
+		t.Errorf("after a removal by hand: %d entries, missing %v of %d", len(listing.Entries), missing, listing.Missing.Total)
+	}
+	for _, it := range listing.Missing.Items {
+		if it.Firewall != (console.Coverage{Gone: true}) {
+			t.Errorf("missing %s = %+v, want a block gone from the backend", it.Range, it.Firewall)
+		}
+	}
+	if listing, _ := d.FirewallEntries(context.Background(), 0); listing.Missing.Total != 0 {
+		t.Error("the missing blocks were read though none were asked for")
 	}
 }
 
@@ -221,6 +253,9 @@ func TestIndicatorOfRange(t *testing.T) {
 	} {
 		if ind, err := indicatorOfRange(netip.MustParsePrefix(tc.in)); err != nil || ind.Key() != tc.want {
 			t.Errorf("indicatorOfRange(%s) = %v, %v", tc.in, ind.Key(), err)
+		}
+		if key := keyOfRange(netip.MustParsePrefix(tc.in)); key != tc.want {
+			t.Errorf("keyOfRange(%s) = %s, want %s", tc.in, key, tc.want)
 		}
 	}
 	if _, err := indicatorOfRange(netip.MustParsePrefix("10.0.0.0/8")); err == nil {

@@ -337,6 +337,8 @@ func newFirewallView(ex *Explanation, fw *Firewall, mode string, now time.Time) 
 	case cov.Applied:
 		v.Text = "It is not a block, yet the firewall drops its traffic: the entry for the wider network " + v.Entry +
 			", a block, contains it and wins."
+	case !block:
+		v.Text = "It is not a block, and no firewall entry covers it."
 	case cov.Skipped == SkipAllowlist:
 		v.Text = "The allow-list refused the block right before it was applied, e.g. because the allow-list changed " +
 			"and the decision engine has not yet re-evaluated it."
@@ -348,10 +350,8 @@ func newFirewallView(ex *Explanation, fw *Firewall, mode string, now time.Time) 
 		}
 	case cov.Deferred:
 		v.Text = "It waits until an entry it overlaps expires: the firewall's sets cannot hold overlapping ranges."
-	case block:
-		v.Text = "Not applied yet: " + notYetApplied(&item, fw.Pass, now) + "."
 	default:
-		v.Text = "It is not a block, and no firewall entry covers it."
+		v.Text = "Not applied yet: " + notYetApplied(&item, fw.Pass, now) + "."
 	}
 	return v
 }

@@ -33,11 +33,64 @@ type Snapshot struct {
 	// than ExpiryTolerance.
 	Seq uint64
 
-	// v4 and v6 are the first and last addresses of the IPv4 and the IPv6
-	// entries, in the order of Entries, which lists the IPv4 ones first:
-	// compact arrays to search (see index).
-	v4 []span[uint32]
-	v6 []span[u128]
+	// held indexes Entries (see index).
+	held *EntryIndex
+}
+
+// EntryIndex finds the entry that holds a range among disjoint entries,
+// such as those a backend holds, in O(log entries): it searches their
+// first and last addresses as integers, IPv4 and IPv6 apart, since the
+// decisions list asks it for every decision (ADR 0022). A nil
+// EntryIndex holds nothing.
+type EntryIndex struct {
+	e4, e6 []Entry
+	s4     []span[uint32]
+	s6     []span[u128]
+}
+
+// NewEntryIndex indexes entries, which must be disjoint.
+func NewEntryIndex(entries []Entry) *EntryIndex {
+	x := &EntryIndex{}
+	for _, e := range entries {
+		if e.Prefix.Addr().Is4() {
+			x.e4 = append(x.e4, e)
+		} else {
+			x.e6 = append(x.e6, e)
+		}
+	}
+	sortEntries(x.e4)
+	sortEntries(x.e6)
+	for _, e := range x.e4 {
+		x.s4 = append(x.s4, span4(e.Prefix))
+	}
+	for _, e := range x.e6 {
+		x.s6 = append(x.s6, span6(e.Prefix))
+	}
+	return x
+}
+
+// Holder returns the entry that holds p: its own or a wider one. The
+// entries being disjoint, it is the last one starting at or before p, if
+// it ends at or after p's end.
+func (x *EntryIndex) Holder(p netip.Prefix) (Entry, bool) {
+	if x == nil || !p.IsValid() {
+		return Entry{}, false
+	}
+	p = p.Masked()
+	if p.Addr().Is4() {
+		if i, ok := holding(x.s4, span4(p), cmp.Compare[uint32]); ok {
+			return x.e4[i], true
+		}
+	} else if i, ok := holding(x.s6, span6(p), compareU128); ok {
+		return x.e6[i], true
+	}
+	return Entry{}, false
+}
+
+// Holds reports whether an entry holds p: its own or a wider one.
+func (x *EntryIndex) Holds(p netip.Prefix) bool {
+	_, ok := x.Holder(p)
+	return ok
 }
 
 // span is the first and the last address of a range, as integers.
@@ -69,17 +122,10 @@ func span6(p netip.Prefix) span[u128] {
 	return span[u128]{first, last}
 }
 
-// index lays out the entries' spans for holder. The reconciler calls it
-// before it publishes the snapshot.
+// index indexes the entries for holder. The reconciler calls it before
+// it publishes the snapshot.
 func (s *Snapshot) index() {
-	s.v4, s.v6 = nil, nil
-	for _, e := range s.Entries {
-		if e.Prefix.Addr().Is4() {
-			s.v4 = append(s.v4, span4(e.Prefix))
-		} else {
-			s.v6 = append(s.v6, span6(e.Prefix))
-		}
-	}
+	s.held = NewEntryIndex(s.Entries)
 }
 
 // holding returns the index of the span in spans, ordered and disjoint,
@@ -103,9 +149,10 @@ type Coverage struct {
 	// Entry.Prefix is the range, else a wider one.
 	Applied bool
 	Entry   Entry
-	// Skipped is the reason the pass did not apply the range, or the
-	// wider range Within lies in: a range inside a wider block the cap
-	// left out is left out with it.
+	// Skipped is the reason the pass did not apply the range Within: the
+	// range itself, or a wider block the cap left out, which ranges
+	// inside it are left out with. The allow-list refuses ranges one by
+	// one.
 	Skipped string
 	Within  netip.Prefix
 	// Deferred is set if its addition waits until an entry it overlaps
@@ -131,31 +178,24 @@ func (s *Snapshot) Lookup(p netip.Prefix) Coverage {
 		return Coverage{}
 	}
 	p = p.Masked()
-	for bits := p.Bits(); bits >= 0; bits-- {
-		w := netip.PrefixFrom(p.Addr(), bits).Masked()
-		if reason, ok := s.Skipped[w]; ok {
-			return Coverage{Skipped: reason, Within: w}
+	if reason, ok := s.Skipped[p]; ok {
+		return Coverage{Skipped: reason, Within: p}
+	}
+	for bits := p.Bits() - 1; bits >= 0; bits-- {
+		if w := netip.PrefixFrom(p.Addr(), bits).Masked(); s.Skipped[w] == SkipMaxEntries {
+			return Coverage{Skipped: SkipMaxEntries, Within: w}
 		}
 	}
 	_, deferred := slices.BinarySearchFunc(s.Deferred, p, comparePrefix)
 	return Coverage{Deferred: deferred}
 }
 
-// holder returns the entry holding p. Entries are disjoint, so it is the
-// last one starting at or before p, if it ends at or after p's end.
+// holder returns the entry holding p.
 func (s *Snapshot) holder(p netip.Prefix) (Entry, bool) {
-	if s == nil || !p.IsValid() {
+	if s == nil {
 		return Entry{}, false
 	}
-	p = p.Masked()
-	if p.Addr().Is4() {
-		if i, ok := holding(s.v4, span4(p), cmp.Compare[uint32]); ok {
-			return s.Entries[i], true
-		}
-	} else if i, ok := holding(s.v6, span6(p), compareU128); ok {
-		return s.Entries[len(s.v4)+i], true
-	}
-	return Entry{}, false
+	return s.held.Holder(p)
 }
 
 // same reports whether o left the same as s, expiries within

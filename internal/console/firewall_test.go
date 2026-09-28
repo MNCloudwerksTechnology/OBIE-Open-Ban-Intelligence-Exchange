@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"regexp"
 	"strings"
 	"testing"
@@ -88,8 +89,8 @@ func TestFirewallDifferences(t *testing.T) {
 	missing := testItems[0]
 	missing.Firewall = Coverage{Skipped: SkipAllowlist, Within: missing.Range}
 	fw := Firewall{Pass: enforcingPass, ExpiryTolerance: 5 * time.Second}
-	p := buildFirewall(firewallInput{now: decisionsNow, mode: "enforce", firewall: fw, entries: testEntries,
-		missing: DecisionPage{Items: []DecisionItem{missing}, Total: 25}})
+	p := buildFirewall(firewallInput{now: decisionsNow, mode: "enforce", firewall: fw, listing: FirewallListing{Entries: testEntries,
+		Missing: DecisionPage{Items: []DecisionItem{missing}, Total: 25}}})
 	if p.Same || p.Observe != "" {
 		t.Errorf("page = %+v", p)
 	}
@@ -120,9 +121,20 @@ func TestFirewallDifferences(t *testing.T) {
 		t.Errorf("entries = %s", got)
 	}
 
-	same := buildFirewall(firewallInput{now: decisionsNow, mode: "enforce", firewall: fw, entries: testEntries[:1]})
+	same := buildFirewall(firewallInput{now: decisionsNow, mode: "enforce", firewall: fw, listing: FirewallListing{Entries: testEntries[:1]}})
 	if !same.Same || same.Missing.Count+same.Stray.Count+same.Expiry.Count != 0 {
 		t.Errorf("no difference = %+v", same)
+	}
+
+	// A block the last pass applied that the backend lost since, e.g. to
+	// a flush by hand, is a difference until the next pass.
+	gone := testItems[0]
+	gone.Firewall = Coverage{Gone: true}
+	lost := buildFirewall(firewallInput{now: decisionsNow, mode: "enforce", firewall: fw,
+		listing: FirewallListing{Missing: DecisionPage{Items: []DecisionItem{gone}, Total: 1}}})
+	if lost.Same || lost.Missing.Count != 1 || lost.Missing.Rows[0] != (differenceRow{Href: "/decisions/203.0.113.7", Address: "203.0.113.7",
+		Label: "Not in the firewall", Note: "applied by the last pass, gone since; the next pass adds it again"}) {
+		t.Errorf("a lost block = %+v", lost.Missing)
 	}
 	failed := buildFirewall(firewallInput{now: decisionsNow, mode: "enforce", firewall: fw, entriesErr: errors.New("netlink: busy")})
 	if failed.Same || failed.EntriesErr != "netlink: busy" {
@@ -135,30 +147,47 @@ func TestFirewallDifferences(t *testing.T) {
 func TestFirewallObserve(t *testing.T) {
 	fw := Firewall{Pass: &FirewallPass{Mode: "observe", At: decisionsNow}}
 	p := buildFirewall(firewallInput{now: decisionsNow, mode: "observe", firewall: fw,
-		missing: DecisionPage{Items: testItems[:1], Total: 3}})
+		listing: FirewallListing{Missing: DecisionPage{Items: testItems[:1], Total: 3}}})
 	if !strings.HasPrefix(p.Observe, "Observe mode: the firewall applies nothing, by design.") || p.Missing.Count != 0 || p.Same {
 		t.Errorf("observe page = %+v", p)
 	}
 }
 
-func TestPageEntries(t *testing.T) {
-	rows := make([]entryRow, 120)
-	for i := range rows {
-		rows[i].Address = fmt.Sprint(i)
+func TestPageOf(t *testing.T) {
+	for _, tc := range []struct {
+		n, page int
+		shown   span
+		pager   pager
+	}{
+		{120, 2, span{50, 100}, pager{Text: "Entries 51–100 of 120, page 2 of 3", Prev: "/enforcement#entries",
+			Next: "/enforcement?page=3#entries"}},
+		{120, 99, span{100, 120}, pager{Text: "Entries 101–120 of 120, page 3 of 3", Prev: "/enforcement?page=2#entries"}},
+		{3, 0, span{0, 3}, pager{Text: "3 entries"}},
+		{1, 1, span{0, 1}, pager{Text: "1 entry"}},
+		{0, 1, span{0, 0}, pager{}},
+	} {
+		if shown, pg := pageOf(tc.n, tc.page); shown != tc.shown || pg != tc.pager {
+			t.Errorf("pageOf(%d, %d) = %+v, %+v", tc.n, tc.page, shown, pg)
+		}
 	}
-	shown, pg := pageEntries(rows, 2)
-	if len(shown) != 50 || shown[0].Address != "50" || pg != (pager{Text: "Entries 51–100 of 120, page 2 of 3",
-		Prev: "/enforcement#entries", Next: "/enforcement?page=3#entries"}) {
-		t.Errorf("page 2 = %d rows from %s, %+v", len(shown), shown[0].Address, pg)
+}
+
+// TestFirewallPagesEntries: only the page shown is formatted, but every
+// entry is compared.
+func TestFirewallPagesEntries(t *testing.T) {
+	var entries []FirewallEntry
+	for i := range 120 {
+		e := FirewallEntry{Range: netip.PrefixFrom(netip.AddrFrom4([4]byte{198, 51, 100, byte(i)}), 32),
+			Expires: decisionsNow.Add(time.Hour), State: StateBlock, ExpiresAt: decisionsNow.Add(time.Hour)}
+		if i%2 == 0 {
+			e.State = StateNone
+		}
+		entries = append(entries, e)
 	}
-	if shown, pg := pageEntries(rows, 99); len(shown) != 20 || pg.Next != "" || pg.Prev != "/enforcement?page=2#entries" {
-		t.Errorf("a page beyond the last = %d rows, %+v", len(shown), pg)
-	}
-	if shown, pg := pageEntries(rows[:3], 0); len(shown) != 3 || pg != (pager{Text: "3 entries"}) {
-		t.Errorf("one page = %d rows, %+v", len(shown), pg)
-	}
-	if shown, pg := pageEntries(nil, 1); len(shown) != 0 || pg != (pager{}) {
-		t.Errorf("no entries = %+v", pg)
+	p := buildFirewall(firewallInput{now: decisionsNow, mode: "enforce", firewall: Firewall{Pass: enforcingPass},
+		listing: FirewallListing{Entries: entries}, page: 3})
+	if len(p.Entries) != 20 || p.Entries[0].Address != "198.51.100.100" || p.Stray.Count != 60 || len(p.Stray.Rows) != differencesShown {
+		t.Errorf("page 3 = %d entries from %s, %d stray (%d shown)", len(p.Entries), p.Entries[0].Address, p.Stray.Count, len(p.Stray.Rows))
 	}
 }
 

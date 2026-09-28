@@ -65,8 +65,7 @@ type DecisionPage struct {
 
 // DecisionItem is a decision the node holds, as the list shows it.
 type DecisionItem struct {
-	// Key is the indicator key; Range is the address or network.
-	Key   string
+	// Range is the address or network.
 	Range netip.Prefix
 	// State is StateBlock, StateNone or StateAllowed.
 	State            string
@@ -76,9 +75,11 @@ type DecisionItem struct {
 	// Autoblock is set when this node's own verdict alone decided a block.
 	Autoblock bool
 	// Rule names the operator's rule that decides, if any: force_allow,
-	// allowlist or force_block; Source is where an allow-list entry comes
-	// from.
-	Rule, Source string
+	// allowlist or force_block; Protected is set when a protected
+	// allow-list entry (built-in, the node's own or a bootstrap peer's
+	// address) decides.
+	Rule      string
+	Protected bool
 	// Categories are the categories of its active verdicts, the most
 	// counting first; Verdicts counts them.
 	Categories []string
@@ -107,12 +108,15 @@ type Coverage struct {
 	// Deferred is set if its addition waits until an entry it overlaps
 	// expired.
 	Deferred bool
+	// Gone is set if the last pass applied it but the backend holds it no
+	// more, e.g. after the firewall was changed by hand; the next pass
+	// adds it again.
+	Gone bool
 }
 
 // Explanation is why the node decides as it does on one address or
 // network, as obiectl explain tells it, with where the firewall stands.
 type Explanation struct {
-	Key   string
 	Range netip.Prefix
 	// State, Score, Threshold, Contributors, Quorum and Autoblock are the
 	// decision's, evaluated at EvaluatedAt from the verdicts, the
@@ -215,6 +219,17 @@ type FirewallEntry struct {
 	ExpiresAt  time.Time
 }
 
+// FirewallListing is what the backend applies right now, compared with
+// the decided blocks.
+type FirewallListing struct {
+	// Entries are the backend's entries, ordered by range, each with the
+	// decision on its range.
+	Entries []FirewallEntry
+	// Missing is the first page of the decided blocks that no listed entry
+	// holds, with how the last pass left them.
+	Missing DecisionPage
+}
+
 // DecisionSource reads the decisions and the firewall for the decisions,
 // explanation and firewall views (ADR 0022). The daemon implements it with
 // cheap reads only, and every read works while its subsystem is stopped.
@@ -233,6 +248,7 @@ type DecisionSource interface {
 	// Firewall reads the firewall's condition.
 	Firewall() Firewall
 	// FirewallEntries lists the entries the backend applies right now,
-	// ordered by range; none in observe mode.
-	FirewallEntries(ctx context.Context) ([]FirewallEntry, error)
+	// none in observe mode, and the first missing of the decided blocks
+	// that none of them holds (none for 0).
+	FirewallEntries(ctx context.Context, missing int) (FirewallListing, error)
 }

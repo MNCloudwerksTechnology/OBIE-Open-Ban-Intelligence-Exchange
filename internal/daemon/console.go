@@ -1,9 +1,11 @@
 package daemon
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
@@ -270,7 +272,7 @@ func (d *consoleDecisions) Explain(p netip.Prefix) (console.Explanation, error) 
 	snap := d.reconciler.Snapshot()
 	policy := d.engine.Policy()
 	ex := console.Explanation{
-		Key: ind.Key(), Range: p, State: string(dec.State), Score: dec.Score, Threshold: dec.Threshold,
+		Range: p, State: string(dec.State), Score: dec.Score, Threshold: dec.Threshold,
 		Contributors: dec.Contributors, Quorum: dec.Quorum, Autoblock: dec.Autoblock, LocalAutoblock: policy.LocalAutoblock,
 		Reason: dec.Reason, ExpiresAt: dec.ExpiresAt, EvaluatedAt: dec.EvaluatedAt,
 		Verdicts: make([]console.Contribution, len(dec.Publishers)), Ruling: consoleRuling(&dec.Sovereignty),
@@ -302,24 +304,57 @@ func (d *consoleDecisions) Firewall() console.Firewall {
 }
 
 // FirewallEntries lists the entries the backend applies right now, each
-// with the kept decision on its range.
-func (d *consoleDecisions) FirewallEntries(ctx context.Context) ([]console.FirewallEntry, error) {
+// with the kept decision on its range (one engine lock for all of them),
+// and the first missing decided blocks that none of them holds: compared
+// with what the backend lists, not with the last pass, so an entry lost
+// since shows (ADR 0022).
+func (d *consoleDecisions) FirewallEntries(ctx context.Context, missing int) (console.FirewallListing, error) {
 	entries, err := d.reconciler.Entries(ctx)
 	if err != nil {
-		return nil, err
+		return console.FirewallListing{}, err
 	}
-	out := make([]console.FirewallEntry, len(entries))
+	slices.SortFunc(entries, func(a, b enforce.Entry) int {
+		return cmp.Or(a.Prefix.Addr().Compare(b.Prefix.Addr()), cmp.Compare(a.Prefix.Bits(), b.Prefix.Bits()))
+	})
+	listing := console.FirewallListing{Entries: make([]console.FirewallEntry, len(entries))}
+	keys := make([]string, len(entries))
 	for i, e := range entries {
-		out[i] = console.FirewallEntry{Range: e.Prefix, Expires: e.Expires}
-		ind, err := indicatorOfRange(e.Prefix)
-		if err != nil {
-			continue // no indicator names it, so no decision stands behind it
-		}
-		if kept, ok := d.engine.Decision(ind.Key()); ok {
-			out[i].Key, out[i].State, out[i].ExpiresAt = ind.Key(), string(kept.State), kept.ExpiresAt
+		listing.Entries[i] = console.FirewallEntry{Range: e.Prefix, Expires: e.Expires}
+		keys[i] = keyOfRange(e.Prefix)
+	}
+	d.engine.Lookup(keys, func(i int, dec *decision.Decision) {
+		listing.Entries[i].Key, listing.Entries[i].State, listing.Entries[i].ExpiresAt = keys[i], string(dec.State), dec.ExpiresAt
+	})
+	if missing > 0 {
+		held := enforce.NewEntryIndex(entries)
+		page := d.engine.Browse(decision.Query{State: decision.StateBlock, Limit: missing,
+			Where: func(p netip.Prefix) bool { return !held.Holds(p) }})
+		snap := d.reconciler.Snapshot()
+		listing.Missing = console.DecisionPage{Items: make([]console.DecisionItem, len(page.Items)), Total: page.Total,
+			Generation: page.Generation}
+		for i := range page.Items {
+			it := consoleDecisionItem(&page.Items[i].Decision, snap)
+			if it.Firewall.Applied {
+				it.Firewall = console.Coverage{Gone: true}
+			}
+			listing.Missing.Items[i] = it
 		}
 	}
-	return out, nil
+	return listing, nil
+}
+
+// keyOfRange returns the key of the indicator naming the range p, as the
+// engine keeps it; a range no indicator may name has no decision.
+func keyOfRange(p netip.Prefix) string {
+	p = p.Masked()
+	switch {
+	case p.Bits() < p.Addr().BitLen():
+		return obieproto.KindCIDR + ":" + p.String()
+	case p.Addr().Is4():
+		return obieproto.KindIPv4 + ":" + p.Addr().String()
+	default:
+		return obieproto.KindIPv6 + ":" + p.Addr().String()
+	}
 }
 
 // indicatorOfRange returns the indicator naming the range p: an IPv4 or
@@ -344,10 +379,10 @@ func indicatorOfRange(p netip.Prefix) (obieproto.Indicator, error) {
 // the firewall's last pass left its range.
 func consoleDecisionItem(d *decision.Decision, snap *enforce.Snapshot) console.DecisionItem {
 	p, _ := sovereignty.PrefixOf(d.Indicator)
-	return console.DecisionItem{Key: d.Indicator.Key(), Range: p, State: string(d.State), Score: d.Score, Threshold: d.Threshold,
+	return console.DecisionItem{Range: p, State: string(d.State), Score: d.Score, Threshold: d.Threshold,
 		Contributors: d.Contributors, Quorum: d.Quorum, Autoblock: d.Autoblock, Rule: string(d.Sovereignty.Rule),
-		Source: string(d.Sovereignty.Source), DecidedAt: d.EvaluatedAt, ExpiresAt: d.ExpiresAt,
-		Firewall: consoleCoverage(snap.Lookup(p))}
+		Protected: d.Sovereignty.Rule == sovereignty.RuleAllowlist && d.Sovereignty.Source.Protected(),
+		DecidedAt: d.EvaluatedAt, ExpiresAt: d.ExpiresAt, Firewall: consoleCoverage(snap.Lookup(p))}
 }
 
 // consoleCoverage converts how the firewall's last pass left a range.

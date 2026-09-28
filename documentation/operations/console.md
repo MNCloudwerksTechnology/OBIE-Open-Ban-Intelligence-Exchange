@@ -292,8 +292,11 @@ backend is shown with its error and the next attempt.
 Read when the page opens:
 
 - **Differences.** Every difference between the decided blocks and what
-  the backend applies: decided blocks that are not applied, and why (the
-  first 20, with a link to all of them in the decisions list); entries
+  the backend applies right now: decided blocks that no entry holds, and
+  why — including blocks the backend lost since the last pass applied
+  them, for example to a change by hand, which the next pass adds again
+  (the first 20, with a link to the blocks not applied in the decisions
+  list); entries
   without a decided block on their range (left behind, added by hand, or
   no longer a block — the next pass removes them); and entries that
   expire at another time than decided (the next pass replaces them).

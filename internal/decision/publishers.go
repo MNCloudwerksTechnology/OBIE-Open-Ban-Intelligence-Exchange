@@ -1,9 +1,6 @@
 package decision
 
-import (
-	"strings"
-	"unique"
-)
+import "unique"
 
 // heldVerdict is an active verdict of a kept decision: its publisher and
 // its category, interned, and whether it counts in the decision.
@@ -34,13 +31,6 @@ func Category(reason, protocol string) string {
 		return reason
 	}
 	return reason + "/" + protocol
-}
-
-// SplitCategory returns the evidence reason and the protocol of a
-// category.
-func SplitCategory(category string) (reason, protocol string) {
-	reason, protocol, _ = strings.Cut(category, "/")
-	return reason, protocol
 }
 
 // PublisherCount counts the active verdicts of one publisher in the kept

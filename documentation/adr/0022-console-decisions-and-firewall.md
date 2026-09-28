@@ -122,10 +122,13 @@ does what the decisions say. Five things need a decision:
   (mode, backend, the last pass, applied entries, decided blocks,
   covered, refused, capped, failures) and, read when the page opens, the
   differences and the backend's entries: the entries the backend lists
-  right now (`Reconciler.Entries`), each with the decision behind it;
-  entries without a decided block or with another expiry; and the first
-  page of the decided blocks that are not applied, with why, linking to
-  the filtered decisions list for all of them.
+  right now (`Reconciler.Entries`), each with the decision behind it
+  (looked up under one engine lock); entries without a decided block or
+  with another expiry; and the first page of the decided blocks that no
+  listed entry holds, with why from the last pass — or that the backend
+  lost since that pass applied them, e.g. to a change by hand — linking
+  to the filtered decisions list. Only the page of entries shown is
+  formatted; in observe mode nothing is compared.
 - **Copy and share.** Every view's state is in its URL, so a link works
   for anyone who may sign in on the same host (sign-in returns to it).
   The script adds a *Copy* button to every element marked `data-copy` and

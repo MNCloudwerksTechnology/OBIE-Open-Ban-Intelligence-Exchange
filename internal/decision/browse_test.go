@@ -402,3 +402,14 @@ func BenchmarkPublishMetrics(b *testing.B) {
 		e.publishMetrics()
 	}
 }
+
+func TestLookup(t *testing.T) {
+	e := keptEngine(browseSet()...)
+	var got []string
+	e.Lookup([]string{"ipv4:192.0.2.1", "cidr:203.0.113.0/24", "ipv6:2001:db8::1"}, func(i int, d *Decision) {
+		got = append(got, fmt.Sprintf("%d %s %s", i, d.Indicator.Value, d.State))
+	})
+	if want := []string{"1 203.0.113.0/24 block", "2 2001:db8::1 block"}; !slices.Equal(got, want) {
+		t.Errorf("Lookup = %v, want %v", got, want)
+	}
+}

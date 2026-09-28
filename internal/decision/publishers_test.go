@@ -148,9 +148,6 @@ func TestCategory(t *testing.T) {
 		if got := Category(tc.reason, tc.protocol); got != tc.category {
 			t.Errorf("Category(%q, %q) = %q, want %q", tc.reason, tc.protocol, got, tc.category)
 		}
-		if r, p := SplitCategory(tc.category); r != tc.reason || p != tc.protocol {
-			t.Errorf("SplitCategory(%q) = %q, %q", tc.category, r, p)
-		}
 	}
 }
 

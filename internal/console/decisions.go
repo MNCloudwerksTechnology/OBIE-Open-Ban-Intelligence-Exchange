@@ -507,7 +507,7 @@ func stateNote(it *DecisionItem) string {
 		return "operator force-block"
 	case it.Rule == ruleForceAllow:
 		return "operator force-allow"
-	case it.Rule == ruleAllowlist && protectedSource(it.Source):
+	case it.Rule == ruleAllowlist && it.Protected:
 		return "protected address"
 	case it.Rule == ruleAllowlist:
 		return "allow-list"
@@ -527,12 +527,6 @@ const (
 	ruleForceBlock = "force_block"
 )
 
-// protectedSource reports whether an allow-list entry from source is
-// protected: built-in, the node's own addresses or its bootstrap peers.
-func protectedSource(source string) bool {
-	return source == "builtin" || source == "self" || source == "bootstrap"
-}
-
 // firewallCell says whether the firewall applies the decision it:
 // the state for the stylesheet, a label and a note.
 func firewallCell(it *DecisionItem, fw *Firewall, now time.Time) (state, label, note string) {
@@ -550,6 +544,10 @@ func firewallCell(it *DecisionItem, fw *Firewall, now time.Time) (state, label, 
 		return stateReady, "Applied", "through the entry for " + rangeText(cov.Entry)
 	case cov.Applied:
 		return stateWarning, "Applied", "the entry for " + rangeText(cov.Entry) + " wins"
+	case !block:
+		return stateIdle, "Not applied", "not a block"
+	case cov.Gone:
+		return stateWarning, "Not in the firewall", "applied by the last pass, gone since; the next pass adds it again"
 	case cov.Skipped != "":
 		label, note = skipText(cov.Skipped)
 		if cov.Within != it.Range {
@@ -558,10 +556,8 @@ func firewallCell(it *DecisionItem, fw *Firewall, now time.Time) (state, label, 
 		return stateWarning, label, note
 	case cov.Deferred:
 		return stateWarning, "Waiting", "until an entry it overlaps expires"
-	case block:
-		return stateWarning, "Not applied yet", notYetApplied(it, fw.Pass, now)
 	default:
-		return stateIdle, "Not applied", "not a block"
+		return stateWarning, "Not applied yet", notYetApplied(it, fw.Pass, now)
 	}
 }
 

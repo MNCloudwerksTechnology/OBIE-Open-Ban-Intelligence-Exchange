@@ -182,11 +182,15 @@ func (e *Engine) Browse(q Query) BrowsePage {
 		br.publisher = unique.Make(q.Publisher)
 	}
 
+	// An address overlaps only the ranges that contain it: look them up.
+	var covering []string
+	if p := q.Overlapping; p.IsValid() && p.Bits() == p.Addr().BitLen() {
+		covering = coveringKeys(p)
+	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	if p := q.Overlapping; p.IsValid() && p.Bits() == p.Addr().BitLen() {
-		// An address overlaps only the ranges that contain it.
-		for _, key := range coveringKeys(p) {
+	if covering != nil {
+		for _, key := range covering {
 			if k, ok := e.kept.get(key); ok {
 				br.visit(k)
 			}
@@ -295,6 +299,20 @@ func (s *selected) item(order Sort) Item {
 		it.Categories = append(it.Categories, t.name)
 	}
 	return it
+}
+
+// Lookup calls fn with the index and the kept decision of every key in
+// keys the engine keeps a decision on, under one read lock: for many
+// keys, e.g. those of every firewall entry. fn must be fast and must not
+// call the Engine.
+func (e *Engine) Lookup(keys []string, fn func(i int, d *Decision)) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for i, key := range keys {
+		if k, ok := e.kept.get(key); ok {
+			fn(i, &k.d)
+		}
+	}
 }
 
 // Covering returns the kept decisions on the networks that contain the

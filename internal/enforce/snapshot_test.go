@@ -89,6 +89,50 @@ func TestSnapshotLookup(t *testing.T) {
 	}
 }
 
+// TestLookupInheritsOnlyTheCap: a range inside a wider block the cap
+// left out is left out with it, but not one inside a block the
+// allow-list refused: the allow-list refuses ranges one by one.
+func TestLookupInheritsOnlyTheCap(t *testing.T) {
+	allow := sovereignty.NewAllowlist(sovereignty.Entry{Prefix: netip.MustParsePrefix("203.0.113.9/32"), Source: sovereignty.SourceConfig})
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{Allowlist: func() *sovereignty.Allowlist { return allow }})
+	f.add("203.0.113.0/24", time.Hour, 1)
+	f.reconcile(t)
+	s := f.rec.Snapshot()
+	if got := s.Lookup(netip.MustParsePrefix("203.0.113.0/24")); got != (Coverage{Skipped: SkipAllowlist, Within: netip.MustParsePrefix("203.0.113.0/24")}) {
+		t.Errorf("Lookup(the refused block) = %+v", got)
+	}
+	if got := s.Lookup(netip.MustParsePrefix("203.0.113.1/32")); got != (Coverage{}) {
+		t.Errorf("Lookup(an address inside the refused block) = %+v, want none", got)
+	}
+}
+
+// TestEntryIndex: an index of entries in any order, as a backend lists
+// them, finds the entry holding a range.
+func TestEntryIndex(t *testing.T) {
+	x := NewEntryIndex([]Entry{entry("2001:db8::/48", t0), entry("198.51.100.0/24", t0), entry("192.0.2.1/32", t0)})
+	for _, tc := range []struct{ p, want string }{
+		{"198.51.100.7/32", "198.51.100.0/24"},
+		{"192.0.2.1/32", "192.0.2.1/32"},
+		{"2001:db8::1/128", "2001:db8::/48"},
+		{"192.0.2.2/32", ""},
+		{"198.51.0.0/16", ""},
+	} {
+		p := netip.MustParsePrefix(tc.p)
+		e, ok := x.Holder(p)
+		got := ""
+		if ok {
+			got = e.Prefix.String()
+		}
+		if got != tc.want || x.Holds(p) != ok {
+			t.Errorf("Holder(%s) = %q, want %q", tc.p, got, tc.want)
+		}
+	}
+	var none *EntryIndex
+	if none.Holds(netip.MustParsePrefix("192.0.2.1/32")) {
+		t.Error("a nil index holds something")
+	}
+}
+
 // TestSnapshotDeferredLookup: a range whose addition waits for an entry
 // it overlaps, which does not hold it, is reported deferred.
 func TestSnapshotDeferredLookup(t *testing.T) {

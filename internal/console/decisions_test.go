@@ -68,8 +68,17 @@ func (f *fakeDecisions) Firewall() Firewall {
 	return f.firewall
 }
 
-func (f *fakeDecisions) FirewallEntries(context.Context) ([]FirewallEntry, error) {
-	return f.entries, f.entriesErr
+// FirewallEntries returns the entries and, as the blocks no entry holds,
+// the page of decisions, recording the query for them.
+func (f *fakeDecisions) FirewallEntries(_ context.Context, missing int) (FirewallListing, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	l := FirewallListing{Entries: f.entries}
+	if missing > 0 {
+		f.queries = append(f.queries, DecisionQuery{State: StateBlock, Firewall: FirewallNotApplied, Limit: missing})
+		l.Missing = f.page
+	}
+	return l, f.entriesErr
 }
 
 // lastQuery returns the query the source answered last.
@@ -91,17 +100,17 @@ var (
 	// testItems are an address blocked by consensus inside a force-blocked
 	// network, a protected IPv6 address and an address below consensus.
 	testItems = []DecisionItem{
-		{Key: "ipv4:203.0.113.7", Range: pfx("203.0.113.7/32"), State: StateBlock, Score: 2.4000000000000004, Threshold: 1.8,
+		{Range: pfx("203.0.113.7/32"), State: StateBlock, Score: 2.4000000000000004, Threshold: 1.8,
 			Contributors: 3, Quorum: 2, Categories: []string{"password_bruteforce/ssh", "port_scan/tcp"}, Verdicts: 3,
 			DecidedAt: decisionsNow.Add(-2 * time.Minute), ExpiresAt: decisionsNow.Add(2 * time.Hour), Cursor: "decided:1,ipv4:203.0.113.7",
 			Firewall: Coverage{Applied: true, Entry: pfx("203.0.113.0/24"), EntryExpires: decisionsNow.Add(time.Hour)}},
-		{Key: "cidr:203.0.113.0/24", Range: pfx("203.0.113.0/24"), State: StateBlock, Threshold: 1.8, Quorum: 2,
-			Rule: ruleForceBlock, Source: "override", DecidedAt: decisionsNow.Add(-3 * time.Minute), ExpiresAt: decisionsNow.Add(time.Hour),
+		{Range: pfx("203.0.113.0/24"), State: StateBlock, Threshold: 1.8, Quorum: 2,
+			Rule: ruleForceBlock, DecidedAt: decisionsNow.Add(-3 * time.Minute), ExpiresAt: decisionsNow.Add(time.Hour),
 			Firewall: Coverage{Applied: true, Entry: pfx("203.0.113.0/24"), EntryExpires: decisionsNow.Add(time.Hour)}},
-		{Key: "ipv6:2001:db8::1", Range: pfx("2001:db8::1/128"), State: StateAllowed, Score: 1, Threshold: 1.8, Contributors: 1,
-			Quorum: 2, Rule: ruleAllowlist, Source: "self", Categories: []string{"http_probe"}, Verdicts: 1,
+		{Range: pfx("2001:db8::1/128"), State: StateAllowed, Score: 1, Threshold: 1.8, Contributors: 1,
+			Quorum: 2, Rule: ruleAllowlist, Protected: true, Categories: []string{"http_probe"}, Verdicts: 1,
 			DecidedAt: decisionsNow.Add(-4 * time.Minute)},
-		{Key: "ipv4:198.51.100.9", Range: pfx("198.51.100.9/32"), State: StateNone, Score: 0.5, Threshold: 1.8, Contributors: 1,
+		{Range: pfx("198.51.100.9/32"), State: StateNone, Score: 0.5, Threshold: 1.8, Contributors: 1,
 			Quorum: 2, Categories: []string{"port_scan/tcp"}, Verdicts: 1, DecidedAt: decisionsNow.Add(-5 * time.Minute),
 			Cursor: "decided:5,ipv4:198.51.100.9"},
 	}
@@ -117,9 +126,9 @@ func decisionsNode(c *Console) *fakeDecisions {
 		generation: 41,
 		categories: map[string]int{"password_bruteforce/ssh": 1, "port_scan/tcp": 2, "http_probe": 1},
 		explained: map[netip.Prefix]Explanation{
-			pfx("203.0.113.7/32"): {Key: "ipv4:203.0.113.7", Range: pfx("203.0.113.7/32"), State: StateBlock, Score: 2.4,
+			pfx("203.0.113.7/32"): {Range: pfx("203.0.113.7/32"), State: StateBlock, Score: 2.4,
 				Threshold: 1.8, Contributors: 3, Quorum: 2, ExpiresAt: decisionsNow.Add(2 * time.Hour), Verdicts: make([]Contribution, 3)},
-			pfx("192.0.2.1/32"): {Key: "ipv4:192.0.2.1", Range: pfx("192.0.2.1/32"), State: StateAllowed,
+			pfx("192.0.2.1/32"): {Range: pfx("192.0.2.1/32"), State: StateAllowed,
 				Ruling: Ruling{Effect: "allow", Rule: ruleAllowlist, Source: "builtin", Protected: true,
 					Reason: "allow-listed: 192.0.2.0/24 (TEST-NET-1, built-in)"}},
 		},
@@ -267,6 +276,10 @@ func TestFirewallCell(t *testing.T) {
 		{"about to expire", dying, enforcingPass, stateWarning, "Not applied yet", "it expires within a second"},
 		{"otherwise", block(Coverage{}), enforcingPass, stateWarning, "Not applied yet", "the next pass applies it"},
 		{"no block", DecisionItem{State: StateAllowed}, enforcingPass, stateIdle, "Not applied", "not a block"},
+		{"no block inside a capped network", DecisionItem{State: StateNone, Range: pfx("203.0.113.7/32"),
+			Firewall: Coverage{Skipped: SkipMaxEntries, Within: pfx("203.0.0.0/16")}}, enforcingPass, stateIdle, "Not applied", "not a block"},
+		{"gone from the backend", block(Coverage{Gone: true}), enforcingPass, stateWarning, "Not in the firewall",
+			"applied by the last pass, gone since; the next pass adds it again"},
 	} {
 		fw := Firewall{Pass: tc.pass}
 		if state, label, note := firewallCell(&tc.it, &fw, decisionsNow); state != tc.state || label != tc.label || note != tc.note {
