@@ -2,7 +2,9 @@
 // for every decision change, with Elastic Common Schema (ECS) field names,
 // so Loki, Elasticsearch, Splunk and other SIEMs ingest it as is. The file
 // is only ever appended to and is reopened on SIGHUP, so logrotate can
-// move it away (ADR 0015).
+// move it away (ADR 0015). The last records are also kept in memory, with
+// or without a file, and both can be read back newest first for the
+// console's activity timeline (ADR 0025).
 package audit
 
 import (
@@ -11,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/netip"
 	"os"
@@ -111,10 +114,11 @@ type Record struct {
 	Settings, RestartSettings []string
 }
 
-// Log appends Records to the audit log file. It implements
-// lifecycle.Subsystem: Start opens the file, Stop closes it. The methods of
-// a nil *Log do nothing, so callers need not check whether auditing is
-// enabled.
+// Log appends Records to the audit log file and keeps the last
+// MemoryEntries of them in memory. It implements lifecycle.Subsystem:
+// Start opens the file, Stop closes it. Without a path it keeps the
+// records in memory only. The methods of a nil *Log do nothing, so callers
+// need not check whether auditing is enabled.
 type Log struct {
 	path string
 	mode func() string
@@ -123,6 +127,14 @@ type Log struct {
 
 	mu sync.Mutex
 	f  *os.File
+	// readable is set if f was opened for reading too; gen counts the
+	// files opened, so a cursor into an earlier one is recognized.
+	readable bool
+	gen      uint64
+	// seq numbers the records from 1; tail holds the record with number n
+	// at (n-1) % MemoryEntries, the last MemoryEntries of them.
+	seq  uint64
+	tail []*Entry
 }
 
 // Options configures a Log.
@@ -133,20 +145,34 @@ type Options struct {
 	Now func() time.Time
 }
 
-// New returns the audit log at path.
+// New returns the audit log at path; with an empty path, the records are
+// kept in memory only.
 func New(path string, opts Options, log *slog.Logger) *Log {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	return &Log{path: path, mode: opts.Mode, now: opts.Now, log: log}
+	return &Log{path: path, mode: opts.Mode, now: opts.Now, log: log, tail: make([]*Entry, MemoryEntries)}
+}
+
+// Path returns the path of the audit log file; empty if the records are
+// kept in memory only.
+func (l *Log) Path() string {
+	if l == nil {
+		return ""
+	}
+	return l.path
 }
 
 // Name returns the subsystem name.
 func (l *Log) Name() string { return Name }
 
-// Start opens the file, creating it if needed.
+// Start opens the file, creating it if needed; without a path it does
+// nothing.
 func (l *Log) Start(context.Context) error {
-	f, err := l.open()
+	if l.path == "" {
+		return nil
+	}
+	f, readable, err := l.open()
 	if err != nil {
 		return err
 	}
@@ -156,9 +182,18 @@ func (l *Log) Start(context.Context) error {
 		_ = f.Close()
 		return errors.New("audit log already started")
 	}
-	l.f = f
+	l.use(f, readable)
 	l.log.Info("audit log opened", "path", l.path)
 	return nil
+}
+
+// use makes f the file records are written to. The caller holds mu.
+func (l *Log) use(f *os.File, readable bool) {
+	l.f, l.readable = f, readable
+	l.gen++
+	if !readable {
+		l.log.Warn("the audit log is open for writing only, so the console cannot show its history", "path", l.path)
+	}
 }
 
 // Stop closes the file.
@@ -180,17 +215,17 @@ func (l *Log) Stop(context.Context) error {
 // logrotate moved it away, and closes the previous one. If the file cannot
 // be opened, writing goes on to the previous one.
 func (l *Log) Reopen() error {
-	if l == nil {
+	if l == nil || l.path == "" {
 		return nil
 	}
-	f, err := l.open()
+	f, readable, err := l.open()
 	if err != nil {
 		l.log.Error("reopening the audit log failed; writing on to the previous file", "path", l.path, "error", err)
 		return err
 	}
 	l.mu.Lock()
 	old := l.f
-	l.f = f
+	l.use(f, readable)
 	l.mu.Unlock()
 	if old != nil {
 		if err := old.Close(); err != nil {
@@ -201,29 +236,42 @@ func (l *Log) Reopen() error {
 	return nil
 }
 
-func (l *Log) open() (*os.File, error) {
-	f, err := os.OpenFile(l.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- the operator chooses audit.path.
-	if err != nil {
-		return nil, fmt.Errorf("open audit log: %w", err)
+// open opens the file for appending, and for reading back too if the
+// node may read it (ADR 0025); readable says which.
+func (l *Log) open() (f *os.File, readable bool, err error) {
+	f, err = os.OpenFile(l.path, os.O_RDWR|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- the operator chooses audit.path.
+	if errors.Is(err, fs.ErrPermission) {
+		f, err = os.OpenFile(l.path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- as above.
+		if err == nil {
+			return f, false, nil
+		}
 	}
-	return f, nil
+	if err != nil {
+		return nil, false, fmt.Errorf("open audit log: %w", err)
+	}
+	return f, true, nil
 }
 
-// Write appends r as one line. A failure is logged; the change it records
-// takes effect anyway.
+// Write appends r as one line and keeps it in memory. A failure is
+// logged; the change it records takes effect anyway.
 func (l *Log) Write(r Record) {
 	if l == nil {
 		return
 	}
+	e := l.entry(r)
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf) // one line, ending in a newline
 	enc.SetEscapeHTML(false)     // reasons hold ">=" and "<"
-	if err := enc.Encode(l.entry(r)); err != nil {
+	if err := enc.Encode(e); err != nil {
 		l.log.Error("encoding an audit record failed", "action", r.Action, "error", err)
 		return
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.keep(&e)
+	if l.path == "" {
+		return
+	}
 	if l.f == nil {
 		l.log.Error("audit log is not open; record lost", "action", r.Action, "indicator", indicatorKey(r.Indicator))
 		return
