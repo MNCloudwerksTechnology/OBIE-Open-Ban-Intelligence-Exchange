@@ -224,6 +224,73 @@ func TestSocketGroupApplied(t *testing.T) {
 	}
 }
 
+func TestSocketGroupOfProcessNeedsNoChown(t *testing.T) {
+	g, err := user.LookupGroupId(strconv.Itoa(os.Getegid()))
+	if err != nil {
+		t.Skipf("effective group has no name: %v", err)
+	}
+	// A system call filter without @chown, as in the systemd unit.
+	orig := chown
+	chown = func(string, int, int) error { return syscall.EPERM }
+	t.Cleanup(func() { chown = orig })
+
+	path := socketPath(t)
+	startServer(t, path, g.Name, discardLogger())
+	if _, err := NewClient(path).Status(context.Background()); err != nil {
+		t.Errorf("Status: %v", err)
+	}
+}
+
+// supplementaryGroup returns a named group of the test process other than
+// its effective group, or skips the test.
+func supplementaryGroup(t *testing.T) *user.Group {
+	t.Helper()
+	groups, err := os.Getgroups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, gid := range groups {
+		if gid == os.Getegid() {
+			continue
+		}
+		if g, err := user.LookupGroupId(strconv.Itoa(gid)); err == nil {
+			return g
+		}
+	}
+	t.Skip("the test user has no named supplementary group")
+	return nil
+}
+
+func TestSocketSupplementaryGroupApplied(t *testing.T) {
+	g := supplementaryGroup(t)
+	path := socketPath(t)
+	startServer(t, path, g.Name, discardLogger())
+	if gid := socketGID(path); strconv.Itoa(gid) != g.Gid {
+		t.Errorf("socket gid = %d, want %s (%s)", gid, g.Gid, g.Name)
+	}
+}
+
+func TestSocketChgrpFailure(t *testing.T) {
+	g := supplementaryGroup(t)
+	orig := chown
+	chown = func(string, int, int) error { return syscall.EPERM }
+	t.Cleanup(func() { chown = orig })
+
+	path := socketPath(t)
+	srv := New(path, g.Name, testInfo(), discardLogger())
+	err := srv.Start(context.Background())
+	if err == nil {
+		_ = srv.Stop(context.Background())
+		t.Fatal("Start succeeded although the chgrp failed")
+	}
+	if !strings.Contains(err.Error(), "chgrp admin socket to "+g.Name) {
+		t.Errorf("Start error = %v", err)
+	}
+	if _, err := os.Lstat(path); !os.IsNotExist(err) {
+		t.Errorf("socket left behind after a failed chgrp: %v", err)
+	}
+}
+
 func TestStaleSocketRemoved(t *testing.T) {
 	path := socketPath(t)
 	// A socket file nobody listens on, as left behind by a crashed daemon.
