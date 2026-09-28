@@ -736,6 +736,10 @@ a.number-main .number-label {
   white-space: nowrap;
 }
 
+.list.verdicts thead th {
+  white-space: normal;
+}
+
 .list thead a {
   color: inherit;
 }
@@ -759,6 +763,10 @@ a.number-main .number-label {
 
 .list tbody th {
   font-weight: 400;
+}
+
+.list time {
+  white-space: nowrap;
 }
 
 .list tbody tr:last-child > * {
@@ -812,7 +820,7 @@ a.number-main .number-label {
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: 0.75rem;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .facts .addrs {
@@ -977,6 +985,29 @@ a.number-main .number-label {
     display: block;
     padding: 0.375rem 0;
     border-bottom: 1px solid var(--border);
+  }
+
+  /* The sortable headings become a bar of sort links. */
+  .list.peers thead {
+    display: block;
+  }
+
+  .list.peers thead tr {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 1rem;
+    padding: 0.5rem 0.875rem;
+  }
+
+  .list.peers thead tr::before {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+    content: "Sort by:";
+  }
+
+  .list.peers thead th {
+    padding: 0;
   }
 
   .list tbody tr:last-child {

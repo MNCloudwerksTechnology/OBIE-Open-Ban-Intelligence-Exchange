@@ -81,6 +81,6 @@ type Verdict struct {
 	Action     string
 	Confidence float64
 	// Reason classifies the behavior; Protocol names the attacked service.
-	Reason, Protocol    string
-	IssuedAt, ExpiresAt time.Time
+	Reason, Protocol string
+	ExpiresAt        time.Time
 }

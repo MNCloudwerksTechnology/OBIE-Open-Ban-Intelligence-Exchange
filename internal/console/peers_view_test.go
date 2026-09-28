@@ -22,7 +22,7 @@ func peersNode(c *Console) *atomic.Int32 {
 		reads.Add(1)
 		return VerdictPage{Verdicts: []Verdict{
 			{Key: "ipv4:203.0.113.7", Address: "203.0.113.7", Action: "ban", Confidence: 0.9, Reason: "password_bruteforce",
-				Protocol: "ssh", IssuedAt: peersNow.Add(-time.Hour), ExpiresAt: peersNow.Add(23 * time.Hour)},
+				Protocol: "ssh", ExpiresAt: peersNow.Add(23 * time.Hour)},
 		}, Next: "ipv4:203.0.113.7"}, nil
 	}
 	return &reads

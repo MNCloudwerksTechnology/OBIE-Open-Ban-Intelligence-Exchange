@@ -333,10 +333,9 @@ func TestPeerVerdicts(t *testing.T) {
 	c.node.PeerVerdicts = func(id, after string, limit int) (VerdictPage, error) {
 		asked = append(asked, fmt.Sprintf("%s after %q limit %d", id, after, limit))
 		return VerdictPage{Verdicts: []Verdict{
-			{Key: "cidr:198.51.100.0/24", Address: "198.51.100.0/24", Action: "ban", Confidence: 0.9, Reason: "port_scan",
-				IssuedAt: peersNow.Add(-time.Hour), ExpiresAt: peersNow.Add(23 * time.Hour)},
+			{Key: "cidr:198.51.100.0/24", Address: "198.51.100.0/24", Action: "ban", Confidence: 0.9, Reason: "port_scan", ExpiresAt: peersNow.Add(23 * time.Hour)},
 			{Key: "ipv4:203.0.113.7", Address: "203.0.113.7", Action: "watch", Confidence: 0.5, Reason: "password_bruteforce",
-				Protocol: "ssh", IssuedAt: peersNow.Add(-time.Hour), ExpiresAt: peersNow.Add(time.Hour)},
+				Protocol: "ssh", ExpiresAt: peersNow.Add(time.Hour)},
 		}, Next: "ipv4:203.0.113.7"}, nil
 	}
 	e := peerEntry{Peer: Peer{ID: idAlpha, Weight: 0.7}}
@@ -349,7 +348,7 @@ func TestPeerVerdicts(t *testing.T) {
 	}
 	cidr, v4 := l.Rows[0], l.Rows[1]
 	if cidr.Address != "198.51.100.0/24" || cidr.Action != "ban" || cidr.Confidence != "0.9" || cidr.Reason != "port_scan" ||
-		cidr.Issued.Text != "2026-09-28 11:00:00 UTC" || cidr.Expires.Text != "2026-09-29 11:00:00 UTC" || !cidr.Counting || cidr.Counts != "Yes" {
+		cidr.Expires.Text != "2026-09-29 11:00:00 UTC" || !cidr.Counting || cidr.Counts != "Yes" {
 		t.Errorf("ban row = %+v", cidr)
 	}
 	if v4.Reason != "password_bruteforce (ssh)" || v4.Counting || v4.Counts != "No: a watch verdict" {

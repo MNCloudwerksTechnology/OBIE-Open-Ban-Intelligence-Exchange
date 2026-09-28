@@ -17,7 +17,7 @@
   {{- else if .Rows}}
   <table class="list verdicts">
     <thead>
-      <tr><th scope="col">Address</th><th scope="col">Action</th><th scope="col">Confidence</th><th scope="col">Reason</th><th scope="col">Issued</th><th scope="col">Expires</th><th scope="col">Counts in decisions</th></tr>
+      <tr><th scope="col">Address</th><th scope="col">Action</th><th scope="col">Confidence</th><th scope="col">Reason</th><th scope="col">Expires</th><th scope="col">Counts in decisions</th></tr>
     </thead>
     <tbody>
       {{- range .Rows}}
@@ -26,7 +26,6 @@
         <td><span class="cell-label">Action</span> {{.Action}}</td>
         <td><span class="cell-label">Confidence</span> {{.Confidence}}</td>
         <td><span class="cell-label">Reason</span> {{.Reason}}</td>
-        <td><span class="cell-label">Issued</span> <time datetime="{{.Issued.ISO}}">{{.Issued.Text}}</time></td>
         <td><span class="cell-label">Expires</span> <time datetime="{{.Expires.ISO}}">{{.Expires.Text}}</time></td>
         <td><span class="cell-label">Counts in decisions</span> <span{{if not .Counting}} class="cell-note"{{end}}>{{.Counts}}</span></td>
       </tr>

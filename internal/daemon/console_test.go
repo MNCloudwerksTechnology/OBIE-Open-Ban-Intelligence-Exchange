@@ -92,7 +92,7 @@ func TestConsolePeers(t *testing.T) {
 	}
 	v := page.Verdicts[0]
 	if want := (console.Verdict{Key: "ipv4:85.10.20.0", Address: "85.10.20.0", Action: "ban", Confidence: 0.9,
-		Reason: "password_bruteforce", Protocol: "ssh", IssuedAt: now, ExpiresAt: now.Add(time.Hour)}); !reflect.DeepEqual(v, want) {
+		Reason: "password_bruteforce", Protocol: "ssh", ExpiresAt: now.Add(time.Hour)}); !reflect.DeepEqual(v, want) {
 		t.Errorf("verdict = %+v\nwant      %+v", v, want)
 	}
 	page, err = p.verdicts(boot.PeerID(), page.Next, 2)

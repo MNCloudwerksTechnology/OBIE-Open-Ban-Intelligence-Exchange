@@ -50,7 +50,7 @@ type verdictRow struct {
 	Href               string
 	Action, Confidence string
 	Reason             string
-	Issued, Expires    timestamp
+	Expires            timestamp
 	// Counting says whether the verdict counts in decisions; Counts says
 	// so, and if not, why.
 	Counting bool
@@ -134,7 +134,6 @@ func (c *Console) verdictRow(v *Verdict, w float64) verdictRow {
 		Action:     v.Action,
 		Confidence: weight(v.Confidence),
 		Reason:     v.Reason,
-		Issued:     stamp(v.IssuedAt),
 		Expires:    stamp(v.ExpiresAt),
 	}
 	if v.Protocol != "" {

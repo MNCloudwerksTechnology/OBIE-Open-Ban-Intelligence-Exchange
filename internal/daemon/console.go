@@ -195,8 +195,7 @@ func eventCounts(outcomes map[gossip.Outcome]int) console.EventCounts {
 
 // consoleVerdict converts a verdict event for the console.
 func consoleVerdict(ev *obieproto.Event) console.Verdict {
-	v := console.Verdict{Key: ev.Key(), Address: ev.Indicator.Value, Protocol: ev.Protocol,
-		IssuedAt: ev.IssuedAt.Time, ExpiresAt: ev.ExpiresAt()}
+	v := console.Verdict{Key: ev.Key(), Address: ev.Indicator.Value, Protocol: ev.Protocol, ExpiresAt: ev.ExpiresAt()}
 	if ev.Verdict != nil {
 		v.Action, v.Confidence = ev.Verdict.SuggestedAction, ev.Verdict.Confidence
 	}
