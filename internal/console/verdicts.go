@@ -250,7 +250,7 @@ func buildVerdicts(in verdictsInput) verdictsPage {
 		Reasons:    reasonOptions(in.categories, q.reason, false),
 		Publishers: publisherOptions(in.peers, in.self, q.publisher),
 		Retention:  retentionText(in.totals.Retention),
-		Heading:    verdictsHeading(q, in.self, names),
+		Heading:    verdictsHeading(q, in.self, names, in.searched),
 	}
 	p.StateNote = stateNoteOf(q.state, p.Retention)
 	if in.listErr != nil {
@@ -342,8 +342,9 @@ func peerHref(id, self string) string {
 	return "/peers/" + url.PathEscape(id)
 }
 
-// verdictsHeading says what the list under q shows.
-func verdictsHeading(q verdictsQuery, self string, names map[string]string) string {
+// verdictsHeading says what the list under q shows, on the address or
+// network searched if it is one.
+func verdictsHeading(q verdictsQuery, self string, names map[string]string, searched netip.Prefix) string {
 	heading := "Active verdicts"
 	switch q.state {
 	case VerdictRevoked:
@@ -361,8 +362,8 @@ func verdictsHeading(q verdictsQuery, self string, names map[string]string) stri
 	default:
 		heading += " of every publisher"
 	}
-	if q.address != "" {
-		heading += " on " + q.address
+	if searched.IsValid() {
+		heading += " on " + rangeText(searched)
 	}
 	return heading
 }

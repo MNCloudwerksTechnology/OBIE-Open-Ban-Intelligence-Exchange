@@ -16,6 +16,9 @@ import (
 // the verdict once it ended, so that the operator can see it (ADR 0023).
 const EndedRetention = 24 * time.Hour
 
+// minMaxEnded is the least default of Options.MaxEnded.
+const minMaxEnded = 1000
+
 // EndedState is how a verdict ended.
 type EndedState string
 
@@ -118,10 +121,17 @@ func categoryOf(ev *obieproto.Event) string {
 }
 
 // archive keeps the verdict of rec as one that ended in state, with the
-// revocation rev that ended it, until EndedRetention after its expiry. It
-// replaces an earlier verdict of the same publisher and category on the
-// same indicator that ended the same way.
-func archive(txn *badger.Txn, rec *record, state EndedState, rev *Revocation) error {
+// revocation rev that ended it, until EndedRetention after its expiry, and
+// adds it to kept. It replaces an earlier verdict of the same publisher
+// and category on the same indicator that ended the same way. Once the
+// store keeps Options.MaxEnded of them, it keeps only this node's own, so
+// a flood of short-lived verdicts cannot fill the disk (ADR 0023).
+func (s *DB) archive(txn *badger.Txn, rec *record, state EndedState, rev *Revocation, kept *int) error {
+	own := s.opts.Self != "" && rec.Event.Publisher.PeerID == s.opts.Self
+	if !own && s.ended.Load()+int64(*kept) >= int64(s.opts.MaxEnded) {
+		s.warnEndedFull()
+		return nil
+	}
 	ended := record{Event: rec.Event, Revoked: state == EndedRevoked, Revocation: rev}
 	data, err := json.Marshal(&ended)
 	if err != nil {
@@ -130,16 +140,67 @@ func archive(txn *badger.Txn, rec *record, state EndedState, rev *Revocation) er
 	ev := rec.Event
 	e := badger.NewEntry(endedKey(state, ev.Key(), ev.Publisher.PeerID, categoryOf(ev)), data)
 	e.ExpiresAt = badgerExpiry(ev.ExpiresAt().Add(EndedRetention))
-	return txn.SetEntry(e)
+	if err := txn.SetEntry(e); err != nil {
+		return err
+	}
+	*kept++
+	return nil
 }
 
-// archiveExpired keeps the verdict of rec as expired if it reached its
-// expiry at now unrevoked; a revoked one was kept when it was revoked.
-func archiveExpired(txn *badger.Txn, rec *record, now time.Time) error {
+// archiveExpired keeps the verdict of rec as expired, adding it to kept, if
+// it reached its expiry at now unrevoked; a revoked one was kept when it
+// was revoked.
+func (s *DB) archiveExpired(txn *badger.Txn, rec *record, now time.Time, kept *int) error {
 	if rec.Revoked || !rec.Event.Expired(now) {
 		return nil
 	}
-	return archive(txn, rec, EndedExpired, nil)
+	return s.archive(txn, rec, EndedExpired, nil, kept)
+}
+
+// warnEndedFull logs that the store keeps the most verdicts that ended,
+// once until they drop below 90% of it again.
+func (s *DB) warnEndedFull() {
+	if !s.endedFull.Swap(true) {
+		s.log.Warn("the store keeps the most verdicts that ended; those of other publishers are not kept until older ones "+
+			"are forgotten", "max_ended", s.opts.MaxEnded)
+	}
+}
+
+// countEnded counts the ended verdicts kept at the store's time.
+func (s *DB) countEnded(txn *badger.Txn) (int, error) {
+	n := 0
+	err := s.walkEnded(txn, "", func(EndedState, []byte, *badger.Item) error {
+		n++
+		return nil
+	})
+	return n, err
+}
+
+// recountEnded counts the ended verdicts kept again: Badger's TTL forgets
+// them without telling, so the sweep recounts them for the cap to follow.
+// Verdicts kept while it counts are counted from the next sweep on.
+func (s *DB) recountEnded() error {
+	var n int
+	err := s.view(func(txn *badger.Txn) error {
+		var err error
+		n, err = s.countEnded(txn)
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	s.ended.Store(int64(n))
+	if n < s.opts.MaxEnded/10*9 {
+		s.endedFull.Store(false)
+	}
+	return nil
+}
+
+// Ended returns about how many verdicts that ended the store keeps:
+// counted by every sweep, and raised by every verdict kept since;
+// Options.MaxEnded bounds it.
+func (s *DB) Ended() int64 {
+	return s.ended.Load()
 }
 
 // cursorOf returns the cursor of an ended verdict's key suffix: its

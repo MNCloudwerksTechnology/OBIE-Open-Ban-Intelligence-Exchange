@@ -44,6 +44,15 @@ with 1,000,000 held indicators. Three things need a decision:
   expiry plus the retention; nothing else deletes it. A later verdict of
   the same publisher on the same indicator and category that ends the same
   way replaces the entry.
+- **Bounded.** Any publisher's verdicts are stored, so a flood of
+  short-lived verdicts would otherwise keep a day's worth of them on disk,
+  past `store.max_indicators` (ADR 0017). The store keeps at most a tenth
+  of `store.max_indicators` (at least 1,000; 100,000 by default) of other
+  publishers' ended verdicts; beyond that it keeps only this node's own,
+  which eviction never touches either, until older ones are forgotten, and
+  logs a warning once. It counts the ended verdicts at start, adds every
+  one it keeps, and recounts them after every sweep, because Badger's TTL
+  forgets them silently.
 - **Revoked** entries are written when the revocation applies, also for a
   revocation that arrived before its verdict: its ID, reason and time are
   then kept under `h/p/<verdict id>\x00<publisher>` for as long as the
@@ -66,10 +75,15 @@ with 1,000,000 held indicators. Three things need a decision:
   states and the matches before the cursor, and decodes only the page.
   `EndedCounts` counts the ended verdicts by publisher and state in one
   walk over the keys.
-- **Size.** An entry holds about 1 KB. With 1,000,000 indicators and the
-  default verdict lifetime of 7 days about 150,000 verdicts expire a day,
-  about 150 MB on disk; a walk over the keys of 100,000 takes about 41 ms
-  (see [performance](../operations/performance.md#console)). Evicted verdicts
+- **Size.** An entry holds about 1 KB: at most about 100 MB at the
+  default cap. With 1,000,000 indicators and the default verdict lifetime
+  of 7 days about 150,000 verdicts expire a day, more than the cap: the
+  view then lacks some of the other publishers' verdicts that ended last.
+  Pushing the oldest out instead would need an index of the ended verdicts
+  by time, and would let a flood push out what the operator wants to see.
+  A walk over the keys of 100,000
+  takes about 41 ms (see
+  [performance](../operations/performance.md#console)). Evicted verdicts
   (store full) and verdicts superseded by a newer one of the same
   publisher are not kept: they did not end.
 - **No state format change** (ADR 0017): an older `obied` ignores the `h/`

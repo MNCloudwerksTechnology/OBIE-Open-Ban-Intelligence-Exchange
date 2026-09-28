@@ -113,8 +113,12 @@ func verdictsNode(c *Console) *fakeVerdicts {
 // query q.
 func verdictsOf(q string, list VerdictList) verdictsPage {
 	v, _ := url.ParseQuery(q)
-	return buildVerdicts(verdictsInput{now: verdictsNow, query: parseVerdictsQuery(v), self: testNode.PeerID, peers: testPeers,
-		list: list, totals: testVerdictTotals, categories: map[string]int{"password_bruteforce/ssh": 3, "http_probe": 1}})
+	in := verdictsInput{now: verdictsNow, query: parseVerdictsQuery(v), self: testNode.PeerID, peers: testPeers,
+		list: list, totals: testVerdictTotals, categories: map[string]int{"password_bruteforce/ssh": 3, "http_probe": 1}}
+	if p, err := parseRange(in.query.address); err == nil {
+		in.searched = p
+	}
+	return buildVerdicts(in)
 }
 
 func TestParseVerdictsQuery(t *testing.T) {
@@ -269,6 +273,9 @@ func TestVerdictsTabs(t *testing.T) {
 		"from=mine&state=revoked":        "Revoked verdicts of this node",
 		"publisher=" + idAlpha:           "Active verdicts of alpha",
 		"address=203.0.113.7&from=peers": "Active verdicts received from other publishers on 203.0.113.7",
+		"address=198.51.100.7/24":        "Active verdicts of every publisher on 198.51.100.0/24",
+		// The list is not narrowed to what is no address.
+		"address=example.org": "Active verdicts of every publisher",
 	} {
 		if got := verdictsOf(q, list).Heading; got != heading {
 			t.Errorf("heading of %q = %q, want %q", q, got, heading)

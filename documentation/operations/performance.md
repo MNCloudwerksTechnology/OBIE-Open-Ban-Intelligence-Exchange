@@ -58,6 +58,7 @@ Each limit is verified by a test that runs in `make ci`.
 | GossipSub RPC size | 64 KiB (16 × `MaxEventSize`) | `internal/gossip` integration tests |
 | Events per publisher / per peer | `mesh.rate_limit`, default 10/s (burst 50) / 50/s (burst 250) | `internal/gossip` validate and integration tests |
 | Stored verdicts | `store.max_indicators`, default 1,000,000; the verdict expiring first is evicted, never this node's own; `obie_store_evictions_total` | `TestCapBoundsFloodFromTrustedPeer` and the other `TestCap…` in `internal/store` |
+| Verdicts kept after they ended | a tenth of `store.max_indicators` (at least 1,000) of other publishers', for a day after their expiry; beyond it only this node's own are kept | `TestEndedVerdictsAreCapped` in `internal/store` |
 | Admin request bodies | 1 MiB (reports, revocations), 16 KiB (overrides); 413 beyond | `internal/admin` |
 | HTTP timeouts and headers | read header 5 s, read 10 s, write 30 s, idle 60 s, headers 16 KiB, on every server | `internal/httpserver` |
 

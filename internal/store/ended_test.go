@@ -1,7 +1,9 @@
 package store
 
 import (
+	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"testing"
@@ -374,5 +376,95 @@ func TestSweepArchivesLargestEvents(t *testing.T) {
 	checkVerdicts(t, db, 0)
 	if page := ended(t, db, EndedFilter{State: EndedExpired}); page.Total != n {
 		t.Errorf("expired = %d, want %d", page.Total, n)
+	}
+}
+
+// TestEndedVerdictsAreCapped: beyond Options.MaxEnded the store keeps only
+// this node's own ended verdicts, so a flood of short-lived verdicts cannot
+// fill the disk; the sweep recounts them as they are forgotten.
+func TestEndedVerdictsAreCapped(t *testing.T) {
+	clk := newClock()
+	db := startDB(t, NewMemory(discardLogger(), Options{Now: clk.Now, MaxEnded: 3, Self: pubC}))
+	for i := range 6 {
+		mustPut(t, db, verdict(pubA, ipv4(ipv4Value(i)), clk.Now(), time.Hour), true)
+	}
+	own := verdict(pubC, ipv4(ipv4Value(9)), clk.Now(), time.Hour)
+	mustPut(t, db, own, true)
+	clk.Advance(time.Hour)
+	sweep(t, db, clk.Now())
+	checkVerdicts(t, db, 0)
+	page := ended(t, db, EndedFilter{State: EndedExpired})
+	if page.Total != 4 || page.States[EndedExpired] != 4 {
+		t.Errorf("kept %d expired verdicts, want 3 of the flood and this node's own", page.Total)
+	}
+	if got := endedIDs(t, db, EndedFilter{State: EndedExpired, Publisher: pubC}); !slices.Equal(got, []string{own.ID}) {
+		t.Errorf("this node's own expired verdict = %v, want it kept beyond the cap", got)
+	}
+	if n := db.Ended(); n != 4 {
+		t.Errorf("Ended() = %d, want 4", n)
+	}
+
+	// A revocation beyond the cap: the verdict is revoked, but not kept.
+	v := verdict(pubB, ipv4("11.9.9.9"), clk.Now(), time.Hour)
+	mustPut(t, db, v, true)
+	mustPut(t, db, revoke(pubB, v, clk.Now()), true)
+	if got := activeIDs(t, db, v.Key(), clk.Now()); len(got) != 0 {
+		t.Errorf("active after the revocation = %v", got)
+	}
+	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked}); len(got) != 0 {
+		t.Errorf("revoked beyond the cap = %v, want none kept", got)
+	}
+
+	// Once the retention ends, the sweep recounts and verdicts are kept
+	// again.
+	clk.Advance(EndedRetention)
+	sweep(t, db, clk.Now())
+	if n := db.Ended(); n != 0 {
+		t.Errorf("Ended() after the retention = %d, want 0", n)
+	}
+	w := verdict(pubB, ipv4("11.9.9.8"), clk.Now(), time.Hour)
+	mustPut(t, db, w, true)
+	mustPut(t, db, revoke(pubB, w, clk.Now()), true)
+	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked}); !slices.Equal(got, []string{w.ID}) {
+		t.Errorf("revoked after the recount = %v, want [%s]", got, w.ID)
+	}
+	if n := db.Ended(); n != 1 {
+		t.Errorf("Ended() = %d, want 1", n)
+	}
+}
+
+func TestEndedDefaults(t *testing.T) {
+	for _, tc := range []struct {
+		opts Options
+		want int
+	}{
+		{Options{}, DefaultMaxIndicators / 10},
+		{Options{MaxIndicators: 20}, minMaxEnded},
+		{Options{MaxIndicators: 50_000_000}, 5_000_000},
+		{Options{MaxEnded: 7}, 7},
+	} {
+		if got := tc.opts.withDefaults().MaxEnded; got != tc.want {
+			t.Errorf("MaxEnded of %+v = %d, want %d", tc.opts, got, tc.want)
+		}
+	}
+}
+
+// TestEndedCountSurvivesRestart: Start counts the ended verdicts kept.
+func TestEndedCountSurvivesRestart(t *testing.T) {
+	clk := newClock()
+	dir := filepath.Join(t.TempDir(), "db")
+	db := New(dir, discardLogger(), Options{Now: clk.Now})
+	if err := db.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	mustPut(t, db, verdict(pubA, ipv4("11.0.0.1"), clk.Now(), time.Hour), true)
+	clk.Advance(time.Hour)
+	sweep(t, db, clk.Now())
+	if err := db.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	db = startDB(t, New(dir, discardLogger(), Options{Now: clk.Now}))
+	if n := db.Ended(); n != 1 {
+		t.Errorf("Ended() after a restart = %d, want 1", n)
 	}
 }

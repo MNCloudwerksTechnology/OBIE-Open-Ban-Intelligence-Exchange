@@ -41,6 +41,8 @@ type outcome struct {
 	// foreignRevokes and invalidRevokes count revocations of a verdict that
 	// arrived before it and are now known to be ignored.
 	foreignRevokes, invalidRevokes int
+	// ended counts the verdicts kept once they ended (ADR 0023).
+	ended int
 }
 
 // Put stores ev; see Store.
@@ -63,6 +65,7 @@ func (s *DB) Put(ev *obieproto.Event) (bool, error) {
 	})
 	if err == nil {
 		s.addVerdicts(out.verdicts)
+		s.ended.Add(int64(out.ended))
 		if out.evictedIndex != nil {
 			s.evictFrom = out.evictedIndex
 		}
@@ -161,7 +164,7 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 		return outcome{}, err
 	}
 	if cur != nil {
-		if err := archiveExpired(txn, cur, now); err != nil {
+		if err := s.archiveExpired(txn, cur, now, &out.ended); err != nil {
 			return outcome{}, err
 		}
 		removed, err := deleteIndex(txn, expiryKey(cur.Event.ExpiresAt(), key))
@@ -176,7 +179,7 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 	}
 	out.verdicts += added
 	if rec.Revoked {
-		if err := archive(txn, &rec, EndedRevoked, rev); err != nil {
+		if err := s.archive(txn, &rec, EndedRevoked, rev, &out.ended); err != nil {
 			return outcome{}, err
 		}
 	}
@@ -293,10 +296,10 @@ func (s *DB) putRevoke(txn *badger.Txn, ev *obieproto.Event, now time.Time) (out
 	if err != nil {
 		return outcome{}, err
 	}
-	if err := archive(txn, cur, EndedRevoked, revocationOf(ev)); err != nil {
+	out := outcome{result: resultAccepted, verdicts: added}
+	if err := s.archive(txn, cur, EndedRevoked, revocationOf(ev), &out.ended); err != nil {
 		return outcome{}, err
 	}
-	out := outcome{result: resultAccepted, verdicts: added}
 	if wasActive {
 		out.changes = append(out.changes, Change{Key: target.Key(), Reason: ReasonRevoke})
 	}

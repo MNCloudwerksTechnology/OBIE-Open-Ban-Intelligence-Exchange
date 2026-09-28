@@ -42,9 +42,13 @@ type Options struct {
 	// MaxIndicators caps the verdict records, one per publisher and
 	// indicator; beyond it the record expiring first is evicted.
 	MaxIndicators int
-	// Self is this node's peer ID: its verdicts are never evicted. Empty
-	// protects none.
+	// Self is this node's peer ID: its verdicts are never evicted, and
+	// always kept once they ended. Empty protects none.
 	Self string
+	// MaxEnded caps the verdicts of other publishers kept once they were
+	// revoked or expired (ADR 0023); 0 means a tenth of MaxIndicators, at
+	// least 1,000.
+	MaxEnded int
 }
 
 func (o Options) withDefaults() Options {
@@ -59,6 +63,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.MaxIndicators <= 0 {
 		o.MaxIndicators = DefaultMaxIndicators
+	}
+	if o.MaxEnded <= 0 {
+		o.MaxEnded = max(o.MaxIndicators/10, minMaxEnded)
 	}
 	return o
 }
@@ -91,6 +98,10 @@ type DB struct {
 	// evictFrom is a lower bound of the expiry index keys of the records
 	// that may be evicted; see evictionCandidate. Guarded by writeMu.
 	evictFrom []byte
+	// ended is about the number of ended verdicts kept (see Ended), and
+	// endedFull is set once it reached MaxEnded; see warnEndedFull.
+	ended     atomic.Int64
+	endedFull atomic.Bool
 
 	loopMu  sync.Mutex
 	loopErr error
@@ -136,13 +147,22 @@ func (s *DB) Start(context.Context) error {
 	}
 	s.db = db
 	var n int64
-	if err := db.View(func(txn *badger.Txn) error { n = countVerdicts(txn); return nil }); err != nil {
+	var ended int
+	err = db.View(func(txn *badger.Txn) error {
+		n = countVerdicts(txn)
+		var err error
+		ended, err = s.countEnded(txn)
+		return err
+	})
+	if err != nil {
 		_ = db.Close()
 		s.db = nil
 		return fmt.Errorf("count verdicts in %s: %w", s.dir, err)
 	}
 	s.verdicts.Store(0)
 	s.addVerdicts(int(n))
+	s.ended.Store(int64(ended))
+	s.endedFull.Store(false)
 	s.evictFrom = nil
 	s.setLoopErr(nil)
 	s.stop, s.done = make(chan struct{}), make(chan struct{})

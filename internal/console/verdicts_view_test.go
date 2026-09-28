@@ -147,7 +147,8 @@ func TestVerdictsPageFailures(t *testing.T) {
 
 	_, page = b.get("/verdicts?address=not-an-address")
 	wantAll(t, "a bad address", page,
-		`<p class="callout" data-level="warning">&#34;not-an-address&#34; is not an IP address or network; the list is not narrowed to it</p>`)
+		`<p class="callout" data-level="warning">&#34;not-an-address&#34; is not an IP address or network; the list is not narrowed to it</p>`,
+		`<h2 id="list-heading">Active verdicts of every publisher</h2>`)
 
 	c.node.Verdicts = nil
 	_, page = b.get("/verdicts")

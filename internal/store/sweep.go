@@ -21,8 +21,11 @@ func (s *DB) Sweep(now time.Time) error {
 	for {
 		changes, more, err := s.sweepBatch(now)
 		s.notify(changes)
-		if err != nil || !more {
+		if err != nil {
 			return err
+		}
+		if !more {
+			return s.recountEnded()
 		}
 	}
 }
@@ -32,7 +35,7 @@ func (s *DB) Sweep(now time.Time) error {
 func (s *DB) sweepBatch(now time.Time) (changes []Change, more bool, err error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	removed := 0
+	removed, kept := 0, 0
 	err = s.update(func(txn *badger.Txn) error {
 		due, dueMore := dueExpiries(txn, now)
 		more = dueMore
@@ -41,7 +44,7 @@ func (s *DB) sweepBatch(now time.Time) (changes []Change, more bool, err error) 
 			if _, target := parseExpiryKey(key); bytes.HasPrefix(target, prefixVerdict) {
 				removed++
 			}
-			c, err := expire(txn, key)
+			c, err := s.expire(txn, key, &kept)
 			if errors.Is(err, errCorrupt) {
 				// Drop the index entry, so one bad value cannot stall expiry.
 				s.log.Error("dropping expiry of undecodable entry", "key", string(key[expiryKeyHeader:]), "error", err)
@@ -61,6 +64,7 @@ func (s *DB) sweepBatch(now time.Time) (changes []Change, more bool, err error) 
 		return nil, false, err
 	}
 	s.addVerdicts(-removed)
+	s.ended.Add(int64(kept))
 	return changes, more, nil
 }
 
@@ -83,23 +87,24 @@ func dueExpiries(txn *badger.Txn, now time.Time) ([][]byte, bool) {
 }
 
 // expire removes an expiry index entry and the verdict or override it points
-// to, if that still expires at the indexed time. It returns the change to
-// notify, with an empty Key if nothing active changed.
-func expire(txn *badger.Txn, indexKey []byte) (Change, error) {
+// to, if that still expires at the indexed time, adding an expired verdict
+// kept to kept. It returns the change to notify, with an empty Key if
+// nothing active changed.
+func (s *DB) expire(txn *badger.Txn, indexKey []byte, kept *int) (Change, error) {
 	if err := txn.Delete(indexKey); err != nil {
 		return Change{}, err
 	}
 	at, target := parseExpiryKey(indexKey)
 	switch {
 	case bytes.HasPrefix(target, prefixVerdict):
-		return expireVerdict(txn, target, at)
+		return s.expireVerdict(txn, target, at, kept)
 	case bytes.HasPrefix(target, prefixOverride):
 		return expireOverride(txn, target, at)
 	}
 	return Change{}, nil
 }
 
-func expireVerdict(txn *badger.Txn, key []byte, at time.Time) (Change, error) {
+func (s *DB) expireVerdict(txn *badger.Txn, key []byte, at time.Time, kept *int) (Change, error) {
 	change := Change{Key: indicatorOfVerdictKey(key), Reason: ReasonExpiry}
 	rec, err := getRecord(txn, key)
 	switch {
@@ -115,7 +120,7 @@ func expireVerdict(txn *badger.Txn, key []byte, at time.Time) (Change, error) {
 		// Nothing active changes; the verdict was kept as revoked.
 		return Change{}, txn.Delete(key)
 	}
-	if err := archive(txn, rec, EndedExpired, nil); err != nil {
+	if err := s.archive(txn, rec, EndedExpired, nil, kept); err != nil {
 		return Change{}, err
 	}
 	return change, txn.Delete(key)

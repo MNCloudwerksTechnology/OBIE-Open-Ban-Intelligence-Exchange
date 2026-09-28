@@ -95,7 +95,8 @@ The first release, v0.1.0 "Stable Base".
   shows revoked verdicts with why and expired ones on request, and links
   every verdict to its publisher and its decision. The store now keeps
   revoked and expired verdicts for 24 hours after their expiry, with the
-  revocation's reason
+  revocation's reason — of other publishers at most a tenth of
+  `store.max_indicators`
   ([ADR 0023](documentation/adr/0023-console-verdicts.md)).
 - **Packaging.** Reproducible static release tarballs for linux/amd64 and
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
