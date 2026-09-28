@@ -357,7 +357,7 @@ func TestEmptyDecisions(t *testing.T) {
 }
 
 func TestFilterOptions(t *testing.T) {
-	reasons := reasonOptions(map[string]int{"port_scan/tcp": 2, "password_bruteforce/ssh": 2, "http_probe": 7}, "spam/smtp")
+	reasons := reasonOptions(map[string]int{"port_scan/tcp": 2, "password_bruteforce/ssh": 2, "http_probe": 7}, "spam/smtp", true)
 	var labels []string
 	for _, o := range reasons {
 		labels = append(labels, o.Label)

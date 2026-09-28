@@ -62,6 +62,9 @@ type Node struct {
 	// Decisions reads the decisions, explanations and the firewall for
 	// the decisions and firewall views; nil reads none (ADR 0022).
 	Decisions DecisionSource
+	// Verdicts reads the verdicts for the verdicts view; nil reads none
+	// (ADR 0023).
+	Verdicts VerdictSource
 }
 
 // Options configures a Console.

@@ -5,7 +5,8 @@ import (
 	"net/url"
 )
 
-// verdictsPageSize is how many verdicts a peer's page lists at once.
+// verdictsPageSize is how many verdicts a peer's page and the verdicts
+// view list at once.
 const verdictsPageSize = 50
 
 // peerPage is the data of a peer's page.
