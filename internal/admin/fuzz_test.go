@@ -51,6 +51,7 @@ func newFuzzHandler(tb testing.TB) http.Handler {
 	}
 	info.Overrides = fuzzOverrides{}
 	info.Enforced = func(context.Context) ([]EnforcedEntry, error) { return nil, nil }
+	info.Console = &fakeConsole{}
 	info.Verdicts = verdicts.New(verdicts.Options{
 		Store: db, Publisher: &storePublisher{db: db}, Signer: key,
 		DefaultTTL: 7 * 24 * time.Hour, MaxTTL: 30 * 24 * time.Hour,
@@ -73,6 +74,7 @@ var fuzzRequests = []struct {
 	{method: http.MethodGet, path: DecisionsPath, query: true},
 	{method: http.MethodGet, path: IndicatorsPath + "/"},
 	{method: http.MethodGet, path: IndicatorsPath, query: true},
+	{method: http.MethodPost, path: ConsoleTokenPath, body: true},
 }
 
 // FuzzRequests checks that the admin API never panics and never fails

@@ -122,6 +122,9 @@ type Info struct {
 	// Enforced lists the entries the enforcement backend applies; the
 	// endpoint answers 503 when nil.
 	Enforced func(context.Context) ([]EnforcedEntry, error)
+	// Console reports the web console and replaces its token; the console
+	// endpoints answer 503 when nil.
+	Console ConsoleService
 	// Now returns the current time; time.Now when nil.
 	Now func() time.Time
 }
@@ -177,6 +180,7 @@ func Handler(info Info, log *slog.Logger) http.Handler {
 	handleOverrides(mux, info, log)
 	handleVerdicts(mux, info, log)
 	handleEnforced(mux, info, log)
+	handleConsole(mux, info, log)
 	return mux
 }
 

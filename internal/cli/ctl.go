@@ -41,6 +41,7 @@ var commands = map[string]command{
 	"indicators": {summary: "list the indicators with active verdicts", run: runIndicators},
 	"show":       {summary: "show every active verdict on an address or CIDR range", run: runShow},
 	"enforced":   {summary: "list the entries the enforcement backend currently applies", run: runEnforced},
+	"console":    {summary: "show the web console's address and sign-in token (--rotate: issue a new one)", run: runConsole},
 }
 
 // RunCtl runs obiectl with args and returns the process exit code.
