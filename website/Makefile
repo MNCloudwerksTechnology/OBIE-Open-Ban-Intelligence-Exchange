@@ -76,15 +76,15 @@ lighthouse: build ## Lighthouse CI (mobile) against the locally started jar; fai
 	JAR=$(JAR) LHCI_VERSION=$(LHCI_VERSION) ./scripts/lighthouse.sh
 
 .PHONY: image
-image: ## Build the container image $(IMAGE) from the Dockerfile (docker)
+image: ## Build the container image IMAGE (default obie-website:dev) from the Dockerfile (docker)
 	docker build --build-arg VERSION='$(VERSION)' -t '$(IMAGE)' .
 
 .PHONY: smoke
-smoke: image ## Start deploy/compose.yaml with $(IMAGE), send an inquiry to Mailpit, check it, remove it (docker)
+smoke: image ## Start deploy/compose.yaml with IMAGE, send an inquiry to Mailpit, check it, remove it (docker)
 	IMAGE='$(IMAGE)' deploy/smoke-test.sh
 
 .PHONY: ci
-ci: frontend-lint frontend-test backend vuln ## Run every check the CI website job runs
+ci: frontend-lint frontend-test backend vuln ## Run every check the CI website job runs, except `make smoke`
 
 .PHONY: clean
 clean: ## Remove build output and installed tools

@@ -141,7 +141,7 @@ Traefik runs in its own compose project with a `websecure` entry point on
 port 443 and a certificate resolver (`letsencrypt` below) and watches the
 Docker socket. Put the website on Traefik's network with a
 `compose.override.yaml` next to `compose.yaml`; `docker compose` reads it
-automatically:
+automatically (`!reset` needs Compose 2.24 or newer):
 
 ```yaml
 services:
