@@ -243,14 +243,21 @@ each runs for at least 10 minutes; see
 
 `make soak` runs `TestSoak` in `test/e2e` (build tag `soak`, so never part
 of `make test`): three nodes that trust each other receive 50 unique
-reports per second, spread evenly, for 30 minutes. It fails if an event
-does not reach every other node, if the 99th percentile of the propagation
-time is 2 s or more, if the live heap grows by more than 20 % after the
-warm-up (the first sixth of the run), or if a goroutine outlives the nodes
-(goleak in `TestMain`). Shorter or heavier runs:
+reports per second, spread evenly, for 30 minutes. The verdicts live 2
+minutes, so each node settles at a steady working set, and
+`mesh.rate_limit` is raised above its defaults (10 events/s per
+publisher), which a node publishing 50/3 events per second would exceed.
+It fails if an event does not reach every other node, if the 99th
+percentile of the propagation time is 2 s or more, if the live heap —
+without Badger's block and index caches, which fill up to their configured
+size — grows by more than 20 % from the window after warm-up (the first
+sixth of the run) to the last window, if the goroutines grow, or if a
+goroutine outlives the nodes (goleak in `TestMain`). Shorter or heavier
+runs (below about 15 minutes the working set is still filling, and the
+memory check fails):
 
 ```sh
-make soak SOAKTIME=5m SOAKRATE=100
+make soak SOAKTIME=15m SOAKRATE=100
 ```
 
 Record the results of a full run in
