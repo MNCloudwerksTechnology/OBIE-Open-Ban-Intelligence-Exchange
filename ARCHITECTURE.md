@@ -38,8 +38,10 @@ directory format in
 [ADR 0017](documentation/adr/0017-packaging-and-state-format.md); the local
 web console, its security model and its technology in
 [ADR 0019](documentation/adr/0019-local-web-console.md), its overview
-in [ADR 0020](documentation/adr/0020-console-overview.md) and its peers
-view in [ADR 0021](documentation/adr/0021-console-peers.md); the website
+in [ADR 0020](documentation/adr/0020-console-overview.md), its peers
+view in [ADR 0021](documentation/adr/0021-console-peers.md) and its
+decisions, explanations and firewall view in
+[ADR 0022](documentation/adr/0022-console-decisions-and-firewall.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -64,7 +66,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins (built-in ranges, own and bootstrap addresses, `allowlist.cidrs`, `allowlist.files`); operator force-allow / force-block overrides; mode `observe` (default) or `enforce`; SIGHUP reloads (ADR 0013).
 - **Enforcement:** pluggable enforcer (`Setup`/`List`/`Apply`/`Teardown`, entries with timeouts); `dryrun` (default) and `nftables` (netlink via google/nftables, own table `inet obie` with interval+timeout sets `obie_v4`/`obie_v6` and a priority -10 input chain, optional forward chain, CAP_NET_ADMIN only, `obied teardown-firewall`; ADR 0015) backends; reconcile loop with `enforce.max_entries` cap and allow-list re-check (ADR 0014).
 - **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015).
-- **Console:** opt-in (`console.enabled`, default off), read-only web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019); an overview of health, key numbers and attention conditions that refreshes itself through a fragment endpoint (ADR 0020); a peers view of every configured and connected peer with its trust, held verdicts and recent events (ADR 0021).
+- **Console:** opt-in (`console.enabled`, default off), read-only web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019); an overview of health, key numbers and attention conditions that refreshes itself through a fragment endpoint (ADR 0020); a peers view of every configured and connected peer with its trust, held verdicts and recent events (ADR 0021); a decisions list filtered, searched, sorted and paged on the node, the explanation of any address like `obiectl explain`, and a firewall view of the backend's entries and their differences from the decided blocks, with copy buttons and shareable links (ADR 0022).
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests, above all the four-node end-to-end test in `test/e2e` (ADR 0016); goleak in every package's `TestMain`; the soak test behind the `soak` build tag (`make soak`, ADR 0017); privileged tests behind the `privileged` build tag, run in a fresh network namespace (see [Privileged tests](CONTRIBUTING.md#privileged-tests)).
 
 ## Repository layout
@@ -206,9 +208,14 @@ Only the packages that exist today are listed in detail; the remaining
   refreshed while its verdicts live. `Engine.Subscribe` streams
   added/updated/removed block changes with their cause for the enforcer.
   `obiectl explain <ip>` (`GET /v1/decisions/{indicator}`) shows every
-  publisher's weight, confidence and contribution, score vs threshold,
-  count vs quorum and the final decision; `obiectl decisions`
-  (`GET /v1/decisions?state=block`) lists them (ADR 0011).
+  publisher's weight, confidence, contribution and reason, score vs
+  threshold, count vs quorum and the final decision; `obiectl decisions`
+  (`GET /v1/decisions?state=block`) lists them (ADR 0011). The kept
+  decisions live in one slice with a key index, each with its active
+  verdicts' publishers and categories (reason and protocol, interned), so
+  a pass over all of them reads memory in order; `Engine.Browse` filters,
+  sorts and pages them for the console in one such pass under the read
+  lock, keeping only the page (ADR 0022).
 - **Sovereignty.** `internal/sovereignty` builds the effective allow-list —
   built-in ranges (loopback, RFC 1918, CGNAT, link-local, ULA, multicast,
   unspecified, broadcast, IPv4-mapped, documentation), `allowlist.cidrs`,
@@ -247,7 +254,11 @@ Only the packages that exist today are listed in detail; the remaining
   failed pass is retried with backoff (1 s up to the interval) and makes
   `/readyz` answer 503. `dryrun` (default) keeps entries in memory and
   logs every add/remove as JSON. `obiectl enforced` (`GET /v1/enforced`)
-  lists the applied entries (ADR 0014).
+  lists the applied entries (ADR 0014). After every successful pass the
+  reconciler keeps an immutable `Snapshot` — the mode, the entries the
+  backend holds after it, the skipped and deferred ranges — whose
+  `Lookup` tells for any range whether its own or a wider entry applies
+  it, or why not, in O(log entries) (ADR 0022).
 - **Local verdicts.** `internal/verdicts` turns a local detection into a
   signed `indicator.verdict` (`obiectl report`, `POST /v1/reports`): defaults
   confidence 0.8, action `ban` and TTL `decision.default_ttl`, capped at
@@ -306,7 +317,16 @@ Only the packages that exist today are listed in detail; the remaining
   the node. A view may serve item pages below its path: `/peers/{id}`
   adds the verdicts the node holds from that publisher, read on request
   with `store.DB.PublisherVerdicts`, which walks the verdict keys and
-  decodes only that publisher's records (ADR 0021).
+  decodes only that publisher's records (ADR 0021). The decisions view at
+  `/decisions` reads a page through `console.Node.Decisions`
+  (`Engine.Browse`, the reconciler's snapshot for the firewall column and
+  filter) when it opens; its refreshing region only compares the engine's
+  `Generation` and the snapshot's sequence. `/decisions/{address or
+  network}` (an item whose ID is the rest of the path) re-evaluates the
+  range with `Engine.Explain` on every refresh, with the decisions on the
+  networks around it (`Engine.Covering`, by key lookups). The firewall
+  view at `/enforcement` refreshes the reconciler's status and snapshot and
+  reads `Reconciler.Entries` when it opens (ADR 0022).
 - **Observability.** Metrics are defined in the package that updates them
   and registered on the Prometheus default registry, which `internal/ops`
   serves; label values come from closed sets only (the admin endpoint label

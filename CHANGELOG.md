@@ -36,7 +36,8 @@ The first release, v0.1.0 "Stable Base".
   (`trust.publishers`) and blocks an address when the score reaches
   `decision.threshold` and `decision.quorum` publishers agree; the node's
   own verdicts can block at once (`decision.local_autoblock`).
-  `obiectl explain`, `decisions`, `indicators` and `show` show why.
+  `obiectl explain` (with every verdict's reason), `decisions`,
+  `indicators` and `show` show why.
 - **Local sovereignty.** A built-in allow-list (loopback, private,
   special-purpose ranges, own and bootstrap addresses) plus
   `allowlist.cidrs` and `allowlist.files`; operator overrides
@@ -72,7 +73,19 @@ The first release, v0.1.0 "Stable Base".
   and counts from it, and the events it sent in the last hour, accepted
   or rejected and why; it filters, sorts and pages on the node, and a
   peer's page lists the verdicts the node holds from it
-  ([ADR 0021](documentation/adr/0021-console-peers.md)).
+  ([ADR 0021](documentation/adr/0021-console-peers.md)). Its decisions
+  view lists every address and network the node decided on — state, score
+  against threshold, publishers against quorum, reason, when decided and
+  until when, and whether the firewall applies it and if not why — filters
+  by state, reason, publisher and firewall, searches by address (an
+  address finds the networks around it), sorts and pages on the node, fast
+  with 1,000,000 decisions; an address's page explains it like
+  `obiectl explain`, also one the node knows nothing about, and refreshes
+  itself. Its firewall view lists what the backend applies and every
+  difference from the decided blocks, and says in observe mode that
+  nothing is applied by design. Addresses can be copied, and every view
+  shared as a link on the same host
+  ([ADR 0022](documentation/adr/0022-console-decisions-and-firewall.md)).
 - **Packaging.** Reproducible static release tarballs for linux/amd64 and
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
   hardened systemd unit, a distroless container image, and a three-node

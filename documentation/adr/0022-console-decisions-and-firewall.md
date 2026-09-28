@@ -41,19 +41,23 @@ does what the decisions say. Five things need a decision:
   under the engine's read lock: it applies the filters (state, category,
   publisher, an address or network, and a predicate the caller passes for
   the firewall state), counts the matches by state for the filter links,
-  and keeps only the best page (at most 51 decisions) in a bounded
-  selection. Time is O(n log page), memory O(page); nothing is copied but
-  the page. Paging is by keyset: an opaque cursor holds the sort value
-  and the indicator key of the last (or first) decision of a page, so a
-  page is as cheap on page 1 as on page 20,000, new decisions do not
-  shift the page being read, and the position ("51–100 of 1,000,000") is
-  counted in the same pass. The lock is held as long as the engine's own
-  pass over its decisions after every evaluation (for its metrics).
+  and keeps only the page (at most 50 decisions) in a bounded heap. Time
+  is O(n log page), memory O(page); nothing is copied but the page. The
+  kept decisions live in one slice with a key index instead of maps, so
+  the pass reads memory in order. Paging is by keyset: an opaque cursor
+  holds the sort value and the indicator key of the last (or first)
+  decision of a page, so a page is as cheap on page 1 as on page 20,000,
+  new decisions do not shift the page being read, and the position
+  ("51–100 of 1,000,000") is counted in the same pass. At 1,000,000
+  decisions a page holds the lock for 13–33 ms, about as long as the
+  engine's own pass after every evaluation (11 ms, for its metrics); see
+  [performance](../operations/performance.md#console).
 - **Search.** An address finds its own decision and those of the networks
   that contain it, by looking up the keys of its covering prefixes (at
   most 17 for IPv4, 97 for IPv6: CIDR indicators are /16 to /31 and /32
   to /127) — no scan. A network finds everything that overlaps it, by
-  scanning.
+  scanning. `Engine.Covering` finds the decisions on the networks around
+  any range the same way, for the explanation.
 - **Sort orders:** last decided first (default), address (IPv4 before
   IPv6, numerically, a network before the addresses in it), state (block,
   allowed, none), score, contributing publishers (most first), expiry
@@ -67,18 +71,24 @@ does what the decisions say. Five things need a decision:
 
 - After every successful pass the reconciler keeps a snapshot: the mode,
   when the pass ended, what the backend holds after it (the listed entries
-  minus the removed plus the added ones, sorted and disjoint) and the
-  prefixes it skipped with the reason (allow-list, `enforce.max_entries`).
-  The snapshot is immutable and replaced by the next pass; a sequence
-  number changes whenever the entries, the skipped prefixes or the mode
-  change.
+  minus the removed plus the added ones, sorted and disjoint), the
+  prefixes it skipped with the reason (allow-list, `enforce.max_entries`)
+  and the additions it deferred until an overlapping entry expires. The
+  snapshot is immutable and replaced by the next pass; a sequence number
+  changes whenever the entries, the skipped or deferred prefixes or the
+  mode change.
 - `Lookup(prefix)` answers in O(log entries): applied by its own entry,
-  applied through the wider entry that contains it, skipped and why, or
-  not part of the last pass (decided after it, expiring within a second,
-  or deferred). This drives the list's firewall column and filter, the
-  explanation and the firewall view. A decision that is not a block is
-  still reported as applied when an entry of a wider block covers it: that
-  entry wins, and the operator must see it.
+  applied through the wider entry that contains it, skipped and why (a
+  block inside a wider one left out over the cap is left out with it),
+  deferred, or not part of the last pass (decided after it, or expiring
+  within a second). The entries being disjoint, the one holding a range
+  is the last one starting at or before it; the snapshot searches the
+  entries' first and last addresses as integers (31 ns at 100,000
+  entries), since the firewall filter asks for every decision. This
+  drives the list's firewall column and filter, the explanation and the
+  firewall view. A decision that is not a block is still reported as
+  applied when an entry of a wider block covers it: that entry wins, and
+  the operator must see it.
 - In observe mode nothing is applied; every view says that this is by
   design, not a failure. After a failed pass the snapshot of the last
   successful one is shown with the failure.
@@ -150,13 +160,16 @@ does what the decisions say. Five things need a decision:
 ## Consequences
 
 - The engine's memory per held verdict grows by 8 bytes (the interned
-  category).
+  category); the kept decisions move from two maps into one slice with a
+  key index.
 - `decision.Contribution` gains `Reason` and `Protocol`; the admin API's
   explanation gains `reason` and `protocol`; `obiectl explain` gains a
   column.
 - The reconciler keeps the snapshot of its last pass (the entries it
-  already lists, plus the skipped prefixes it already keeps).
-- A view may serve item pages whose ID is the rest of the path, and may
-  declare a refreshing region with its own, cheaper data.
+  already lists, the skipped prefixes it already keeps, and the entries'
+  spans as integers: 8 bytes per IPv4 and 32 per IPv6 entry).
+- A view may serve item pages whose ID is the rest of the path (opt-in
+  per view), and may declare a refreshing region with its own, cheaper
+  data.
 - The overview's decision numbers and *Firewall entries* link to the new
   views (ADR 0020).

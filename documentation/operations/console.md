@@ -13,7 +13,10 @@ Every page shows the node, its mode (observe or enforce) and its health:
 *Shutting down*. The first page, the [overview](#the-overview), tells you
 within seconds whether the node is healthy and what it is doing; the
 [peers view](#the-peers-view) shows every peer the node knows and the
-trust placed in it. The views of the node's decisions, verdicts and
+trust placed in it; the [decisions view](#the-decisions-view) lists every
+address the node decided on and [explains](#why-an-address-is-or-is-not-blocked)
+why it is or is not blocked; the [firewall view](#the-firewall-view) shows
+what the firewall applies. The views of the node's verdicts and
 configuration arrive with later releases; a view appears in the
 navigation once it exists.
 
@@ -86,10 +89,11 @@ numbers and decides what needs attention is recorded in
   `mesh.bootstrap` peers), held indicators with their active verdicts,
   decisions by state (`block`, `none`, `allowed`), the entries the firewall
   applies, and active overrides. Each number links to the view that
-  details it — *Peers connected* to the [peers view](#the-peers-view);
+  details it — *Peers connected* to the [peers view](#the-peers-view),
+  the decisions to the [decisions view](#the-decisions-view) in that
+  state, *Firewall entries* to the [firewall view](#the-firewall-view);
   until a view exists, the number names the `obiectl` command that shows
-  the same (`obiectl indicators`, `decisions --state block`, `enforced`,
-  `overrides`). *Firewall entries*
+  the same (`obiectl indicators`, `overrides`). *Firewall entries*
   also says why they differ from the decided blocks: blocks that share an
   entry with another block (the same range, or one inside a wider range),
   that the allow-list refuses, or that are over `enforce.max_entries`.
@@ -184,6 +188,135 @@ Trust is configured, not set in the console: change `trust.publishers` or
 `trust.default_weight` in `/etc/obie/obie.yaml` and reload `obied`; the
 view follows. Adding a bootstrap peer needs a restart.
 
+## The decisions view
+
+*Decisions* answers "What does my node block, and what not?". It lists
+every address and network the node holds a decision on — every one with
+an active verdict, and the operator's force-blocks — 50 per page, the
+last decided first. How the view reads them fast, even with 1,000,000
+decisions, is recorded in
+[ADR 0022](../adr/0022-console-decisions-and-firewall.md) and measured in
+[performance](performance.md#console). For each decision:
+
+- **Address.** The IPv4 or IPv6 address or network; choose it for the
+  [explanation](#why-an-address-is-or-is-not-blocked).
+- **State.** *Block*, *Allowed* or *None*, and what decided it:
+  *consensus*, *local autoblock* (this node's own verdict), *below
+  consensus*, the *allow-list*, a *protected address* (built-in, this
+  node's own or a bootstrap peer's), or the operator's *force-block* or
+  *force-allow*.
+- **Score** against `decision.threshold` and **Publishers** (those whose
+  verdict counts) against `decision.quorum`, each with whether it is
+  reached.
+- **Reason.** What the verdicts are about — the evidence reason and the
+  attacked protocol, for example *password_bruteforce (ssh)* — the most
+  counting first, and how many active verdicts there are.
+- **Decided** and **Expires**: when the node last evaluated it and when a
+  block ends.
+- **Firewall.** *Applied* (by its own entry, or through the entry of a
+  wider network that contains it), or not and why: *observe mode*
+  (nothing is applied, by design), *Refused* by the allow-list right
+  before apply, *Left out* over `enforce.max_entries`, *Waiting* until an
+  entry it overlaps expires, or *Not applied yet* (decided after the last
+  pass; the next one applies it). A decision that is not a block but lies
+  inside a blocked network says *Applied*: that network's entry wins.
+
+The tabs above the list show *All*, *Block*, *Allowed* or *None*, each with
+how many decisions match the other filters. The form filters by
+**reason**, by **publisher** (the peers the node holds verdicts of, this
+node included) and by **firewall** (*Applied by the firewall* or *Not
+applied*), and searches by **address or network**: an address finds its
+own decision and those of the networks that contain it, a network finds
+everything inside it and around it. The address is also explained in one
+line above the list — whether it is blocked and whether it is protected —
+even when the node knows nothing about it. A column heading sorts by that
+column; *First*, *Previous*, *Next* and *Last page* move through the list.
+Search, filters, order and page are part of the address, so a view can be
+[shared](#copy-and-share).
+
+The list is read when the page opens and does not move under you. The
+line above it says when it was read and, checked every 5 seconds, when
+the decisions or the firewall changed since, with a link that reads the
+same view again.
+
+## Why an address is or is not blocked
+
+Choose an address in any view, or open `/decisions/<address or network>`
+— for example `/decisions/203.0.113.7`, `/decisions/2001:db8::1` or
+`/decisions/198.51.100.0/24` — for the full explanation. It shows the same
+facts as `sudo obiectl explain <address>`, evaluated again from the
+verdicts, the overrides and the allow-list every 5 seconds, so a decision
+that changes while the page is open shows the change:
+
+- **Verdicts and score.** Every active verdict, one per publisher: the
+  publisher (this node, a named peer or an unnamed one, linking to its
+  peer page), ban or watch, its trust weight and where the weight comes
+  from (`trust.publishers`, `trust.default_weight` or
+  `trust.local_weight`), its confidence, what it adds to the score
+  (weight × confidence), whether it counts and if not why (a watch
+  verdict, weight 0), its reason and when it expires. Below: the score
+  against the threshold and the counting publishers against the quorum,
+  each *reached* or *not reached*, whether local autoblock decides, and
+  the decision engine's summary.
+- **Allow-list and overrides.** The rule that decides, if any, and which
+  one: a protected address (never blocked, not even by a force-block), an
+  allow-list entry from `allowlist.cidrs` or `allowlist.files`, or the
+  operator's force-allow or force-block — with the matching range or
+  override, its label or note, and when an override ends. *Protection*
+  says whether the address would be protected.
+- **Firewall.** Whether the firewall applies it — by its own entry or the
+  entry of a wider network, until when — and if not, why: observe mode,
+  the allow-list, `enforce.max_entries`, an overlapping entry about to
+  expire, or not applied yet. The last enforcement pass and its mode.
+- **Networks around it.** The decisions the node holds on networks that
+  contain the address, with their state and firewall; the network whose
+  entry applies the address is marked *Its entry wins*. A network's page
+  links to the decisions inside it.
+
+An address the node knows nothing about reads *No verdicts, not blocked*
+and says whether it would be protected. A range the node cannot decide on
+— not an address, or a network wider than /16 (IPv4) or /32 (IPv6) — is
+not found.
+
+## The firewall view
+
+*Firewall* answers "Does the firewall do what the decisions say?". The
+summary at the top, refreshed every 5 seconds, shows the mode, the
+backend (`enforce.backend`), the entry limit (`enforce.max_entries`), the
+last enforcement pass, the entries the backend holds after it, and how
+the decided blocks came to them: *Covered* by another block's entry (the
+same range or a wider one), *Refused* by the allow-list, *Left out* over
+the entry limit, *Waiting* for an overlapping entry to expire. A failing
+backend is shown with its error and the next attempt.
+
+Read when the page opens:
+
+- **Differences.** Every difference between the decided blocks and what
+  the backend applies: decided blocks that are not applied, and why (the
+  first 20, with a link to all of them in the decisions list); entries
+  without a decided block on their range (left behind, added by hand, or
+  no longer a block — the next pass removes them); and entries that
+  expire at another time than decided (the next pass replaces them).
+  *No difference* when there is none.
+- **Applied entries.** Exactly what the backend lists right now, 50 per
+  page: the range, when the entry expires, and the decision on that range,
+  marked *Differs* where it does not match.
+
+In observe mode the view says so: the firewall applies nothing, by
+design, and the decided blocks are not compared with it.
+
+## Copy and share
+
+Next to every address the console shows a *Copy* button; *Copy link* at
+the bottom of every page copies the link to the view you see, with its
+search, filters, order and page. The link opens the same view for anyone
+who may use the console on the same host: they sign in first if needed,
+and the console then returns them to it. The link works only on this host
+(or through the same SSH port forward); it holds nothing secret. Where the
+browser does not allow copying, the console selects the text for you to
+copy with Ctrl+C. Without JavaScript, addresses are plain text and the
+browser's address bar holds the link.
+
 ## Reach it from another machine
 
 The console never listens on the network. From your workstation, forward
@@ -219,8 +352,10 @@ signs every browser out.
 ## While a browser is open
 
 The open page refreshes the health indicator every 5 seconds while it is
-visible, and the overview refreshes its content with it; *Updated* says
-when its data was read, and a focused link stays focused. Without
+visible, and the overview, the peers view, an explanation and the
+firewall view's summary refresh their content with it; *Updated* says
+when its data was read, and a focused link or button stays focused. The
+decisions list only says when the decisions changed. Without
 JavaScript the page is still complete: reload it for current data. When a
 reload changes the mode or a subsystem's health, the page follows. When the console is switched off or moved to another address, or
 `obied` stops, the page says it cannot reach the console and keeps trying;
