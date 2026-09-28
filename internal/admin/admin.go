@@ -13,6 +13,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/httpserver"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
+	"github.com/MNCloudwerksTechnology/obie/internal/peercred"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
@@ -135,7 +136,7 @@ func New(path, group string, info Info, log *slog.Logger) *httpserver.Server {
 	return newServer(path, group, newAccessPolicy(group, log), info, log)
 }
 
-func newServer(path, group string, policy accessPolicy, info Info, log *slog.Logger) *httpserver.Server {
+func newServer(path, group string, policy peercred.Policy, info Info, log *slog.Logger) *httpserver.Server {
 	return httpserver.New(Name, ListenUnix(path, group, log), countRequests(authorize(policy, Handler(info, log), log)), log,
 		httpserver.ConnContext(withPeerCred))
 }

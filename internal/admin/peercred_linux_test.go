@@ -5,61 +5,14 @@ package admin
 import (
 	"context"
 	"errors"
-	"net"
 	"net/http"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
+	"github.com/MNCloudwerksTechnology/obie/internal/peercred"
 )
-
-func TestReadPeerCred(t *testing.T) {
-	path := socketPath(t)
-	ln, err := net.Listen("unix", path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = ln.Close() }()
-	go func() {
-		c, err := net.Dial("unix", path)
-		if err == nil {
-			defer func() { _ = c.Close() }()
-			_, _ = c.Read(make([]byte, 1))
-		}
-	}()
-	c, err := ln.Accept()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = c.Close() }()
-	cred, err := readPeerCred(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if int(cred.UID) != os.Getuid() || int(cred.GID) != os.Getgid() || int(cred.PID) != os.Getpid() {
-		t.Errorf("peer credentials = %+v, want uid %d gid %d pid %d", cred, os.Getuid(), os.Getgid(), os.Getpid())
-	}
-
-	tcp, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tcp.Close() }()
-	go func() {
-		if c, err := net.Dial("tcp", tcp.Addr().String()); err == nil {
-			_ = c.Close()
-		}
-	}()
-	tc, err := tcp.Accept()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = tc.Close() }()
-	if _, err := readPeerCred(tc); err == nil {
-		t.Error("readPeerCred on a TCP connection: no error")
-	}
-}
 
 // TestSocketRefusesPeersOutsidePolicy serves the admin API with a policy
 // that admits neither the test's user nor its group.
@@ -68,7 +21,7 @@ func TestSocketRefusesPeersOutsidePolicy(t *testing.T) {
 		t.Skip("root is always admitted")
 	}
 	path := socketPath(t)
-	policy := accessPolicy{selfUID: os.Getuid() + 1, group: "obie", gid: -1}
+	policy := peercred.Policy{SelfUID: os.Getuid() + 1, Group: "obie", GID: -1}
 	s := newServer(path, "obie-no-such-group", policy, testInfo(lifecycle.Status{Name: "admin", State: lifecycle.StateRunning, Ready: true}), discardLogger())
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -94,7 +47,7 @@ func TestSocketAdmitsGroupMembers(t *testing.T) {
 		t.Skip("root is always admitted")
 	}
 	path := socketPath(t)
-	policy := accessPolicy{selfUID: os.Getuid() + 1, group: "testers", gid: os.Getgid(), groupsOf: userGroups}
+	policy := peercred.Policy{SelfUID: os.Getuid() + 1, Group: "testers", GID: os.Getgid()}
 	s := newServer(path, "obie-no-such-group", policy, testInfo(lifecycle.Status{Name: "admin", State: lifecycle.StateRunning, Ready: true}), discardLogger())
 	if err := s.Start(context.Background()); err != nil {
 		t.Fatal(err)
