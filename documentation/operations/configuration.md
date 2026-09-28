@@ -121,6 +121,18 @@ bootstrap addresses.
 |-----|---------|------------|---------|
 | `metrics.listen` | `127.0.0.1:9464` | restart | `ip:port` of `/metrics` (Prometheus, namespace `obie_`), `/healthz` and `/readyz`. Use an IP address, not a host name; `:9464` listens on every interface. See [Monitoring](monitoring.md). |
 
+## console
+
+| Key | Default | Applied on | Meaning |
+|-----|---------|------------|---------|
+| `console.enabled` | `false` | reload | Serve the local web console, a read-only view of the node for its operator. Off by default; a reload starts or stops it without touching anything else. Sign in with the token `obiectl console` shows. |
+| `console.listen` | `127.0.0.1:9465` | reload | Loopback `ip:port` of the console: `127.0.0.1` (or another `127.0.0.0/8` address) or `::1`. Any other address — a host name, `localhost`, `0.0.0.0`, an empty host, an interface address — is refused, because it would expose the console to the network. From another machine, forward the port over SSH: `ssh -L 9465:127.0.0.1:9465 <this host>`. A reload moves the console to the new address. |
+
+The console admits only root, the user `obied` runs as and members of
+`admin.socket_group`, and only with the token; its security model is
+[ADR 0019](../adr/0019-local-web-console.md). If it cannot start, for
+example because its port is taken, the node runs without it and logs why.
+
 ## audit
 
 | Key | Default | Applied on | Meaning |

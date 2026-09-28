@@ -88,6 +88,8 @@ func TestDefaults(t *testing.T) {
 		{"enforce.nftables.forward", d.Enforce.NFTables.Forward, false},
 		{"enforce.nftables.teardown_on_stop", d.Enforce.NFTables.TeardownOnStop, false},
 		{"metrics.listen", d.Metrics.Listen, "127.0.0.1:9464"},
+		{"console.enabled", d.Console.Enabled, false},
+		{"console.listen", d.Console.Listen, "127.0.0.1:9465"},
 		{"audit.path", d.Audit.Path, ""},
 		{"log.level", d.Log.Level, "info"},
 	}

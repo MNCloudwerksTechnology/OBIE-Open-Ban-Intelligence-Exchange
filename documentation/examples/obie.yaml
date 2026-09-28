@@ -6,9 +6,9 @@
 #
 #   obied --config /etc/obie/obie.yaml --check-config
 #
-# SIGHUP makes obied re-read this file: node.mode, trust, decision and
-# allowlist (including the allowlist.files) take effect at once; changes to
-# other keys need a restart and are logged as such. An invalid file is
+# SIGHUP makes obied re-read this file: node.mode, trust, decision,
+# allowlist (including the allowlist.files) and console take effect at
+# once; changes to other keys need a restart and are logged as such. An invalid file is
 # rejected and the running configuration kept.
 #
 # Unknown keys, values of the wrong type and invalid values are errors that
@@ -160,6 +160,18 @@ metrics:
   # endpoints (/healthz, /readyz). Use an IP address, not a hostname;
   # ":9464" listens on all interfaces.
   listen: 127.0.0.1:9464
+
+console:
+  # Local web console that shows what the node is doing (read-only). Off
+  # unless you switch it on; a reload (SIGHUP) starts, stops or moves it
+  # without touching anything else. Sign in with the token that
+  # `obiectl console` shows.
+  enabled: false
+  # Loopback ip:port it listens on: 127.0.0.1 or ::1 only, so that it is
+  # reachable from this host alone. Any other address is refused. From
+  # another machine, forward the port over SSH:
+  #   ssh -L 9465:127.0.0.1:9465 <this host>
+  listen: 127.0.0.1:9465
 
 audit:
   # JSON-lines audit log of every decision change, with ECS field names

@@ -43,6 +43,7 @@ type Config struct {
 	Allowlist Allowlist `yaml:"allowlist"`
 	Enforce   Enforce   `yaml:"enforce"`
 	Metrics   Metrics   `yaml:"metrics"`
+	Console   Console   `yaml:"console"`
 	Audit     Audit     `yaml:"audit"`
 	Log       Log       `yaml:"log"`
 }
@@ -156,6 +157,16 @@ type Metrics struct {
 	Listen string `yaml:"listen"`
 }
 
+// Console configures the local web console (ADR 0019).
+type Console struct {
+	// Enabled serves the console; it is off unless the operator switches
+	// it on.
+	Enabled bool `yaml:"enabled"`
+	// Listen is the loopback ip:port the console listens on; it is never
+	// reachable from another host.
+	Listen string `yaml:"listen"`
+}
+
 // Audit configures the JSON decision audit log.
 type Audit struct {
 	// Path is the audit log file; empty disables the audit log.
@@ -192,6 +203,7 @@ func Default() Config {
 		Allowlist: Allowlist{CIDRs: []string{}, Files: []string{}},
 		Enforce:   Enforce{Backend: BackendDryRun, MaxEntries: 100000, ReconcileInterval: Duration(10 * time.Second)},
 		Metrics:   Metrics{Listen: "127.0.0.1:9464"},
+		Console:   Console{Enabled: false, Listen: "127.0.0.1:9465"},
 		Audit:     Audit{Path: ""},
 		Log:       Log{Level: "info"},
 	}
