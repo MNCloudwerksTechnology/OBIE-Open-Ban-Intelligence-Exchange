@@ -3,6 +3,7 @@ package org.obie.website;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +63,22 @@ class WebsiteSmokeTest extends IntegrationTest {
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     assertThat(response.getBody()).containsPattern(heading("Page not found")).contains(PRERENDERED);
+  }
+
+  @Test
+  void legalPagesArePrerendered() {
+    Map<String, String> legalTerms =
+        Map.of("/impressum", "Impressum", "/privacy", "Datenschutzerklärung");
+    legalTerms.forEach(
+        (path, legalTerm) -> {
+          ResponseEntity<String> response = getHtml(path);
+
+          assertThat(response.getStatusCode()).as(path).isEqualTo(HttpStatus.OK);
+          assertThat(response.getBody())
+              .as(path)
+              .containsPattern("<h1[^>]*>\\s*<span[^>]*lang=\"de\"[^>]*>" + legalTerm + "</span>")
+              .contains(PRERENDERED);
+        });
   }
 
   @Test
