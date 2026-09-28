@@ -32,7 +32,7 @@ function contrast(a: string, b: string): number {
 
 const backgrounds = ['bg', 'surface', 'surface-alt'];
 const textPairs: [string, string][] = [
-  ...['text', 'text-muted', 'accent-text'].flatMap((fg) =>
+  ...['text', 'text-muted', 'accent-text', 'error'].flatMap((fg) =>
     backgrounds.map((bg): [string, string] => [fg, bg]),
   ),
   ['on-accent', 'accent'],
@@ -44,6 +44,9 @@ const nonTextPairs: [string, string][] = [
   ['accent-text', 'bg'],
   ['border-strong', 'bg'],
   ['border-strong', 'surface-alt'],
+  ['border-strong', 'surface'],
+  ['success', 'surface'],
+  ['error', 'surface'],
 ];
 
 describe.each(['light-theme', 'dark-theme'])('%s colour tokens', (theme) => {

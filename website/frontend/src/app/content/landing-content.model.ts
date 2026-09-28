@@ -14,6 +14,7 @@ export interface LandingContent {
   readonly status: StatusContent;
   readonly getStarted: GetStartedContent;
   readonly founder: FounderContent;
+  readonly contact: ContactContent;
   readonly faq: FaqContent;
   readonly footer: FooterContent;
 }
@@ -46,6 +47,8 @@ export interface A11yContent {
 
 export interface HeaderContent {
   readonly github: Link;
+  /** Call to action next to the navigation; opens the inquiry form. */
+  readonly invite: Link;
 }
 
 export interface HeroContent {
@@ -132,9 +135,90 @@ export interface GetStartedContent extends SectionBase {
   readonly quickStart: Link;
 }
 
+/** The founder profile. Every fact comes from the operator; nothing is invented. */
 export interface FounderContent extends SectionBase {
-  readonly placeholderLabel: string;
-  readonly placeholder: string;
+  readonly name: string;
+  readonly role: string;
+  /** At most 80 words. */
+  readonly bio: string;
+  /** Headshot; `alt` is empty while `src` is the neutral placeholder avatar. */
+  readonly photo: { readonly src: string; readonly alt: string };
+  readonly topicsHeading: string;
+  readonly topicsNote: string;
+  /** Three to five talk topics. */
+  readonly topics: readonly string[];
+  /** Optional profile links (LinkedIn, GitHub); may be empty. */
+  readonly links: readonly Link[];
+  readonly linksLabel: string;
+  /** Opens the inquiry form. */
+  readonly invite: Link;
+}
+
+/** What a visitor can ask for; the values of the back end's `type` field. */
+export type InquiryType = 'talk' | 'workshop' | 'interview' | 'collaboration' | 'other';
+
+/** Label and optional hint of one form field. */
+export interface FieldCopy {
+  readonly label: string;
+  readonly hint?: string;
+}
+
+export interface ContactContent extends SectionBase {
+  readonly intro: string;
+  readonly form: InquiryFormContent;
+}
+
+/** Copy of the inquiry form, including the messages that mirror the back end's rules. */
+export interface InquiryFormContent {
+  readonly typeLegend: string;
+  readonly types: readonly { readonly value: InquiryType; readonly label: string }[];
+  readonly eventLegend: string;
+  readonly fields: {
+    readonly name: FieldCopy;
+    readonly email: FieldCopy;
+    readonly organisation: FieldCopy;
+    readonly eventDate: FieldCopy;
+    readonly eventLocation: FieldCopy;
+    readonly audienceSize: FieldCopy;
+    readonly message: FieldCopy;
+  };
+  readonly optional: string;
+  /** Consent sentence: `before`, then the privacy link, then `after`. */
+  readonly consent: { readonly before: string; readonly link: Link; readonly after: string };
+  readonly honeypot: string;
+  readonly submit: string;
+  readonly sending: string;
+  /** Announced when a submission is stopped by invalid fields. */
+  readonly invalid: string;
+  readonly success: { readonly heading: string; readonly text: string };
+  readonly error: {
+    readonly heading: string;
+    readonly text: string;
+    readonly expired: string;
+    readonly rateLimited: string;
+    readonly retry: string;
+  };
+  readonly messages: ValidationMessages;
+}
+
+/** Validation messages, worded exactly like the back end's (InquiryRequest.java). */
+export interface ValidationMessages {
+  readonly typeRequired: string;
+  readonly nameRequired: string;
+  readonly emailRequired: string;
+  readonly emailInvalid: string;
+  readonly messageRequired: string;
+  readonly messageLength: string;
+  /** `{max}` is replaced with the limit. */
+  readonly maxLength: string;
+  readonly singleLine: string;
+  readonly controlCharacters: string;
+  readonly dateInFuture: string;
+  readonly dateFormat: string;
+  readonly positiveNumber: string;
+  readonly wholeNumber: string;
+  readonly maxAudience: string;
+  readonly consentRequired: string;
 }
 
 export interface FaqContent extends SectionBase {
