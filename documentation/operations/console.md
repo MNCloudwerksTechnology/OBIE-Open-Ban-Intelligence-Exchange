@@ -34,7 +34,9 @@ sudo systemctl reload obied
 `127.0.0.0/8` address) or `::1`, with a port. Any other value — `0.0.0.0`,
 an empty host, an interface address, a host name, even `localhost` — is a
 configuration error, because it would expose the console to the network.
-Set `console.enabled: false` and reload to switch it off again. See the
+Set `console.enabled: false` and reload to switch it off again. A reload
+with another `console.listen` moves the console; if the new address is
+taken, it keeps serving at the old one and says why. See the
 [configuration reference](configuration.md#console).
 
 ## Sign in
@@ -53,7 +55,8 @@ Token:    <43 random letters, digits, - and _>
 ```
 
 Open the address in a browser **on the node's host** and paste the token.
-The session lasts 12 hours or until the browser closes. *Sign out* ends it.
+The session lasts 12 hours or until the browser closes. *Sign out* removes
+it from this browser; `sudo obiectl console --rotate` ends every session.
 
 If your own user is not in the group, the console refuses the connection
 before the sign-in page and says so. Add yourself, as for using `obiectl`
@@ -72,7 +75,9 @@ its port over SSH and open the same address there:
 ssh -L 9465:127.0.0.1:9465 you@node.example.org
 ```
 
-Then open `http://127.0.0.1:9465/` on the workstation. On the node, the
+Then open `http://127.0.0.1:9465/` on the workstation (for a
+`console.listen` other than `127.0.0.1`, use its address after the first
+colon, and still open `127.0.0.1` on the workstation). On the node, the
 connection comes from your SSH login user, which must be root or in the
 group `obie`. The forwarded port is open to every user of your
 workstation: they still need the token, but use a workstation you
@@ -112,8 +117,10 @@ logs why.
 |---------|---------------|
 | `Console: disabled (console.enabled is false)` | Set `console.enabled: true` and reload. |
 | `Console: not serving: listen tcp 127.0.0.1:9465: bind: address already in use` | Another program uses the port. Choose another `console.listen` port, or stop the other program, and reload. The log line is `console not started; the node runs without it`. |
+| `Console: serving at http://127.0.0.1:9465/, not at 127.0.0.1:9470: …` | A reload tried to move the console to a taken port; it keeps serving at the old address. Free the port or choose another, and reload. |
 | `refused: this connection comes from the local user …` | Your user is neither root nor in the group `obie`. Add it (`sudo usermod -aG obie <user>`), or forward the port as a user who is. |
 | `refused: this console answers only requests addressed to 127.0.0.1, [::1] or localhost` | You opened the console under another name, for example through a proxy or a DNS name pointing at the host. Use `127.0.0.1` or `localhost`, through an SSH port forward from other machines. |
 | `refused: the request came from another web site or another port of this host` | A page on another site or another local port tried to use the console. Open the console directly in the address bar. |
+| `refused: a state-changing request must come from a console page` | A program other than a browser posted to the console. Sign in with a browser. |
 | *This is not the console's current token* | The token was replaced or `obied` restarted. Get the current one with `sudo obiectl console`. |
 | *Too many sign-in attempts* | More than a few attempts in a row; wait a few seconds. |

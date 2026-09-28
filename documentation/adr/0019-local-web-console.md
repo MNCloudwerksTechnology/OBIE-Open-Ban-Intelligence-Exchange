@@ -62,8 +62,12 @@ in. Three constraints shape it:
    (ADR 0012): root, the user `obied` runs as, and members of
    `admin.socket_group`. Everyone else gets 403 with an explanation before
    any page, including sign-in. A connection whose owner cannot be
-   determined is refused. The policy and both lookups (`SO_PEERCRED` for
-   the admin socket, the socket table for the console) live in
+   determined is refused — also one whose client already closed its end:
+   the table then lists the socket without an owner (inode 0, UID 0),
+   which must never pass for root. The decision is taken once per
+   connection; at most two lookups run at once, and refusals are logged
+   at most about once a second. The policy and both lookups
+   (`SO_PEERCRED` for the admin socket, the socket table for the console) live in
    `internal/peercred`. On platforms without the socket table only the
    credential below protects the console, as only the file mode protects
    the admin socket there. Through an SSH port forward the connection is
@@ -94,8 +98,8 @@ in. Three constraints shape it:
      the response. `same-site` is refused too, because pages on other
      ports of `127.0.0.1` are the same site. `POST` requests also need
      `Sec-Fetch-Site: same-origin` or, from browsers without Fetch
-     Metadata, an `Origin` equal to the console's own; `Origin: null` is
-     refused. `SameSite=Strict` keeps the cookie off cross-site requests.
+     Metadata, an `Origin` equal to the console's own; a `POST` with
+     neither, or with `Origin: null`, is refused. `SameSite=Strict` keeps the cookie off cross-site requests.
    - *Framing, sniffing, leaks:* every response carries
      `Content-Security-Policy: default-src 'none'; script-src 'self';
      style-src 'self'; img-src 'self'; connect-src 'self'; form-action
@@ -121,7 +125,12 @@ in. Three constraints shape it:
   (`not serving: …`). Its readiness is always ready, so it never turns
   `/readyz` to 503. Because it runs longer than the others, its views must
   treat every other subsystem as possibly not running.
-- **Status detail:** `disabled`, `serving at http://127.0.0.1:9465/` or
+- **Moves.** A reload that changes `console.listen` starts the console at
+  the new address before it leaves the old one: a move to a taken port
+  keeps it serving where it was and says why. A reload with unchanged
+  settings retries a console that could not listen or stopped serving.
+- **Status detail:** `disabled`, `serving at http://127.0.0.1:9465/`,
+  `serving at <old URL>, not at <console.listen>: <reason>` or
   `not serving: <reason>` in `obiectl status` and `obiectl console`.
 - **Health on every page.** The header shows the node's health derived
   from the lifecycle statuses: *shutting down* when a subsystem is
@@ -140,7 +149,8 @@ in. Three constraints shape it:
 | Threat | Defence | Remaining risk |
 |--------|---------|----------------|
 | Attacker on the network connects to the console | Off by default; loopback-only address, validated and re-checked after binding | None while the host's loopback is not forwarded to the network by other software |
-| Another user of the host connects directly | Socket-owner check (403 before any page); token required anyway | On platforms without the socket table only the token protects |
+| Another user of the host connects directly | Socket-owner check (403 before any page), also for a client that closed its end; token required anyway | On platforms without the socket table only the token protects |
+| Another user of the host floods the console with connections | One owner lookup per connection, at most two at once; refusal and sign-in warnings rate-limited | Reading the socket table costs obied some CPU per connection |
 | Another user of the host obtains the token | Token only in `obied`'s memory and behind the admin socket's `SO_PEERCRED` policy | Root and members of `admin.socket_group` are operators by definition |
 | Another user's web server on another loopback port receives the session cookie (cookies are not isolated by port) | The stolen cookie is useless from their processes: the socket-owner check refuses them | See the SSH forward row |
 | Web page in the operator's browser sends a forged request (CSRF) | Fetch Metadata and `Origin` checks, `SameSite=Strict`, read-only console | Browsers without Fetch Metadata rely on `Origin` and `SameSite` |
