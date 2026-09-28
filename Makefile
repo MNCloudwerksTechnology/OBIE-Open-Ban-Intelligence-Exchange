@@ -83,6 +83,14 @@ lint-workflows: $(ACTIONLINT) ## Validate the CI workflows with actionlint and c
 release: $(CYCLONEDX_GOMOD) ## Build reproducible release tarballs, SBOMs and SHA256SUMS (VERSION=x.y.z)
 	VERSION='$(VERSION)' GO='$(GO)' CYCLONEDX_GOMOD='$(CYCLONEDX_GOMOD)' packaging/release.sh $(RELEASE_DIR)
 
+.PHONY: image
+image: ## Build the container image obie:$(VERSION) (docker)
+	docker build --build-arg VERSION='$(VERSION)' -t obie:$(VERSION) .
+
+.PHONY: lab-smoke
+lab-smoke: ## Start the 3-node compose lab, check the nodes see each other and block, remove it (docker)
+	packaging/compose/smoke-test.sh
+
 .PHONY: check-unit
 check-unit: build ## Check the systemd unit with systemd-analyze (verify, exposure <= 3.0)
 	packaging/systemd/check-unit.sh $(BIN_DIR)
