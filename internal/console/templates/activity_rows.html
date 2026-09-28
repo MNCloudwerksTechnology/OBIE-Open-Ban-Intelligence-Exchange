@@ -1,0 +1,27 @@
+{{define "activity-head" -}}
+<thead>
+  <tr><th scope="col">Time</th><th scope="col">What happened</th><th scope="col">About</th><th scope="col">Details</th></tr>
+</thead>
+{{- end}}
+
+{{define "activity-row" -}}
+<tr data-kind="{{.Kind}}">
+  <th scope="row"><time datetime="{{.Time.ISO}}"><span class="day">{{day .Time}}</span> {{clock .Time}}</time></th>
+  <td><span class="cell-label">What happened</span> <span class="activity-kind" data-kind="{{.Kind}}">{{.Label}}</span></td>
+  <td><span class="cell-label">About</span> {{if .Href}}<a {{if .Mono}}class="mono" {{end}}href="{{.Href}}"{{with .Title}} title="{{.}}"{{end}}>{{.Subject}}</a>{{else}}<span class="cell-note">Nothing in particular</span>{{end}}</td>
+  <td><span class="cell-label">Details</span> {{.Reason}}{{with .Facts}}<span class="cell-note">{{range $i, $f := .}}{{if $i}} · {{end}}{{$f}}{{end}}</span>{{end}}{{range .Links}}<a class="activity-link" href="{{.Href}}">{{.Text}}</a>{{end}}</td>
+</tr>
+{{- end}}
+
+{{define "live" -}}
+<div data-next="{{.Next}}">
+<table><tbody>
+{{- range .Rows}}
+{{template "activity-row" .}}
+{{- end}}
+{{- with .Burst}}
+<tr class="burst" data-burst><td colspan="4"><p>{{.Text}} <a href="{{.Reload}}">Reload the page to list every entry</a></p></td></tr>
+{{- end}}
+</tbody></table>
+</div>
+{{- end}}

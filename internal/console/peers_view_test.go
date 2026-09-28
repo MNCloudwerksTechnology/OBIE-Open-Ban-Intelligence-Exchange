@@ -93,8 +93,8 @@ func TestPeersPage(t *testing.T) {
 		`<p class="pager-text">4 peers</p>`,
 		`<p class="note">This node also holds 5 active verdicts from 1 other publisher that are neither configured nor connected. They carry the default weight 0: no influence on decisions.</p>`,
 	)
-	if nav := navOf(t, page); len(nav) < 2 || nav[1] != (navItem{Path: "/peers", Title: "Peers", Current: "page"}) {
-		t.Errorf("navigation = %+v, want Peers after Overview, marked", nav)
+	if nav := navOf(t, page); len(nav) < 3 || nav[2] != (navItem{Path: "/peers", Title: "Peers", Current: "page"}) {
+		t.Errorf("navigation = %+v, want Peers after Activity, marked", nav)
 	}
 }
 
@@ -179,7 +179,7 @@ func TestPeerPage(t *testing.T) {
 		`<td><span class="cell-label">Counts in decisions</span> <span>Yes</span></td>`,
 		`<a href="/peers/`+idAlpha+`?after=ipv4%3A203.0.113.7" rel="next">Next verdicts</a>`,
 	)
-	if nav := navOf(t, page); len(nav) < 2 || nav[1].Current != "true" {
+	if nav := navOf(t, page); len(nav) < 3 || nav[2].Current != "true" {
 		t.Errorf("navigation = %+v, want Peers marked as containing the page", nav)
 	}
 	if n := reads.Load(); n != 1 {

@@ -75,8 +75,8 @@ func TestVerdictsPage(t *testing.T) {
 		`<a href="/decisions/198.51.100.9"><span class="decision-state" data-state="idle">No decision</span></a>`,
 		`<p class="pager-text">5 verdicts</p>`,
 	)
-	if nav := navOf(t, page); nav[4] != (navItem{Path: "/verdicts", Title: "Verdicts", Current: "page"}) {
-		t.Errorf("navigation = %+v, want Verdicts fifth, marked", nav)
+	if nav := navOf(t, page); nav[5] != (navItem{Path: "/verdicts", Title: "Verdicts", Current: "page"}) {
+		t.Errorf("navigation = %+v, want Verdicts sixth, marked", nav)
 	}
 	if strings.Contains(page, "data-refresh") {
 		t.Error("the verdicts view refreshes itself; it is read when the page opens")

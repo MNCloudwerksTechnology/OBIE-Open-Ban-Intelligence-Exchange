@@ -101,7 +101,7 @@ func TestDecisionExplanation(t *testing.T) {
 	if strings.Contains(page, "Decisions inside this network") {
 		t.Error("an address links to the decisions inside it")
 	}
-	if nav := navOf(t, page); nav[2] != (navItem{Path: "/decisions", Title: "Decisions", Current: "true"}) {
+	if nav := navOf(t, page); nav[3] != (navItem{Path: "/decisions", Title: "Decisions", Current: "true"}) {
 		t.Errorf("navigation = %+v, want Decisions marked as containing the page", nav)
 	}
 

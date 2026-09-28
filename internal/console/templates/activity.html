@@ -1,0 +1,76 @@
+{{define "content" -}}
+<h1>Activity</h1>
+<p class="lead">What this node did, newest first: blocks added, updated or removed, addresses spared by the allow-list, overrides set or removed, its own reports and revocations, peers connecting and disconnecting, configuration reloads and mode changes. Every entry is a record of the node's audit log, so this timeline and your SIEM tell the same story.</p>
+<p class="callout"{{if .Warning}} data-level="warning"{{end}}>{{.Source}}{{with .SettingHref}} <a href="{{.}}">The audit log setting</a>{{end}}</p>
+
+<section class="section" aria-labelledby="list-heading">
+  <h2 id="list-heading">{{.Heading}}</h2>
+  <form class="filter-form" method="get" action="/activity" role="search" aria-label="Filter activity">
+    <div class="field">
+      <label for="activity-kind">Kind</label>
+      <select id="activity-kind" name="kind">
+        {{- range .Kinds}}
+        <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+        {{- end}}
+      </select>
+    </div>
+    <div class="field field-wide">
+      <label for="activity-address">Address or network</label>
+      <input id="activity-address" name="address" type="search" value="{{.Address}}" placeholder="203.0.113.7 or 198.51.100.0/24" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="button">Show</button>
+      {{- with .Clear}}
+      <a href="{{.}}">Clear filters</a>
+      {{- end}}
+    </div>
+  </form>
+  {{- with .AddressErr}}
+  <p class="callout" data-level="warning">{{.}}</p>
+  {{- end}}
+  {{- if .Err}}
+  <p class="callout" data-level="warning">The activity could not be read: {{.Err}}</p>
+  {{- else}}
+  {{- with .Live}}
+  <div class="live" data-live-feed="{{.}}" data-max-rows="{{$.MaxRows}}" hidden>
+    <p class="live-status" role="status" data-live-status>Live: new entries appear at the top as they happen.</p>
+    <button type="button" class="button button-secondary" data-live-toggle aria-pressed="false">Pause live updates</button>
+  </div>
+  {{- end}}
+  {{- with .Newest}}
+  <p class="note">This is an older page, which does not follow new entries: <a href="{{.}}">the newest entries</a>.</p>
+  {{- end}}
+  <p class="empty" data-activity-empty{{if .Rows}} hidden{{end}}>{{.Empty}}{{with .Clear}} <a href="{{.}}">Clear filters</a>{{end}}</p>
+  <div class="table-scroll"{{if not .Rows}} hidden{{end}} data-activity-table>
+  <table class="list activity">
+    {{template "activity-head"}}
+    <tbody data-activity-rows>
+      {{- range .Rows}}
+      {{template "activity-row" .}}
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  <p class="note" data-activity-trimmed hidden>To keep this page responsive, it keeps only the newest {{count .MaxRows}} entries; older ones were taken off it. <a href="{{.Reload}}">Reload the page</a> to page through all of them.</p>
+  {{- with .Searched}}
+  <p class="note">{{.}}</p>
+  {{- end}}
+  {{- with .End}}
+  <p class="note">{{.}}</p>
+  {{- end}}
+  {{- with .Skipped}}
+  <p class="note">{{.}}</p>
+  {{- end}}
+  {{- if or .Older .Newest}}
+  <nav class="pager" aria-label="Pages of activity">
+    {{- with .Newest}}
+    <a href="{{.}}">Newest entries</a>
+    {{- end}}
+    {{- with .Older}}
+    <a href="{{.}}" rel="next">{{$.OlderText}}</a>
+    {{- end}}
+  </nav>
+  {{- end}}
+  {{- end}}
+</section>
+{{- end}}

@@ -66,6 +66,7 @@ func (it *item) pattern(path string) string {
 func (c *Console) views() []view {
 	return []view{
 		{Path: "/", Title: "Overview", Fragment: "/api/overview", template: overviewTemplate, content: c.overviewContent},
+		{Path: "/activity", Title: "Activity", template: activityTemplate, content: c.activityContent},
 		{Path: "/peers", Title: "Peers", Fragment: "/api/peers", template: peersTemplate, content: c.peersContent,
 			item: &item{template: peerTemplate, content: c.peerContent,
 				missing: "This node knows no such peer: it is neither configured nor connected, and the node holds no verdict of it."}},
@@ -83,7 +84,7 @@ func (c *Console) views() []view {
 
 // Page templates: each is the shared layout with the page's content.
 var (
-	overviewTemplate  = pageTemplate("overview.html")
+	overviewTemplate  = pageTemplate("overview.html", "activity_rows.html")
 	peersTemplate     = pageTemplate("peers.html")
 	peerTemplate      = pageTemplate("peer.html")
 	verdictsTemplate  = pageTemplate("verdicts.html")
@@ -95,11 +96,18 @@ var (
 	overridesTemplate     = pageTemplate("overrides.html")
 	allowlistTemplate     = pageTemplate("allowlist.html")
 	configurationTemplate = pageTemplate("configuration.html")
+	// The activity timeline (ADR 0025).
+	activityTemplate = pageTemplate("activity.html", "activity_rows.html")
 )
 
-func pageTemplate(file string) *template.Template {
-	return template.Must(template.New(file).Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+file)).
-		Lookup("layout")
+// pageTemplate returns the layout with the content of file, which may use
+// the templates of the files shared.
+func pageTemplate(file string, shared ...string) *template.Template {
+	patterns := []string{"templates/layout.html", "templates/" + file}
+	for _, f := range shared {
+		patterns = append(patterns, "templates/"+f)
+	}
+	return template.Must(template.New(file).Funcs(templateFuncs).ParseFS(templateFiles, patterns...)).Lookup("layout")
 }
 
 // templateFuncs are the functions page templates may call.
@@ -255,8 +263,10 @@ func (c *Console) overviewContent(*http.Request) any {
 	if c.node.Facts != nil {
 		facts = c.node.Facts()
 	}
-	return buildOverview(overviewInput{now: c.now(), node: c.node, mode: c.node.Mode(), statuses: statuses,
+	p := buildOverview(overviewInput{now: c.now(), node: c.node, mode: c.node.Mode(), statuses: statuses,
 		facts: facts, link: c.detailLink})
+	p.Activity = c.recentActivity()
+	return p
 }
 
 // detailLink returns path as the link to the view that details a number
