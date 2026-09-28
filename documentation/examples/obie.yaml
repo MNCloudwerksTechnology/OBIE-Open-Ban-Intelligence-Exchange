@@ -123,11 +123,16 @@ allowlist:
   files: []
 
 enforce:
-  # dryrun: log what would be blocked. nftables: manage an nftables set.
+  # Only used in node.mode enforce. dryrun: keep the blocks in memory and
+  # log every add/remove as JSON, blocking nothing. nftables: manage an
+  # nftables set (not available yet in this build).
   backend: dryrun
-  # Upper bound on simultaneously blocked addresses (>= 1).
+  # Upper bound on simultaneously blocked addresses/ranges (>= 1). Beyond
+  # it the lowest-score blocks are skipped, logged and counted.
   max_entries: 100000
-  # How often the backend is reconciled with the decided state (> 0).
+  # How often the backend is reconciled with the decided state (> 0), in
+  # addition to right after every decision change; also the longest retry
+  # delay after a failed apply.
   reconcile_interval: 10s
 
 metrics:

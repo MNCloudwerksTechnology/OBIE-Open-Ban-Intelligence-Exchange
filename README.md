@@ -17,8 +17,11 @@ word: loopback, private, link-local, documentation and the node's own and
 bootstrap peers' addresses are never blocked, `allowlist.cidrs` and
 `allowlist.files` add more, and `obiectl allow` / `obiectl block` overrule
 the mesh for any address. A node starts in `observe` mode and never
-enforces until `node.mode: enforce` is set; the enforcement backend follows
-in a later work package. `obiectl`, the operator CLI, queries it over the
+enforces until `node.mode: enforce` is set; then a reconcile loop keeps the
+enforcement backend exactly in line with the decided blocks, capped at
+`enforce.max_entries` and never touching allow-listed addresses. The default
+`dryrun` backend only logs what it would block; the `nftables` backend
+follows in a later work package. `obiectl`, the operator CLI, queries it over the
 local admin socket and turns local detections into signed verdicts: log
 lines given as evidence are hashed on the node, and only the hash and the
 counts are published.
@@ -39,6 +42,7 @@ make build           # static binaries in ./bin/
 ./bin/obiectl --socket /run/obie/obie.sock block <ip|cidr> [--ttl 1h] [--note text]  # always block
 ./bin/obiectl --socket /run/obie/obie.sock overrides [--json]
 ./bin/obiectl --socket /run/obie/obie.sock unoverride <ip|cidr>
+./bin/obiectl --socket /run/obie/obie.sock enforced [--json]    # entries the backend applies
 ./bin/obiectl report --protocol ssh --reason password_bruteforce --events 5 \
     [--evidence-file auth.log | --evidence-from-stdin] [--ttl 12h] [--action watch] \
     [--json] <ip | cidr>                     # publish a verdict (or --ip <ip | cidr>)

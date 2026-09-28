@@ -23,7 +23,9 @@ of events in [ADR 0009](documentation/adr/0009-gossip-of-events.md); the
 trust-weighted decision engine in
 [ADR 0011](documentation/adr/0011-trust-weighted-decision.md); the
 allow-list, operator overrides, observe/enforce modes and configuration
-reload in [ADR 0013](documentation/adr/0013-local-sovereignty.md); the website
+reload in [ADR 0013](documentation/adr/0013-local-sovereignty.md); the
+enforcement reconciliation in
+[ADR 0014](documentation/adr/0014-enforcement-reconciliation.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -44,7 +46,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0008).
 - **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts` (no pubsub signatures, message ID = event ID, validation before relay, per-publisher and per-peer rate limits, peer scoring), static bootstrap peers in v0.1.
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins (built-in ranges, own and bootstrap addresses, `allowlist.cidrs`, `allowlist.files`); operator force-allow / force-block overrides; mode `observe` (default) or `enforce`; SIGHUP reloads (ADR 0013).
-- **Enforcement:** pluggable enforcer; `dryrun` and `nftables` (own table `inet obie`, timeout sets) backends; reconcile loop.
+- **Enforcement:** pluggable enforcer (`Setup`/`List`/`Apply`/`Teardown`, entries with timeouts); `dryrun` (default) and `nftables` (own table `inet obie`, timeout sets) backends; reconcile loop with `enforce.max_entries` cap and allow-list re-check (ADR 0014).
 - **Ops:** Prometheus `/metrics`, `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); JSON decision audit log.
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests; privileged tests behind the `privileged` build tag.
 
@@ -60,7 +62,7 @@ internal/           all non-public code (one package per concern listed above)
   config/           YAML configuration schema, defaults, strict decoding, validation
   daemon/           wires the obied subsystems together and runs them
   decision/         trust-weighted consensus per indicator, explanations, block change stream
-  enforce/          mode gate: the only path from block changes to the enforcer
+  enforce/          mode gate, reconciler and enforcement backends (dryrun)
   gossip/           GossipSub topic: validation, dedupe, rate limits, Publish, metrics hook
   httpserver/       HTTP server as a lifecycle subsystem
   identity/         persistent Ed25519 node key (<state_dir>/node.key); peer ID, signing
@@ -185,13 +187,28 @@ Only the packages that exist today are listed in detail; the remaining
   overrides; `obiectl explain` names the rule, its source and the match.
 - **Modes and reload.** `internal/enforce.Gate` subscribes to the block
   change stream and is the only path to the enforcer: in `observe`
-  (default) it logs every change and forwards nothing, in `enforce` it
-  forwards; switching replays or withdraws the current blocks. The mode is
-  set only in the configuration (`obiectl status` shows it first). SIGHUP
+  (default) it logs every change and notifies nothing, in `enforce` it
+  notifies the reconciler; switching applies or withdraws the current
+  blocks. The mode is set only in the configuration (`obiectl status` shows it first). SIGHUP
   re-reads the configuration and the allow-list files and applies
   `node.mode`, `trust`, `decision` and `allowlist` at once; an invalid
   configuration or allow-list file is logged and the running one kept;
   changes to other keys are logged as needing a restart (ADR 0013).
+- **Enforcement.** The `enforce` subsystem (`internal/enforce.Reconciler`,
+  registered right after `decision`) makes the backend's entries match the
+  gate's blocks: at start, ~250 ms after a block change or mode switch and
+  every `enforce.reconcile_interval`, it computes the desired entries
+  (unexpired address/CIDR blocks; allow-list re-checked right before
+  apply — protected entries always refuse, `allowlist.cidrs`/files unless
+  force-blocked; at most `enforce.max_entries`, highest score first),
+  diffs them against `Enforcer.List` and applies the minimal add/remove.
+  Every entry carries its remaining timeout, so the backend expires it
+  even if `obied` dies. In `observe` it never sets up, lists or applies —
+  it tears the backend down once — and its status says `observing`. A
+  failed pass is retried with backoff (1 s up to the interval) and makes
+  `/readyz` answer 503. `dryrun` (default) keeps entries in memory and
+  logs every add/remove as JSON. `obiectl enforced` (`GET /v1/enforced`)
+  lists the applied entries (ADR 0014).
 - **Local verdicts.** `internal/verdicts` turns a local detection into a
   signed `indicator.verdict` (`obiectl report`, `POST /v1/reports`): defaults
   confidence 0.8, action `ban` and TTL `decision.default_ttl`, capped at

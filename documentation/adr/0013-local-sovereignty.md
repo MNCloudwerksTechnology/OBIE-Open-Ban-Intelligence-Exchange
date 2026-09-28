@@ -74,7 +74,8 @@ any address — without restarting the node for every change.
   logs every change ("not enforced") and forwards nothing; in `enforce` it
   forwards. Switching `observe → enforce` replays the current blocks as
   `added`, `enforce → observe` withdraws them as `removed` (cause `mode`).
-  The mode cannot be changed through the admin API.
+  The mode cannot be changed through the admin API. (Since ADR 0014 the
+  gate notifies the reconciler instead of forwarding single changes.)
 - **Admin API:** `GET /v1/overrides`, `POST /v1/overrides`
   (`{indicator, action, ttl_seconds, note}`), `DELETE /v1/overrides/{indicator}`;
   `obiectl allow|block <ip|cidr> [--ttl] [--note]`, `obiectl overrides`,
