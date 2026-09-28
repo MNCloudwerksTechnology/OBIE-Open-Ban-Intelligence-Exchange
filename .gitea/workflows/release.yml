@@ -52,11 +52,12 @@ jobs:
         env:
           TAG: ${{ github.ref_name }}
           SERVER_URL: ${{ github.server_url }}
-          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
         run: |
           version="${TAG#v}"
           if [ "${GITEA_ACTIONS:-}" = true ]; then registry="${SERVER_URL#*://}"; else registry=ghcr.io; fi
-          image="$registry/$(echo "$REPO" | tr '[:upper:]' '[:lower:]')"
+          # <registry>/<owner>/obie, whatever the repository is called.
+          image="$registry/$(echo "$OWNER" | tr '[:upper:]' '[:lower:]')/obie"
           tags="$image:$version"
           case "$version" in *-*) ;; *) tags="$tags,$image:latest" ;; esac
           {

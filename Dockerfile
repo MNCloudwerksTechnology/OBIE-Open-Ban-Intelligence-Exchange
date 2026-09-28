@@ -47,7 +47,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="OBIE" \
       org.opencontainers.image.description="Open Ban Intelligence Exchange node (obied, obiectl)" \
-      org.opencontainers.image.source="https://github.com/MNCloudwerksTechnology/obie" \
+      org.opencontainers.image.source="https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.version="$VERSION"
 COPY --from=build /out/obied /out/obiectl /usr/local/bin/

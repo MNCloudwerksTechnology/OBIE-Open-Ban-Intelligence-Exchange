@@ -14,7 +14,7 @@
 
 [Unit]
 Description=OBIE node daemon (Open Ban Intelligence Exchange)
-Documentation=https://github.com/MNCloudwerksTechnology/obie
+Documentation=https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange
 After=network-online.target nftables.service
 Wants=network-online.target
 
