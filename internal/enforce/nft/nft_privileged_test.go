@@ -44,11 +44,11 @@ func TestMain(m *testing.M) {
 // returns its exit code; ok is false if no namespace can be created.
 func reexecIsolated() (code int, ok bool) {
 	for _, flags := range [][]string{{"-rn"}, {"-n"}} {
-		if exec.Command("unshare", append(flags, "true")...).Run() != nil {
+		if exec.Command("unshare", append(flags, "true")...).Run() != nil { // #nosec G204 -- fixed arguments.
 			continue
 		}
 		args := append(append(flags, "--"), os.Args...)
-		cmd := exec.Command("unshare", args...) // #nosec G204 -- re-executes this test binary.
+		cmd := exec.Command("unshare", args...) // #nosec G204 G702 -- re-executes this test binary.
 		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 		cmd.Env = append(os.Environ(), netnsEnv+"=1")
 		err := cmd.Run()
