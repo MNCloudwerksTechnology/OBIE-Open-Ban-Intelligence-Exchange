@@ -21,7 +21,7 @@
       {{- with .Mine}}
       <tr class="totals-mine">
         <th scope="row"><span class="peer-name">This node</span><span class="cell-note">published</span></th>
-        <td><span class="cell-label">Trust weight</span> <span class="cell-note">trust.local_weight</span></td>
+        <td><span class="cell-label">Trust weight</span> <span class="weight">{{.Weight}}</span><span class="cell-note">trust.local_weight</span></td>
         {{- template "counts" .}}
       </tr>
       {{- end}}

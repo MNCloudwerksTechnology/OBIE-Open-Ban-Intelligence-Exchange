@@ -67,7 +67,7 @@ if both admit it.
 
 | Key | Default | Applied on | Meaning |
 |-----|---------|------------|---------|
-| `store.max_indicators` | `1000000` | restart | Most verdicts the event store holds, one per publisher and indicator, so a flood of unique indicators — even from a trusted peer — cannot fill the disk. When the store is full, the verdict that expires first makes room (counted in `obie_store_evictions_total`); a new verdict that would expire before all stored ones is refused instead. This node's own verdicts are never evicted. About 3 KiB of disk per verdict. The store also keeps verdicts that were revoked or expired for a day, for the console's [verdicts view](console.md#the-verdicts-view): at most a tenth of `store.max_indicators` (at least 1,000) of other publishers', about 1 KiB each, and all of this node's own. At least 1. See [Monitoring](monitoring.md). |
+| `store.max_indicators` | `1000000` | restart | Most verdicts the event store holds, one per publisher and indicator, so a flood of unique indicators — even from a trusted peer — cannot fill the disk. When the store is full, the verdict that expires first makes room (counted in `obie_store_evictions_total`); a new verdict that would expire before all stored ones is refused instead. This node's own verdicts are never evicted. About 3 KiB of disk per verdict. The store also keeps verdicts that were revoked or expired for a day, for the console's [verdicts view](console.md#the-verdicts-view): of other publishers at most a tenth of `store.max_indicators` (at least 1,000) revoked ones and as many expired ones, about 1 KiB each, and all of this node's own. At least 1. See [Monitoring](monitoring.md). |
 
 ## trust
 

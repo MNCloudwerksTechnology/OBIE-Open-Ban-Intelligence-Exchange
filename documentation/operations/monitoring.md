@@ -39,6 +39,7 @@ No label ever carries an IP address or a peer ID.
 | `obie_store_events_total` | counter | `result` | Events passed to the store, by outcome; `full` counts verdicts refused because the store was full and they would have expired first. |
 | `obie_store_verdict_records` | gauge | | Verdicts the store holds (active, revoked or expired but not yet swept), bounded by `store.max_indicators`. |
 | `obie_store_evictions_total` | counter | | Stored verdicts evicted, the one expiring first each, to keep the store within `store.max_indicators`. |
+| `obie_store_ended_verdicts` | gauge | `state` (`revoked`, `expired`) | Verdicts the store keeps for a day after they ended, for the console's [verdicts view](console.md#the-verdicts-view); of other publishers at most a tenth of `store.max_indicators` in each state. |
 
 Useful queries:
 

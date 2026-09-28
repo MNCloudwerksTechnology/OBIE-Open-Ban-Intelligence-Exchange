@@ -139,15 +139,16 @@ func TestExpiredVerdictIsKept(t *testing.T) {
 	if got, want := ttlOf(t, db, key), v.ExpiresAt().Add(EndedRetention); !got.Equal(want) {
 		t.Errorf("ended verdict TTL = %v, want %v", got, want)
 	}
-	if counts, err := db.EndedCounts(); err != nil || !reflect.DeepEqual(counts, map[string]EndedCount{pubA: {Expired: 1}}) {
-		t.Errorf("EndedCounts = %v, %v", counts, err)
+	if got := tally(t, db).ByPublisher; !reflect.DeepEqual(got, map[string]EndedCount{pubA: {Expired: 1}}) {
+		t.Errorf("EndedCounts = %v", got)
 	}
 	clk.Advance(EndedRetention)
 	if got := endedIDs(t, db, EndedFilter{State: EndedExpired}); len(got) != 0 {
 		t.Errorf("expired after its retention = %v", got)
 	}
-	if counts, err := db.EndedCounts(); err != nil || len(counts) != 0 {
-		t.Errorf("EndedCounts after the retention = %v, %v", counts, err)
+	sweep(t, db, clk.Now())
+	if got := tally(t, db).ByPublisher; len(got) != 0 {
+		t.Errorf("EndedCounts after the retention and a sweep = %v", got)
 	}
 }
 
@@ -338,13 +339,9 @@ func TestEndedVerdictsFiltersPagesAndCounts(t *testing.T) {
 		t.Errorf("offsets = %v, want [0 4 8]", offsets)
 	}
 
-	counts, err := db.EndedCounts()
-	if err != nil {
-		t.Fatal(err)
-	}
 	want := map[string]EndedCount{pubA: {Revoked: 1, Expired: 5}, pubB: {Expired: 5}, pubC: {Expired: 1}}
-	if !reflect.DeepEqual(counts, want) {
-		t.Errorf("EndedCounts = %v, want %v", counts, want)
+	if got := tally(t, db).ByPublisher; !reflect.DeepEqual(got, want) {
+		t.Errorf("EndedCounts = %v, want %v", got, want)
 	}
 }
 
@@ -379,9 +376,30 @@ func TestSweepArchivesLargestEvents(t *testing.T) {
 	}
 }
 
-// TestEndedVerdictsAreCapped: beyond Options.MaxEnded the store keeps only
-// this node's own ended verdicts, so a flood of short-lived verdicts cannot
-// fill the disk; the sweep recounts them as they are forgotten.
+// tally returns the ended verdicts the store counts.
+func tally(t *testing.T, db *DB) EndedTally {
+	t.Helper()
+	c, err := db.EndedCounts()
+	if err != nil {
+		t.Fatalf("EndedCounts: %v", err)
+	}
+	return c
+}
+
+// revoked stores a verdict of publisher on ind and its revocation.
+func revoked(t *testing.T, db *DB, clk *clock, publisher string, ind obieproto.Indicator) *obieproto.Event {
+	t.Helper()
+	v := verdict(publisher, ind, clk.Now(), time.Hour)
+	mustPut(t, db, v, true)
+	mustPut(t, db, revoke(publisher, v, clk.Now()), true)
+	return v
+}
+
+// TestEndedVerdictsAreCapped: beyond Options.MaxEnded of other publishers'
+// verdicts that ended in a state, the store keeps no more of them, so a
+// flood of short-lived verdicts cannot fill the disk; this node's own are
+// always kept, a flood of expiries does not crowd out revocations, and the
+// sweep recounts them as they are forgotten.
 func TestEndedVerdictsAreCapped(t *testing.T) {
 	clk := newClock()
 	db := startDB(t, NewMemory(discardLogger(), Options{Now: clk.Now, MaxEnded: 3, Self: pubC}))
@@ -393,43 +411,77 @@ func TestEndedVerdictsAreCapped(t *testing.T) {
 	clk.Advance(time.Hour)
 	sweep(t, db, clk.Now())
 	checkVerdicts(t, db, 0)
-	page := ended(t, db, EndedFilter{State: EndedExpired})
-	if page.Total != 4 || page.States[EndedExpired] != 4 {
+	if page := ended(t, db, EndedFilter{State: EndedExpired}); page.Total != 4 {
 		t.Errorf("kept %d expired verdicts, want 3 of the flood and this node's own", page.Total)
 	}
 	if got := endedIDs(t, db, EndedFilter{State: EndedExpired, Publisher: pubC}); !slices.Equal(got, []string{own.ID}) {
 		t.Errorf("this node's own expired verdict = %v, want it kept beyond the cap", got)
 	}
-	if n := db.Ended(); n != 4 {
-		t.Errorf("Ended() = %d, want 4", n)
+	c := tally(t, db)
+	if want := map[string]EndedCount{pubA: {Expired: 3}, pubC: {Expired: 1}}; !reflect.DeepEqual(c.ByPublisher, want) || c.Max != 3 ||
+		!reflect.DeepEqual(c.Full, map[EndedState]bool{EndedExpired: true, EndedRevoked: false}) {
+		t.Errorf("tally = %+v", c)
 	}
 
-	// A revocation beyond the cap: the verdict is revoked, but not kept.
-	v := verdict(pubB, ipv4("11.9.9.9"), clk.Now(), time.Hour)
-	mustPut(t, db, v, true)
-	mustPut(t, db, revoke(pubB, v, clk.Now()), true)
-	if got := activeIDs(t, db, v.Key(), clk.Now()); len(got) != 0 {
-		t.Errorf("active after the revocation = %v", got)
+	// The expiries leave the revocations their own room.
+	first := revoked(t, db, clk, pubB, ipv4("11.9.9.1"))
+	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked}); !slices.Equal(got, []string{first.ID}) {
+		t.Errorf("revoked = %v, want [%s]", got, first.ID)
 	}
-	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked}); len(got) != 0 {
+	// A later verdict revoked on the same indicator replaces it and does
+	// not count again.
+	clk.Advance(time.Second)
+	again := revoked(t, db, clk, pubB, ipv4("11.9.9.1"))
+	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked}); !slices.Equal(got, []string{again.ID}) {
+		t.Errorf("revoked after a replacement = %v, want [%s]", got, again.ID)
+	}
+	if got := tally(t, db).ByPublisher[pubB]; got != (EndedCount{Revoked: 1}) {
+		t.Errorf("pubB's count after a replacement = %+v, want 1 revoked", got)
+	}
+	revoked(t, db, clk, pubB, ipv4("11.9.9.2"))
+	revoked(t, db, clk, pubA, ipv4("11.9.9.3"))
+	beyond := revoked(t, db, clk, pubB, ipv4("11.9.9.4"))
+	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked, Key: beyond.Key()}); len(got) != 0 {
 		t.Errorf("revoked beyond the cap = %v, want none kept", got)
+	}
+	if got := activeIDs(t, db, beyond.Key(), clk.Now()); len(got) != 0 {
+		t.Errorf("active after the revocation = %v: the cap must not keep a verdict active", got)
+	}
+	mine := revoked(t, db, clk, pubC, ipv4("11.9.9.5"))
+	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked, Key: mine.Key()}); !slices.Equal(got, []string{mine.ID}) {
+		t.Errorf("this node's own revocation beyond the cap = %v, want it kept", got)
+	}
+	if c := tally(t, db); !c.Full[EndedRevoked] || c.ByPublisher[pubC] != (EndedCount{Revoked: 1, Expired: 1}) {
+		t.Errorf("tally = %+v", c)
 	}
 
 	// Once the retention ends, the sweep recounts and verdicts are kept
 	// again.
-	clk.Advance(EndedRetention)
+	clk.Advance(EndedRetention + time.Hour)
 	sweep(t, db, clk.Now())
-	if n := db.Ended(); n != 0 {
-		t.Errorf("Ended() after the retention = %d, want 0", n)
+	if c := tally(t, db); len(c.ByPublisher) != 0 || c.Full[EndedRevoked] || c.Full[EndedExpired] {
+		t.Errorf("tally after the retention = %+v", c)
 	}
-	w := verdict(pubB, ipv4("11.9.9.8"), clk.Now(), time.Hour)
-	mustPut(t, db, w, true)
-	mustPut(t, db, revoke(pubB, w, clk.Now()), true)
+	w := revoked(t, db, clk, pubB, ipv4("11.9.9.8"))
 	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked}); !slices.Equal(got, []string{w.ID}) {
 		t.Errorf("revoked after the recount = %v, want [%s]", got, w.ID)
 	}
-	if n := db.Ended(); n != 1 {
-		t.Errorf("Ended() = %d, want 1", n)
+}
+
+// TestRevokedRecordReplacedIsNotExpired: a verdict that was revoked and is
+// replaced after its expiry stays revoked; it is not kept as expired too.
+func TestRevokedRecordReplacedIsNotExpired(t *testing.T) {
+	clk := newClock()
+	db := newMemDB(t, clk)
+	ind := ipv4("11.0.0.1")
+	v := revoked(t, db, clk, pubA, ind)
+	clk.Advance(time.Hour) // v expired; no sweep yet
+	mustPut(t, db, verdict(pubA, ind, clk.Now(), time.Hour), true)
+	if got := endedIDs(t, db, EndedFilter{State: EndedExpired}); len(got) != 0 {
+		t.Errorf("expired = %v, want none", got)
+	}
+	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked}); !slices.Equal(got, []string{v.ID}) {
+		t.Errorf("revoked = %v, want [%s]", got, v.ID)
 	}
 }
 
@@ -449,22 +501,32 @@ func TestEndedDefaults(t *testing.T) {
 	}
 }
 
-// TestEndedCountSurvivesRestart: Start counts the ended verdicts kept.
-func TestEndedCountSurvivesRestart(t *testing.T) {
+// TestEndedAfterRestart: a verdict that expired while obied was down is
+// kept as expired by the first sweep after the restart, and Start counts
+// the ended verdicts kept.
+func TestEndedAfterRestart(t *testing.T) {
 	clk := newClock()
 	dir := filepath.Join(t.TempDir(), "db")
 	db := New(dir, discardLogger(), Options{Now: clk.Now})
 	if err := db.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	mustPut(t, db, verdict(pubA, ipv4("11.0.0.1"), clk.Now(), time.Hour), true)
-	clk.Advance(time.Hour)
-	sweep(t, db, clk.Now())
+	v := verdict(pubA, ipv4("11.0.0.1"), clk.Now(), time.Hour)
+	mustPut(t, db, v, true)
+	revoked(t, db, clk, pubB, ipv4("11.0.0.2"))
 	if err := db.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	clk.Advance(3 * time.Hour) // down across the expiry
 	db = startDB(t, New(dir, discardLogger(), Options{Now: clk.Now}))
-	if n := db.Ended(); n != 1 {
-		t.Errorf("Ended() after a restart = %d, want 1", n)
+	if got := tally(t, db).ByPublisher; !reflect.DeepEqual(got, map[string]EndedCount{pubB: {Revoked: 1}}) {
+		t.Errorf("counts after the restart = %v", got)
+	}
+	sweep(t, db, clk.Now())
+	if got := endedIDs(t, db, EndedFilter{State: EndedExpired}); !slices.Equal(got, []string{v.ID}) {
+		t.Errorf("expired after the first sweep = %v, want [%s]", got, v.ID)
+	}
+	if got := tally(t, db).ByPublisher; !reflect.DeepEqual(got, map[string]EndedCount{pubA: {Expired: 1}, pubB: {Revoked: 1}}) {
+		t.Errorf("counts after the first sweep = %v", got)
 	}
 }

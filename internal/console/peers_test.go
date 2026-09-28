@@ -68,6 +68,7 @@ var (
 			testNode.PeerID: {Held: 9, Counting: 9},
 		},
 		EventWindow: time.Hour,
+		LocalWeight: 1,
 	}
 )
 

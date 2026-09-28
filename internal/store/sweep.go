@@ -35,7 +35,8 @@ func (s *DB) Sweep(now time.Time) error {
 func (s *DB) sweepBatch(now time.Time) (changes []Change, more bool, err error) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	removed, kept := 0, 0
+	removed := 0
+	var kept []keptEnded
 	err = s.update(func(txn *badger.Txn) error {
 		due, dueMore := dueExpiries(txn, now)
 		more = dueMore
@@ -64,7 +65,7 @@ func (s *DB) sweepBatch(now time.Time) (changes []Change, more bool, err error) 
 		return nil, false, err
 	}
 	s.addVerdicts(-removed)
-	s.ended.Add(int64(kept))
+	s.endedCounts.add(kept)
 	return changes, more, nil
 }
 
@@ -90,7 +91,7 @@ func dueExpiries(txn *badger.Txn, now time.Time) ([][]byte, bool) {
 // to, if that still expires at the indexed time, adding an expired verdict
 // kept to kept. It returns the change to notify, with an empty Key if
 // nothing active changed.
-func (s *DB) expire(txn *badger.Txn, indexKey []byte, kept *int) (Change, error) {
+func (s *DB) expire(txn *badger.Txn, indexKey []byte, kept *[]keptEnded) (Change, error) {
 	if err := txn.Delete(indexKey); err != nil {
 		return Change{}, err
 	}
@@ -104,7 +105,7 @@ func (s *DB) expire(txn *badger.Txn, indexKey []byte, kept *int) (Change, error)
 	return Change{}, nil
 }
 
-func (s *DB) expireVerdict(txn *badger.Txn, key []byte, at time.Time, kept *int) (Change, error) {
+func (s *DB) expireVerdict(txn *badger.Txn, key []byte, at time.Time, kept *[]keptEnded) (Change, error) {
 	change := Change{Key: indicatorOfVerdictKey(key), Reason: ReasonExpiry}
 	rec, err := getRecord(txn, key)
 	switch {

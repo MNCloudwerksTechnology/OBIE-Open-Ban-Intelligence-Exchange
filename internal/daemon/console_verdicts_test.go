@@ -201,7 +201,8 @@ func TestConsoleVerdicts(t *testing.T) {
 		self:     {Active: 1, Counting: 1, Revoked: 1},
 		pubAlpha: {Active: 2, Counting: 2, Expired: 1},
 		pubBravo: {Active: 1},
-	}, Retention: store.EndedRetention}
+	}, Retention: store.EndedRetention, EndedMax: store.DefaultMaxIndicators / 10,
+		EndedFull: map[string]bool{console.VerdictRevoked: false, console.VerdictExpired: false}}
 	if !reflect.DeepEqual(totals, wantTotals) {
 		t.Errorf("totals = %+v\nwant %+v", totals, wantTotals)
 	}

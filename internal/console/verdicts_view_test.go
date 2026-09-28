@@ -24,6 +24,7 @@ func TestVerdictsPage(t *testing.T) {
 		`<p class="updated">Read at <time datetime="2026-09-28T12:00:00Z">2026-09-28 12:00:00 UTC</time></p>`,
 		// Totals: this node's verdicts, then those received per publisher.
 		`<th scope="row"><span class="peer-name">This node</span><span class="cell-note">published</span></th>`,
+		`<td><span class="cell-label">Trust weight</span> <span class="weight">1</span><span class="cell-note">trust.local_weight</span></td>`,
 		`<td><span class="cell-label">Active</span> <a class="weight" href="/verdicts?from=mine">9</a><span class="cell-note">all count in decisions</span></td>`,
 		`<td><span class="cell-label">Revoked</span> <a class="weight" href="/verdicts?from=mine&amp;state=revoked">2</a></td>`,
 		`<th scope="row"><a class="peer-name" href="/peers/`+idAlpha+`">alpha</a><span class="peer-id mono" title="`+idAlpha+`">`,
@@ -39,7 +40,7 @@ func TestVerdictsPage(t *testing.T) {
 		`<li><a href="/verdicts?from=peers">Received</a></li>`,
 		`<form class="filter-form" method="get" action="/verdicts" role="search" aria-label="Filter verdicts">`,
 		`<option value="port_scan/tcp">port_scan (tcp)</option>`,
-		`<option value="`+testNode.PeerID+`">This node: 9 verdicts</option>`,
+		`<option value="`+testNode.PeerID+`">This node: 12 verdicts</option>`,
 		`<li><a href="/verdicts" aria-current="page">Active <span class="filter-count">3</span></a></li>`,
 		`<li><a href="/verdicts?state=expired">Expired <span class="filter-count">1</span></a></li>`,
 		// A verdict of a named peer, with its evidence hash and counts.

@@ -3,7 +3,9 @@ package store
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
@@ -101,6 +103,125 @@ type EndedCount struct {
 	Revoked, Expired int
 }
 
+// add counts one more verdict that ended in state.
+func (c *EndedCount) add(state EndedState) {
+	if state == EndedRevoked {
+		c.Revoked++
+	} else {
+		c.Expired++
+	}
+}
+
+// of returns the count of state.
+func (c EndedCount) of(state EndedState) int {
+	if state == EndedRevoked {
+		return c.Revoked
+	}
+	return c.Expired
+}
+
+// EndedTally counts the ended verdicts the store keeps.
+type EndedTally struct {
+	// ByPublisher counts them by publisher peer ID.
+	ByPublisher map[string]EndedCount
+	// Max is Options.MaxEnded; Full is set for a state in which the store
+	// keeps that many of other publishers' ended verdicts, and so keeps no
+	// more of them until older ones are forgotten.
+	Max  int
+	Full map[EndedState]bool
+}
+
+// endedTally counts the ended verdicts the store keeps, by publisher and
+// state: set by every recount, raised by every verdict kept since. Badger's
+// TTL forgets ended verdicts silently, so a count may stay too high until
+// the next sweep recounts.
+type endedTally struct {
+	self string
+	mu   sync.Mutex
+	// byPublisher counts them by publisher; others counts those of other
+	// publishers than self, by state, which the cap applies to.
+	byPublisher map[string]EndedCount
+	others      EndedCount
+}
+
+// keptEnded is a verdict kept once it ended: its publisher and state.
+type keptEnded struct {
+	publisher string
+	state     EndedState
+}
+
+// reset replaces the counts with those of a recount.
+func (t *endedTally) reset(counts map[string]EndedCount) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.byPublisher, t.others = counts, EndedCount{}
+	for p, c := range counts {
+		if p != t.self {
+			t.others.Revoked += c.Revoked
+			t.others.Expired += c.Expired
+		}
+	}
+	t.publish()
+}
+
+// add counts the verdicts kept.
+func (t *endedTally) add(kept []keptEnded) {
+	if len(kept) == 0 {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.byPublisher == nil {
+		t.byPublisher = map[string]EndedCount{}
+	}
+	for _, k := range kept {
+		c := t.byPublisher[k.publisher]
+		c.add(k.state)
+		t.byPublisher[k.publisher] = c
+		if k.publisher != t.self {
+			t.others.add(k.state)
+		}
+	}
+	t.publish()
+}
+
+// othersOf returns how many ended verdicts of other publishers in state
+// the store keeps.
+func (t *endedTally) othersOf(state EndedState) int {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.others.of(state)
+}
+
+// snapshot returns the counts with Max and Full for the cap limit.
+func (t *endedTally) snapshot(limit int) EndedTally {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := EndedTally{ByPublisher: make(map[string]EndedCount, len(t.byPublisher)), Max: limit,
+		Full: make(map[EndedState]bool, len(EndedStates))}
+	for p, c := range t.byPublisher {
+		if c != (EndedCount{}) {
+			out.ByPublisher[p] = c
+		}
+	}
+	for _, state := range EndedStates {
+		out.Full[state] = t.others.of(state) >= limit
+	}
+	return out
+}
+
+// publish sets the ended verdicts gauge. Callers hold t.mu.
+func (t *endedTally) publish() {
+	var all EndedCount
+	for _, c := range t.byPublisher {
+		all.Revoked += c.Revoked
+		all.Expired += c.Expired
+	}
+	for _, state := range EndedStates {
+		endedGauge.WithLabelValues(string(state)).Set(float64(all.of(state)))
+	}
+}
+
 // Category names what a verdict is about: its evidence reason and the
 // attacked protocol, e.g. "password_bruteforce/ssh" (ADR 0022). Neither
 // may contain a slash, so the name is unambiguous.
@@ -122,85 +243,118 @@ func categoryOf(ev *obieproto.Event) string {
 
 // archive keeps the verdict of rec as one that ended in state, with the
 // revocation rev that ended it, until EndedRetention after its expiry, and
-// adds it to kept. It replaces an earlier verdict of the same publisher
-// and category on the same indicator that ended the same way. Once the
-// store keeps Options.MaxEnded of them, it keeps only this node's own, so
-// a flood of short-lived verdicts cannot fill the disk (ADR 0023).
-func (s *DB) archive(txn *badger.Txn, rec *record, state EndedState, rev *Revocation, kept *int) error {
-	own := s.opts.Self != "" && rec.Event.Publisher.PeerID == s.opts.Self
-	if !own && s.ended.Load()+int64(*kept) >= int64(s.opts.MaxEnded) {
-		s.warnEndedFull()
+// adds it to kept unless it replaces an earlier verdict of the same
+// publisher and category on the same indicator that ended the same way.
+// Once the store keeps Options.MaxEnded of other publishers' verdicts that
+// ended in state, it keeps no more of them, so a flood of short-lived
+// verdicts cannot fill the disk; this node's own are always kept
+// (ADR 0023).
+func (s *DB) archive(txn *badger.Txn, rec *record, state EndedState, rev *Revocation, kept *[]keptEnded) error {
+	ev := rec.Event
+	publisher := ev.Publisher.PeerID
+	key := endedKey(state, ev.Key(), publisher, categoryOf(ev))
+	_, err := txn.Get(key)
+	replaces := err == nil
+	if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+		return err
+	}
+	own := s.opts.Self != "" && publisher == s.opts.Self
+	if !own && !replaces && s.endedCounts.othersOf(state)+pendingOthers(*kept, s.opts.Self, state) >= s.opts.MaxEnded {
+		s.warnEndedFull(state)
 		return nil
 	}
-	ended := record{Event: rec.Event, Revoked: state == EndedRevoked, Revocation: rev}
-	data, err := json.Marshal(&ended)
+	data, err := json.Marshal(&record{Event: ev, Revoked: state == EndedRevoked, Revocation: rev})
 	if err != nil {
 		return err
 	}
-	ev := rec.Event
-	e := badger.NewEntry(endedKey(state, ev.Key(), ev.Publisher.PeerID, categoryOf(ev)), data)
+	e := badger.NewEntry(key, data)
 	e.ExpiresAt = badgerExpiry(ev.ExpiresAt().Add(EndedRetention))
 	if err := txn.SetEntry(e); err != nil {
 		return err
 	}
-	*kept++
+	if !replaces {
+		*kept = append(*kept, keptEnded{publisher: publisher, state: state})
+	}
 	return nil
+}
+
+// pendingOthers counts the verdicts of other publishers than self in kept
+// that ended in state.
+func pendingOthers(kept []keptEnded, self string, state EndedState) int {
+	n := 0
+	for _, k := range kept {
+		if k.publisher != self && k.state == state {
+			n++
+		}
+	}
+	return n
 }
 
 // archiveExpired keeps the verdict of rec as expired, adding it to kept, if
 // it reached its expiry at now unrevoked; a revoked one was kept when it
 // was revoked.
-func (s *DB) archiveExpired(txn *badger.Txn, rec *record, now time.Time, kept *int) error {
+func (s *DB) archiveExpired(txn *badger.Txn, rec *record, now time.Time, kept *[]keptEnded) error {
 	if rec.Revoked || !rec.Event.Expired(now) {
 		return nil
 	}
 	return s.archive(txn, rec, EndedExpired, nil, kept)
 }
 
-// warnEndedFull logs that the store keeps the most verdicts that ended,
-// once until they drop below 90% of it again.
-func (s *DB) warnEndedFull() {
+// warnEndedFull logs that the store keeps the most of other publishers'
+// verdicts that ended in state, once until a recount finds fewer than 90%
+// of it again.
+func (s *DB) warnEndedFull(state EndedState) {
 	if !s.endedFull.Swap(true) {
-		s.log.Warn("the store keeps the most verdicts that ended; those of other publishers are not kept until older ones "+
-			"are forgotten", "max_ended", s.opts.MaxEnded)
+		s.log.Warn("the store keeps the most verdicts of other publishers that ended; newer ones are not kept until "+
+			"older ones are forgotten", "state", string(state), "max_ended", s.opts.MaxEnded)
 	}
 }
 
-// countEnded counts the ended verdicts kept at the store's time.
-func (s *DB) countEnded(txn *badger.Txn) (int, error) {
-	n := 0
-	err := s.walkEnded(txn, "", func(EndedState, []byte, *badger.Item) error {
-		n++
+// countEnded counts the ended verdicts kept at the store's time, by
+// publisher.
+func (s *DB) countEnded(txn *badger.Txn) (map[string]EndedCount, error) {
+	counts := map[string]*EndedCount{}
+	err := s.walkEnded(txn, "", func(state EndedState, suffix []byte, _ *badger.Item) error {
+		_, rest, _ := bytes.Cut(suffix, keySeparator)
+		publisher, _, _ := bytes.Cut(rest, keySeparator)
+		c := counts[string(publisher)]
+		if c == nil {
+			c = &EndedCount{}
+			counts[string(publisher)] = c
+		}
+		c.add(state)
 		return nil
 	})
-	return n, err
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]EndedCount, len(counts))
+	for publisher, c := range counts {
+		out[publisher] = *c
+	}
+	return out, nil
 }
 
 // recountEnded counts the ended verdicts kept again: Badger's TTL forgets
-// them without telling, so the sweep recounts them for the cap to follow.
-// Verdicts kept while it counts are counted from the next sweep on.
+// them without telling, so the sweep recounts them for the cap and the
+// totals to follow. Verdicts kept while it counts are counted from the next
+// sweep on.
 func (s *DB) recountEnded() error {
-	var n int
+	var counts map[string]EndedCount
 	err := s.view(func(txn *badger.Txn) error {
 		var err error
-		n, err = s.countEnded(txn)
+		counts, err = s.countEnded(txn)
 		return err
 	})
 	if err != nil {
 		return err
 	}
-	s.ended.Store(int64(n))
-	if n < s.opts.MaxEnded/10*9 {
+	s.endedCounts.reset(counts)
+	if limit := s.opts.MaxEnded / 10 * 9; s.endedCounts.othersOf(EndedRevoked) < limit &&
+		s.endedCounts.othersOf(EndedExpired) < limit {
 		s.endedFull.Store(false)
 	}
 	return nil
-}
-
-// Ended returns about how many verdicts that ended the store keeps:
-// counted by every sweep, and raised by every verdict kept since;
-// Options.MaxEnded bounds it.
-func (s *DB) Ended() int64 {
-	return s.ended.Load()
 }
 
 // cursorOf returns the cursor of an ended verdict's key suffix: its
@@ -254,35 +408,17 @@ func (s *DB) EndedVerdicts(f EndedFilter, page Page) (EndedPage, error) {
 	return out, nil
 }
 
-// EndedCounts counts the ended verdicts by publisher peer ID, in one walk
-// over their keys.
-func (s *DB) EndedCounts() (map[string]EndedCount, error) {
-	counts := map[string]*EndedCount{}
-	err := s.view(func(txn *badger.Txn) error {
-		return s.walkEnded(txn, "", func(state EndedState, suffix []byte, _ *badger.Item) error {
-			_, rest, _ := bytes.Cut(suffix, keySeparator)
-			publisher, _, _ := bytes.Cut(rest, keySeparator)
-			c := counts[string(publisher)]
-			if c == nil {
-				c = &EndedCount{}
-				counts[string(publisher)] = c
-			}
-			if state == EndedRevoked {
-				c.Revoked++
-			} else {
-				c.Expired++
-			}
-			return nil
-		})
-	})
-	if err != nil {
-		return nil, err
+// EndedCounts counts the ended verdicts the store keeps by publisher, as
+// of the last sweep and with every one kept since, without reading the
+// database; a verdict forgotten since the last sweep still counts.
+func (s *DB) EndedCounts() (EndedTally, error) {
+	s.mu.RLock()
+	open := s.db != nil
+	s.mu.RUnlock()
+	if !open {
+		return EndedTally{}, ErrClosed
 	}
-	out := make(map[string]EndedCount, len(counts))
-	for publisher, c := range counts {
-		out[publisher] = *c
-	}
-	return out, nil
+	return s.endedCounts.snapshot(s.opts.MaxEnded), nil
 }
 
 // walkEnded calls fn with the key suffix and the item of every ended

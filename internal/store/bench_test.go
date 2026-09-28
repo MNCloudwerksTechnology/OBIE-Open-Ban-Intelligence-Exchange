@@ -101,9 +101,9 @@ func BenchmarkPublisherVerdicts100k(b *testing.B) {
 }
 
 // BenchmarkEnded100k reads an on-disk store that keeps 100k expired
-// verdicts, about what 700k indicators with the default 7-day lifetime
-// leave in a day (ADR 0023): the first page of a rare category, whose
-// walk passes every ended verdict's key, and the counts by publisher.
+// verdicts, the default cap (ADR 0023): the first page of a rare category,
+// whose walk passes every ended verdict's key, the sweep's recount, and the
+// counts by publisher the totals read.
 func BenchmarkEnded100k(b *testing.B) {
 	const n = 100_000
 	clk := newClock()
@@ -130,11 +130,19 @@ func BenchmarkEnded100k(b *testing.B) {
 			}
 		}
 	})
+	b.Run("recount", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			if err := db.recountEnded(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
 	b.Run("counts", func(b *testing.B) {
 		b.ReportAllocs()
 		for range b.N {
 			counts, err := db.EndedCounts()
-			if err != nil || counts[pubA].Expired != n {
+			if err != nil || counts.ByPublisher[pubA].Expired != n {
 				b.Fatalf("EndedCounts = %v, %v", counts, err)
 			}
 		}

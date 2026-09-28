@@ -158,8 +158,7 @@ type verdictItemRow struct {
 	DecisionHref, DecisionLabel, DecisionState string
 	// Publisher names the publisher; PublisherHref links to its peer page,
 	// empty for this node's own verdicts.
-	Publisher, PeerID, PublisherHref string
-	Local                            bool
+	Publisher, PublisherHref string
 	// Weight is the publisher's trust weight; NoWeight is set for 0.
 	Weight             string
 	NoWeight           bool
@@ -178,8 +177,7 @@ type verdictItemRow struct {
 	RevokeReason, RevokedByID string
 	// Counts says whether an active verdict counts in its decision, and if
 	// not, why.
-	Counts   string
-	Counting bool
+	Counts string
 }
 
 // verdictTotalsView counts the verdicts of this node and of every other
@@ -248,11 +246,15 @@ func buildVerdicts(in verdictsInput) verdictsPage {
 		Publisher:  q.publisher,
 		State:      q.state,
 		Reasons:    reasonOptions(in.categories, q.reason, false),
-		Publishers: publisherOptions(in.peers, in.self, q.publisher),
+		Publishers: publisherOptions(withTotals(in.peers, in.totals), in.self, q.publisher),
 		Retention:  retentionText(in.totals.Retention),
 		Heading:    verdictsHeading(q, in.self, names, in.searched),
 	}
 	p.StateNote = stateNoteOf(q.state, p.Retention)
+	if q.state != "" && in.totals.EndedFull[q.state] {
+		p.StateNote += fmt.Sprintf(" It keeps at most %s of other publishers' %s verdicts, and keeps that many now: newer ones "+
+			"are not kept until older ones are forgotten.", count(in.totals.EndedMax), q.state)
+	}
 	if in.listErr != nil {
 		p.Err = in.listErr.Error()
 	}
@@ -299,6 +301,20 @@ func buildVerdicts(in verdictsInput) verdictsPage {
 	return p
 }
 
+// withTotals returns set counting every verdict of each publisher in t, so
+// that the publisher filter offers also those whose verdicts all ended;
+// set itself if t counts none.
+func withTotals(set PeerSet, t VerdictTotals) PeerSet {
+	if len(t.ByPublisher) == 0 {
+		return set
+	}
+	set.Verdicts = make(map[string]VerdictCount, len(t.ByPublisher))
+	for id, c := range t.ByPublisher {
+		set.Verdicts[id] = VerdictCount{Held: c.Active + c.Revoked + c.Expired}
+	}
+	return set
+}
+
 // peerNames returns the names of the peers in trust.publishers, by peer ID.
 func peerNames(set PeerSet) map[string]string {
 	names := make(map[string]string, len(set.Peers))
@@ -311,8 +327,12 @@ func peerNames(set PeerSet) map[string]string {
 }
 
 // weightOf returns the trust weight the decisions give the publisher id:
-// its weight in trust.publishers, else trust.default_weight.
-func weightOf(set *PeerSet, id string) float64 {
+// trust.local_weight for this node, its weight in trust.publishers, else
+// trust.default_weight.
+func weightOf(set *PeerSet, id, self string) float64 {
+	if id == self {
+		return set.LocalWeight
+	}
 	for _, p := range set.Peers {
 		if p.ID == id {
 			return p.Weight
@@ -370,7 +390,7 @@ func verdictsHeading(q verdictsQuery, self string, names map[string]string, sear
 
 // newWhoseLine names the publisher id whose verdicts are listed.
 func newWhoseLine(id, self string, set *PeerSet) *whoseLine {
-	w := weightOf(set, id)
+	w := weightOf(set, id, self)
 	return &whoseLine{Title: publisherTitle(id, self, peerNames(*set)), PeerID: id, Href: peerHref(id, self),
 		Weight: weight(w), NoWeight: id != self && !(w > 0)}
 }
@@ -385,9 +405,7 @@ func newVerdictItemRow(it *VerdictItem, self string, names map[string]string) ve
 		DecisionLabel: "No decision",
 		DecisionState: stateIdle,
 		Publisher:     publisherTitle(it.Publisher, self, names),
-		PeerID:        it.Publisher,
 		PublisherHref: peerHref(it.Publisher, self),
-		Local:         it.Local || it.Publisher == self,
 		Weight:        weight(it.Weight),
 		Action:        it.Action,
 		Confidence:    score(it.Confidence),
@@ -399,7 +417,7 @@ func newVerdictItemRow(it *VerdictItem, self string, names map[string]string) ve
 		Expires:       stamp(it.ExpiresAt),
 		State:         it.State,
 	}
-	r.NoWeight = !r.Local && !(it.Weight > 0)
+	r.NoWeight = !it.Local && it.Publisher != self && !(it.Weight > 0)
 	if it.Decision != "" {
 		r.DecisionLabel, r.DecisionState = stateLabel(it.Decision), it.Decision
 	}
@@ -415,7 +433,7 @@ func newVerdictItemRow(it *VerdictItem, self string, names map[string]string) ve
 		r.StateLabel = "Active"
 		switch {
 		case it.Counts:
-			r.Counting, r.Counts = true, "Yes"
+			r.Counts = "Yes"
 		case it.Action != "ban":
 			r.Counts = "No: a " + it.Action + " verdict"
 		default:
@@ -430,7 +448,7 @@ func newVerdictItemRow(it *VerdictItem, self string, names map[string]string) ve
 func newTotalsView(t VerdictTotals, set PeerSet, self string) *verdictTotalsView {
 	names := peerNames(set)
 	v := &verdictTotalsView{Mine: totalsRowOf(t.ByPublisher[self], verdictsQuery{from: fromMine})}
-	v.Mine.Title = "This node"
+	v.Mine.Title, v.Mine.Weight = "This node", weight(set.LocalWeight)
 	var others []string
 	var all VerdictCounts
 	for id, c := range t.ByPublisher {
@@ -454,7 +472,7 @@ func newTotalsView(t VerdictTotals, set PeerSet, self string) *verdictTotalsView
 	}
 	for _, id := range others {
 		row := totalsRowOf(t.ByPublisher[id], verdictsQuery{publisher: id})
-		w := weightOf(&set, id)
+		w := weightOf(&set, id, self)
 		row.Title, row.PeerID, row.ShortID, row.Href = publisherTitle(id, self, names), id, shortPeerID(id), peerHref(id, self)
 		row.Named, row.Weight, row.NoWeight = names[id] != "", weight(w), !(w > 0)
 		v.Received = append(v.Received, row)

@@ -92,8 +92,13 @@ type VerdictTotals struct {
 	// node's own are under its peer ID.
 	ByPublisher map[string]VerdictCounts
 	// Retention is how long the node keeps a verdict after its expiry once
-	// it was revoked or expired.
+	// it was revoked or expired; EndedMax is how many of other publishers'
+	// it keeps at most in each of those states, and EndedFull says, by
+	// VerdictRevoked and VerdictExpired, where it keeps that many and so no
+	// more until older ones are forgotten.
 	Retention time.Duration
+	EndedMax  int
+	EndedFull map[string]bool
 }
 
 // VerdictCounts count one publisher's verdicts.

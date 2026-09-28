@@ -87,7 +87,7 @@ func (s *DB) evictionCandidate(txn *badger.Txn) ([]byte, time.Time, bool) {
 // the record's event. The event's ID stays known until it expires, so a
 // replay is a duplicate. It returns the change to notify, with an empty Key
 // if nothing active changed.
-func (s *DB) evict(txn *badger.Txn, index []byte, now time.Time, kept *int) (Change, error) {
+func (s *DB) evict(txn *badger.Txn, index []byte, now time.Time, kept *[]keptEnded) (Change, error) {
 	if err := txn.Delete(index); err != nil {
 		return Change{}, err
 	}

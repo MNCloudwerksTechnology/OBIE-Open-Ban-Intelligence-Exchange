@@ -41,8 +41,8 @@ type outcome struct {
 	// foreignRevokes and invalidRevokes count revocations of a verdict that
 	// arrived before it and are now known to be ignored.
 	foreignRevokes, invalidRevokes int
-	// ended counts the verdicts kept once they ended (ADR 0023).
-	ended int
+	// ended are the verdicts kept once they ended (ADR 0023).
+	ended []keptEnded
 }
 
 // Put stores ev; see Store.
@@ -65,7 +65,7 @@ func (s *DB) Put(ev *obieproto.Event) (bool, error) {
 	})
 	if err == nil {
 		s.addVerdicts(out.verdicts)
-		s.ended.Add(int64(out.ended))
+		s.endedCounts.add(out.ended)
 		if out.evictedIndex != nil {
 			s.evictFrom = out.evictedIndex
 		}

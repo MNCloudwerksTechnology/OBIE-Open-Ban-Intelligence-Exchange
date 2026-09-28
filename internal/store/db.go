@@ -46,8 +46,8 @@ type Options struct {
 	// always kept once they ended. Empty protects none.
 	Self string
 	// MaxEnded caps the verdicts of other publishers kept once they were
-	// revoked or expired (ADR 0023); 0 means a tenth of MaxIndicators, at
-	// least 1,000.
+	// revoked, and those kept once they expired (ADR 0023); 0 means a tenth
+	// of MaxIndicators, at least 1,000.
 	MaxEnded int
 }
 
@@ -98,10 +98,10 @@ type DB struct {
 	// evictFrom is a lower bound of the expiry index keys of the records
 	// that may be evicted; see evictionCandidate. Guarded by writeMu.
 	evictFrom []byte
-	// ended is about the number of ended verdicts kept (see Ended), and
-	// endedFull is set once it reached MaxEnded; see warnEndedFull.
-	ended     atomic.Int64
-	endedFull atomic.Bool
+	// endedCounts counts the ended verdicts kept (ADR 0023), and endedFull
+	// is set once other publishers' reached MaxEnded; see warnEndedFull.
+	endedCounts endedTally
+	endedFull   atomic.Bool
 
 	loopMu  sync.Mutex
 	loopErr error
@@ -114,7 +114,8 @@ var _ Store = (*DB)(nil)
 // New returns the store subsystem for the database in dir, typically
 // <node.state_dir>/db. The database is opened by Start.
 func New(dir string, log *slog.Logger, opts Options) *DB {
-	return &DB{dir: dir, log: log, opts: opts.withDefaults(), subs: map[int]func(Change){}}
+	opts = opts.withDefaults()
+	return &DB{dir: dir, log: log, opts: opts, subs: map[int]func(Change){}, endedCounts: endedTally{self: opts.Self}}
 }
 
 // NewMemory returns a store subsystem whose database lives in memory only.
@@ -147,7 +148,7 @@ func (s *DB) Start(context.Context) error {
 	}
 	s.db = db
 	var n int64
-	var ended int
+	var ended map[string]EndedCount
 	err = db.View(func(txn *badger.Txn) error {
 		n = countVerdicts(txn)
 		var err error
@@ -161,7 +162,7 @@ func (s *DB) Start(context.Context) error {
 	}
 	s.verdicts.Store(0)
 	s.addVerdicts(int(n))
-	s.ended.Store(int64(ended))
+	s.endedCounts.reset(ended)
 	s.endedFull.Store(false)
 	s.evictFrom = nil
 	s.setLoopErr(nil)

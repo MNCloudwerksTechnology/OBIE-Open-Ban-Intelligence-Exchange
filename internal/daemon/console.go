@@ -134,6 +134,7 @@ func (p *consolePeers) read() console.PeerSet {
 	set := console.PeerSet{
 		Peers:         make([]console.Peer, len(known)),
 		DefaultWeight: p.mesh.DefaultWeight(),
+		LocalWeight:   p.engine.Policy().LocalWeight,
 		Verdicts:      make(map[string]console.VerdictCount, len(counts)),
 		EventWindow:   gossip.TallyWindow,
 	}
@@ -499,17 +500,19 @@ func (v *consoleVerdicts) decisionStates(items []console.VerdictItem) {
 }
 
 // Totals counts the active verdicts by publisher, which the engine keeps,
-// and the ended ones, which the store counts in one walk over their keys.
+// and the ended ones, which the store counts as it keeps them.
 func (v *consoleVerdicts) Totals() (console.VerdictTotals, error) {
 	ended, err := v.store.EndedCounts()
 	if err != nil {
 		return console.VerdictTotals{}, err
 	}
-	t := console.VerdictTotals{ByPublisher: make(map[string]console.VerdictCounts, len(ended)), Retention: store.EndedRetention}
+	t := console.VerdictTotals{ByPublisher: make(map[string]console.VerdictCounts, len(ended.ByPublisher)),
+		Retention: store.EndedRetention, EndedMax: ended.Max, EndedFull: map[string]bool{
+			console.VerdictRevoked: ended.Full[store.EndedRevoked], console.VerdictExpired: ended.Full[store.EndedExpired]}}
 	for id, c := range v.engine.PublisherCounts() {
 		t.ByPublisher[id] = console.VerdictCounts{Active: c.Verdicts, Counting: c.Counting}
 	}
-	for id, c := range ended {
+	for id, c := range ended.ByPublisher {
 		counts := t.ByPublisher[id]
 		counts.Revoked, counts.Expired = c.Revoked, c.Expired
 		t.ByPublisher[id] = counts

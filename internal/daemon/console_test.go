@@ -56,7 +56,8 @@ func TestConsolePeers(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := newStore(t)
-	trust := config.Trust{Publishers: []config.Publisher{{PeerID: boot.PeerID(), Name: "boot", Weight: 0.5}}, DefaultWeight: 0.1}
+	trust := config.Trust{Publishers: []config.Publisher{{PeerID: boot.PeerID(), Name: "boot", Weight: 0.5}}, DefaultWeight: 0.1,
+		LocalWeight: 0.9}
 	m, err := mesh.New(selfKey, mesh.Options{Store: st, Trust: trust,
 		Bootstrap: []string{"/ip4/192.0.2.1/tcp/4001/p2p/" + boot.PeerID()}}, slog.New(slog.DiscardHandler))
 	if err != nil {
@@ -76,7 +77,8 @@ func TestConsolePeers(t *testing.T) {
 	p := &consolePeers{mesh: m, engine: engine, store: st, now: time.Now}
 	set := p.read()
 	if len(set.Peers) != 1 || set.Peers[0].ID != boot.PeerID() || !set.Peers[0].Bootstrap || !set.Peers[0].Publisher ||
-		set.Peers[0].Connected || set.Peers[0].Weight != 0.5 || set.DefaultWeight != 0.1 || set.EventWindow != time.Hour {
+		set.Peers[0].Connected || set.Peers[0].Weight != 0.5 || set.DefaultWeight != 0.1 || set.EventWindow != time.Hour ||
+		set.LocalWeight != 0.9 {
 		t.Errorf("PeerSet = %+v", set)
 	}
 	if want := map[string]console.VerdictCount{boot.PeerID(): {Held: 3, Counting: 3}, "12D3KooWOtherPublisher": {Held: 1, Counting: 1}}; !maps.Equal(set.Verdicts, want) {

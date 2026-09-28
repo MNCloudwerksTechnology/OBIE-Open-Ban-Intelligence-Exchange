@@ -168,30 +168,30 @@ func TestVerdictRows(t *testing.T) {
 	}{
 		{"a counting verdict of a named peer", p.Rows[0], verdictItemRow{Address: "203.0.113.7", Href: "/verdicts?address=203.0.113.7",
 			DecisionHref: "/decisions/203.0.113.7", DecisionLabel: "Block", DecisionState: StateBlock,
-			Publisher: "alpha", PeerID: idAlpha, PublisherHref: "/peers/" + idAlpha, Weight: "0.7", Action: "ban", Confidence: "0.9",
+			Publisher: "alpha", PublisherHref: "/peers/" + idAlpha, Weight: "0.7", Action: "ban", Confidence: "0.9",
 			Reason: "password_bruteforce (ssh)", Events: "1,234 events", LogHash: testLogHash, EventID: eventAlpha,
 			Issued: stamp(verdictsNow.Add(-time.Hour)), Expires: stamp(verdictsNow.Add(23 * time.Hour)),
-			State: VerdictActive, StateLabel: "Active", Counts: "Yes", Counting: true}},
+			State: VerdictActive, StateLabel: "Active", Counts: "Yes"}},
 		{"this node's own verdict", p.Rows[1], verdictItemRow{Address: "203.0.113.7", Href: "/verdicts?address=203.0.113.7",
 			DecisionHref: "/decisions/203.0.113.7", DecisionLabel: "Block", DecisionState: StateBlock,
-			Publisher: "This node", PeerID: testNode.PeerID, Local: true, Weight: "1", Action: "ban", Confidence: "0.8",
+			Publisher: "This node", Weight: "1", Action: "ban", Confidence: "0.8",
 			Reason: "password_bruteforce (ssh)", Events: "3 events", EventID: eventSelf, Issued: stamp(verdictsNow.Add(-time.Minute)),
-			Expires: stamp(verdictsNow.Add(7 * 24 * time.Hour)), State: VerdictActive, StateLabel: "Active", Counts: "Yes", Counting: true}},
+			Expires: stamp(verdictsNow.Add(7 * 24 * time.Hour)), State: VerdictActive, StateLabel: "Active", Counts: "Yes"}},
 		{"a watch verdict of a peer without weight", p.Rows[2], verdictItemRow{Address: "198.51.100.0/24",
 			Href: "/verdicts?address=198.51.100.0%2F24", DecisionHref: "/decisions/198.51.100.0/24", DecisionLabel: "None",
-			DecisionState: StateNone, Publisher: shortPeerID(idStray), PeerID: idStray, PublisherHref: "/peers/" + idStray,
+			DecisionState: StateNone, Publisher: shortPeerID(idStray), PublisherHref: "/peers/" + idStray,
 			Weight: "0", NoWeight: true, Action: "watch", Confidence: "0.4", Reason: "port_scan (tcp)", Events: "1 event",
 			EventID: "01926a4c-0000-7000-8000-00000000b001", Issued: stamp(verdictsNow.Add(-2 * time.Hour)),
 			Expires: stamp(verdictsNow.Add(time.Hour)), State: VerdictActive, StateLabel: "Active", Counts: "No: a watch verdict"}},
 		{"a revoked verdict", p.Rows[3], verdictItemRow{Address: "2001:db8::1", Href: "/verdicts?address=2001%3Adb8%3A%3A1",
 			DecisionHref: "/decisions/2001:db8::1", DecisionLabel: "No decision", DecisionState: stateIdle,
-			Publisher: shortPeerID(idOther), PeerID: idOther, PublisherHref: "/peers/" + idOther, Weight: "0", NoWeight: true,
+			Publisher: shortPeerID(idOther), PublisherHref: "/peers/" + idOther, Weight: "0", NoWeight: true,
 			Action: "ban", Confidence: "1", Reason: "http_probe", Events: "7 events", EventID: eventRevoked,
 			Issued: stamp(verdictsNow.Add(-3 * time.Hour)), Expires: stamp(verdictsNow.Add(time.Hour)), State: VerdictRevoked,
 			StateLabel: "Revoked", Ended: stamp(verdictsNow.Add(-time.Hour)), RevokeReason: "false_positive", RevokedByID: eventRevoker}},
 		{"an expired verdict", p.Rows[4], verdictItemRow{Address: "198.51.100.9", Href: "/verdicts?address=198.51.100.9",
 			DecisionHref: "/decisions/198.51.100.9", DecisionLabel: "No decision", DecisionState: stateIdle,
-			Publisher: "charlie", PeerID: idCharlie, PublisherHref: "/peers/" + idCharlie, Weight: "0.5", Action: "ban",
+			Publisher: "charlie", PublisherHref: "/peers/" + idCharlie, Weight: "0.5", Action: "ban",
 			Confidence: "0.6", Reason: "spam (smtp)", Events: "2 events", EventID: "01926a4c-0000-7000-8000-00000000d001",
 			Issued: stamp(verdictsNow.Add(-26 * time.Hour)), Expires: stamp(verdictsNow.Add(-2 * time.Hour)), State: VerdictExpired,
 			StateLabel: "Expired", Ended: stamp(verdictsNow.Add(-2 * time.Hour))}},
@@ -265,8 +265,9 @@ func TestVerdictsTabs(t *testing.T) {
 		t.Errorf("a scope keeps the publisher: %s", p.Scopes[1].Href)
 	}
 	p = verdictsOf("publisher="+testNode.PeerID, list)
-	if p.Whose.Title != "This node" || p.Whose.Href != "" || p.Whose.NoWeight || p.Heading != "Active verdicts of this node" {
-		t.Errorf("this node as the publisher: %+v, %q", p.Whose, p.Heading)
+	if p.Whose.Title != "This node" || p.Whose.Href != "" || p.Whose.NoWeight || p.Whose.Weight != "1" ||
+		p.Heading != "Active verdicts of this node" {
+		t.Errorf("this node as the publisher: %+v, %q; want its weight trust.local_weight", p.Whose, p.Heading)
 	}
 	for q, heading := range map[string]string{
 		"":                               "Active verdicts of every publisher",
@@ -287,7 +288,7 @@ func TestVerdictsTabs(t *testing.T) {
 // per publisher, each number linking to the list.
 func TestVerdictTotals(t *testing.T) {
 	v := newTotalsView(testVerdictTotals, testPeers, testNode.PeerID)
-	mine := totalsRow{Title: "This node", Active: countLink{9, "/verdicts?from=mine"},
+	mine := totalsRow{Title: "This node", Weight: "1", Active: countLink{9, "/verdicts?from=mine"},
 		Revoked: countLink{2, "/verdicts?from=mine&state=revoked"}, Expired: countLink{1, "/verdicts?from=mine&state=expired"},
 		CountingNote: "all count in decisions"}
 	if !reflect.DeepEqual(v.Mine, mine) {
@@ -456,6 +457,44 @@ func TestVerdictsNotice(t *testing.T) {
 	} {
 		if got := verdictsNotice(tc.statuses, tc.state); !strings.HasPrefix(got, tc.want) || (tc.want == "" && got != "") {
 			t.Errorf("verdictsNotice(%v, %q) = %q, want %q", tc.statuses, tc.state, got, tc.want)
+		}
+	}
+}
+
+// TestVerdictsOfferEveryPublisher: the publisher filter offers also the
+// publishers whose verdicts all ended, counting every verdict of each.
+func TestVerdictsOfferEveryPublisher(t *testing.T) {
+	totals := testVerdictTotals
+	totals.ByPublisher = map[string]VerdictCounts{idAlpha: {Active: 2, Expired: 1}, idBravo: {Revoked: 1}}
+	in := verdictsInput{now: verdictsNow, self: testNode.PeerID, peers: testPeers, totals: totals}
+	var labels []string
+	for _, o := range buildVerdicts(in).Publishers {
+		labels = append(labels, o.Label)
+	}
+	if want := []string{"Every publisher", "alpha (12D3KooW…rAa1ph): 3 verdicts", "Bravo (12D3KooW…avoPee): 1 verdict"}; !slices.Equal(labels, want) {
+		t.Errorf("publisher options = %v, want %v", labels, want)
+	}
+	in.totals = VerdictTotals{}
+	if got := buildVerdicts(in).Publishers; len(got) != len(publisherOptions(testPeers, testNode.PeerID, "")) {
+		t.Errorf("without totals the options = %+v, want those of the held verdicts", got)
+	}
+}
+
+// TestVerdictsSayWhenTheCapIsReached: F1 of the review — the tab of the
+// verdicts that ended says when the node keeps no more of them.
+func TestVerdictsSayWhenTheCapIsReached(t *testing.T) {
+	totals := testVerdictTotals
+	totals.EndedMax, totals.EndedFull = 100000, map[string]bool{VerdictExpired: true}
+	for q, want := range map[string]string{
+		"state=expired": "It keeps at most 100,000 of other publishers' expired verdicts, and keeps that many now",
+		"state=revoked": "",
+		"":              "",
+	} {
+		v, _ := url.ParseQuery(q)
+		p := buildVerdicts(verdictsInput{now: verdictsNow, query: parseVerdictsQuery(v), self: testNode.PeerID, peers: testPeers,
+			totals: totals})
+		if got := strings.Contains(p.StateNote, "It keeps at most"); got != (want != "") || !strings.Contains(p.StateNote, want) {
+			t.Errorf("state note of %q = %q, want %q", q, p.StateNote, want)
 		}
 	}
 }
