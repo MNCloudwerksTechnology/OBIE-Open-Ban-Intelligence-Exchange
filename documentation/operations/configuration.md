@@ -63,6 +63,12 @@ Events beyond a rate limit are dropped and not relayed, and counted as
 forwarded them is not penalised. An event counts against both limits only
 if both admit it.
 
+## store
+
+| Key | Default | Applied on | Meaning |
+|-----|---------|------------|---------|
+| `store.max_indicators` | `1000000` | restart | Most verdicts the event store holds, one per publisher and indicator, so a flood of unique indicators — even from a trusted peer — cannot fill the disk. When the store is full, the verdict that expires first makes room (counted in `obie_store_evictions_total`); a new verdict that would expire before all stored ones is refused instead. This node's own verdicts are never evicted. About 3 KiB of disk per verdict. At least 1. See [Monitoring](monitoring.md). |
+
 ## trust
 
 | Key | Default | Applied on | Meaning |
