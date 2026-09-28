@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
@@ -160,6 +161,8 @@ type Reconciler struct {
 
 	statusMu sync.Mutex
 	status   Status
+	// snapshot is what the last successful pass left; nil before it.
+	snapshot atomic.Pointer[Snapshot]
 
 	runMu  sync.Mutex
 	cancel context.CancelFunc
@@ -232,6 +235,12 @@ func (r *Reconciler) Status() Status {
 	s.Skipped = maps.Clone(s.Skipped)
 	s.SkippedBlocks = maps.Clone(s.SkippedBlocks)
 	return s
+}
+
+// Snapshot returns what the last successful pass left, nil before the
+// first one. After a failed pass it is still the last successful one's.
+func (r *Reconciler) Snapshot() *Snapshot {
+	return r.snapshot.Load()
 }
 
 // Ready reports the last failure while the loop retries it; a failed
@@ -368,9 +377,9 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	}
 	add, remove := Diff(p.entries, have)
 	add, remove, deferred := settle(add, remove, have, r.opts.Now())
-	r.deferred = deferred > 0
-	if deferred > 0 {
-		r.log.Debug("additions overlapping entries about to expire are deferred", "deferred", deferred)
+	r.deferred = len(deferred) > 0
+	if len(deferred) > 0 {
+		r.log.Debug("additions overlapping entries about to expire are deferred", "deferred", len(deferred))
 	}
 	if len(add) > 0 || len(remove) > 0 {
 		start := time.Now()
@@ -382,7 +391,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 		}
 		r.log.Info("enforcement reconciled", "added", len(add), "removed", len(remove), "entries", len(p.entries))
 	}
-	r.succeed(mode, p)
+	r.succeed(mode, p, &Snapshot{Entries: afterApply(have, add, remove), Skipped: p.skippedPrefixes, Deferred: deferred})
 	return nil
 }
 
@@ -399,9 +408,9 @@ func (r *Reconciler) observe(ctx context.Context) error {
 		}
 		r.backend = backendTornDown
 	}
-	clear(r.skipped)
+	r.skipped = map[netip.Prefix]string{} // the snapshot may hold the previous one
 	r.deferred = false
-	r.succeed(config.ModeObserve, plan{})
+	r.succeed(config.ModeObserve, plan{}, &Snapshot{})
 	return nil
 }
 
@@ -420,8 +429,9 @@ type candidate struct {
 // blocks came to them.
 type plan struct {
 	entries []Entry
-	// skipped counts the ranges not applied, by skip reason;
-	// skippedBlocks counts their blocks.
+	// skippedPrefixes holds the ranges not applied, with the skip reason;
+	// skipped counts them by reason, skippedBlocks their blocks.
+	skippedPrefixes        map[netip.Prefix]string
 	skipped, skippedBlocks map[string]int
 	// blocks and covered are Status.Blocks and Status.Covered.
 	blocks, covered int
@@ -518,7 +528,8 @@ func (r *Reconciler) desired(now time.Time) plan {
 	for _, reason := range skipped {
 		counts[reason]++
 	}
-	return plan{entries: want, skipped: counts, skippedBlocks: skippedBlocks, blocks: blocks, covered: covered}
+	return plan{entries: want, skippedPrefixes: skipped, skipped: counts, skippedBlocks: skippedBlocks, blocks: blocks,
+		covered: covered}
 }
 
 // mergeCovered leaves out the candidates inside a wider one, since an
@@ -550,8 +561,9 @@ func mergeCovered(cands []candidate) []candidate {
 // whole change. Renewing such an entry is a plain addition, which updates
 // its expiry. An addition overlapping another entry that stays applied,
 // e.g. a /25 under a /24 about to expire, is deferred: interval sets
-// reject overlapping ranges. It returns the number of deferred additions.
-func settle(add, remove, have []Entry, now time.Time) (keptAdd, keptRemove []Entry, deferred int) {
+// reject overlapping ranges. It returns the ranges of the deferred
+// additions, ordered by prefix.
+func settle(add, remove, have []Entry, now time.Time) (keptAdd, keptRemove []Entry, deferred []netip.Prefix) {
 	removed := make(map[netip.Prefix]bool, len(remove))
 	for _, e := range remove {
 		if e.Expires.Sub(now) >= ExpiryTolerance {
@@ -572,11 +584,12 @@ func settle(add, remove, have []Entry, now time.Time) (keptAdd, keptRemove []Ent
 		// Applied prefixes are disjoint: one staying under e's own prefix
 		// overlaps no other.
 		if !staying[e.Prefix] && overlaps(e.Prefix, stay, staying) {
-			deferred++
+			deferred = append(deferred, e.Prefix)
 			continue
 		}
 		keptAdd = append(keptAdd, e)
 	}
+	slices.SortFunc(deferred, comparePrefix)
 	return keptAdd, keptRemove, deferred
 }
 
@@ -655,10 +668,22 @@ func (r *Reconciler) fail(mode config.Mode, err error) error {
 	return err
 }
 
-// succeed records a successful pass that left the entries of p applied.
-func (r *Reconciler) succeed(mode config.Mode, p plan) {
+// succeed records a successful pass in mode that left the entries of p
+// applied and the backend as in snap, whose Mode, At and Seq it sets.
+// Callers hold enfMu.
+func (r *Reconciler) succeed(mode config.Mode, p plan, snap *Snapshot) {
 	applyTotal.WithLabelValues(resultSuccess).Inc()
 	setEntriesMetric(p.entries)
+	snap.Mode, snap.At = mode, r.opts.Now()
+	switch prev := r.snapshot.Load(); {
+	case prev == nil:
+		snap.Seq = 1
+	case prev.same(snap):
+		snap.Seq = prev.Seq
+	default:
+		snap.Seq = prev.Seq + 1
+	}
+	r.snapshot.Store(snap)
 	r.statusMu.Lock()
 	defer r.statusMu.Unlock()
 	r.status = Status{Mode: mode, Applied: len(p.entries), Skipped: p.skipped, Blocks: p.blocks, Covered: p.covered,
