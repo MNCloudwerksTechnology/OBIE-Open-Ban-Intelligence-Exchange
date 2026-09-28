@@ -201,3 +201,29 @@ func TestMessageID(t *testing.T) {
 		}
 	}
 }
+
+func TestCheckDocumentationRanges(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	pub := newPublisher(t)
+	ev := pub.verdict(t, now, 3600)
+	ev.Indicator = obieproto.Indicator{Kind: obieproto.KindIPv4, Value: "203.0.113.7", Scope: "/32"}
+	pub.sign(t, ev)
+	for _, tt := range []struct {
+		name    string
+		allow   bool
+		outcome Outcome
+	}{
+		{"refused by default", false, InvalidSchema},
+		{"accepted with the test option", true, Accepted},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			v, _ := newValidator(t, newStore(t), now)
+			if tt.allow {
+				v.receive = []obieproto.Option{obieproto.ReceiveDocumentationRanges()}
+			}
+			if outcome, _ := v.check(peerA, marshal(t, ev)); outcome != tt.outcome {
+				t.Errorf("check() = %s, want %s", outcome, tt.outcome)
+			}
+		})
+	}
+}

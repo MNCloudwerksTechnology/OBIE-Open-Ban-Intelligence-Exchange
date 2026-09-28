@@ -204,6 +204,32 @@ func TestPublishRejects(t *testing.T) {
 	}
 }
 
+func TestPublishDocumentationRanges(t *testing.T) {
+	for _, allow := range []bool{false, true} {
+		p := newPublisher(t)
+		key, err := crypto.UnmarshalEd25519PrivateKey(p.key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		st := newStore(t)
+		g, err := New(newHost(t, key), Options{Store: st, AllowDocumentationRanges: allow}, discardLogger())
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(g.Close)
+		ev := p.verdict(t, time.Now(), 3600)
+		ev.Indicator = obieproto.Indicator{Kind: obieproto.KindIPv4, Value: "198.51.100.7", Scope: "/32"}
+		p.sign(t, ev)
+		err = g.Publish(context.Background(), ev)
+		if allow && err != nil {
+			t.Errorf("Publish(documentation address) with AllowDocumentationRanges = %v, want nil", err)
+		}
+		if !allow && !errors.Is(err, obieproto.ErrNonPublicIndicator) {
+			t.Errorf("Publish(documentation address) = %v, want ErrNonPublicIndicator", err)
+		}
+	}
+}
+
 // TestGossipPropagates publishes on A in the mesh A–B–C: C only hears of
 // the events through B.
 func TestGossipPropagates(t *testing.T) {

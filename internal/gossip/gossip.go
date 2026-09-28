@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sync"
 	"time"
 
@@ -51,16 +52,22 @@ type Options struct {
 	Metrics Metrics
 	// Now is the clock events are checked against; nil for time.Now.
 	Now func() time.Time
+	// AllowDocumentationRanges accepts indicators in the documentation
+	// ranges (obieproto.ReceiveDocumentationRanges). Only for multi-node
+	// tests; production nodes never set it.
+	AllowDocumentationRanges bool
 }
 
 // Gossip is the node's participation in the GossipSub topic.
 type Gossip struct {
-	topic  *pubsub.Topic
-	self   peer.ID
-	store  store.Store
-	now    func() time.Time
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	topic *pubsub.Topic
+	self  peer.ID
+	store store.Store
+	now   func() time.Time
+	// receive are the obieproto.Receive options besides the clock.
+	receive []obieproto.Option
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
 }
 
 // New joins the topic on h, which must be listening, and starts relaying.
@@ -75,6 +82,10 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 	if opts.Metrics == nil {
 		opts.Metrics = nopMetrics{}
 	}
+	var receive []obieproto.Option
+	if opts.AllowDocumentationRanges {
+		receive = append(receive, obieproto.ReceiveDocumentationRanges())
+	}
 	defaults := config.Default().Mesh.RateLimit
 	opts.PublisherLimit = bucketOrDefault(opts.PublisherLimit, defaults.Publisher)
 	opts.PeerLimit = bucketOrDefault(opts.PeerLimit, defaults.Peer)
@@ -84,6 +95,7 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 		metrics:    opts.Metrics,
 		log:        log,
 		now:        opts.Now,
+		receive:    receive,
 		publishers: newLimiter(opts.PublisherLimit.EventsPerSecond, opts.PublisherLimit.Burst),
 		peers:      newLimiter(opts.PeerLimit.EventsPerSecond, opts.PeerLimit.Burst),
 	}
@@ -94,7 +106,7 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 		cancel()
 		return nil, err
 	}
-	g := &Gossip{topic: topic, self: h.ID(), store: opts.Store, now: opts.Now, cancel: cancel}
+	g := &Gossip{topic: topic, self: h.ID(), store: opts.Store, now: opts.Now, receive: receive, cancel: cancel}
 	// Subscribing makes the node a member of the topic's mesh. Accepted
 	// events are stored by the validator, so deliveries are discarded.
 	g.wg.Go(func() {
@@ -176,7 +188,7 @@ func (g *Gossip) Publish(ctx context.Context, ev *obieproto.Event) error {
 	if err != nil {
 		return fmt.Errorf("publish event %s: %w", ev.ID, err)
 	}
-	checked, err := obieproto.Receive(data, obieproto.WithClock(g.now))
+	checked, err := obieproto.Receive(data, append(slices.Clip(g.receive), obieproto.WithClock(g.now))...)
 	if err != nil {
 		return fmt.Errorf("publish event %s: %w", ev.ID, err)
 	}

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -28,6 +29,10 @@ type Env struct {
 	InterfaceAddrs func() ([]netip.Addr, error)
 	// LookupIP resolves host to addresses of network "ip", "ip4" or "ip6".
 	LookupIP func(ctx context.Context, network, host string) ([]netip.Addr, error)
+	// OmitDocumentationRanges leaves the documentation ranges out of the
+	// built-in entries, so that multi-node tests can block documentation
+	// addresses. Production nodes never set it.
+	OmitDocumentationRanges bool
 }
 
 func (e Env) withDefaults() Env {
@@ -65,6 +70,9 @@ func interfaceAddrs() ([]netip.Addr, error) {
 func Build(ctx context.Context, cfg *config.Config, env Env, log *slog.Logger) (*Allowlist, error) {
 	env = env.withDefaults()
 	entries := Builtin()
+	if env.OmitDocumentationRanges {
+		entries = slices.Clone(builtin)
+	}
 	for _, s := range cfg.Allowlist.CIDRs {
 		p, err := ParseEntry(s)
 		if err != nil {

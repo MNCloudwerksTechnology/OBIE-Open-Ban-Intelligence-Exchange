@@ -309,7 +309,8 @@ the following ranges MUST be rejected, as MUST an address inside one.
 
 The reference implementation offers an option to accept documentation
 ranges in tests and examples; `Receive`, the check for messages from the
-mesh, ignores it.
+mesh, ignores it. A separate option, `ReceiveDocumentationRanges`, lets
+`Receive` accept them for multi-node tests; production nodes never set it.
 
 ## 7. Canonicalisation and signing
 

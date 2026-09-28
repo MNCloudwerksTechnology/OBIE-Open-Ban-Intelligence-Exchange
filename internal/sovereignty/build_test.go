@@ -85,6 +85,26 @@ func TestBuild(t *testing.T) {
 	}
 }
 
+func TestBuildOmitDocumentationRanges(t *testing.T) {
+	cfg := config.Default()
+	for _, omit := range []bool{false, true} {
+		env := fakeEnv()
+		env.OmitDocumentationRanges = omit
+		a, err := Build(context.Background(), &cfg, env, discardLogger())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range []string{"192.0.2.1/32", "198.51.100.7/32", "203.0.113.7/32", "2001:db8::1/128", "3fff::1/128"} {
+			if _, ok := a.Match(netip.MustParsePrefix(s)); ok == omit {
+				t.Errorf("omit %v: %s allow-listed = %v", omit, s, ok)
+			}
+		}
+		if _, ok := a.Match(netip.MustParsePrefix("127.0.0.1/32")); !ok {
+			t.Errorf("omit %v: loopback not allow-listed", omit)
+		}
+	}
+}
+
 func TestBuildErrors(t *testing.T) {
 	cfg := config.Default()
 	cfg.Allowlist.Files = []string{filepath.Join(t.TempDir(), "missing.txt")}

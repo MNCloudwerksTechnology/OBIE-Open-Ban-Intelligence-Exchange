@@ -60,6 +60,19 @@ func TestReceive(t *testing.T) {
 	}
 }
 
+func TestReceiveDocumentationRanges(t *testing.T) {
+	e := validVerdict()
+	e.Indicator = Indicator{Kind: KindIPv4, Value: "203.0.113.7", Scope: "/32"}
+	data := mustMarshal(t, signedBy(t, e, testSeedA))
+	clock := WithClock(func() time.Time { return testNow })
+	if _, err := Receive(data, clock, ReceiveDocumentationRanges()); err != nil {
+		t.Fatalf("Receive() with ReceiveDocumentationRanges = %v, want the event", err)
+	}
+	if _, err := Decode(data, clock, ReceiveDocumentationRanges()); !errors.Is(err, ErrNonPublicIndicator) {
+		t.Errorf("Decode() with ReceiveDocumentationRanges = %v, want %v: the option only affects Receive", err, ErrNonPublicIndicator)
+	}
+}
+
 // TestReceiveVectors checks that a relay accepts exactly the vectors that
 // are both protocol-valid and correctly signed.
 func TestReceiveVectors(t *testing.T) {

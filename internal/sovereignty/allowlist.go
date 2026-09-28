@@ -63,6 +63,11 @@ var builtin = []Entry{
 	builtinEntry("ff00::/8", "multicast"),
 	builtinEntry("255.255.255.255/32", "limited broadcast"),
 	builtinEntry("::ffff:0:0/96", "IPv4-mapped"),
+}
+
+// documentation are the built-in documentation ranges; multi-node tests
+// leave them out (Env.OmitDocumentationRanges) to use them as indicators.
+var documentation = []Entry{
 	builtinEntry("192.0.2.0/24", "documentation (TEST-NET-1)"),
 	builtinEntry("198.51.100.0/24", "documentation (TEST-NET-2)"),
 	builtinEntry("203.0.113.0/24", "documentation (TEST-NET-3)"),
@@ -76,7 +81,7 @@ func builtinEntry(cidr, label string) Entry {
 
 // Builtin returns the built-in allow-list entries.
 func Builtin() []Entry {
-	return slices.Clone(builtin)
+	return slices.Concat(builtin, documentation)
 }
 
 // Allowlist is an immutable set of allow-listed ranges. The zero value and

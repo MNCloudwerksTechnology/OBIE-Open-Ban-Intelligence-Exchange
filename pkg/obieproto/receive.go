@@ -17,10 +17,11 @@ import (
 // signature, so a clock error is only ever reported for an authentic event:
 // forged or altered events are always invalid, whatever their timestamps.
 // Any error means the message is dropped and not forwarded.
-// [AllowDocumentationRanges] has no effect: the mesh never accepts them.
+// [AllowDocumentationRanges] has no effect: the mesh never accepts them,
+// except in tests that pass [ReceiveDocumentationRanges].
 func Receive(data []byte, opts ...Option) (*Event, error) {
 	opts = append(slices.Clip(opts), func(o *options) {
-		o.allowDocumentation = false
+		o.allowDocumentation = o.receiveDocumentation
 		o.skipClockSkew = true
 	})
 	e, err := Decode(data, opts...)

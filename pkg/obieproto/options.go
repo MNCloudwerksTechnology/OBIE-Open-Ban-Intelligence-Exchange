@@ -8,6 +8,8 @@ type Option func(*options)
 type options struct {
 	now                func() time.Time
 	allowDocumentation bool
+	// receiveDocumentation lets Receive keep allowDocumentation.
+	receiveDocumentation bool
 	// skipClockSkew leaves the issued_at clock check to the caller; Receive
 	// runs it after the signature.
 	skipClockSkew bool
@@ -37,4 +39,11 @@ func WithClock(now func() time.Time) Option {
 // and [Receive] ignores it.
 func AllowDocumentationRanges() Option {
 	return func(o *options) { o.allowDocumentation = true }
+}
+
+// ReceiveDocumentationRanges makes [Receive] accept indicators in the
+// documentation ranges as well. It exists for multi-node tests whose nodes
+// exchange documentation addresses only; production code must not use it.
+func ReceiveDocumentationRanges() Option {
+	return func(o *options) { o.receiveDocumentation = true }
 }

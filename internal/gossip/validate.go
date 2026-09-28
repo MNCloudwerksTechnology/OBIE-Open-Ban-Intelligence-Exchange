@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"slices"
 	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
@@ -16,11 +17,13 @@ import (
 // validator is the topic validator: it decides whether a message is
 // stored and relayed.
 type validator struct {
-	self       peer.ID
-	store      store.Store
-	metrics    Metrics
-	log        *slog.Logger
-	now        func() time.Time
+	self    peer.ID
+	store   store.Store
+	metrics Metrics
+	log     *slog.Logger
+	now     func() time.Time
+	// receive are the obieproto.Receive options besides the clock.
+	receive    []obieproto.Option
 	publishers *limiter
 	peers      *limiter
 }
@@ -46,9 +49,9 @@ func (v *validator) check(from peer.ID, data []byte) (Outcome, pubsub.Validation
 		return TooLarge, pubsub.ValidationReject
 	}
 	now := v.now()
-	ev, err := obieproto.Receive(data, obieproto.WithClock(func() time.Time { return now }))
+	ev, err := obieproto.Receive(data, v.receiveOptions(now)...)
 	if err != nil {
-		outcome, result := classify(err, data, now)
+		outcome, result := classify(err, data, v.receiveOptions(now.Add(-obieproto.MaxClockSkew)))
 		v.drop(from, outcome, err)
 		return outcome, result
 	}
@@ -78,12 +81,19 @@ func (v *validator) check(from peer.ID, data []byte) (Outcome, pubsub.Validation
 	return Accepted, pubsub.ValidationAccept
 }
 
+// receiveOptions returns the obieproto.Receive options with the clock at
+// now.
+func (v *validator) receiveOptions(now time.Time) []obieproto.Option {
+	return append(slices.Clip(v.receive), obieproto.WithClock(func() time.Time { return now }))
+}
+
 // classify maps an obieproto.Receive error to an outcome. Invalid events
 // are rejected, which penalizes the forwarding peer. Clock failures are
 // ignored, since an honest peer whose clock differs a little may forward
 // them, unless the event expired so long ago that no clock within
-// MaxClockSkew would have accepted it.
-func classify(err error, data []byte, now time.Time) (Outcome, pubsub.ValidationResult) {
+// MaxClockSkew would have accepted it; lenient are the Receive options with
+// the clock MaxClockSkew behind.
+func classify(err error, data []byte, lenient []obieproto.Option) (Outcome, pubsub.ValidationResult) {
 	switch {
 	case errors.Is(err, obieproto.ErrTooLarge):
 		return TooLarge, pubsub.ValidationReject
@@ -92,8 +102,7 @@ func classify(err error, data []byte, now time.Time) (Outcome, pubsub.Validation
 	case errors.Is(err, obieproto.ErrClockSkew):
 		return Expired, pubsub.ValidationIgnore
 	case errors.Is(err, obieproto.ErrExpired):
-		lenient := obieproto.WithClock(func() time.Time { return now.Add(-obieproto.MaxClockSkew) })
-		if _, err := obieproto.Receive(data, lenient); errors.Is(err, obieproto.ErrExpired) {
+		if _, err := obieproto.Receive(data, lenient...); errors.Is(err, obieproto.ErrExpired) {
 			return Expired, pubsub.ValidationReject
 		}
 		return Expired, pubsub.ValidationIgnore
