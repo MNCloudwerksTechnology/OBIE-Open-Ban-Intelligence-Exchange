@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"syscall"
 )
 
@@ -65,26 +66,30 @@ func (c *Client) Peers(ctx context.Context) (*PeersResponse, error) {
 	return &resp, nil
 }
 
+// APIError is an error response of the admin API.
+type APIError struct {
+	Method, Path string
+	// StatusCode is the HTTP status, e.g. http.StatusUnprocessableEntity.
+	StatusCode int
+	Status     string
+	// Message is the (possibly truncated) explanation obied sent.
+	Message string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("%s %s: %s: %s", e.Method, e.Path, e.Status, e.Message)
+}
+
 func (c *Client) get(ctx context.Context, path string, out any) error {
 	return c.do(ctx, http.MethodGet, path, nil, out)
 }
 
-// StatusError is an admin API answer other than 200 OK.
-type StatusError struct {
-	Method, Path string
-	// Code is the HTTP status code, Status its text.
-	Code   int
-	Status string
-	// Body is the start of the response body.
-	Body string
+func (c *Client) post(ctx context.Context, path string, in, out any) error {
+	return c.do(ctx, http.MethodPost, path, in, out)
 }
 
-func (e *StatusError) Error() string {
-	return fmt.Sprintf("%s %s: %s: %s", e.Method, e.Path, e.Status, e.Body)
-}
-
-// do sends a request with body (as JSON, if not nil) and decodes the
-// response into out.
+// do sends a request with an optional JSON body (marshaled if not nil) and
+// decodes a 2xx JSON response into out; other responses yield an *APIError.
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var reqBody io.Reader
 	if body != nil {
@@ -107,9 +112,10 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		return c.dialError(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		data, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
-		return &StatusError{Method: method, Path: path, Code: resp.StatusCode, Status: resp.Status, Body: string(data)}
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		msg, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBody))
+		return &APIError{Method: method, Path: path, StatusCode: resp.StatusCode, Status: resp.Status,
+			Message: strings.TrimSpace(string(msg))}
 	}
 	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
 		return fmt.Errorf("%s %s: decode response: %w", method, path, err)

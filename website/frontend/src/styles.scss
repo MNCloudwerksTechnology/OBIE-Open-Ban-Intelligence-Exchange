@@ -24,6 +24,8 @@
   --color-mesh: #8a8a8a;
   --color-code-bg: #1a1a1a;
   --color-code-text: #f5f5f5;
+  --color-error: #b3261e;
+  --color-success: #2e7d32;
   --shadow-card: 0 1px 2px rgb(26 26 26 / 6%), 0 8px 24px rgb(26 26 26 / 6%);
 }
 
@@ -45,6 +47,8 @@
   --color-mesh: #8a8a8a;
   --color-code-bg: #0a0a0a;
   --color-code-text: #f5f5f5;
+  --color-error: #f2918a;
+  --color-success: #7cc47f;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
 }
 
@@ -232,8 +236,11 @@ code {
   padding: var(--space-3) var(--space-5);
   border: 2px solid transparent;
   border-radius: var(--radius-md);
+  // <button> elements do not inherit the font by default.
+  font: inherit;
   font-weight: 600;
   text-decoration: none;
+  cursor: pointer;
   transition:
     background-color var(--duration),
     border-color var(--duration),

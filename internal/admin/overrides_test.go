@@ -159,8 +159,8 @@ func TestClientOverridesOverSocket(t *testing.T) {
 	if _, err := client.SetOverride(ctx, OverrideRequest{Indicator: "185.0.0.1", Action: "nope"}); err == nil || !strings.Contains(err.Error(), "400 Bad Request: invalid action") {
 		t.Errorf("SetOverride(bad) = %v", err)
 	}
-	var status *StatusError
-	if _, err := client.SetOverride(ctx, OverrideRequest{Indicator: "x", Action: ActionForceAllow}); !errors.As(err, &status) || status.Code != http.StatusBadRequest {
+	var apiErr *APIError
+	if _, err := client.SetOverride(ctx, OverrideRequest{Indicator: "x", Action: ActionForceAllow}); !errors.As(err, &apiErr) || apiErr.StatusCode != http.StatusBadRequest {
 		t.Errorf("SetOverride(bad indicator) = %v", err)
 	}
 	if _, err := client.SetOverride(ctx, OverrideRequest{Action: ActionForceAllow}); err == nil {

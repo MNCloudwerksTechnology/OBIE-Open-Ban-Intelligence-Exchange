@@ -149,7 +149,7 @@ func TestOverrideCommands(t *testing.T) {
 		t.Errorf("unoverride --json:\n%s", out)
 	}
 	_, stderr = ctl(ExitFailure, "block", "example.org")
-	if !strings.Contains(stderr, "400 Bad Request: invalid indicator") {
+	if !strings.Contains(stderr, "invalid indicator") || !strings.Contains(stderr, "obied answered 400 Bad Request") {
 		t.Errorf("block of a name: %q", stderr)
 	}
 }

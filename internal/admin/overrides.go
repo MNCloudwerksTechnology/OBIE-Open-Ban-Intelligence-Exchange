@@ -25,8 +25,8 @@ const (
 	ActionForceBlock = "force_block"
 )
 
-// maxRequestBody bounds the body of a request to the admin API.
-const maxRequestBody = 16 << 10
+// maxOverrideBody bounds the body of an override request to the admin API.
+const maxOverrideBody = 16 << 10
 
 // MaxTTLSeconds is the longest override TTL, the most a time.Duration
 // holds.
@@ -163,7 +163,7 @@ func handleOverrides(mux *http.ServeMux, info Info, log *slog.Logger) {
 // decodeOverrideRequest reads and checks the body of POST /v1/overrides.
 func decodeOverrideRequest(w http.ResponseWriter, r *http.Request) (OverrideRequest, obieproto.Indicator, error) {
 	var req OverrideRequest
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBody))
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxOverrideBody))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		return req, obieproto.Indicator{}, fmt.Errorf("invalid request body: %w", err)
@@ -221,8 +221,8 @@ func (c *Client) DeleteOverride(ctx context.Context, indicator string) (*Overrid
 	}
 	var resp OverrideResult
 	err := c.do(ctx, http.MethodDelete, OverridesPath+"/"+url.PathEscape(indicator), nil, &resp)
-	var status *StatusError
-	if errors.As(err, &status) && status.Code == http.StatusNotFound {
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("%w on %s", ErrNoOverride, indicator)
 	}
 	if err != nil {

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SpotBugs findings that are false positives by design. Keep every match as
+     narrow as possible and explain it. -->
+<FindBugsFilter>
+  <!-- Spring injects the repository (a proxy) into the services that use it;
+       storing a collaborator is the point of constructor injection. -->
+  <Match>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+    <Field type="org.obie.website.inquiry.InquiryRepository"/>
+  </Match>
+</FindBugsFilter>

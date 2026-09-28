@@ -35,6 +35,10 @@ var commands = map[string]command{
 	"block":      {summary: "force-block an address or range, whatever its score", run: runBlock},
 	"overrides":  {summary: "list the operator overrides", run: runOverrides},
 	"unoverride": {summary: "remove the override of an address or range", run: runUnoverride},
+	"report":     {summary: "publish a signed verdict on an attacking address or CIDR range", run: runReport},
+	"revoke":     {summary: "revoke this node's verdict by event ID, address or CIDR range", run: runRevoke},
+	"indicators": {summary: "list the indicators with active verdicts", run: runIndicators},
+	"show":       {summary: "show every active verdict on an address or CIDR range", run: runShow},
 }
 
 // RunCtl runs obiectl with args and returns the process exit code.
@@ -113,6 +117,14 @@ func runStatus(ctx context.Context, client *admin.Client, args []string, stdout,
 
 // reportClientError explains a failed admin API call.
 func reportClientError(stderr io.Writer, err error) {
+	var apiErr *admin.APIError
+	if errors.As(err, &apiErr) {
+		_, _ = fmt.Fprintf(stderr, "obiectl: %s (obied answered %s)\n", apiErr.Message, apiErr.Status)
+		if hint := apiErrorHint(apiErr); hint != "" {
+			_, _ = fmt.Fprintf(stderr, "obiectl: %s\n", hint)
+		}
+		return
+	}
 	_, _ = fmt.Fprintf(stderr, "obiectl: %v\n", err)
 	if errors.Is(err, admin.ErrDaemonNotRunning) {
 		_, _ = fmt.Fprintln(stderr, "obiectl: start obied, or point --socket at its admin.socket")

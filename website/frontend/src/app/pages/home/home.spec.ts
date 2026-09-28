@@ -20,9 +20,16 @@ describe('Home page', () => {
     const sections = Array.from(page.querySelectorAll('main section[id]'));
     const c = LANDING_CONTENT_EN;
     expect(sections.map((section) => section.id)).toEqual(
-      [c.problem, c.howItWorks, c.principles, c.status, c.getStarted, c.founder, c.faq].map(
-        (section) => section.id,
-      ),
+      [
+        c.problem,
+        c.howItWorks,
+        c.principles,
+        c.status,
+        c.getStarted,
+        c.founder,
+        c.contact,
+        c.faq,
+      ].map((section) => section.id),
     );
     for (const section of sections) {
       const heading = page.querySelector(`#${section.getAttribute('aria-labelledby')}`);
@@ -32,7 +39,7 @@ describe('Home page', () => {
 
   it('points every navigation link at a section on the page', () => {
     const links = Array.from(
-      page.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Sections of this page"] a'),
+      page.querySelectorAll<HTMLAnchorElement>('nav[aria-label="Sections of this page"] li a'),
     );
     expect(links.length).toBe(6);
     for (const link of links) {
@@ -87,8 +94,13 @@ describe('Home page', () => {
     );
   });
 
-  it('marks the founder section as a placeholder', () => {
-    expect(page.querySelector('#founder')?.textContent).toContain('Placeholder');
+  it('introduces the founder and links the invitation to the inquiry form', () => {
+    const founder = page.querySelector('#founder');
+    expect(founder?.querySelector('h3')?.textContent).toBe('Markus Niewerth');
+    expect(founder?.querySelector('a[href="#contact"]')?.textContent?.trim()).toBe(
+      'Invite Markus to speak',
+    );
+    expect(page.querySelector('section#contact form')).not.toBeNull();
   });
 
   it('asks the FAQ as keyboard-operable disclosure widgets', () => {

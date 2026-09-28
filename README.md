@@ -19,7 +19,9 @@ bootstrap peers' addresses are never blocked, `allowlist.cidrs` and
 the mesh for any address. A node starts in `observe` mode and never
 enforces until `node.mode: enforce` is set; the enforcement backend follows
 in a later work package. `obiectl`, the operator CLI, queries it over the
-local admin socket.
+local admin socket and turns local detections into signed verdicts: log
+lines given as evidence are hashed on the node, and only the hash and the
+counts are published.
 
 ```sh
 make build           # static binaries in ./bin/
@@ -37,6 +39,11 @@ make build           # static binaries in ./bin/
 ./bin/obiectl --socket /run/obie/obie.sock block <ip|cidr> [--ttl 1h] [--note text]  # always block
 ./bin/obiectl --socket /run/obie/obie.sock overrides [--json]
 ./bin/obiectl --socket /run/obie/obie.sock unoverride <ip|cidr>
+./bin/obiectl report --protocol ssh --reason password_bruteforce --events 5 \
+    [--evidence-file auth.log] [--ttl 12h] [--action watch] [--json] <ip | cidr>  # publish a verdict
+./bin/obiectl revoke [--reason false_positive] <ip | cidr | event-id>             # withdraw it
+./bin/obiectl indicators [--mine | --publisher <peer-id>] [--json]                # active verdicts
+./bin/obiectl show [--json] <ip | cidr>                                            # verdicts on one
 kill -HUP "$(pidof obied)"   # reload allow-list files, trust, decision settings and mode
 make ci              # every check a change must pass
 ```
