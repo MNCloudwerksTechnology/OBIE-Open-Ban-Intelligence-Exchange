@@ -1,7 +1,10 @@
 # OBIE CI gate. This file lives in .gitea/workflows/ (Gitea Actions) and, byte
 # for byte, in .github/workflows/ (public GitHub mirror); `make lint-workflows`
 # fails if the two copies differ. The local `make ci` is the source of truth —
-# this pipeline only runs it (and `make -C website ci` for the website).
+# this pipeline only runs it (and `make -C website ci` for the website), plus
+# the packaging checks (`make release`, `check-unit`, `image`, `lab-smoke`)
+# without publishing anything; release.yml publishes on v* tags,
+# website-release.yml the website image on website-v* tags.
 name: ci
 
 on:
@@ -45,11 +48,26 @@ jobs:
           cache: true
           cache-dependency-path: go.mod
 
+      # make lint-md installs the pinned markdownlint-cli2 with npm.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Cache pinned tools
         uses: actions/cache@v4
         with:
           path: bin/tools
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      # TestFail2BanAcceptsAction checks the Fail2Ban action with
+      # `fail2ban-client -t` (a command of the quick start); it is skipped
+      # without Fail2Ban.
+      - name: Install Fail2Ban
+        run: |
+          if ! command -v fail2ban-client >/dev/null; then
+            sudo=; [ "$(id -u)" -eq 0 ] || sudo=sudo
+            $sudo apt-get update && $sudo apt-get install -y --no-install-recommends fail2ban
+          fi
 
       - name: make ci
         run: make ci
@@ -113,13 +131,74 @@ jobs:
       - name: make fuzz
         run: make fuzz FUZZTIME=30s
 
+  package:
+    name: release build, image and lab
+    # Everything the release workflow publishes, built and checked but never
+    # pushed: reproducible `make release`, the systemd unit, the container
+    # image and the compose lab's smoke test.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # SOURCE_DATE_EPOCH is the commit time.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: Cache pinned tools
+        uses: actions/cache@v4
+        with:
+          path: bin/tools
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: make release (twice, must be byte-identical)
+        run: |
+          make release VERSION=0.0.0-ci
+          cp dist/release/SHA256SUMS "$RUNNER_TEMP/SHA256SUMS"
+          # The second build starts from an empty build cache.
+          GOCACHE="$(mktemp -d)" make release VERSION=0.0.0-ci
+          diff "$RUNNER_TEMP/SHA256SUMS" dist/release/SHA256SUMS
+
+      # The install commands of documentation/operations/quickstart.md, on
+      # the tarball just built: verify, extract, install (staged below
+      # DESTDIR, without root and systemd) and check the installed config.
+      - name: quickstart steps on the release tarball
+        run: |
+          cp dist/release/obie-0.0.0-ci-linux-amd64.tar.gz dist/release/SHA256SUMS "$RUNNER_TEMP/"
+          cd "$RUNNER_TEMP"
+          sha256sum -c --ignore-missing SHA256SUMS
+          tar -xzf obie-0.0.0-ci-linux-amd64.tar.gz
+          DESTDIR="$RUNNER_TEMP/root" ./obie-0.0.0-ci-linux-amd64/install.sh
+          "$RUNNER_TEMP/root/usr/local/bin/obied" --config "$RUNNER_TEMP/root/etc/obie/obie.yaml" --check-config
+
+      - name: make check-unit
+        run: |
+          if ! command -v systemd-analyze >/dev/null; then
+            sudo=; [ "$(id -u)" -eq 0 ] || sudo=sudo
+            $sudo apt-get update && $sudo apt-get install -y --no-install-recommends systemd
+          fi
+          make check-unit
+
+      - name: make image
+        run: make image
+
+      - name: make lab-smoke
+        run: make lab-smoke
+
   website:
     name: website
     # The website (website/) is independent of the node and has its own gate,
     # `make -C website ci`. The job always runs so it can be a required check,
     # but its steps are skipped unless something under website/ changed.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -181,6 +260,50 @@ jobs:
       - if: steps.changes.outputs.changed == 'true'
         name: make -C website ci
         run: make -C website ci
+
+      # The container image and the production compose stack, checked but
+      # never pushed; website-release.yml publishes on website-v* tags.
+      - if: steps.changes.outputs.changed == 'true'
+        name: make -C website smoke
+        run: make -C website smoke
+
+  lighthouse:
+    name: website lighthouse (non-blocking)
+    # Lighthouse CI (mobile) against the jar started on the runner; fails below
+    # 95 in any category. Scores depend on the runner's load, so a failure is
+    # reported but never blocks a change: the job is not a required check.
+    needs: website
+    if: needs.website.outputs.changed == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: website/backend/pom.xml
+
+      # The runner image ships Google Chrome, which Lighthouse CI finds on its own.
+      - name: make -C website lighthouse
+        run: make -C website lighthouse
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: website/.lighthouseci/reports/
+          if-no-files-found: ignore
+          retention-days: 14
 
   privileged:
     name: privileged tests

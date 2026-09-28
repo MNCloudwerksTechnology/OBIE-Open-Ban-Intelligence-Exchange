@@ -31,7 +31,7 @@ Out of scope for obie/0.1, and planned for later versions: observations as a
 shared event type, appeals, non-IP indicators (FQDN, URL, JA3/JA4, hashes,
 ASNs), organisational identity via domain challenge, key rotation
 statements, CBOR/COSE encodings and per-protocol topics. Some of these
-appear in the whitepaper in the [README](../../README.md); where the
+appear in the [whitepaper](../whitepaper.md); where the
 whitepaper and this document differ, this document is authoritative for
 obie/0.1.
 

@@ -6,6 +6,10 @@ NPM  ?= npm
 JAVA ?= java
 GO   ?= go
 
+# Version baked into the container image's label and tag (`make image`).
+VERSION ?= dev
+IMAGE   ?= obie-website:$(VERSION)
+
 FRONTEND := frontend
 BACKEND  := backend
 MVNW     := ./mvnw -B
@@ -16,6 +20,8 @@ TOOLS_DIR := $(BIN_DIR)/tools
 # Pinned tool version, installed into a versioned directory under ./bin/tools.
 OSV_SCANNER_VERSION := v2.6.0
 OSV_SCANNER := $(TOOLS_DIR)/osv-scanner-$(OSV_SCANNER_VERSION)/osv-scanner
+# Lighthouse CI, run with npx at this pinned version (not a front-end dependency).
+LHCI_VERSION := 0.15.1
 
 # Stamp written by `npm ci`; reinstall whenever the lockfile changes.
 NODE_MODULES := $(FRONTEND)/node_modules/.package-lock.json
@@ -65,12 +71,24 @@ vuln: $(NODE_MODULES) $(OSV_SCANNER) ## Scan runtime dependencies for known vuln
 	cd $(FRONTEND) && $(NPM) audit --omit=dev --audit-level=high
 	$(OSV_SCANNER) scan source --lockfile $(SBOM)
 
+.PHONY: lighthouse
+lighthouse: build ## Lighthouse CI (mobile) against the locally started jar; fails below 95 in any category
+	JAR=$(JAR) LHCI_VERSION=$(LHCI_VERSION) ./scripts/lighthouse.sh
+
+.PHONY: image
+image: ## Build the container image IMAGE (default obie-website:dev) from the Dockerfile (docker)
+	docker build --build-arg VERSION='$(VERSION)' -t '$(IMAGE)' .
+
+.PHONY: smoke
+smoke: image ## Start deploy/compose.yaml with IMAGE, send an inquiry to Mailpit, check it, remove it (docker)
+	IMAGE='$(IMAGE)' deploy/smoke-test.sh
+
 .PHONY: ci
-ci: frontend-lint frontend-test backend vuln ## Run every check the CI website job runs
+ci: frontend-lint frontend-test backend vuln ## Run every check the CI website job runs, except `make smoke`
 
 .PHONY: clean
 clean: ## Remove build output and installed tools
-	rm -rf $(FRONTEND)/dist $(FRONTEND)/.angular $(BACKEND)/target $(BIN_DIR)
+	rm -rf $(FRONTEND)/dist $(FRONTEND)/.angular $(BACKEND)/target $(BIN_DIR) .lighthouseci
 
 $(OSV_SCANNER):
 	GOBIN=$(dir $@) $(GO) install github.com/google/osv-scanner/v2/cmd/osv-scanner@$(OSV_SCANNER_VERSION)

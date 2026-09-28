@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/statedir"
 )
 
 // newStateDir returns a new empty directory with mode 0700: t.TempDir
@@ -136,6 +137,34 @@ func TestKeygenRefusesOverwrite(t *testing.T) {
 	}
 	if bytes.Equal(before, readKeyFile(t, stateDir)) {
 		t.Error("keygen --force kept the old key")
+	}
+}
+
+func TestKeygenRefusesNewerStateDir(t *testing.T) {
+	stateDir := newStateDir(t)
+	if err := os.WriteFile(statedir.Path(stateDir), []byte("99\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := runObied(t, "keygen", "--force", "--state-dir", stateDir)
+	if code != ExitFailure || stdout != "" {
+		t.Fatalf("keygen: exit code = %d, stdout %q", code, stdout)
+	}
+	if !strings.Contains(stderr, "state directory has a newer format") {
+		t.Errorf("stderr = %q", stderr)
+	}
+	if _, err := os.Stat(filepath.Join(stateDir, "node.key")); !os.IsNotExist(err) {
+		t.Errorf("keygen wrote a key into a newer-format state directory: %v", err)
+	}
+}
+
+func TestKeygenDoesNotStampStateDir(t *testing.T) {
+	stateDir := newStateDir(t)
+	if code, _, stderr := runObied(t, "keygen", "--state-dir", stateDir); code != ExitOK {
+		t.Fatalf("keygen: exit code = %d, stderr %q", code, stderr)
+	}
+	// obied stamps it on its first start, as the user that owns the directory.
+	if _, err := os.Stat(statedir.Path(stateDir)); !os.IsNotExist(err) {
+		t.Errorf("keygen wrote %s: %v", statedir.FileName, err)
 	}
 }
 

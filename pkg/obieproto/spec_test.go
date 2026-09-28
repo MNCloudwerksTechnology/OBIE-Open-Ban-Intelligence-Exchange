@@ -177,19 +177,19 @@ func TestSpecRequirementsAreTested(t *testing.T) {
 	}
 }
 
-// TestReadmeLinksSpec checks that the whitepaper's technical schema section
-// points to the specification and the schema.
-func TestReadmeLinksSpec(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot, "README.md"))
+// TestWhitepaperLinksSpec checks that the whitepaper's technical schema
+// section points to the specification and the schema.
+func TestWhitepaperLinksSpec(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot, "documentation", "whitepaper.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, section, found := strings.Cut(string(data), "##### 3.2.1 Technical Schema")
 	section, _, _ = strings.Cut(section, "\n#### ")
 	if !found {
-		t.Fatal("README has no technical schema section")
+		t.Fatal("the whitepaper has no technical schema section")
 	}
-	for _, link := range []string{"(documentation/spec/obie-0.1.md)", "(documentation/spec/obie-0.1.schema.json)"} {
+	for _, link := range []string{"(spec/obie-0.1.md)", "(spec/obie-0.1.schema.json)"} {
 		if !strings.Contains(section, link) {
 			t.Errorf("technical schema section does not link %s", link)
 		}

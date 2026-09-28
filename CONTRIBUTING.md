@@ -8,9 +8,11 @@ first — it is the binding technical baseline.
 
 - Go 1.26 or newer
 - GNU Make, Git
-- Network access on the first run: `make lint`, `make lint-workflows` and
-  `make vuln` install the pinned golangci-lint, actionlint and govulncheck
-  versions into `./bin/tools/`. These tools need a newer Go than `go.mod`
+- Node.js with npm (for `make lint-md` only)
+- Network access on the first run: `make lint`, `make lint-workflows`,
+  `make lint-md` and `make vuln` install the pinned golangci-lint,
+  actionlint, markdownlint-cli2 and govulncheck versions into
+  `./bin/tools/`. The Go tools need a newer Go than `go.mod`
   requires; with the default `GOTOOLCHAIN=auto` the `go` command downloads it
   automatically (do not set `GOTOOLCHAIN=local` on an older Go).
 
@@ -25,10 +27,11 @@ first — it is the binding technical baseline.
 | `make lint`            | golangci-lint with the committed `.golangci.yml`                 |
 | `make vuln`            | govulncheck against the Go vulnerability database                |
 | `make lint-workflows`  | actionlint on the CI workflows; checks both copies are identical |
+| `make lint-md`         | markdownlint-cli2 on every Markdown file (`.markdownlint-cli2.yaml`) |
 | `make test-privileged` | Tests including the `privileged` build tag (needs root)          |
 | `make fuzz`            | Every fuzz target for `FUZZTIME` each (default `30s`)            |
 | `make soak`            | The soak test: 3 nodes, 50 events/s for 30 min (not in CI)       |
-| `make ci`              | fmt-check + vet + lint + lint-workflows + test + vuln            |
+| `make ci`              | fmt-check + vet + lint + lint-workflows + lint-md + test + vuln  |
 | `make clean`           | Removes `./bin/` including installed tools                       |
 
 The version embedded in the binaries comes from `git describe`; override it
@@ -50,12 +53,34 @@ is a byte-identical copy for the public GitHub mirror — change both together;
   uploaded as build artifacts.
 - **fuzz** — `make fuzz FUZZTIME=30s`: every fuzz target mutates inputs
   for 30 s (see [Fuzz testing](#fuzz-testing)).
+- **release build, image and lab** — `make release` twice (the
+  `SHA256SUMS` must match: the build is reproducible), `make check-unit`
+  (`systemd-analyze verify` and an exposure of at most 3.0 for the systemd
+  unit), `make image` and `make lab-smoke` (the three-node compose lab comes
+  up, the nodes see each other and block by consensus). Nothing is pushed.
 - **website** — `make -C website ci` for the website in `website/` (see
-  [`website/README.md`](website/README.md)); its steps are skipped when
-  nothing under `website/` changed.
+  [`website/README.md`](website/README.md)) and `make -C website smoke`
+  (builds the website image and checks it in its production compose stack;
+  nothing is pushed); its steps are skipped when nothing under `website/`
+  changed.
 - **privileged tests** — never part of the default run. Start it manually
   ("Run workflow" with the `privileged` input checked) to run the tests behind
   the `privileged` build tag as root.
+
+`.gitea/workflows/release.yml` (again with a byte-identical GitHub copy)
+runs only when a `v*` tag is pushed: it runs `make ci`, builds the release,
+pushes the multi-arch image and then attaches the tarballs, SBOMs and
+`SHA256SUMS` to the forge's release. To release, tag the merged commit on `main`
+(`git tag -a v0.1.0 -m "OBIE 0.1.0" && git push origin v0.1.0`); see
+[ADR 0017](documentation/adr/0017-packaging-and-state-format.md).
+
+`.gitea/workflows/website-release.yml` (byte-identical GitHub copy) runs
+only when a `website-v*` tag is pushed: it runs `make -C website ci` and the
+smoke test, then pushes the website's multi-arch image
+(`ghcr.io/<owner>/obie-website:<version>` on GitHub). The two release
+workflows never trigger on each other's tags; see
+[ADR 0018](documentation/adr/0018-website-container-and-deployment.md) and
+[`website/deploy/README.md`](website/deploy/README.md).
 
 **A red pipeline blocks merge.** A pull request is only merged when every job
 of its latest pipeline run is green; fix the failure (or the check) rather

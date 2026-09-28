@@ -48,8 +48,11 @@ by the next reconciliation (`enforce.reconcile_interval`, plus a second).
 ## Permissions
 
 `obied` needs CAP_NET_ADMIN, nothing more. Without it every nftables call
-fails with `nftables access denied: obied needs CAP_NET_ADMIN`. In a
-systemd unit running as a dedicated user:
+fails with `nftables access denied: obied needs CAP_NET_ADMIN`. The shipped
+unit [`packaging/systemd/obied.service`](../../packaging/systemd/obied.service)
+(installed by `install.sh`, see
+[install.md](../operations/install.md)) runs obied as the user `obie` with
+exactly that:
 
 ```ini
 [Service]

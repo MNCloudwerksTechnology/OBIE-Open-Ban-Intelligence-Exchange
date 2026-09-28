@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/statedir"
 )
 
 // testNode describes the listeners of a daemon started by a test.
@@ -139,6 +140,9 @@ func TestRunDaemonGracefulShutdown(t *testing.T) {
 	if info, err := os.Stat(filepath.Join(n.stateDir, "db")); err != nil || !info.IsDir() {
 		t.Errorf("event store not opened in <state_dir>/db: %v", err)
 	}
+	if data, err := os.ReadFile(statedir.Path(n.stateDir)); err != nil || string(data) != "1\n" {
+		t.Errorf("state directory format file = %q, %v; want \"1\\n\"", data, err)
+	}
 	resp, err := http.Get("http://" + n.metrics + "/readyz") // #nosec G107 -- test daemon URL.
 	if err != nil {
 		t.Fatal(err)
@@ -179,6 +183,33 @@ func TestRunDaemonStopsOnSIGTERM(t *testing.T) {
 	}
 	if l := findLog(logLines(t, &stderr), "obied", "shutdown requested"); l == nil || l["timeout"] != "5s" {
 		t.Errorf("shutdown line = %v, want timeout 5s", l)
+	}
+}
+
+func TestRunDaemonRefusesNewerStateDir(t *testing.T) {
+	n := newTestNode(t, "")
+	if err := os.MkdirAll(n.stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statedir.Path(n.stateDir), []byte("99\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if code := runDaemon(context.Background(), []string{"--config", n.config}, &stdout, &stderr); code != ExitFailure {
+		t.Fatalf("exit code = %d, want %d:\n%s", code, ExitFailure, stderr.String())
+	}
+	l := findLog(logLines(t, &stderr), "obied", "obied failed")
+	if l == nil {
+		t.Fatalf("no failure line:\n%s", stderr.String())
+	}
+	msg, _ := l["error"].(string)
+	for _, want := range []string{"state directory has a newer format", n.stateDir, "format 99", "newer obied"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("failure line error %q does not mention %q", msg, want)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(n.stateDir, "node.key")); !os.IsNotExist(err) {
+		t.Errorf("node key created in a newer-format state directory: %v", err)
 	}
 }
 

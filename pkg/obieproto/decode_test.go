@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// readmeExample is the verdict from README §3.2.1 with its placeholders
+// readmeExample is the verdict from the whitepaper §3.2.1 with its placeholders
 // filled in. Its indicator is a documentation address.
 //
 // #nosec G101 -- false positive: the signature is a zero-byte placeholder.

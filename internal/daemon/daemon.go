@@ -25,6 +25,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/mesh"
 	"github.com/MNCloudwerksTechnology/obie/internal/ops"
 	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
+	"github.com/MNCloudwerksTechnology/obie/internal/statedir"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/internal/verdicts"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
@@ -98,19 +99,24 @@ type Endpoints struct {
 	Metrics string
 }
 
-// Run loads the node identity from node.state_dir, generating it on the
-// first start, builds the allow-list, then starts the subsystems configured
-// by cfg and blocks until ctx is canceled, reloading the configuration
+// Run checks the format of node.state_dir (ADR 0017), loads the node
+// identity from it, generating it on the first start, builds the
+// allow-list, then starts the subsystems configured by cfg and blocks
+// until ctx is canceled, reloading the configuration
 // whenever opts.Reload fires; then it shuts the subsystems down in reverse
 // order within node.shutdown_timeout. It returns nil after a clean
 // shutdown, also when ctx is canceled during startup, and an error when a
-// subsystem fails to start or to stop in time, and when the identity or the
-// allow-list cannot be loaded. A failed reload keeps the running
+// subsystem fails to start or to stop in time, and when the state
+// directory (e.g. one of a newer format), the identity or the allow-list
+// cannot be loaded. A failed reload keeps the running
 // configuration.
 func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Options) error {
 	log := logs.Logger(Component)
 	startedAt := time.Now()
 
+	if err := prepareStateDir(cfg.Node.StateDir, log); err != nil {
+		return err
+	}
 	id, err := loadIdentity(cfg.Node.StateDir, log)
 	if err != nil {
 		return err
@@ -252,6 +258,19 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		return fmt.Errorf("shutdown: %w", err)
 	}
 	log.Info("shutdown complete")
+	return nil
+}
+
+// prepareStateDir checks the format of stateDir, stamping a new or legacy
+// directory, and refuses one written by a newer obied (ADR 0017).
+func prepareStateDir(stateDir string, log *slog.Logger) error {
+	previous, err := statedir.Prepare(stateDir, version.Version)
+	if err != nil {
+		return fmt.Errorf("state directory: %w", err)
+	}
+	if previous == 0 {
+		log.Info("state directory format recorded", "state_dir", stateDir, "format", statedir.Version)
+	}
 	return nil
 }
 

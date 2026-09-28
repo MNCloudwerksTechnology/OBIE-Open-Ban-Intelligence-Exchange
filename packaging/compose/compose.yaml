@@ -1,0 +1,53 @@
+# OBIE three-node lab: three obied nodes on one bridge network that
+# bootstrap to and trust each other, enforcing with the dryrun backend (it
+# only logs). See README.md in this directory.
+#
+#   docker compose up -d --build --wait
+#   docker compose exec node1 obiectl peers
+#   docker compose down -v
+
+name: obie-lab
+
+x-node: &node
+  image: obie:lab
+  build:
+    context: ../..
+  command: ["--config", "/var/lib/obie/obie.yaml"]
+  depends_on:
+    init:
+      condition: service_completed_successfully
+  networks: [lab]
+  restart: unless-stopped
+
+services:
+  # Creates the node keys (once) and the configurations (every start).
+  init:
+    image: obie:lab-init
+    build:
+      context: ../..
+      target: lab-init
+    command: [/lab/node1, /lab/node2, /lab/node3]
+    volumes:
+      - node1:/lab/node1
+      - node2:/lab/node2
+      - node3:/lab/node3
+    network_mode: none
+
+  node1:
+    <<: *node
+    volumes: [node1:/var/lib/obie]
+  node2:
+    <<: *node
+    volumes: [node2:/var/lib/obie]
+  node3:
+    <<: *node
+    volumes: [node3:/var/lib/obie]
+
+networks:
+  lab:
+    driver: bridge
+
+volumes:
+  node1:
+  node2:
+  node3:

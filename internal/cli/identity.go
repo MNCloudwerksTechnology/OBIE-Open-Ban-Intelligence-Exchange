@@ -12,6 +12,8 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
+	"github.com/MNCloudwerksTechnology/obie/internal/statedir"
+	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
 
 // daemonCommand is an offline obied subcommand; it never talks to a running
@@ -78,6 +80,10 @@ func runKeygen(args []string, stdout, stderr io.Writer) int {
 		return ExitInvalidConfig
 	}
 
+	if err := statedir.Check(stateDir, version.Version); err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		return ExitFailure
+	}
 	key, err := identity.Create(stateDir, *force)
 	if errors.Is(err, identity.ErrKeyExists) {
 		_, _ = fmt.Fprintf(stderr, "%s: %s already exists; pass --force to replace it (this changes the node's peer ID)\n",

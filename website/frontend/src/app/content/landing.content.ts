@@ -16,10 +16,10 @@ const DOCS_URL = `${REPOSITORY_URL}/blob/develop`;
 
 export const LINKS = {
   repository: REPOSITORY_URL,
-  quickStart: `${DOCS_URL}/README.md#status--building`,
+  quickStart: `${DOCS_URL}/documentation/operations/quickstart.md`,
   spec: `${DOCS_URL}/documentation/spec/obie-0.1.md`,
-  whitepaper: `${DOCS_URL}/README.md#1-introduction-the-centralization-trap`,
-  manifesto: `${DOCS_URL}/README.md#2-the-obie-manifesto-principles-and-philosophy`,
+  whitepaper: `${DOCS_URL}/documentation/whitepaper.md#1-introduction-the-centralization-trap`,
+  manifesto: `${DOCS_URL}/documentation/whitepaper.md#2-the-obie-manifesto-principles-and-philosophy`,
   architecture: `${DOCS_URL}/ARCHITECTURE.md#deviations-from-the-whitepaper`,
   exampleConfig: `${DOCS_URL}/documentation/examples/obie.yaml`,
   licence: `${DOCS_URL}/LICENSE.md`,
@@ -40,9 +40,9 @@ export const FOUNDER_AVATAR_PLACEHOLDER = '/founder/avatar-placeholder.svg';
 /** English landing page copy. */
 export const LANDING_CONTENT_EN: LandingContent = {
   meta: {
-    title: 'OBIE: a neighbourhood watch for servers',
+    title: 'OBIE: open-source threat intelligence sharing for servers',
     description:
-      'OBIE, the Open Ban Intelligence Exchange: servers share signed reports about attackers, and each server decides for itself what to block. Open source, no central authority.',
+      'OBIE is an open, leaderless protocol for sharing signed attacker signals between servers, where every node keeps the final say over what it blocks.',
     locale: 'en-GB',
   },
   a11y: {
