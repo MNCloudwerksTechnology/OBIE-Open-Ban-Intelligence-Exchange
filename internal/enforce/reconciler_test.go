@@ -17,8 +17,10 @@ import (
 )
 
 // fakeEnforcer is an in-memory backend that records its calls and fails
-// on demand. Unlike the kernel it never expires entries by itself.
+// on demand. Like the kernel it lists no expired entries, by the clock
+// now if set.
 type fakeEnforcer struct {
+	now       func() time.Time
 	mu        sync.Mutex
 	entries   map[netip.Prefix]time.Time
 	calls     []string
@@ -57,7 +59,9 @@ func (f *fakeEnforcer) List(context.Context) ([]Entry, error) {
 func (f *fakeEnforcer) list() []Entry {
 	out := make([]Entry, 0, len(f.entries))
 	for p, exp := range f.entries {
-		out = append(out, Entry{Prefix: p, Expires: exp})
+		if f.now == nil || f.now().Before(exp) {
+			out = append(out, Entry{Prefix: p, Expires: exp})
+		}
 	}
 	sortEntries(out)
 	return out
@@ -155,6 +159,7 @@ func (s *syncBuffer) String() string {
 func newFixture(t *testing.T, mode config.Mode, enf *fakeEnforcer, opts Options) *fixture {
 	t.Helper()
 	f := &fixture{enf: enf, logs: &syncBuffer{}, now: t0}
+	enf.now = func() time.Time { return f.now }
 	log := slog.New(slog.NewJSONHandler(f.logs, nil))
 	var rec *Reconciler
 	f.gate = NewGate(mode, func() { rec.Trigger() }, log)
@@ -191,12 +196,116 @@ func wantState(t *testing.T, enf *fakeEnforcer, want string) {
 	}
 }
 
+// TestCoveredPrefixesAreLeftOut: an interval set cannot hold overlapping
+// ranges, so a prefix inside a wider applied one is left out until the
+// wider one ends.
+func TestCoveredPrefixesAreLeftOut(t *testing.T) {
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{})
+	f.add("198.51.100.7", 3*time.Hour, 1)
+	f.add("198.51.100.0/24", time.Hour, 1)
+	f.add("198.51.100.0/25", 2*time.Hour, 1)
+	f.add("198.51.101.1", time.Hour, 1)
+	f.add("2001:db8::1", time.Hour, 1)
+	f.add("2001:db8::/32", time.Hour, 1)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.0/24@1h0m0s 198.51.101.1/32@1h0m0s 2001:db8::/32@1h0m0s")
+	if got := f.rec.Detail(); got != "enforcing via fake: 3 entries" {
+		t.Errorf("Detail = %q", got)
+	}
+
+	// When the /24 ends, the /25 and the address outside it come back.
+	f.gate.Handle(block("198.51.100.0/24", decision.ChangeRemoved, time.Time{}))
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.0/25@2h0m0s 198.51.101.1/32@1h0m0s 2001:db8::/32@1h0m0s")
+}
+
+// TestCoveredPrefixesAndTheCap: covered blocks take no slot of
+// enforce.max_entries, and the wider block weighs as much as the blocks
+// it covers.
+func TestCoveredPrefixesAndTheCap(t *testing.T) {
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{MaxEntries: 2})
+	f.add("198.51.100.0/24", time.Hour, 9)
+	f.add("198.51.100.7", time.Hour, 8)
+	f.add("192.0.2.1", time.Hour, 1)
+	f.reconcile(t)
+	wantState(t, f.enf, "192.0.2.1/32@1h0m0s 198.51.100.0/24@1h0m0s")
+	if got := f.rec.Detail(); got != "enforcing via fake: 2 entries" {
+		t.Errorf("Detail = %q", got)
+	}
+
+	g := newFixture(t, config.ModeEnforce, newFake(), Options{MaxEntries: 1})
+	g.add("198.51.100.0/24", time.Hour, 1)
+	g.add("198.51.100.7", time.Hour, 9)
+	g.add("192.0.2.1", time.Hour, 5)
+	g.reconcile(t)
+	wantState(t, g.enf, "198.51.100.0/24@1h0m0s")
+}
+
+// TestDeferNearExpiry: an entry about to expire is left to expire, not
+// removed, and an addition overlapping it waits until it is gone.
+func TestDeferNearExpiry(t *testing.T) {
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{})
+	f.add("198.51.100.0/24", time.Hour, 1)
+	f.add("198.51.100.0/25", 2*time.Hour, 1)
+	f.add("192.0.2.1", time.Hour, 1)
+	f.reconcile(t)
+	wantState(t, f.enf, "192.0.2.1/32@1h0m0s 198.51.100.0/24@1h0m0s")
+
+	f.now = t0.Add(time.Hour - 800*time.Millisecond)
+	f.gate.Handle(block("192.0.2.1", decision.ChangeRemoved, time.Time{}))
+	f.reconcile(t)
+	wantState(t, f.enf, "192.0.2.1/32@1h0m0s 198.51.100.0/24@1h0m0s") // neither removed nor the /25 added
+	if !f.rec.deferredAdditions() {
+		t.Error("the /25 is not reported deferred")
+	}
+
+	// Renewing the dying 192.0.2.1 re-adds it at once, without a removal.
+	f.add("192.0.2.1", 3*time.Hour, 1)
+	f.reconcile(t)
+	wantState(t, f.enf, "192.0.2.1/32@3h0m0s 198.51.100.0/24@1h0m0s")
+	f.gate.Handle(block("192.0.2.1", decision.ChangeRemoved, time.Time{}))
+
+	f.now = t0.Add(time.Hour)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.0/25@2h0m0s")
+	if f.rec.deferredAdditions() {
+		t.Error("still deferring")
+	}
+}
+
+func TestSettle(t *testing.T) {
+	e := func(p string, left time.Duration) Entry {
+		return Entry{Prefix: netip.MustParsePrefix(p), Expires: t0.Add(left)}
+	}
+	have := []Entry{e("192.0.2.1/32", time.Second), e("198.51.100.0/24", 3*time.Second), e("203.0.113.0/24", time.Hour),
+		e("2001:db8::/32", time.Hour)}
+	add := []Entry{
+		e("192.0.2.1/32", time.Hour),      // renews a dying entry: added, not removed
+		e("198.51.100.128/25", time.Hour), // inside a dying entry: deferred
+		e("203.0.113.0/25", time.Hour),    // inside a replaced entry: added
+		e("2001:db8:1::/48", time.Hour),   // inside a staying entry: deferred
+		e("2001::/16", time.Hour),         // around a staying entry: deferred
+		e("198.51.101.0/24", time.Hour),   // adjacent: added
+	}
+	remove := []Entry{have[0], have[1], have[2]}
+	gotAdd, gotRemove, deferred := settle(add, remove, have, t0)
+	if got := entriesString(gotAdd); got != "192.0.2.1/32@1h0m0s 203.0.113.0/25@1h0m0s 198.51.101.0/24@1h0m0s" {
+		t.Errorf("add = %s", got)
+	}
+	if got := entriesString(gotRemove); got != "203.0.113.0/24@1h0m0s" {
+		t.Errorf("remove = %s", got)
+	}
+	if deferred != 3 {
+		t.Errorf("deferred = %d, want 3", deferred)
+	}
+}
+
 func TestConvergeFromEmpty(t *testing.T) {
 	f := newFixture(t, config.ModeEnforce, newFake(), Options{})
-	f.add("198.51.100.7", time.Hour, 1)
+	f.add("192.0.2.7", time.Hour, 1)
 	f.add("198.51.100.0/24", 2*time.Hour, 1)
 	f.reconcile(t)
-	wantState(t, f.enf, "198.51.100.0/24@2h0m0s 198.51.100.7/32@1h0m0s")
+	wantState(t, f.enf, "192.0.2.7/32@1h0m0s 198.51.100.0/24@2h0m0s")
 	if got := f.enf.callsString(); got != "setup list apply" {
 		t.Errorf("calls = %q", got)
 	}
@@ -417,7 +526,8 @@ func TestDebounce(t *testing.T) {
 }
 
 // TestFailureRetry: a failed apply is retried with backoff, surfaced
-// through Ready meanwhile, and recovers.
+// through Ready meanwhile, and recovers. Every retry sets the backend up
+// again, restoring e.g. a table deleted by hand.
 func TestFailureRetry(t *testing.T) {
 	enf := newFake()
 	enf.failApply = 3
@@ -435,8 +545,8 @@ func TestFailureRetry(t *testing.T) {
 	if n := enf.count("apply"); n != 4 {
 		t.Errorf("applied %d times, want 4", n)
 	}
-	if n := enf.count("setup"); n != 1 {
-		t.Errorf("set up %d times, want 1", n)
+	if n := enf.count("setup"); n != 4 {
+		t.Errorf("set up %d times, want 4", n)
 	}
 	if n := strings.Count(f.logs.String(), "enforcement failed; retrying"); n != 3 {
 		t.Errorf("logged %d failures", n)
@@ -479,6 +589,21 @@ func TestStartStop(t *testing.T) {
 	entries, err := f.rec.Entries(context.Background())
 	if err != nil || entriesString(entries) != "198.51.100.1/32@1h0m0s" {
 		t.Errorf("Entries = %v, %v", entries, err)
+	}
+}
+
+// TestEntriesAfterTeardown: once observe mode tore the backend down,
+// nothing is applied and the backend (e.g. a deleted nftables table) is
+// not asked.
+func TestEntriesAfterTeardown(t *testing.T) {
+	f := newFixture(t, config.ModeObserve, newFake(), Options{})
+	f.reconcile(t)
+	entries, err := f.rec.Entries(context.Background())
+	if err != nil || len(entries) != 0 {
+		t.Errorf("Entries = %v, %v", entries, err)
+	}
+	if got := f.enf.callsString(); got != "teardown" {
+		t.Errorf("calls = %q", got)
 	}
 }
 

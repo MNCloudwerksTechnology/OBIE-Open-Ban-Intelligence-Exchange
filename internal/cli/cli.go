@@ -130,7 +130,7 @@ func daemonUsage(fs *flag.FlagSet) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		_, _ = fmt.Fprintf(out, "  %-10s %s\n", name, daemonCommands[name].summary)
+		_, _ = fmt.Fprintf(out, "  %-18s %s\n", name, daemonCommands[name].summary)
 	}
 	_, _ = fmt.Fprintf(out, "\nFlags:\n")
 	fs.PrintDefaults()

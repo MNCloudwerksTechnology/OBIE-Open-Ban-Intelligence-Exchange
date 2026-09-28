@@ -25,7 +25,10 @@ type Enforcer interface {
 	// Apply removes the entries in remove, then adds the ones in add, each
 	// with its remaining timeout (Expires - now), so the backend drops
 	// them on its own even if obied dies. An entry may be in both: it is
-	// replaced with the new expiry.
+	// replaced with the new expiry. Adding an applied entry again updates
+	// its expiry (the nftables backend needs a kernel that updates element
+	// timeouts; otherwise the entry expires early and the next pass adds
+	// it again).
 	Apply(ctx context.Context, add, remove []Entry) error
 	// Teardown removes everything Setup created, with every entry.
 	Teardown(ctx context.Context) error

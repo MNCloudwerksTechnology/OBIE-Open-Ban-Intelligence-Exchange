@@ -77,6 +77,33 @@ source of truth.
 - Log only through component loggers from `internal/logging`, never through
   `slog.Default()`.
 
+## Privileged tests
+
+Tests that need the kernel — today the nftables backend in
+`internal/enforce/nft` — carry the build tag `privileged`
+(`//go:build privileged`), so `make test` and `make ci` never build them.
+They cover setup, applying and removing IPv4/IPv6 addresses and CIDRs,
+reading them back over netlink, kernel expiry, dropped traffic, leaving an
+unrelated table untouched, and applying 100k entries in under 5 seconds.
+
+The tests never touch your host's firewall: their `TestMain` re-executes
+the test binary in a fresh network namespace with `unshare -rn` (an
+unprivileged user namespace), or `unshare -n` when that is not allowed and
+you are root. If neither works, they are skipped.
+
+```sh
+make test-privileged                                   # every package, with -race
+go test -tags privileged -count=1 -v ./internal/enforce/nft
+go test -tags privileged -run='^$' -bench=Apply100k ./internal/enforce/nft
+```
+
+`unshare -rn` needs unprivileged user namespaces
+(`sysctl kernel.unprivileged_userns_clone=1` on Debian/Ubuntu kernels;
+Ubuntu 24.04+ also restricts them through AppArmor —
+`sysctl kernel.apparmor_restrict_unprivileged_userns=0` or run with
+`sudo`). The CI job "privileged tests" runs `make test-privileged` as root
+on a manual run.
+
 ## Fuzz testing
 
 ### What it is
