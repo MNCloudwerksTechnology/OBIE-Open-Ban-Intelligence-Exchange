@@ -9,26 +9,26 @@ to follow it.
 ## The problem: every server fights alone
 
 Every server on the internet is attacked all day. Automated programs try
-thousands of passwords and look for weak spots. The same attacking
-addresses hit thousands of servers, one after the other.
+thousands of passwords and look for weak spots. They attack from internet
+addresses (IP addresses), and the same addresses hit thousands of
+servers.
 
 Yet each server has to learn about an attacker the hard way: by being
 attacked itself. A tool such as [Fail2Ban](glossary.md#fail2ban) notices
 the failed logins and shuts the attacker out, but only on that one server.
 The next server starts from nothing.
 
-The usual shortcut is a blocklist: a list of bad addresses that one
-provider collects and hands out, often for a fee. You have to trust that
-provider completely. You cannot see why an address is on the list. And
-when the provider makes a mistake, everyone who uses the list is affected
-at once.
+The usual shortcut is a blocklist: a list of bad addresses from one
+provider. You have to trust that provider completely, without seeing why an
+address is on the list. When the provider makes a mistake, everyone who
+uses the list is affected at once.
 
 ## The idea: servers warn each other
 
-OBIE lets servers warn each other directly. Each server runs a small OBIE
-program, called a [node](glossary.md#node). When a server is attacked, its
-node writes a short warning: "this address attacked me, block it for a
-week". OBIE calls this warning a [verdict](glossary.md#verdict).
+Each server runs a small OBIE program, called a [node](glossary.md#node).
+When a server is attacked, its node writes a short warning, for example:
+"this address attacked me, block it for a week". OBIE calls this warning a
+[verdict](glossary.md#verdict).
 
 Every verdict carries a digital [signature](glossary.md#signature), a kind
 of seal. It proves which node wrote the verdict and that nobody changed it
@@ -38,7 +38,8 @@ A node sends its verdicts only to its [peers](glossary.md#peer): other
 nodes whose operators know each other and chose to connect. A peer can be
 a friend's server, a partner organisation or another server of your own.
 There is no central service, no account and no company in the middle that
-decides for you. Nobody can switch OBIE off for everyone.
+decides for you. Nobody can switch OBIE off for everyone, and you can
+switch off your own node at any time.
 
 ## What happens on your server
 
@@ -59,48 +60,53 @@ the address only when two conditions are met:
 - Enough different nodes agree, the [quorum](glossary.md#quorum).
 
 With the default settings, one peer alone can never get an address blocked
-on your server. With the recommended trust of 0.8, it takes at least three
-peers who agree.
+on your server. If you give each peer a trust of 0.8, it takes at least
+three peers who agree.
 
 Your server's own detections are different. When your own Fail2Ban bans an
-address, your node blocks it at once, because you trust your own server
-fully.
+address, your node decides to block it at once, because you trust your own
+server fully.
 
 Every block lasts a limited time and then ends on its own, so a mistake
 does not last forever. You can ask your node at any time why an address is
 or is not blocked. And you can overrule your peers for any address: always
 allow it, or always block it. OBIE calls this an
-[override](glossary.md#override).
+[override](glossary.md#override). If a customer or an employee is blocked
+by mistake, your administrator allows their address and the block is
+lifted at once.
 
 ## What can never happen
 
-OBIE is built so that you keep control of your server, whatever other nodes
-say. This principle is called [sovereignty](glossary.md#sovereignty).
+You keep control of your server, whatever other nodes say. OBIE calls this
+principle [sovereignty](glossary.md#sovereignty).
 
 - **Your server's own addresses and the protected addresses are never
-  blocked.** Your node never blocks its own addresses or the peers you told
-  it to connect to. The same holds for internal addresses that the internet
-  cannot reach. Nothing can override this, not even a manual block. The
-  addresses you work from, such as your office's internet address, go on
-  your [allow-list](glossary.md#allow-list). Then no peer can get them
-  blocked.
+  blocked.** Also protected: the peers you told your node to connect to,
+  and internal addresses that the internet cannot reach. Nothing blocks
+  them, not even you by hand. The addresses you work from, such as your
+  office's internet address, go on your [allow-list](glossary.md#allow-list).
+  Then no report gets them blocked, from a peer or from your own server.
 - **Nothing is enforced until you switch it on.** A new node starts in
-  [observe mode](glossary.md#observe-mode). It decides and shows you what
-  it would block, but it does not touch your
+  [observe mode](glossary.md#observe-mode). It decides, including on your
+  own server's detections, but only lists what it would block, for your
+  administrator to review. It does not touch your
   [firewall](glossary.md#firewall), the part of your server that lets
   connections in or keeps them out. It only blocks once you switch it to
   [enforce mode](glossary.md#enforce-mode) yourself. Even then it only
-  changes its own part of the firewall, never your own rules. Removing that
-  part removes every OBIE block at once.
-- **Raw logs never leave your server.** Your log files stay where they
-  are. A verdict only carries a fingerprint of the log lines, which cannot
-  be turned back into the lines, and the number of failed attempts. User
-  names, passwords and the contents of your logs are never shared.
+  changes its own part of the firewall, never the settings your
+  administrators made.
+- **Raw logs never leave your server.** A verdict carries the number of
+  failed attempts and a fingerprint of the log lines: a short code that
+  cannot be turned back into the lines. User names, passwords and the
+  contents of your logs are never shared.
 
-Your peers do learn which address attacked your server, on which service
-and when. That tells them a little about which services you run. Like any
-connection, it also shows them your server's internet address. The
-[FAQ](faq.md#what-does-obie-share-about-me) lists exactly what is shared.
+What your peers do learn: which address attacked your server, on which
+service (such as the website or remote login) and when. That is a small
+privacy cost: it tells them a little about which services you run, and
+they see your server's internet address. Attacker addresses can count as
+personal data under data protection law such as the GDPR, so check with
+your data protection officer. The [FAQ](faq.md#what-does-obie-share-about-me)
+lists exactly what is shared.
 
 ## One attack, start to finish
 
@@ -108,57 +114,55 @@ connection, it also shows them your server's internet address. The
 
 The same journey in words:
 
-1. **Detection.** An attacker tries to guess passwords on server A.
-   Fail2Ban on server A notices the failed logins and bans the attacker
-   there.
-2. **Signed verdict.** Server A's node writes a verdict: "block this
-   address for a week". It signs the verdict, so nobody can fake or change
-   it. The log lines stay on server A.
-3. **Peers.** The verdict goes to the peers that server A's operator chose,
-   your server among them. Servers B and C saw the same attacker and send
-   their own verdicts.
+1. **Detection.** An attacker tries to guess passwords on server A, and
+   Fail2Ban there bans it.
+2. **Signed verdict.** Server A's node writes and signs a verdict: "block
+   this address for a week". The log lines stay on server A.
+3. **Peers.** The verdict goes to server A's peers, your server among them.
+   Servers B and C, also your peers, saw the same attacker and send their
+   own verdicts.
 4. **Trust-weighted decision.** Your node weighs each verdict by the trust
    you gave its sender. Three trusted peers agree, which is enough. The
    address is not on your allow-list.
 5. **Firewall.** In enforce mode, your firewall now keeps the attacker out.
    The block ends by itself when the verdicts expire. In observe mode, your
-   node only shows that it would block.
+   node only lists the block for you to review.
 
 ## Is OBIE for you?
 
 OBIE may be for you if:
 
-- You run one or more Linux servers that are reachable from the internet.
+- You run Linux servers that are reachable from the internet.
 - You already use Fail2Ban, or would like to.
 - You know other server operators you trust enough to exchange warnings
   with, or you run several servers yourself.
 
 OBIE is not for you yet if:
 
-- Your servers run Windows or BSD.
+- Your servers run Windows or any system other than Linux.
+- You have a single server and nobody to exchange warnings with. On its
+  own, OBIE adds little to what Fail2Ban already does.
 - You want to join a ready-made public network. In this first version, you
   connect to each peer by hand.
-- You need protection beyond attacking addresses, for example against
-  harmful websites or files.
 - You need a mature product with support. OBIE is at version 0.1, its
   first release.
 
-OBIE is free and open source. There is no account and no subscription. It
-runs next to the tools you already use and does not replace them.
+Deciding for others? Ask whoever runs your servers whether they run Linux
+and Fail2Ban. OBIE is free and open source, with no account and no subscription,
+and runs next to your existing tools.
 
 ## Where to go next
 
-- [Frequently asked questions](faq.md): can a peer lock you out, what is
-  shared, what if OBIE crashes, and how it differs from blocklists.
-- [Glossary](glossary.md): every OBIE term in one or two sentences.
+- [Frequently asked questions](faq.md): lockouts, privacy, crashes, and
+  how OBIE differs from blocklists.
+- [Glossary](glossary.md): every OBIE term, briefly explained.
 - [What version 0.1 does](../README.md#what-v01-does), and what it does
   not do yet.
 - [Try it on a laptop](../packaging/compose/README.md): three nodes that
-  block nothing real, in a few minutes.
+  block nothing real.
 - [Quick start](operations/quickstart.md): a first node, safely in observe
-  mode, in about half an hour.
-- [Threat model](../SECURITY.md#threat-model): the risks OBIE protects
-  against, and the ones that remain.
+  mode.
+- [Threat model](../SECURITY.md#threat-model): the risks that remain.
 
-Was anything on this page unclear? It is written for newcomers, so please
+Anything unclear? Please
 [tell us in an issue](https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange/issues).

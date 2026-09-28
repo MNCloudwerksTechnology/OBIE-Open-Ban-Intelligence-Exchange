@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 400" width="1040" height="400" role="img" aria-labelledby="title desc" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
   <title id="title">One attack, start to finish</title>
-  <desc id="desc">Five numbered steps from left to right. 1, Detection: an attacker tries to guess passwords on server A, and Fail2Ban there bans it. 2, Signed verdict: server A's node writes a verdict to block the address for a week and signs it; the logs stay on server A. 3, Peers: the verdict goes to the peers server A chose, your server among them; servers B and C saw the same attacker and send verdicts too. 4, Trust-weighted decision: your node weighs each verdict by the trust you gave its sender; three trusted peers agree, and the address is not on your allow-list. 5, Firewall: in enforce mode your firewall keeps the attacker out until the verdicts expire; in observe mode the block is only shown.</desc>
+  <desc id="desc">Five numbered steps from left to right. 1, Detection: an attacker tries to guess passwords on server A, and Fail2Ban there bans it. 2, Signed verdict: server A's node writes a verdict to block the address for a week and signs it; the logs stay on server A. 3, Peers: the verdict goes to the peers server A chose, your server among them; servers B and C, also your peers, saw the same attacker and send verdicts too. 4, Trust-weighted decision: your node weighs each verdict by the trust you gave its sender; three trusted peers agree, and the address is not on your allow-list. 5, Firewall: in enforce mode your firewall keeps the attacker out until the verdicts expire; in observe mode the block is only listed for you to review.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2328"/>
@@ -74,8 +74,8 @@
       <tspan x="446" y="219">among them.</tspan>
     </text>
     <text x="446" y="250" font-size="13.5" fill="#1f2328">
-      <tspan x="446" y="250">Servers B and C</tspan>
-      <tspan x="446" y="269">saw the same</tspan>
+      <tspan x="446" y="250">B and C, also your</tspan>
+      <tspan x="446" y="269">peers, saw the same</tspan>
       <tspan x="446" y="288">attacker and send</tspan>
       <tspan x="446" y="307">verdicts too.</tspan>
     </text>
@@ -123,7 +123,7 @@
     </text>
     <text x="858" y="300" font-size="13.5" fill="#1f2328">
       <tspan x="858" y="300">In observe mode, it</tspan>
-      <tspan x="858" y="319">is only shown.</tspan>
+      <tspan x="858" y="319">is only listed.</tspan>
     </text>
   </g>
   <text x="520" y="374" text-anchor="middle" font-size="13" fill="#57606a">Protected addresses and your allow-list are checked before every block. Nothing is blocked until you switch on enforce mode.</text>
