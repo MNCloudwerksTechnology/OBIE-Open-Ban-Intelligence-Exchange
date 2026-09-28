@@ -58,8 +58,7 @@ type Change struct {
 	// its State is StateNone and Reason says why.
 	Decision Decision
 	// Cause is what triggered the evaluation: a store.Reason, CauseStartup,
-	// CauseRefresh, CauseSnapshot or CauseReload (and enforce.CauseMode for
-	// the changes the mode gate sends).
+	// CauseRefresh, CauseSnapshot or CauseReload.
 	Cause string
 }
 
@@ -281,6 +280,12 @@ func (e *Engine) Reload(p Policy, allow *sovereignty.Allowlist) {
 	}
 	slices.Sort(keys)
 	e.reevaluateAll(slices.Compact(keys), func(string) string { return CauseReload })
+}
+
+// Allowlist returns the effective allow-list, which Reload replaces.
+func (e *Engine) Allowlist() *sovereignty.Allowlist {
+	_, r := e.current()
+	return r.Allowlist
 }
 
 // current returns the policy and rules in effect.

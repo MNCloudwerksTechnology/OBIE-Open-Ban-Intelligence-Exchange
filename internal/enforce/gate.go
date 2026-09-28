@@ -1,50 +1,39 @@
-// Package enforce carries the decision engine's block changes to the
-// enforcement backend. The Gate is the only path there and applies
-// node.mode: in observe mode decisions are logged but never reach the
-// enforcer. See ADR 0013.
+// Package enforce carries the decision engine's blocks to the enforcement
+// backend. The Gate is the only path there and applies node.mode: in
+// observe mode decisions are logged but never reach the enforcer. The
+// Reconciler makes the backend's entries match the Gate's blocks. See
+// ADR 0013 and ADR 0014.
 package enforce
 
 import (
 	"context"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
-	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 )
 
-// CauseMode is the cause of the changes the Gate sends when the mode
-// switches.
-const CauseMode = "mode"
-
-// Enforcer applies block changes, e.g. to nftables.
-type Enforcer interface {
-	// Apply receives one block change. It is called one change at a time,
-	// must be fast (queue the work) and must not call back into the Gate.
-	Apply(decision.Change)
-}
-
-// Gate forwards block changes to the enforcer in enforce mode only. It
-// tracks the current blocks in either mode, so that switching to enforce
-// applies them and switching to observe withdraws them.
+// Gate tracks the current blocks and the mode. In enforce mode it notifies
+// the reconciler of every block change; a mode switch always notifies it,
+// so switching to enforce applies the blocks and switching to observe
+// withdraws them.
 type Gate struct {
-	log *slog.Logger
-	now func() time.Time
+	log    *slog.Logger
+	notify func()
 
-	// mu serializes changes and mode switches, so the enforcer sees them
-	// in order.
-	mu       sync.Mutex
-	mode     config.Mode
-	enforcer Enforcer
-	blocks   map[string]decision.Change
+	mu     sync.Mutex
+	mode   config.Mode
+	blocks map[string]decision.Decision
 }
 
-// NewGate returns a gate in mode that forwards to enforcer; a nil enforcer
-// receives nothing (no backend configured).
-func NewGate(mode config.Mode, enforcer Enforcer, log *slog.Logger) *Gate {
-	return &Gate{log: log, now: time.Now, mode: mode, enforcer: enforcer, blocks: map[string]decision.Change{}}
+// NewGate returns a gate in mode that calls notify, which must be fast and
+// must not call back into the Gate, when the reconciler has work; a nil
+// notify means no backend is configured.
+func NewGate(mode config.Mode, notify func(), log *slog.Logger) *Gate {
+	return &Gate{log: log, notify: notify, mode: mode, blocks: map[string]decision.Decision{}}
 }
 
 // Mode returns the current mode.
@@ -54,44 +43,51 @@ func (g *Gate) Mode() config.Mode {
 	return g.mode
 }
 
-// Handle is the decision engine subscription: it records c and forwards it
-// in enforce mode.
+// Blocks returns the current block decisions, expired ones included,
+// ordered by indicator key.
+func (g *Gate) Blocks() []decision.Decision {
+	g.mu.Lock()
+	out := make([]decision.Decision, 0, len(g.blocks))
+	for _, d := range g.blocks {
+		out = append(out, d)
+	}
+	g.mu.Unlock()
+	slices.SortFunc(out, func(a, b decision.Decision) int { return strings.Compare(a.Indicator.Key(), b.Indicator.Key()) })
+	return out
+}
+
+// Handle is the decision engine subscription: it records c and, in
+// enforce mode, notifies the reconciler.
 func (g *Gate) Handle(c decision.Change) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if c.Type == decision.ChangeRemoved {
 		delete(g.blocks, c.Key)
 	} else {
-		g.blocks[c.Key] = c
+		g.blocks[c.Key] = c.Decision
 	}
 	attrs := []any{"indicator", c.Key, "change", c.Type, "cause", c.Cause, "reason", c.Decision.Reason}
 	if c.Type != decision.ChangeRemoved {
 		attrs = append(attrs, "expires_at", c.Decision.ExpiresAt.UTC())
 	}
-	if g.mode != config.ModeEnforce {
-		level := slog.LevelInfo
-		if c.Type == decision.ChangeUpdated {
-			level = slog.LevelDebug // e.g. hourly refreshes of capped blocks
-		}
+	level := slog.LevelInfo
+	if c.Type == decision.ChangeUpdated {
+		level = slog.LevelDebug // e.g. hourly refreshes of capped blocks
+	}
+	switch {
+	case g.mode != config.ModeEnforce:
 		g.log.Log(context.Background(), level, "observe mode: block decision not enforced", attrs...)
-		return
-	}
-	g.forward(c, attrs)
-}
-
-// forward hands c to the enforcer. Callers hold mu.
-func (g *Gate) forward(c decision.Change, attrs []any) {
-	if g.enforcer == nil {
+	case g.notify == nil:
 		g.log.Warn("enforce mode: no enforcement backend, block decision not applied", attrs...)
-		return
+	default:
+		g.log.Log(context.Background(), level, "block decision sent to the enforcer", attrs...)
+		g.notify()
 	}
-	g.log.Info("block decision sent to the enforcer", attrs...)
-	g.enforcer.Apply(c)
 }
 
-// SetMode switches the mode. Switching to enforce sends every current,
-// unexpired block to the enforcer as added; switching to observe withdraws
-// every block as removed. Both carry CauseMode.
+// SetMode switches the mode and notifies the reconciler, which applies
+// every current block when switching to enforce and withdraws them when
+// switching to observe.
 func (g *Gate) SetMode(mode config.Mode) {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -100,29 +96,7 @@ func (g *Gate) SetMode(mode config.Mode) {
 	}
 	g.log.Warn("node mode changed", "from", g.mode, "to", mode, "blocks", len(g.blocks))
 	g.mode = mode
-	now := g.now()
-	for _, key := range g.keys() {
-		d := g.blocks[key].Decision
-		if mode == config.ModeEnforce {
-			if now.Before(d.ExpiresAt) { // an expired block is removed by the engine's next refresh
-				c := decision.Change{Type: decision.ChangeAdded, Key: key, Decision: d, Cause: CauseMode}
-				g.forward(c, []any{"indicator", key, "change", c.Type, "cause", c.Cause, "reason", d.Reason})
-			}
-			continue
-		}
-		if g.enforcer != nil {
-			d.State, d.ExpiresAt, d.Reason = decision.StateNone, time.Time{}, "node switched to observe mode"
-			g.enforcer.Apply(decision.Change{Type: decision.ChangeRemoved, Key: key, Decision: d, Cause: CauseMode})
-		}
+	if g.notify != nil {
+		g.notify()
 	}
-}
-
-// keys returns the keys of the current blocks in order. Callers hold mu.
-func (g *Gate) keys() []string {
-	keys := make([]string, 0, len(g.blocks))
-	for key := range g.blocks {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-	return keys
 }

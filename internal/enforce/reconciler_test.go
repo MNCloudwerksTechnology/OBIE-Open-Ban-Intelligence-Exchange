@@ -1,0 +1,463 @@
+package enforce
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"log/slog"
+	"net/netip"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/decision"
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
+)
+
+// fakeEnforcer is an in-memory backend that records its calls and fails
+// on demand. Unlike the kernel it never expires entries by itself.
+type fakeEnforcer struct {
+	mu        sync.Mutex
+	entries   map[netip.Prefix]time.Time
+	calls     []string
+	applies   [][2][]Entry
+	failApply int // the next failApply applies fail
+}
+
+func newFake(entries ...Entry) *fakeEnforcer {
+	f := &fakeEnforcer{entries: map[netip.Prefix]time.Time{}}
+	for _, e := range entries {
+		f.entries[e.Prefix] = e.Expires
+	}
+	return f
+}
+
+func (f *fakeEnforcer) record(call string) {
+	f.calls = append(f.calls, call)
+}
+
+func (f *fakeEnforcer) Setup(context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.record("setup")
+	return nil
+}
+
+func (f *fakeEnforcer) List(context.Context) ([]Entry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.record("list")
+	return f.list(), nil
+}
+
+func (f *fakeEnforcer) list() []Entry {
+	out := make([]Entry, 0, len(f.entries))
+	for p, exp := range f.entries {
+		out = append(out, Entry{Prefix: p, Expires: exp})
+	}
+	sortEntries(out)
+	return out
+}
+
+func (f *fakeEnforcer) Apply(_ context.Context, add, remove []Entry) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.record("apply")
+	if f.failApply > 0 {
+		f.failApply--
+		return errors.New("netlink: operation not permitted")
+	}
+	f.applies = append(f.applies, [2][]Entry{add, remove})
+	for _, e := range remove {
+		delete(f.entries, e.Prefix)
+	}
+	for _, e := range add {
+		f.entries[e.Prefix] = e.Expires
+	}
+	return nil
+}
+
+func (f *fakeEnforcer) Teardown(context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.record("teardown")
+	clear(f.entries)
+	return nil
+}
+
+// state returns the applied entries as "prefix@expiry-offset" strings.
+func (f *fakeEnforcer) state() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return entriesString(f.list())
+}
+
+func (f *fakeEnforcer) callsString() string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return strings.Join(f.calls, " ")
+}
+
+func (f *fakeEnforcer) count(call string) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	n := 0
+	for _, c := range f.calls {
+		if c == call {
+			n++
+		}
+	}
+	return n
+}
+
+func entriesString(entries []Entry) string {
+	parts := make([]string, len(entries))
+	for i, e := range entries {
+		parts[i] = e.Prefix.String() + "@" + e.Expires.Sub(t0).String()
+	}
+	return strings.Join(parts, " ")
+}
+
+type fixture struct {
+	gate *Gate
+	enf  *fakeEnforcer
+	rec  *Reconciler
+	logs *syncBuffer
+	now  time.Time
+}
+
+// syncBuffer is a bytes.Buffer safe for the reconciler goroutine.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+func newFixture(t *testing.T, mode config.Mode, enf *fakeEnforcer, opts Options) *fixture {
+	t.Helper()
+	f := &fixture{enf: enf, logs: &syncBuffer{}, now: t0}
+	log := slog.New(slog.NewJSONHandler(f.logs, nil))
+	var rec *Reconciler
+	f.gate = NewGate(mode, func() { rec.Trigger() }, log)
+	if opts.MaxEntries == 0 {
+		opts.MaxEntries = 100
+	}
+	if opts.Interval == 0 {
+		opts.Interval = time.Hour
+	}
+	opts.Backend = "fake"
+	opts.Now = func() time.Time { return f.now }
+	rec = NewReconciler(f.gate, enf, opts, log)
+	f.rec = rec
+	return f
+}
+
+func (f *fixture) reconcile(t *testing.T) {
+	t.Helper()
+	if err := f.rec.Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (f *fixture) add(value string, expires time.Duration, score float64) {
+	c := block(value, decision.ChangeAdded, t0.Add(expires))
+	c.Decision.Score = score
+	f.gate.Handle(c)
+}
+
+func wantState(t *testing.T, enf *fakeEnforcer, want string) {
+	t.Helper()
+	if got := enf.state(); got != want {
+		t.Errorf("applied = %q\nwant      %q", got, want)
+	}
+}
+
+func TestConvergeFromEmpty(t *testing.T) {
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{})
+	f.add("198.51.100.7", time.Hour, 1)
+	f.add("198.51.100.0/24", 2*time.Hour, 1)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.0/24@2h0m0s 198.51.100.7/32@1h0m0s")
+	if got := f.enf.callsString(); got != "setup list apply" {
+		t.Errorf("calls = %q", got)
+	}
+	// Idempotent: a second pass changes nothing.
+	f.reconcile(t)
+	if got := f.enf.callsString(); got != "setup list apply list" {
+		t.Errorf("calls = %q", got)
+	}
+	if got := f.rec.Detail(); got != "enforcing via fake: 2 entries" {
+		t.Errorf("Detail = %q", got)
+	}
+	if f.rec.Ready() != nil {
+		t.Errorf("Ready = %v", f.rec.Ready())
+	}
+}
+
+// TestConvergeFromDrift: entries that are not decided are removed, missing
+// ones added, and one with a drifted expiry replaced; one within the
+// tolerance is kept.
+func TestConvergeFromDrift(t *testing.T) {
+	enf := newFake(
+		entry("192.0.2.99/32", t0.Add(time.Hour)),                   // extra
+		entry("198.51.100.1/32", t0.Add(time.Hour)),                 // drifted
+		entry("198.51.100.2/32", t0.Add(time.Hour+ExpiryTolerance)), // within tolerance
+	)
+	f := newFixture(t, config.ModeEnforce, enf, Options{})
+	f.add("198.51.100.1", 3*time.Hour, 1)
+	f.add("198.51.100.2", time.Hour, 1)
+	f.add("198.51.100.3", time.Hour, 1) // missing
+	f.reconcile(t)
+	wantState(t, enf, "198.51.100.1/32@3h0m0s 198.51.100.2/32@1h0m5s 198.51.100.3/32@1h0m0s")
+	if len(enf.applies) != 1 {
+		t.Fatalf("applies = %+v", enf.applies)
+	}
+	add, remove := enf.applies[0][0], enf.applies[0][1]
+	if got := entriesString(add); got != "198.51.100.1/32@3h0m0s 198.51.100.3/32@1h0m0s" {
+		t.Errorf("added %q", got)
+	}
+	if got := entriesString(remove); got != "192.0.2.99/32@1h0m0s 198.51.100.1/32@1h0m0s" {
+		t.Errorf("removed %q", got)
+	}
+}
+
+// TestExpiryAndRemoval: a block that reached its expiry and a removed block
+// are withdrawn.
+func TestExpiryAndRemoval(t *testing.T) {
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{})
+	f.add("198.51.100.1", time.Minute, 1)
+	f.add("198.51.100.2", time.Hour, 1)
+	f.add("198.51.100.3", time.Hour, 1)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.1/32@1m0s 198.51.100.2/32@1h0m0s 198.51.100.3/32@1h0m0s")
+
+	f.now = t0.Add(time.Minute) // 198.51.100.1 expires; the engine has not refreshed yet
+	f.gate.Handle(block("198.51.100.3", decision.ChangeRemoved, time.Time{}))
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.2/32@1h0m0s")
+}
+
+// TestAllowlistDefence: right before apply, blocks overlapping the
+// allow-list are refused — a protected entry always, an operator entry
+// unless the operator force-blocked the indicator — and withdrawn if they
+// were applied before the allow-list changed.
+func TestAllowlistDefence(t *testing.T) {
+	allow := sovereignty.NewAllowlist()
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{Allowlist: func() *sovereignty.Allowlist { return allow }})
+	f.add("198.51.100.7", time.Hour, 1)
+	f.add("192.0.2.0/23", time.Hour, 1)
+	f.add("203.0.113.5", time.Hour, 1)
+	forced := block("203.0.113.9", decision.ChangeAdded, t0.Add(time.Hour))
+	forced.Decision.Sovereignty = sovereignty.Ruling{Effect: sovereignty.EffectBlock, Rule: sovereignty.RuleForceBlock}
+	f.gate.Handle(forced)
+	f.reconcile(t)
+	wantState(t, f.enf, "192.0.2.0/23@1h0m0s 198.51.100.7/32@1h0m0s 203.0.113.5/32@1h0m0s 203.0.113.9/32@1h0m0s")
+
+	// The allow-list changes, e.g. on reload, before the engine re-decides.
+	allow = sovereignty.NewAllowlist(
+		sovereignty.Entry{Prefix: netip.MustParsePrefix("192.0.2.1/32"), Source: sovereignty.SourceSelf},
+		sovereignty.Entry{Prefix: netip.MustParsePrefix("203.0.113.0/24"), Source: sovereignty.SourceConfig},
+	)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.7/32@1h0m0s 203.0.113.9/32@1h0m0s")
+	if got := f.rec.Detail(); got != "enforcing via fake: 2 entries, 2 refused by the allow-list" {
+		t.Errorf("Detail = %q", got)
+	}
+	if n := strings.Count(f.logs.String(), "refused by the allow-list right before apply"); n != 2 {
+		t.Errorf("logged %d refusals:\n%s", n, f.logs)
+	}
+	f.reconcile(t) // known refusals are not logged again
+	if n := strings.Count(f.logs.String(), "refused by the allow-list right before apply"); n != 2 {
+		t.Errorf("logged %d refusals after the second pass", n)
+	}
+
+	// A protected entry wins over a force-block.
+	allow = sovereignty.NewAllowlist(sovereignty.Entry{Prefix: netip.MustParsePrefix("203.0.113.9/32"), Source: sovereignty.SourceBootstrap})
+	f.reconcile(t)
+	wantState(t, f.enf, "192.0.2.0/23@1h0m0s 198.51.100.7/32@1h0m0s 203.0.113.5/32@1h0m0s")
+}
+
+// TestMaxEntries: beyond enforce.max_entries the lowest-score blocks are
+// skipped, logged and counted.
+func TestMaxEntries(t *testing.T) {
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{MaxEntries: 2})
+	f.add("198.51.100.1", time.Hour, 0.5)
+	f.add("198.51.100.2", time.Hour, 2)
+	f.add("198.51.100.3", time.Hour, 1)
+	f.add("198.51.100.4", time.Hour, 0.5)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.2/32@1h0m0s 198.51.100.3/32@1h0m0s")
+	if s := f.rec.Status(); s.Applied != 2 || s.Skipped[SkipMaxEntries] != 2 {
+		t.Errorf("Status = %+v", s)
+	}
+	if got := f.rec.Detail(); got != "enforcing via fake: 2 entries, 2 skipped over enforce.max_entries" {
+		t.Errorf("Detail = %q", got)
+	}
+	logs := f.logs.String()
+	if !strings.Contains(logs, "enforce.max_entries reached") || !strings.Contains(logs, `"skipped":2`) ||
+		!strings.Contains(logs, `"newly_skipped_sample":["198.51.100.1/32","198.51.100.4/32"]`) {
+		t.Errorf("logs lack the skip:\n%s", logs)
+	}
+
+	// A higher score displaces the lowest applied one.
+	f.add("198.51.100.1", time.Hour, 3)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.1/32@1h0m0s 198.51.100.2/32@1h0m0s")
+}
+
+// TestObserveNeverApplies: in observe mode the reconciler neither sets up
+// nor lists nor applies; it withdraws what an earlier run left behind
+// once, and reports "observing".
+func TestObserveNeverApplies(t *testing.T) {
+	enf := newFake(entry("198.51.100.9/32", t0.Add(time.Hour))) // left behind by an earlier enforce run
+	f := newFixture(t, config.ModeObserve, enf, Options{Debounce: time.Millisecond, Interval: 5 * time.Millisecond})
+	f.add("198.51.100.1", time.Hour, 1)
+	if err := f.rec.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.rec.Stop(context.Background()) })
+	f.add("198.51.100.2", time.Hour, 1)
+	f.rec.Trigger()
+	waitFor(t, "observing", func() bool { return f.rec.Detail() == "observing" })
+	time.Sleep(30 * time.Millisecond) // several intervals
+	if got := enf.callsString(); got != "teardown" {
+		t.Errorf("calls = %q, want only one teardown", got)
+	}
+	wantState(t, enf, "")
+	if f.rec.Ready() != nil {
+		t.Errorf("Ready = %v", f.rec.Ready())
+	}
+}
+
+// TestModeSwitch: switching to enforce applies the blocks, switching back
+// withdraws them.
+func TestModeSwitch(t *testing.T) {
+	f := newFixture(t, config.ModeObserve, newFake(), Options{Debounce: time.Millisecond})
+	f.add("198.51.100.1", time.Hour, 1)
+	if err := f.rec.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.rec.Stop(context.Background()) })
+	waitFor(t, "observing", func() bool { return f.rec.Detail() == "observing" })
+
+	f.gate.SetMode(config.ModeEnforce)
+	waitFor(t, "the block applied", func() bool { return f.enf.state() == "198.51.100.1/32@1h0m0s" })
+	f.gate.SetMode(config.ModeObserve)
+	waitFor(t, "the block withdrawn", func() bool { return f.rec.Detail() == "observing" && f.enf.state() == "" })
+	if got := f.enf.callsString(); got != "teardown setup list apply teardown" {
+		t.Errorf("calls = %q", got)
+	}
+	if !strings.Contains(f.logs.String(), "observe mode: every applied block was withdrawn") {
+		t.Errorf("logs lack the withdrawal:\n%s", f.logs)
+	}
+}
+
+// TestDebounce: changes that arrive together are applied in one pass,
+// without waiting for the reconcile interval.
+func TestDebounce(t *testing.T) {
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{Debounce: 20 * time.Millisecond})
+	if err := f.rec.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.rec.Stop(context.Background()) })
+	waitFor(t, "the first pass", func() bool { return f.rec.Status().Mode == config.ModeEnforce })
+	for _, v := range []string{"198.51.100.1", "198.51.100.2", "198.51.100.3"} {
+		f.add(v, time.Hour, 1)
+	}
+	waitFor(t, "the blocks applied", func() bool { return f.enf.count("apply") > 0 })
+	time.Sleep(50 * time.Millisecond)
+	if n := f.enf.count("apply"); n != 1 {
+		t.Errorf("applied %d times, want 1", n)
+	}
+	wantState(t, f.enf, "198.51.100.1/32@1h0m0s 198.51.100.2/32@1h0m0s 198.51.100.3/32@1h0m0s")
+}
+
+// TestFailureRetry: a failed apply is retried with backoff, surfaced
+// through Ready meanwhile, and recovers.
+func TestFailureRetry(t *testing.T) {
+	enf := newFake()
+	enf.failApply = 3
+	f := newFixture(t, config.ModeEnforce, enf, Options{MinBackoff: 10 * time.Millisecond, Interval: time.Hour})
+	f.add("198.51.100.1", time.Hour, 1)
+	if err := f.rec.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.rec.Stop(context.Background()) })
+	waitFor(t, "a failure", func() bool { return f.rec.Ready() != nil })
+	if err := f.rec.Ready(); !strings.Contains(err.Error(), "operation not permitted") || !strings.Contains(err.Error(), "retrying in") {
+		t.Errorf("Ready = %v", err)
+	}
+	waitFor(t, "recovery", func() bool { return f.rec.Ready() == nil && enf.state() == "198.51.100.1/32@1h0m0s" })
+	if n := enf.count("apply"); n != 4 {
+		t.Errorf("applied %d times, want 4", n)
+	}
+	if n := enf.count("setup"); n != 1 {
+		t.Errorf("set up %d times, want 1", n)
+	}
+	if n := strings.Count(f.logs.String(), "enforcement failed; retrying"); n != 3 {
+		t.Errorf("logged %d failures", n)
+	}
+}
+
+func TestBackoff(t *testing.T) {
+	r := NewReconciler(nil, nil, Options{Interval: 10 * time.Second}, slog.New(slog.DiscardHandler))
+	var got []string
+	for n := 1; n <= 6; n++ {
+		got = append(got, r.backoff(n).String())
+	}
+	if s := strings.Join(got, " "); s != "1s 2s 4s 8s 10s 10s" {
+		t.Errorf("backoff = %s", s)
+	}
+}
+
+func TestStartStop(t *testing.T) {
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{})
+	if got := f.rec.Detail(); got != "starting" {
+		t.Errorf("Detail before the first pass = %q", got)
+	}
+	if err := f.rec.Stop(context.Background()); err != nil {
+		t.Errorf("Stop before Start = %v", err)
+	}
+	if err := f.rec.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.rec.Start(context.Background()); err == nil {
+		t.Error("second Start succeeded")
+	}
+	if err := f.rec.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.rec.Name() != Name {
+		t.Errorf("Name = %q", f.rec.Name())
+	}
+	f.add("198.51.100.1", time.Hour, 1)
+	f.reconcile(t)
+	entries, err := f.rec.Entries(context.Background())
+	if err != nil || entriesString(entries) != "198.51.100.1/32@1h0m0s" {
+		t.Errorf("Entries = %v, %v", entries, err)
+	}
+}
+
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}

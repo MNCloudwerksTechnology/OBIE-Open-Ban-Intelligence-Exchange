@@ -5,7 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"strings"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,116 +15,107 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
-// fakeEnforcer records what reaches the enforcer.
-type fakeEnforcer struct {
-	mu      sync.Mutex
-	changes []decision.Change
-}
-
-func (f *fakeEnforcer) Apply(c decision.Change) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.changes = append(f.changes, c)
-}
-
-func (f *fakeEnforcer) take() []string {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	out := make([]string, len(f.changes))
-	for i, c := range f.changes {
-		out[i] = string(c.Type) + "/" + c.Cause + "/" + c.Key
-	}
-	f.changes = nil
-	return out
-}
-
 var t0 = time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
 
-func block(key string, typ decision.ChangeType, expires time.Time) decision.Change {
-	return decision.Change{Type: typ, Key: key, Cause: "verdict", Decision: decision.Decision{State: decision.StateBlock, ExpiresAt: expires, Reason: "consensus"}}
-}
-
-func newGate(mode config.Mode, enf Enforcer) (*Gate, *bytes.Buffer) {
-	var logs bytes.Buffer
-	g := NewGate(mode, enf, slog.New(slog.NewJSONHandler(&logs, nil)))
-	g.now = func() time.Time { return t0 }
-	return g, &logs
-}
-
-func wantSeq(t *testing.T, got []string, want ...string) {
-	t.Helper()
-	if strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Errorf("enforcer got %v, want %v", got, want)
+// block returns a change of the block on the IPv4 address or CIDR range
+// value with score 1.
+func block(value string, typ decision.ChangeType, expires time.Time) decision.Change {
+	ind := obieproto.Indicator{Kind: obieproto.KindIPv4, Value: value, Scope: "/32"}
+	if strings.Contains(value, "/") {
+		ind = obieproto.Indicator{Kind: obieproto.KindCIDR, Value: value, Scope: value[strings.Index(value, "/"):]}
 	}
+	d := decision.Decision{Indicator: ind, State: decision.StateBlock, Score: 1, ExpiresAt: expires, Reason: "consensus"}
+	if typ == decision.ChangeRemoved {
+		d.State, d.ExpiresAt = decision.StateNone, time.Time{}
+	}
+	return decision.Change{Type: typ, Key: ind.Key(), Cause: "verdict", Decision: d}
 }
 
-// TestObserveNeverReachesEnforcer: in observe mode every change is logged,
-// none is forwarded.
-func TestObserveNeverReachesEnforcer(t *testing.T) {
-	enf := &fakeEnforcer{}
-	g, logs := newGate(config.ModeObserve, enf)
-	g.Handle(block("ipv4:185.0.0.1", decision.ChangeAdded, t0.Add(time.Hour)))
-	g.Handle(block("ipv4:185.0.0.1", decision.ChangeUpdated, t0.Add(2*time.Hour)))
-	g.Handle(block("ipv4:185.0.0.1", decision.ChangeRemoved, time.Time{}))
-	wantSeq(t, enf.take())
+// counter counts notifications.
+type counter struct{ n atomic.Int32 }
+
+func (c *counter) notify()     { c.n.Add(1) }
+func (c *counter) take() int32 { return c.n.Swap(0) }
+
+func newGate(mode config.Mode, notify func()) (*Gate, *bytes.Buffer) {
+	var logs bytes.Buffer
+	return NewGate(mode, notify, slog.New(slog.NewJSONHandler(&logs, nil))), &logs
+}
+
+func blockKeys(g *Gate) string {
+	var keys []string
+	for _, d := range g.Blocks() {
+		keys = append(keys, d.Indicator.Key())
+	}
+	return strings.Join(keys, " ")
+}
+
+// TestObserveNeverNotifies: in observe mode every change is logged and
+// tracked, the reconciler is never notified.
+func TestObserveNeverNotifies(t *testing.T) {
+	var c counter
+	g, logs := newGate(config.ModeObserve, c.notify)
+	g.Handle(block("185.0.0.1", decision.ChangeAdded, t0.Add(time.Hour)))
+	g.Handle(block("185.0.0.1", decision.ChangeUpdated, t0.Add(2*time.Hour)))
+	g.Handle(block("185.0.0.2", decision.ChangeAdded, t0.Add(time.Hour)))
+	g.Handle(block("185.0.0.2", decision.ChangeRemoved, time.Time{}))
+	if n := c.take(); n != 0 {
+		t.Errorf("notified %d times", n)
+	}
 	// Updates are logged at debug level, the rest at info.
-	if n := strings.Count(logs.String(), "observe mode: block decision not enforced"); n != 2 {
+	if n := strings.Count(logs.String(), "observe mode: block decision not enforced"); n != 3 {
 		t.Errorf("logged %d observe lines:\n%s", n, logs)
+	}
+	if got := blockKeys(g); got != "ipv4:185.0.0.1" {
+		t.Errorf("blocks = %q", got)
+	}
+	if b := g.Blocks(); !b[0].ExpiresAt.Equal(t0.Add(2 * time.Hour)) {
+		t.Errorf("block not updated: %+v", b[0])
 	}
 	if g.Mode() != config.ModeObserve {
 		t.Errorf("Mode() = %s", g.Mode())
 	}
 }
 
-func TestEnforceForwards(t *testing.T) {
-	enf := &fakeEnforcer{}
-	g, _ := newGate(config.ModeEnforce, enf)
-	g.Handle(block("ipv4:185.0.0.1", decision.ChangeAdded, t0.Add(time.Hour)))
-	g.Handle(block("ipv4:185.0.0.1", decision.ChangeRemoved, time.Time{}))
-	wantSeq(t, enf.take(), "added/verdict/ipv4:185.0.0.1", "removed/verdict/ipv4:185.0.0.1")
+func TestEnforceNotifies(t *testing.T) {
+	var c counter
+	g, _ := newGate(config.ModeEnforce, c.notify)
+	g.Handle(block("185.0.0.1", decision.ChangeAdded, t0.Add(time.Hour)))
+	g.Handle(block("185.0.0.1", decision.ChangeRemoved, time.Time{}))
+	if n := c.take(); n != 2 {
+		t.Errorf("notified %d times, want 2", n)
+	}
 
 	// Without a backend nothing is applied, but it is logged.
 	g, logs := newGate(config.ModeEnforce, nil)
-	g.Handle(block("ipv4:185.0.0.1", decision.ChangeAdded, t0.Add(time.Hour)))
+	g.Handle(block("185.0.0.1", decision.ChangeAdded, t0.Add(time.Hour)))
 	if !strings.Contains(logs.String(), "no enforcement backend") {
+		t.Errorf("logs = %s", logs)
+	}
+	g.SetMode(config.ModeObserve) // no backend: only logged
+}
+
+// TestSetMode: every mode switch notifies the reconciler, which applies or
+// withdraws the tracked blocks.
+func TestSetMode(t *testing.T) {
+	var c counter
+	g, logs := newGate(config.ModeObserve, c.notify)
+	g.SetMode(config.ModeObserve) // unchanged: nothing happens
+	if n := c.take(); n != 0 {
+		t.Errorf("notified %d times", n)
+	}
+	g.SetMode(config.ModeEnforce)
+	g.SetMode(config.ModeObserve)
+	if n := c.take(); n != 2 {
+		t.Errorf("notified %d times, want 2", n)
+	}
+	if !strings.Contains(logs.String(), "node mode changed") {
 		t.Errorf("logs = %s", logs)
 	}
 }
 
-// TestSetMode: switching to enforce applies the current blocks, switching
-// back withdraws them.
-func TestSetMode(t *testing.T) {
-	enf := &fakeEnforcer{}
-	g, _ := newGate(config.ModeObserve, enf)
-	g.Handle(block("ipv4:185.0.0.2", decision.ChangeAdded, t0.Add(time.Hour)))
-	g.Handle(block("ipv4:185.0.0.1", decision.ChangeAdded, t0.Add(time.Hour)))
-	g.Handle(block("ipv4:185.0.0.3", decision.ChangeAdded, t0)) // expired
-	g.Handle(block("ipv4:185.0.0.4", decision.ChangeAdded, t0.Add(time.Hour)))
-	g.Handle(block("ipv4:185.0.0.4", decision.ChangeRemoved, time.Time{}))
-	wantSeq(t, enf.take())
-
-	g.SetMode(config.ModeObserve) // unchanged: nothing happens
-	wantSeq(t, enf.take())
-	g.SetMode(config.ModeEnforce)
-	wantSeq(t, enf.take(), "added/mode/ipv4:185.0.0.1", "added/mode/ipv4:185.0.0.2")
-	g.SetMode(config.ModeObserve)
-	got := enf.changes
-	wantSeq(t, enf.take(), "removed/mode/ipv4:185.0.0.1", "removed/mode/ipv4:185.0.0.2", "removed/mode/ipv4:185.0.0.3")
-	if len(got) > 0 && (got[0].Decision.State != decision.StateNone || !got[0].Decision.ExpiresAt.IsZero()) {
-		t.Errorf("withdrawal = %+v", got[0])
-	}
-	g.Handle(block("ipv4:185.0.0.5", decision.ChangeAdded, t0.Add(time.Hour)))
-	wantSeq(t, enf.take())
-
-	// Without a backend switching is only logged.
-	g, _ = newGate(config.ModeEnforce, nil)
-	g.Handle(block("ipv4:185.0.0.1", decision.ChangeAdded, t0.Add(time.Hour)))
-	g.SetMode(config.ModeObserve)
-	g.SetMode(config.ModeEnforce)
-}
-
-// TestObserveModeWithEngine drives a real decision engine: blocks decided
-// in observe mode never reach the enforcer.
+// TestObserveModeWithEngine drives a real decision engine: the gate sees
+// the blocks decided in observe mode without notifying the reconciler.
 func TestObserveModeWithEngine(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	st := store.NewMemory(log, store.Options{SweepInterval: time.Hour, GCInterval: time.Hour})
@@ -135,8 +126,8 @@ func TestObserveModeWithEngine(t *testing.T) {
 	const self = "12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd"
 	cfg := config.Default()
 	engine := decision.New(st, decision.NewPolicy(self, cfg.Trust, cfg.Decision), log, decision.Options{})
-	enf := &fakeEnforcer{}
-	g := NewGate(config.ModeObserve, enf, log)
+	var c counter
+	g := NewGate(config.ModeObserve, c.notify, log)
 	engine.Subscribe(g.Handle)
 
 	ind := obieproto.Indicator{Kind: obieproto.KindIPv4, Value: "185.0.0.9", Scope: "/32"}
@@ -147,11 +138,14 @@ func TestObserveModeWithEngine(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = engine.Stop(context.Background()) })
-	if got := engine.Decisions(decision.StateBlock); len(got) != 1 {
-		t.Fatalf("engine decided %+v", got)
+	if got := blockKeys(g); got != "ipv4:185.0.0.9" {
+		t.Fatalf("gate blocks = %q", got)
 	}
-	wantSeq(t, enf.take())
-
+	if n := c.take(); n != 0 {
+		t.Errorf("notified %d times", n)
+	}
 	g.SetMode(config.ModeEnforce)
-	wantSeq(t, enf.take(), "added/mode/ipv4:185.0.0.9")
+	if n := c.take(); n != 1 {
+		t.Errorf("notified %d times, want 1", n)
+	}
 }
