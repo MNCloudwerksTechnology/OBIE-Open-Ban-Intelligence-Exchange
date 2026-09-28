@@ -20,6 +20,8 @@ go.work.sum
 /website/frontend/coverage/
 /website/backend/target/
 /website/.lighthouseci/
+# The operator's filled-in deployment settings (a copy of .env.example)
+/website/deploy/.env
 
 # Editors and OS
 .idea/
