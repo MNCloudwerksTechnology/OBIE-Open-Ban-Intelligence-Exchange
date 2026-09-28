@@ -9,8 +9,9 @@ import (
 )
 
 // sweepBatchSize bounds the expiry index entries handled per transaction,
-// well below Badger's transaction size limit.
-const sweepBatchSize = 1000
+// well below Badger's transaction size limit (15% of the 16 MiB memtable):
+// each may archive an event of up to 4 KiB (ADR 0023).
+const sweepBatchSize = 250
 
 // Sweep removes the verdicts and overrides that expired at now and notifies
 // subscribers of the indicators whose active verdicts or override changed.
@@ -111,8 +112,11 @@ func expireVerdict(txn *badger.Txn, key []byte, at time.Time) (Change, error) {
 		// Stale index entry; the record's own entry handles it.
 		return Change{}, nil
 	case rec.Revoked:
-		// Nothing active changes.
+		// Nothing active changes; the verdict was kept as revoked.
 		return Change{}, txn.Delete(key)
+	}
+	if err := archive(txn, rec, EndedExpired, nil); err != nil {
+		return Change{}, err
 	}
 	return change, txn.Delete(key)
 }

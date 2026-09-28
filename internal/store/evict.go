@@ -118,7 +118,8 @@ func (s *DB) evict(txn *badger.Txn, index []byte, now time.Time) (Change, error)
 	s.log.Debug("evicted verdict", "event", rec.Event.ID, "indicator", rec.Event.Key(),
 		"publisher", rec.Event.Publisher.PeerID, "expires_at", rec.Event.ExpiresAt())
 	if !rec.active(now) {
-		return Change{}, nil
+		// Revoked, or expired before the sweep came.
+		return Change{}, archiveExpired(txn, rec, now)
 	}
 	return Change{Key: rec.Event.Key(), Reason: ReasonEvict}, nil
 }

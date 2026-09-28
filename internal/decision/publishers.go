@@ -1,6 +1,10 @@
 package decision
 
-import "unique"
+import (
+	"unique"
+
+	"github.com/MNCloudwerksTechnology/obie/internal/store"
+)
 
 // heldVerdict is an active verdict of a kept decision: its publisher and
 // its category, interned, and whether it counts in the decision.
@@ -24,13 +28,10 @@ func heldOf(contributions []Contribution) []heldVerdict {
 }
 
 // Category names what a verdict is about: its evidence reason and the
-// attacked protocol, e.g. "password_bruteforce/ssh" (ADR 0022). Neither
-// may contain a slash, so the name is unambiguous.
+// attacked protocol, e.g. "password_bruteforce/ssh" (ADR 0022), as the
+// store names the categories of the verdicts it keeps (ADR 0023).
 func Category(reason, protocol string) string {
-	if protocol == "" {
-		return reason
-	}
-	return reason + "/" + protocol
+	return store.Category(reason, protocol)
 }
 
 // PublisherCount counts the active verdicts of one publisher in the kept

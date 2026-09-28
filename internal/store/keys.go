@@ -8,14 +8,18 @@ import (
 
 // Keyspace prefixes; see ADR 0008.
 var (
-	prefixEvent     = []byte("e/")
-	prefixVerdict   = []byte("v/")
-	prefixExpiry    = []byte("x/")
-	prefixRevoke    = []byte("r/")
-	prefixOverride  = []byte("o/")
-	prefixSeen      = []byte("s/")
-	keySeparator    = []byte{0}
-	expiryKeyHeader = len(prefixExpiry) + 8
+	prefixEvent    = []byte("e/")
+	prefixVerdict  = []byte("v/")
+	prefixExpiry   = []byte("x/")
+	prefixRevoke   = []byte("r/")
+	prefixOverride = []byte("o/")
+	prefixSeen     = []byte("s/")
+	// prefixEnded holds the verdicts that ended and the revocations that
+	// arrived before their verdict (ADR 0023).
+	prefixEnded             = []byte("h/")
+	prefixPendingRevocation = []byte("h/p/")
+	keySeparator            = []byte{0}
+	expiryKeyHeader         = len(prefixExpiry) + 8
 )
 
 func join(parts ...[]byte) []byte {
@@ -61,6 +65,28 @@ func publisherOfVerdictKey(key []byte) string {
 // revokeKey marks that publisher revoked a verdict the store has not seen.
 func revokeKey(verdictID, publisher string) []byte {
 	return join(prefixRevoke, []byte(verdictID), keySeparator, []byte(publisher))
+}
+
+// endedPrefix is the common prefix of the verdicts that ended in state.
+func endedPrefix(state EndedState) []byte {
+	letter := "x"
+	if state == EndedRevoked {
+		letter = "r"
+	}
+	return join(prefixEnded, []byte(letter+"/"))
+}
+
+// endedKey is the key of a publisher's verdict of a category on an
+// indicator that ended in state. Neither the indicator nor the publisher
+// nor the category holds a NUL byte.
+func endedKey(state EndedState, indicator, publisher, category string) []byte {
+	return join(endedPrefix(state), []byte(indicator), keySeparator, []byte(publisher), keySeparator, []byte(category))
+}
+
+// pendingRevocationKey holds the revocation of a verdict the store has not
+// seen yet, next to its revokeKey marker.
+func pendingRevocationKey(verdictID, publisher string) []byte {
+	return join(prefixPendingRevocation, []byte(verdictID), keySeparator, []byte(publisher))
 }
 
 // overrideKey is the key of an indicator's operator override.
