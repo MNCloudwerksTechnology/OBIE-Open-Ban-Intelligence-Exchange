@@ -18,6 +18,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/httpserver"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
@@ -61,7 +63,11 @@ type Console struct {
 	node    Node
 	policy  peercred.Policy
 	lookup  func(net.Conn) (peercred.Cred, error)
+	creds   *credentials
+	now     func() time.Time
 	handler http.Handler
+	// signInLimit bounds sign-in attempts.
+	signInLimit *rate.Limiter
 
 	// applyMu serializes Start, Stop and Apply. It is held while a server
 	// starts or stops, which may wait for requests in flight; those only
@@ -85,7 +91,8 @@ func New(cfg config.Console, opts Options, log *slog.Logger) *Console {
 		log.Warn("admin socket group not found; only root and obied's own user may use the console",
 			"group", opts.Group, "error", err)
 	}
-	c := &Console{log: log, node: opts.Node, policy: policy, lookup: peercred.LoopbackTCP, cfg: cfg}
+	c := &Console{log: log, node: opts.Node, policy: policy, lookup: peercred.LoopbackTCP, creds: newCredentials(),
+		now: time.Now, signInLimit: newSignInLimit(), cfg: cfg}
 	c.handler = c.routes()
 	return c
 }

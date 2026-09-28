@@ -149,8 +149,8 @@ func TestGuardsRefuseWithSecurityHeaders(t *testing.T) {
 			message: `answers only requests addressed to 127.0.0.1, [::1] or localhost, not to "evil.example:9465"`},
 		"no host":     {host: "", code: http.StatusMisdirectedRequest, message: "answers only requests addressed to"},
 		"cross-site":  {host: "127.0.0.1:9465", headers: map[string]string{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "no-cors"}, code: http.StatusForbidden, message: "another web site"},
-		"passes":      {host: "127.0.0.1:9465", code: http.StatusNotFound, message: "404 page not found"},
-		"via forward": {host: "localhost:10000", code: http.StatusNotFound, message: "404 page not found"},
+		"passes":      {host: "127.0.0.1:9465", code: http.StatusSeeOther, message: `href="/login?next=%2F"`},
+		"via forward": {host: "localhost:10000", code: http.StatusSeeOther, message: `href="/login?next=%2F"`},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := httptest.NewRequest(http.MethodGet, "/", nil).WithContext(withConn(context.Background(), nil))
