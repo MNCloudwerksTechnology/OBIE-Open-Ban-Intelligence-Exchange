@@ -39,6 +39,14 @@ var ErrNotLocal = errors.New("event was not published by this node")
 // neighbor crowd out the events of honest ones before the limits see it.
 const validateQueueBursts = 4
 
+// maxHeld bounds the events held while no peer is on the topic; beyond
+// it the oldest is dropped (ADR 0026).
+const maxHeld = 10000
+
+// heldMargin is how long a held event must still live to be sent when a
+// peer joins; one about to expire is not worth a peer's validation.
+const heldMargin = time.Minute
+
 // MaxRPCSize bounds a GossipSub RPC, which bundles messages and control
 // data, in both directions: a peer sending a larger one has its stream
 // reset before anything in it is parsed, and outgoing RPCs are split to
@@ -71,10 +79,28 @@ type Gossip struct {
 	self  peer.ID
 	store store.Store
 	now   func() time.Time
+	log   *slog.Logger
 	// receive are the obieproto.Receive options besides the clock.
 	receive []obieproto.Option
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
+
+	// pubMu serializes the node's publications, so that held events go
+	// out before any later one, and guards the fields below.
+	pubMu sync.Mutex
+	// held are the node's events published while no peer was on the
+	// topic, oldest first; they are sent when a peer joins (ADR 0026).
+	// heldLimit bounds them; dropped counts those dropped over it since
+	// the last flush.
+	held      []heldEvent
+	heldLimit int
+	dropped   int
+}
+
+// heldEvent is an event waiting for a peer, with its encoding.
+type heldEvent struct {
+	event *obieproto.Event
+	data  []byte
 }
 
 // New joins the topic on h, which must be listening, and starts relaying.
@@ -113,13 +139,32 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 		cancel()
 		return nil, err
 	}
-	g := &Gossip{topic: topic, self: h.ID(), store: opts.Store, now: opts.Now, receive: receive, cancel: cancel}
+	peers, err := topic.EventHandler()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("watch the peers of %s: %w", obieproto.Topic, err)
+	}
+	g := &Gossip{topic: topic, self: h.ID(), store: opts.Store, now: opts.Now, log: log, receive: receive, cancel: cancel,
+		heldLimit: maxHeld}
 	// Subscribing makes the node a member of the topic's mesh. Accepted
 	// events are stored by the validator, so deliveries are discarded.
 	g.wg.Go(func() {
 		for {
 			if _, err := sub.Next(ctx); err != nil {
 				return
+			}
+		}
+	})
+	// A peer joining the topic receives what was held for want of one.
+	g.wg.Go(func() {
+		defer peers.Cancel()
+		for {
+			ev, err := peers.NextPeerEvent(ctx)
+			if err != nil {
+				return
+			}
+			if ev.Type == pubsub.PeerJoin {
+				g.flush(ctx)
 			}
 		}
 	})
@@ -187,8 +232,9 @@ func messageID(msg *pb.Message) string {
 
 // Publish sends ev, an event signed by this node, to the mesh. The event is
 // checked like a received one and stored locally first, so it takes effect
-// on this node even without peers. If sending fails after the event was
-// stored, calling Publish again sends it.
+// on this node even without peers. While no peer is on the topic, the
+// event is held and sent as soon as one joins (ADR 0026). If sending fails
+// after the event was stored, calling Publish again sends it.
 func (g *Gossip) Publish(ctx context.Context, ev *obieproto.Event) error {
 	if ev.Publisher.PeerID != g.self.String() {
 		return fmt.Errorf("publish event %s by %s: %w", ev.ID, ev.Publisher.PeerID, ErrNotLocal)
@@ -204,12 +250,81 @@ func (g *Gossip) Publish(ctx context.Context, ev *obieproto.Event) error {
 	if _, err := g.store.Put(checked); err != nil {
 		return fmt.Errorf("publish event %s: %w", ev.ID, err)
 	}
+	g.pubMu.Lock()
+	defer g.pubMu.Unlock()
+	if len(g.topic.ListPeers()) == 0 {
+		g.hold(checked, data)
+		return nil
+	}
 	if err := g.topic.Publish(ctx, data); err != nil {
 		return fmt.Errorf("publish event %s: %w", ev.ID, err)
 	}
 	publishedTotal.WithLabelValues(typeLabel(ev.Type)).Inc()
 	return nil
 }
+
+// hold keeps ev, encoded as data, until a peer joins the topic, dropping
+// the oldest held event over the limit. The caller holds pubMu.
+func (g *Gossip) hold(ev *obieproto.Event, data []byte) {
+	if len(g.held) >= g.heldLimit {
+		if g.dropped == 0 {
+			g.log.Warn("too many events wait for a peer; dropping the oldest, which still count on this node",
+				"held", len(g.held))
+		}
+		g.held = slices.Delete(g.held, 0, 1)
+		g.dropped++
+	}
+	g.held = append(g.held, heldEvent{event: ev, data: data})
+	g.log.Info("no peer is on the topic; the event is held and sent when one joins", "event", ev.ID,
+		"indicator", ev.Key(), "held", len(g.held))
+}
+
+// flush sends the held events, in the order they were published, now that
+// a peer joined the topic; events about to expire are dropped. Those it
+// could not send wait for the next peer.
+func (g *Gossip) flush(ctx context.Context) {
+	g.pubMu.Lock()
+	defer g.pubMu.Unlock()
+	if len(g.held) == 0 {
+		return
+	}
+	now := g.now()
+	sent, expired := 0, 0
+	for i, h := range g.held {
+		if h.event.Expired(now.Add(heldMargin)) {
+			expired++
+			continue
+		}
+		if err := g.topic.Publish(ctx, h.data); err != nil {
+			g.held = slices.Delete(g.held, 0, i)
+			g.log.Warn("sending the held events failed; they wait for the next peer", "sent", sent, "held", len(g.held),
+				"error", err)
+			return
+		}
+		publishedTotal.WithLabelValues(typeLabel(h.event.Type)).Inc()
+		sent++
+	}
+	g.log.Info("a peer joined the topic; the held events were sent", "sent", sent, "expired", expired,
+		"dropped", g.dropped)
+	g.held, g.dropped = nil, 0
+}
+
+// Held reports whether the event with the ID id waits for a peer to join
+// the topic.
+func (g *Gossip) Held(id string) bool {
+	g.pubMu.Lock()
+	defer g.pubMu.Unlock()
+	for _, h := range g.held {
+		if h.event.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// TopicPeers counts the peers on the topic: those the node's events are
+// sent to.
+func (g *Gossip) TopicPeers() int { return len(g.topic.ListPeers()) }
 
 // Close stops GossipSub and waits for the subscription reader. Validations
 // already running finish on their own; stop the store after the host.

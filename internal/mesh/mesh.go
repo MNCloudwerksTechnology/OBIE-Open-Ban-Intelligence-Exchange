@@ -455,6 +455,27 @@ func (m *Mesh) Publish(ctx context.Context, ev *obieproto.Event) error {
 	return g.Publish(ctx, ev)
 }
 
+// Held reports whether this node's event with the ID id waits for a peer
+// to join the topic: it was published while none was (ADR 0026).
+func (m *Mesh) Held(id string) bool {
+	m.mu.Lock()
+	g := m.gossip
+	m.mu.Unlock()
+	return g != nil && g.Held(id)
+}
+
+// TopicPeers counts the peers on the GossipSub topic, those this node's
+// events are sent to; 0 while the mesh is not running.
+func (m *Mesh) TopicPeers() int {
+	m.mu.Lock()
+	g := m.gossip
+	m.mu.Unlock()
+	if g == nil {
+		return 0
+	}
+	return g.TopicPeers()
+}
+
 // ListenAddrs returns the addresses the host listens on, with the ports
 // actually bound; nil before Start.
 func (m *Mesh) ListenAddrs() []ma.Multiaddr {
