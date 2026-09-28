@@ -6,19 +6,26 @@ import (
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/audit"
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
-	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
+	"github.com/MNCloudwerksTechnology/obie/internal/mesh"
 	"github.com/MNCloudwerksTechnology/obie/internal/verdicts"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
-// newAuditLog returns the audit log at path (audit.path), recording the
-// mode of gate; nil if path is empty.
-func newAuditLog(path string, gate *enforce.Gate, log *slog.Logger) *audit.Log {
-	if path == "" {
-		return nil
+// newAuditLog returns the audit trail, writing to the file at path
+// (audit.path) unless it is empty and recording the mode that mode
+// returns. It keeps the last records in memory either way (ADR 0025).
+func newAuditLog(path string, mode func() config.Mode, log *slog.Logger) *audit.Log {
+	return audit.New(path, audit.Options{Mode: func() string { return string(mode()) }}, log)
+}
+
+// auditConnections records peers connecting and disconnecting.
+func auditConnections(log *audit.Log) func(mesh.Connection) {
+	return func(c mesh.Connection) {
+		log.Write(audit.PeerConnection(audit.Peer{ID: c.ID, Name: c.Name, Bootstrap: c.Bootstrap, Publisher: c.Publisher},
+			c.Connected))
 	}
-	return audit.New(path, audit.Options{Mode: func() string { return string(gate.Mode()) }}, log)
 }
 
 // subscribeAudit records the engine's block changes and allow-listings.

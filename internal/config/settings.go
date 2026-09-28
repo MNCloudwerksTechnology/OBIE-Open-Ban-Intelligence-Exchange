@@ -209,6 +209,12 @@ func Changed(a, b *Config) []string {
 	return changed(a, b, func(Setting) bool { return true })
 }
 
+// ChangedOnReload returns the keys that a reload applies whose values
+// differ between a and b, in the order of Settings.
+func ChangedOnReload(a, b *Config) []string {
+	return changed(a, b, func(s Setting) bool { return s.Applied == OnReload })
+}
+
 // ChangedOnRestart returns the keys that only a restart applies whose
 // values differ between a and b, in the order of Settings.
 func ChangedOnRestart(a, b *Config) []string {

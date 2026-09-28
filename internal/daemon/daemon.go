@@ -152,15 +152,22 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	if opts.Testing.Store != nil {
 		opts.Testing.Store(db)
 	}
+	// The gate is set below, before anything starts. The audit trail
+	// records the mode it reads, and what the mesh, the engine, the admin
+	// API and the reloader report; it keeps the last records in memory
+	// even without audit.path, for the console (ADR 0025).
+	var gate *enforce.Gate
+	auditLog := newAuditLog(cfg.Audit.Path, func() config.Mode { return gate.Mode() }, logs.Logger(audit.Name))
 	// go-libp2p's own logs join ours; below warn they are too chatty.
 	mesh.UseLogHandler(logs.Logger("libp2p").Handler(), slog.LevelWarn)
 	m, err := mesh.New(id, mesh.Options{
-		Listen:    cfg.Mesh.Listen,
-		Bootstrap: cfg.Mesh.Bootstrap,
-		Trust:     cfg.Trust,
-		UserAgent: "obied/" + version.Version,
-		Store:     db,
-		RateLimit: cfg.Mesh.RateLimit,
+		Listen:      cfg.Mesh.Listen,
+		Bootstrap:   cfg.Mesh.Bootstrap,
+		Trust:       cfg.Trust,
+		UserAgent:   "obied/" + version.Version,
+		Store:       db,
+		RateLimit:   cfg.Mesh.RateLimit,
+		Connections: auditConnections(auditLog),
 
 		AllowDocumentationRanges: opts.Testing.AllowDocumentationRanges,
 	}, logs.Logger(mesh.Name))
@@ -171,9 +178,8 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	mgr := lifecycle.New(logs.Logger("lifecycle"), lifecycle.Options{StopTimeout: cfg.Node.ShutdownTimeout.Std()})
 	// The web console starts first and stops last, so that it can show the
 	// node starting and shutting down; it never fails to start (ADR 0019).
-	// The gate and the console's facts, peers, decisions, verdicts and
-	// rules are set below, before anything starts.
-	var gate *enforce.Gate
+	// The console's facts, peers, decisions, verdicts and rules are set
+	// below, before anything starts.
 	var facts *consoleFacts
 	var peers *consolePeers
 	decisions := &consoleDecisions{enforce: cfg.Enforce}
@@ -188,7 +194,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 			PeerVerdicts: func(id, after string, limit int) (console.VerdictPage, error) {
 				return peers.verdicts(id, after, limit)
 			},
-			Decisions: decisions, Verdicts: verdictSource, Rules: rules},
+			Decisions: decisions, Verdicts: verdictSource, Rules: rules, Activity: consoleActivity{log: auditLog}},
 	}, logs.Logger(console.Name))
 	if opts.Testing.Console != nil {
 		opts.Testing.Console(con)
@@ -221,11 +227,10 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	verdictSource.engine, rules.engine = engine, engine
 	// The audit log opens before the engine starts and closes after
 	// everything that writes to it has stopped.
-	auditLog := newAuditLog(cfg.Audit.Path, gate, logs.Logger(audit.Name))
-	if auditLog != nil {
+	if cfg.Audit.Path != "" {
 		mgr.Register(auditLog)
-		subscribeAudit(engine, auditLog)
 	}
+	subscribeAudit(engine, auditLog)
 	mgr.Register(engine)
 	mgr.Register(reconciler)
 	metricsListen := cfg.Metrics.Listen

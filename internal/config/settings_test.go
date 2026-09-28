@@ -139,6 +139,17 @@ func TestChangedOnRestart(t *testing.T) {
 	}
 }
 
+func TestChangedOnReload(t *testing.T) {
+	a, b := Default(), Default()
+	b.Node.Mode = ModeEnforce
+	b.Decision.DefaultTTL = Duration(time.Hour)
+	b.Decision.MaxTTL = Duration(2 * time.Hour)
+	b.Log.Level = "debug"
+	if got, want := ChangedOnReload(&a, &b), []string{"node.mode", "decision.max_ttl"}; !slices.Equal(got, want) {
+		t.Errorf("ChangedOnReload = %v, want %v", got, want)
+	}
+}
+
 func TestLookup(t *testing.T) {
 	if s, ok := Lookup("decision.default_ttl"); !ok || s.Applied != OnRestart || s.Section() != "decision" {
 		t.Errorf("Lookup(decision.default_ttl) = %+v, %v", s, ok)
