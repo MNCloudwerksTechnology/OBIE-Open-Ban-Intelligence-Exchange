@@ -265,7 +265,7 @@ Design decisions: [ADR 0015](../documentation/adr/0015-website-seo-and-delivery.
   gzips pages and API responses, sends hashed files (`*-<hash>.js|css`,
   `media/`) with a one-year `immutable` cache and everything else with
   `no-cache`. The legal pages are loaded on demand, the inquiry form's code
-  when it scrolls into view.
+  right after the first paint, when the browser is idle.
 - **Accessibility checks.** `src/app/a11y.spec.ts` runs axe-core on every
   route in both themes (WCAG 2.1 A/AA and best practices); a new route must
   be added to its `ROUTES`. Colour contrast is checked on the tokens

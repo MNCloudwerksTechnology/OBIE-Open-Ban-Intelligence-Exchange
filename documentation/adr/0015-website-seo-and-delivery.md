@@ -51,9 +51,11 @@ requests, and the Content Security Policy allows inline scripts only by hash.
   `Cache-Control: public, max-age=31536000, immutable`, everything else with
   `no-cache` (revalidated via `Last-Modified`).
 - **Smaller first load.** The legal pages are lazy routes, and the inquiry
-  form is an incremental-hydration `@defer (hydrate on viewport)` block: it
-  is still prerendered in full, but its code (reactive forms) loads when it
-  scrolls into view. Angular's event replay covers interactions before that.
+  form is an incremental-hydration `@defer (hydrate on idle)` block: it is
+  still prerendered in full, but its code (reactive forms) loads once the
+  browser is idle after the first paint. Not `hydrate on viewport`: a form
+  submitted before hydration would reload the page and lose what was typed,
+  so the form must be ready before the visitor reaches it.
 - **Quality gates.** axe-core runs in the front-end tests on every route in
   both themes (jsdom cannot measure contrast; the colour tokens are checked
   separately and by Lighthouse). `make -C website lighthouse` runs Lighthouse
