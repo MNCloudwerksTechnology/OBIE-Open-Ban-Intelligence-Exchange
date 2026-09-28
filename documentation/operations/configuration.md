@@ -28,6 +28,11 @@ parsed and compared with the built-in default.
   restart obied`; a reload logs them as `configuration changes that need a
   restart were not applied`. An invalid file or allow-list file is rejected
   on reload, and the running configuration is kept.
+- **See what runs.** The [web console](console.md#the-configuration-view)
+  shows the configuration the node runs with, every key marked *Default*
+  where the file does not set it, when it was loaded, whether the last
+  reload succeeded, and which changes in the file on disk wait for a reload
+  or a restart.
 - **Durations** are Go durations (`10s`, `90m`, `36h`) or whole days
   (`7d`).
 - **Paths** must be absolute.
@@ -85,7 +90,7 @@ if both admit it.
 | `decision.quorum` | `2` | reload | …and at least this many distinct publishers with a weight above 0 reported it. At least 1. |
 | `decision.local_autoblock` | `true` | reload | `true`: this node's own `ban` verdicts block without threshold and quorum, so a local detection protects this host at once (only while `trust.local_weight` > 0). |
 | `decision.max_ttl` | `30d` | reload | Longest a block may last from the moment it is decided, whatever the verdicts request. Also caps the TTL of the verdicts this node reports (`obiectl report`, Fail2Ban); that cap only changes on a restart. Greater than 0. |
-| `decision.default_ttl` | `7d` | restart | TTL of the verdicts this node reports without one: `obiectl report` without `--ttl`, permanent Fail2Ban bans. A reload does not apply it (and does not warn). Greater than 0 and at most `decision.max_ttl`. |
+| `decision.default_ttl` | `7d` | restart | TTL of the verdicts this node reports without one: `obiectl report` without `--ttl`, permanent Fail2Ban bans. A reload does not apply it, and logs a change as needing a restart. Greater than 0 and at most `decision.max_ttl`. |
 
 `watch` verdicts are shown by `obiectl explain` but never count. The
 allow-list always wins over the score. How to choose these values for a

@@ -47,6 +47,11 @@ stay bounded on a small VPS (≤ 1 vCPU, 512 MB RAM, 100k active indicators).
     Kept until the revocation expires.
   - `o/<indicator>` → operator override (force-allow / force-block, optional
     expiry and note). Separate keyspace, never touched by events.
+    *Extended by
+    [ADR 0024](0024-console-overrides-allowlist-configuration.md): an
+    expiring override is kept until 7 days after its expiry, reads skip it
+    as inactive, and the sweep moves it to `h/o/<indicator>`, kept for the
+    same 7 days.*
 - **Rules:** events are expected to be validated (`obieproto.Decode`) before
   `Put`. `Put` ignores events whose ID was already seen, events that are
   already expired, and verdicts not newer (by `issued_at`, ties broken by

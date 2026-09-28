@@ -98,6 +98,23 @@ The first release, v0.1.0 "Stable Base".
   revocation's reason — of other publishers at most a tenth of
   `store.max_indicators` in each state (`obie_store_ended_verdicts`)
   ([ADR 0023](documentation/adr/0023-console-verdicts.md)).
+  Its overrides view lists every always-allow and always-block override
+  in effect with its note, when it was set and when it ends, says why an
+  always-block has no effect when a force-allow or a protected address
+  beats it, and shows the overrides that expired in the last 7 days on
+  request; the store now keeps them that long. Its allow-list view lists
+  every entry the node never blocks, grouped by origin — built-in ranges
+  by class, the node's own addresses, the bootstrap peers,
+  `allowlist.cidrs` and each allow-list file — warns about addresses it
+  could not determine and about files that are missing, unreadable or now
+  hold rejected lines (listed), and answers *Is this address protected?*
+  with the rule that decides. Its configuration view shows every setting
+  the node runs with, defaults marked, with a one-line explanation and
+  whether a reload or a restart applies it; when the configuration was
+  loaded and whether the last reload succeeded (or was rejected, and the
+  previous configuration kept); and which changes in the file on disk are
+  not active yet or wait for a restart. Secrets are never shown
+  ([ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md)).
 - **Packaging.** Reproducible static release tarballs for linux/amd64 and
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
   hardened systemd unit, a distroless container image, and a three-node
