@@ -16,6 +16,9 @@ import java.util.zip.GZIPInputStream;
 import org.junit.jupiter.api.Test;
 import org.obie.website.IntegrationTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
+import org.springframework.util.unit.DataSize;
 
 /** Caching and compression of the front end, as a browser receives them. */
 class StaticDeliveryTest extends IntegrationTest {
@@ -75,6 +78,19 @@ class StaticDeliveryTest extends IntegrationTest {
   }
 
   @Test
+  void pagesAreRevalidatedByAnETagThatCoversTheOrigin() {
+    HttpResponse<byte[]> page = get("/", "identity");
+    String etag = header(page, "ETag");
+
+    assertThat(etag).isNotBlank();
+    assertThat(page.headers().firstValue("Last-Modified")).isEmpty();
+    assertThat(get("/", "identity", etag).statusCode()).isEqualTo(304);
+    Resource index = new ClassPathResource("static/index.html");
+    assertThat(StaticSiteConfig.etag(index, origin("https://other.example")))
+        .isNotEqualTo(StaticSiteConfig.etag(index, origin("https://obie.example")));
+  }
+
+  @Test
   void unhashedFilesAreRevalidated() {
     HttpResponse<byte[]> response = get("/brand/obie-logo-solo.svg", "identity");
 
@@ -91,11 +107,18 @@ class StaticDeliveryTest extends IntegrationTest {
   }
 
   private HttpResponse<byte[]> get(String path, String acceptEncoding) {
-    HttpRequest request =
+    return get(path, acceptEncoding, null);
+  }
+
+  private HttpResponse<byte[]> get(String path, String acceptEncoding, String ifNoneMatch) {
+    HttpRequest.Builder builder =
         HttpRequest.newBuilder(URI.create("http://localhost:" + port + path))
             .header("Accept", "text/html,*/*")
-            .header("Accept-Encoding", acceptEncoding)
-            .build();
+            .header("Accept-Encoding", acceptEncoding);
+    if (ifNoneMatch != null) {
+      builder.header("If-None-Match", ifNoneMatch);
+    }
+    HttpRequest request = builder.build();
     try {
       return client.send(request, HttpResponse.BodyHandlers.ofByteArray());
     } catch (IOException e) {
@@ -104,6 +127,10 @@ class StaticDeliveryTest extends IntegrationTest {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(e);
     }
+  }
+
+  private static SiteOrigin origin(String origin) {
+    return new SiteOrigin(new WebProperties(origin, DataSize.ofKilobytes(16)));
   }
 
   private static String header(HttpResponse<?> response, String name) {

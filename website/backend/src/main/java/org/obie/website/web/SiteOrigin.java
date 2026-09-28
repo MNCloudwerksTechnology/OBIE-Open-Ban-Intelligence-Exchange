@@ -22,11 +22,6 @@ public class SiteOrigin {
     this.origin = properties.siteOrigin();
   }
 
-  /** The origin, e.g. {@code https://obie.example}. */
-  public String origin() {
-    return origin;
-  }
-
   /** {@code path} (starting with a slash) as an absolute URL on the site. */
   public String url(String path) {
     return origin + path;

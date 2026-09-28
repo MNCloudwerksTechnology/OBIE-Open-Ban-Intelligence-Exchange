@@ -49,7 +49,8 @@ requests, and the Content Security Policy allows inline scripts only by hash.
   (`server.compression`); Tomcat's built-in compression has no Brotli.
   Files with the build hash in their name (bundles, `media/`) are sent with
   `Cache-Control: public, max-age=31536000, immutable`, everything else with
-  `no-cache` (revalidated via `Last-Modified`).
+  `no-cache`, revalidated by an ETag of the file's date and the configured
+  origin, so a changed origin is never served from a browser cache.
 - **Smaller first load.** The legal pages are lazy routes, and the inquiry
   form is an incremental-hydration `@defer (hydrate on idle)` block: it is
   still prerendered in full, but its code (reactive forms) loads once the
@@ -68,10 +69,15 @@ requests, and the Content Security Policy allows inline scripts only by hash.
 
 - The jar stays environment-independent; a wrong `OBIE_SITE_ORIGIN` shows
   up in canonical links and the sitemap, so it must be the public origin.
+- In the browser the origin is read from the served canonical link. The
+  not-found page has none, so a visitor who enters through it on another host
+  name and then navigates within the site gets that host in the client-side
+  canonical and `og:url`; crawlers read the served HTML and are unaffected.
 - Lighthouse on `http://localhost` receives gzip, not Brotli (browsers
   advertise Brotli only over HTTPS), so the local measurement is slightly
   pessimistic compared with production.
-- Preloading fonts trades a little first-paint time for no layout shift; the
+- Preloading fonts trades a little first-paint time for much less layout
+  shift (CLS 0.2 without, about 0.03 with the regular and bold weights); the
   preloaded weights are listed in the post-build script.
 - Adding a heavy dependency to the landing page will fail the build on the
   JavaScript budget before it can lower the Lighthouse score.

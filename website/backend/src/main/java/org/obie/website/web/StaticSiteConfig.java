@@ -53,10 +53,30 @@ public class StaticSiteConfig implements WebMvcConfigurer {
         .addResourceHandler("/**")
         .addResourceLocations(STATIC_LOCATION)
         .setCacheControl(CacheControl.noCache())
+        // Pages depend on the configured origin as well as on the file, so they are revalidated
+        // with an ETag of both; a Last-Modified of the file alone would keep a changed origin out.
+        .setUseLastModified(false)
+        .setEtagGenerator(resource -> etag(resource, siteOrigin))
         .resourceChain(true)
         .addResolver(new EncodedResourceResolver())
         .addResolver(new PrerenderedPageResolver())
         .addTransformer(new SiteOriginTransformer(siteOrigin));
+  }
+
+  /**
+   * Changes when the file or the site origin changes. Weak, because Tomcat does not compress
+   * responses with a strong ETag (the bytes on the wire differ by encoding).
+   */
+  static String etag(Resource resource, SiteOrigin siteOrigin) {
+    try {
+      return "W/\""
+          + Long.toHexString(resource.lastModified())
+          + "-"
+          + Integer.toHexString(siteOrigin.url("/").hashCode())
+          + "\"";
+    } catch (IOException e) {
+      return null;
+    }
   }
 
   private static void hashed(ResourceHandlerRegistration registration) {

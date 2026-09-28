@@ -50,6 +50,9 @@ for _ in $(seq 90); do
   sleep 1
 done
 curl -fsS "$ORIGIN/api/health" >/dev/null
+# The crawler files are generated from the packaged pages; check them in the jar.
+curl -fsS "$ORIGIN/sitemap.xml" | grep -q "<loc>$ORIGIN/impressum</loc>"
+curl -fsS "$ORIGIN/robots.txt" | grep -q "Sitemap: $ORIGIN/sitemap.xml"
 
 npx --yes "@lhci/cli@${LHCI_VERSION}" autorun --config=lighthouserc.json \
   --collect.url="$ORIGIN/" --collect.url="$ORIGIN/impressum" --collect.url="$ORIGIN/privacy"
