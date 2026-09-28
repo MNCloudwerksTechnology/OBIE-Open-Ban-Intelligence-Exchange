@@ -49,7 +49,7 @@ make build           # static binaries in ./bin/
 ./bin/obiectl revoke [--reason false_positive] <ip | cidr | event-id>             # withdraw it
 ./bin/obiectl indicators [--mine | --publisher <peer-id>] [--json]                # active verdicts
 ./bin/obiectl show [--json] <ip | cidr>                                            # verdicts on one
-kill -HUP "$(pidof obied)"   # reload allow-list files, trust, decision settings and mode
+kill -HUP "$(pidof obied)"   # reload allow-list files, trust, decision settings and mode; reopen the audit log
 make ci              # every check a change must pass
 ```
 
@@ -57,7 +57,10 @@ A node is configured with one YAML file (default `/etc/obie/obie.yaml`);
 [documentation/examples/obie.yaml](documentation/examples/obie.yaml) documents
 every key and its default. To publish Fail2Ban bans as verdicts, add the
 ready-made action to your jails; see
-[documentation/guides/fail2ban.md](documentation/guides/fail2ban.md).
+[documentation/guides/fail2ban.md](documentation/guides/fail2ban.md). Prometheus
+metrics, the decision audit log (with Alloy/Promtail and Filebeat snippets)
+and a Grafana dashboard are described in
+[documentation/operations/monitoring.md](documentation/operations/monitoring.md).
 
 Requires Go 1.26 or newer. Every pull request is gated by the same `make ci` in
 CI. See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical baseline and

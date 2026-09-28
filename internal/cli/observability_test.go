@@ -3,10 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -81,6 +83,7 @@ func TestObservabilityAgainstInProcessDaemon(t *testing.T) {
 			t.Errorf("/metrics lacks obie_%s", name)
 		}
 	}
+	checkDashboard(t, string(body))
 	for _, sample := range []string{
 		`obie_node_mode{mode="observe"} 1`,
 		`obie_decisions{state="block"} 2`,
@@ -106,5 +109,43 @@ func TestObservabilityAgainstInProcessDaemon(t *testing.T) {
 	}
 	if findLog(logLines(t, &logs.buf), "audit", "audit log reopened") == nil {
 		t.Errorf("no reopen logged:\n%s", logs.String())
+	}
+}
+
+// dashboard is the Grafana dashboard shipped for operators.
+const dashboard = "../../documentation/operations/grafana-dashboard.json"
+
+// checkDashboard checks that every query of the dashboard uses metrics
+// that obied serves in metrics, the body of a /metrics scrape.
+func checkDashboard(t *testing.T, metrics string) {
+	t.Helper()
+	data, err := os.ReadFile(dashboard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var d struct {
+		Panels []struct {
+			Title   string
+			Targets []struct{ Expr string }
+		}
+	}
+	if err := json.Unmarshal(data, &d); err != nil {
+		t.Fatalf("%s: %v", dashboard, err)
+	}
+	name := regexp.MustCompile(`obie_[a-z_]+`)
+	suffix := regexp.MustCompile(`_(bucket|sum|count)$`)
+	queries := 0
+	for _, p := range d.Panels {
+		for _, target := range p.Targets {
+			queries++
+			for _, m := range name.FindAllString(target.Expr, -1) {
+				if base := suffix.ReplaceAllString(m, ""); !strings.Contains(metrics, "# TYPE "+base+" ") {
+					t.Errorf("dashboard panel %q queries %s, which obied does not serve", p.Title, m)
+				}
+			}
+		}
+	}
+	if queries == 0 {
+		t.Errorf("%s has no queries", dashboard)
 	}
 }
