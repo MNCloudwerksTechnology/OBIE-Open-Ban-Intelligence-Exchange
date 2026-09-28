@@ -67,9 +67,9 @@ func testActivity() []ActivityEntry {
 	at := func(minutes int) time.Time { return activityNow.Add(-time.Duration(minutes) * time.Minute) }
 	addr := netip.MustParsePrefix("203.0.113.7/32")
 	return []ActivityEntry{
-		{Time: at(0), Action: actionModeChanged, Mode: "enforce", PreviousMode: "observe",
+		{Time: at(0), Action: actionModeChanged, Mode: "enforce",
 			Reason: "node.mode changed from observe to enforce: blocks are applied to the firewall"},
-		{Time: at(1), Action: actionConfigReloaded, Mode: "observe", Settings: []string{"node.mode"},
+		{Time: at(1), Action: actionConfigReloaded, Mode: "observe",
 			Reason: "configuration reloaded from /etc/obie/obie.yaml: node.mode changed"},
 		{Time: at(2), Action: actionPeerConnected, PeerID: idAlpha, PeerName: "alpha", Reason: "bootstrap peer alpha (" + idAlpha + ") connected"},
 		{Time: at(3), Action: actionPeerDisconnected, PeerID: peerLong, Reason: "peer " + peerLong + " disconnected"},
@@ -224,6 +224,8 @@ func TestActivitySources(t *testing.T) {
 	}{
 		{"file", ActivityPage{Path: "/a.jsonl", Kept: 10000}, false,
 			[]string{"From the audit log file /a.jsonl: the records a SIEM reads from it, also those from before obied last started. Only the current file is read"}},
+		{"file since", ActivityPage{Path: "/a.jsonl", Kept: 10000, FileSince: started.Add(-time.Hour)}, false,
+			[]string{"From the audit log file /a.jsonl, which holds the records since 2026-09-28 08:00:00 UTC: the records a SIEM reads"}},
 		{"off", ActivityPage{Memory: true, Kept: 10000}, true, []string{
 			"The audit log is off: audit.path is not set. So this timeline cannot show what happened before obied started at 2026-09-28 09:00:00 UTC, keeps at most the last 10,000 entries in memory and loses them at the next restart, and no SIEM receives them. Live updates work. To keep the history, set audit.path and restart obied."}},
 		{"unreadable", ActivityPage{Path: "/a.jsonl", Memory: true, FileErr: "obied may write the audit log file but not read it", Kept: 10000}, true,
@@ -268,6 +270,10 @@ func TestActivityEnds(t *testing.T) {
 		{"forgotten", activityInput{page: ActivityPage{Entries: one, Memory: true, Forgotten: true}},
 			"Older entries since obied started are no longer kept in memory.", ""},
 		{"more pages", activityInput{page: ActivityPage{Entries: one, Older: "f1-10"}}, "", ""},
+		{"file filtered", activityInput{query: activityQuery{kind: "mode"}, page: ActivityPage{Entries: one}},
+			"No older entry of the current audit log file matches this view.", ""},
+		{"memory filtered", activityInput{search: netip.MustParsePrefix("198.51.100.0/24"), page: ActivityPage{Entries: one, Memory: true}},
+			"No older entry kept in memory matches this view.", ""},
 		{"empty file", activityInput{page: ActivityPage{Path: "/a"}}, "", "The audit log holds no activity yet."},
 		{"empty filter", activityInput{query: activityQuery{kind: "mode"}, page: ActivityPage{Path: "/a"}}, "", "No activity matches this view."},
 		{"empty search", activityInput{query: activityQuery{kind: "mode"}, page: ActivityPage{Path: "/a", Searched: true, Older: "f1-9"}}, "",
@@ -283,6 +289,36 @@ func TestActivityEnds(t *testing.T) {
 	p := buildActivity(activityInput{page: ActivityPage{Entries: one, Skipped: 2}})
 	if p.Skipped != "2 lines of the audit log file on this page are no OBIE audit record and were skipped." {
 		t.Errorf("skipped = %q", p.Skipped)
+	}
+	// A searched stretch without any record read says how far it went in
+	// words, not with an empty time.
+	p = buildActivity(activityInput{query: activityQuery{kind: "mode"}, page: ActivityPage{Searched: true, Older: "f1-9"}})
+	if p.Searched != "This page searched the audit log as far as it reads at once and found no more entries for this view." ||
+		p.OlderText != "Search further back" {
+		t.Errorf("searched = %q, %q", p.Searched, p.OlderText)
+	}
+}
+
+// TestActivityEscapesRecords: what records hold — notes, reasons, peer
+// names — is shown as text, never as markup.
+func TestActivityEscapesRecords(t *testing.T) {
+	c, b := signedInBrowser(t)
+	src := activityNode(c)
+	src.page.Entries = []ActivityEntry{
+		{Time: activityNow, Action: actionOverrideSet, Range: netip.MustParsePrefix("192.0.2.1/32"), Rule: ruleForceBlock,
+			Note: `<script>alert(1)</script>`, Reason: `operator force_block override set <b>`},
+		{Time: activityNow, Action: actionPeerConnected, PeerID: `12D3"><img src=x>`, PeerName: `<i>eve</i>`},
+	}
+	src.batch = ActivityBatch{Entries: src.page.Entries, Next: 50}
+	_, page := b.get("/activity")
+	_, live := b.get("/api/activity?after=1")
+	for what, body := range map[string]string{"page": page, "live feed": live} {
+		if strings.Contains(body, "<script>alert") || strings.Contains(body, "<b>") || strings.Contains(body, "<i>eve") ||
+			strings.Contains(body, `"><img`) {
+			t.Errorf("the %s shows markup from a record:\n%s", what, body)
+		}
+		wantAll(t, "the "+what, body, `Note: &lt;script&gt;alert(1)&lt;/script&gt;`, `&lt;i&gt;eve&lt;/i&gt;`,
+			`href="/peers/12D3%22%3E%3Cimg%20src=x%3E"`)
 	}
 }
 

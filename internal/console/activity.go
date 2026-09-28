@@ -259,8 +259,6 @@ type activityPage struct {
 	// filter form, AddressErr says why it is none.
 	Kinds               []option
 	Address, AddressErr string
-	// Kind is the kind filter, kept by the live feed's link.
-	Kind string
 	// Clear links to the timeline without filters; empty without any.
 	Clear   string
 	Heading string
@@ -302,7 +300,7 @@ type activityInput struct {
 func buildActivity(in activityInput) activityPage {
 	q, pg := in.query, &in.page
 	first := activityQuery{kind: q.kind, address: q.address}
-	p := activityPage{Address: q.address, Kind: q.kind, Heading: activityHeading(q.kind, in.search), MaxRows: liveMaxRows,
+	p := activityPage{Address: q.address, Heading: activityHeading(q.kind, in.search), MaxRows: liveMaxRows,
 		Reload: first.href("/activity")}
 	if in.addressErr != nil {
 		p.AddressErr = in.addressErr.Error()
@@ -342,7 +340,10 @@ func buildActivity(in activityInput) activityPage {
 		p.Older, p.OlderText = older.href("/activity"), "Older entries"
 	}
 	if pg.Searched && pg.Older != "" {
-		p.Searched = "This page searched the audit log back to " + stamp(pg.SearchedTo).Text + " and found no more entries for this view."
+		p.Searched = "This page searched the audit log as far as it reads at once and found no more entries for this view."
+		if !pg.SearchedTo.IsZero() {
+			p.Searched = "This page searched the audit log back to " + stamp(pg.SearchedTo).Text + " and found no more entries for this view."
+		}
 		p.OlderText = "Search further back"
 	}
 	if pg.Skipped > 0 {
@@ -350,7 +351,7 @@ func buildActivity(in activityInput) activityPage {
 			isAre(pg.Skipped) + " no OBIE audit record and " + wasWere(pg.Skipped) + " skipped."
 	}
 	if pg.Older == "" && len(p.Rows) > 0 {
-		p.End = activityEnd(pg)
+		p.End = activityEnd(pg, q.kind != "" || in.search.IsValid())
 	}
 	if len(p.Rows) == 0 {
 		p.Empty = emptyActivity(q, pg, in.startedAt)
@@ -378,15 +379,23 @@ func activitySource(p *ActivityPage, startedAt time.Time) (text string, warning 
 		return "From the audit log file " + p.Path + ". " + upperFirst(p.FileErr) + ", so this page starts again at " +
 			"the newest entries.", false
 	default:
-		return "From the audit log file " + p.Path + ": the records a SIEM reads from it, also those from before obied " +
-			"last started. Only the current file is read: what logrotate moved away is in the rotated files and in " +
-			"your SIEM.", false
+		file := "From the audit log file " + p.Path
+		if !p.FileSince.IsZero() {
+			file += ", which holds the records since " + stamp(p.FileSince).Text
+		}
+		return file + ": the records a SIEM reads from it, also those from before obied last started. Only the " +
+			"current file is read: what logrotate moved away is in the rotated files and in your SIEM.", false
 	}
 }
 
-// activityEnd says where the list ends.
-func activityEnd(p *ActivityPage) string {
+// activityEnd says where the list ends; filtered is set if a filter
+// narrows it.
+func activityEnd(p *ActivityPage, filtered bool) string {
 	switch {
+	case filtered && !p.Memory:
+		return "No older entry of the current audit log file matches this view."
+	case filtered:
+		return "No older entry kept in memory matches this view."
 	case !p.Memory:
 		return "This is the first entry of the current audit log file."
 	case p.Forgotten:

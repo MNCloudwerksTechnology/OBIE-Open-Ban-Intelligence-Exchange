@@ -58,16 +58,17 @@ func TestAuditReloads(t *testing.T) {
 	if got, want := actions(p.Entries), []string{"config-reloaded", "config-reloaded", "mode-changed"}; !slices.Equal(got, want) {
 		t.Fatalf("entries = %v, want %v", got, want)
 	}
-	unchanged, reload, mode := p.Entries[0], p.Entries[1], p.Entries[2]
+	if p.Entries[0].Reason != "configuration reloaded: no setting changed; log.level waits for a restart" ||
+		p.Entries[1].Reason != "configuration reloaded: 2 settings changed (node.mode, decision.threshold); log.level waits for a restart" ||
+		p.Entries[1].Mode != "enforce" || p.Entries[2].Mode != "enforce" || p.Entries[2].Range.IsValid() {
+		t.Errorf("entries = %+v", p.Entries)
+	}
+	// The records hold the settings and the previous mode for a SIEM.
+	records := log.Since(0, 10, func(*audit.Entry) bool { return true }).Entries
+	unchanged, reload, mode := records[0].Obie, records[1].Obie, records[2].Obie
 	if len(unchanged.Settings) != 0 || !slices.Equal(unchanged.RestartSettings, []string{"log.level"}) ||
-		unchanged.Reason != "configuration reloaded: no setting changed; log.level waits for a restart" {
-		t.Errorf("second reload = %+v", unchanged)
-	}
-	if !slices.Equal(reload.Settings, []string{"node.mode", "decision.threshold"}) || reload.Mode != "enforce" {
-		t.Errorf("first reload = %+v", reload)
-	}
-	if mode.PreviousMode != "observe" || mode.Mode != "enforce" || mode.Range.IsValid() {
-		t.Errorf("mode change = %+v", mode)
+		!slices.Equal(reload.Settings, []string{"node.mode", "decision.threshold"}) || mode.PreviousMode != "observe" {
+		t.Errorf("records = %+v", records)
 	}
 }
 

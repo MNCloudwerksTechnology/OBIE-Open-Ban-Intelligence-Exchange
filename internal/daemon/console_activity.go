@@ -33,7 +33,8 @@ func (a consoleActivity) Timeline(f console.ActivityFilter, before string, limit
 	mark := a.log.Mark()
 	p := a.log.History(mark, cursor, limit, activityMatch(f))
 	page := console.ActivityPage{Entries: activityEntries(p.Entries), Live: mark.Seq, Path: a.log.Path(), Memory: p.Memory,
-		Kept: audit.MemoryEntries, Forgotten: p.Forgotten, Searched: p.Searched, SearchedTo: p.SearchedTo, Skipped: p.Skipped}
+		Kept: audit.MemoryEntries, Forgotten: p.Forgotten, Searched: p.Searched, SearchedTo: p.SearchedTo, Skipped: p.Skipped,
+		FileSince: p.FileSince}
 	if p.Older != nil {
 		page.Older = p.Older.String()
 	}
@@ -86,9 +87,7 @@ func activityEntries(entries []audit.Entry) []console.ActivityEntry {
 	for i := range entries {
 		e := &entries[i]
 		out[i] = console.ActivityEntry{Time: e.Time(), Action: string(e.Event.Action), Reason: e.Event.Reason,
-			State: e.Obie.State, Cause: e.Obie.Cause, Mode: e.Obie.Mode, PreviousMode: e.Obie.PreviousMode,
-			Note: e.Obie.Note, PeerID: e.Obie.PeerID, PeerName: e.Obie.PeerName, Settings: e.Obie.Settings,
-			RestartSettings: e.Obie.RestartSettings}
+			Cause: e.Obie.Cause, Mode: e.Obie.Mode, Note: e.Obie.Note, PeerID: e.Obie.PeerID, PeerName: e.Obie.PeerName}
 		out[i].Range, _ = indicatorRange(e.Obie.Indicator)
 		if e.Rule != nil {
 			out[i].Rule = e.Rule.Name

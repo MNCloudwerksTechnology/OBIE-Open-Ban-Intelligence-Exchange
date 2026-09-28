@@ -103,8 +103,9 @@ Records follow the Elastic Common Schema (nested objects):
   `obiectl decisions` for the current state.
 - The [web console's activity timeline](console.md#the-activity-timeline)
   reads this file back, so it shows the same records as your SIEM. `obied`
-  opens the file for reading too; if it may only write it, the timeline
-  shows the last records it keeps in memory instead.
+  opens the file for reading too; if it may only write it, or it is no
+  regular file, the timeline shows the last records it keeps in memory
+  instead.
 
 The full set of fields per action is in
 [the golden test file](../../internal/audit/testdata/audit.golden.jsonl).

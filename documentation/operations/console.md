@@ -196,7 +196,8 @@ live as usual, and says what it cannot show — what happened before
 `obied` started, beyond the last 10,000 entries, and after the next
 restart — and that no SIEM receives them. Set `audit.path` and restart
 `obied` to keep the history. If `obied` may write the audit log but not
-read it back, the timeline says so and shows the entries in memory too.
+read it back, or `audit.path` is no regular file (such as `/dev/stdout`),
+the timeline says so and shows the entries in memory too.
 
 ## The peers view
 

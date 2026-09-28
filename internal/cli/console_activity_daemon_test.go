@@ -147,7 +147,7 @@ func TestConsoleActivityEndToEnd(t *testing.T) {
 		return strings.Contains(page, "Block removed")
 	})
 	wantIn("the timeline", page,
-		`<p class="callout">From the audit log file `+auditPath+`: `,
+		`<p class="callout">From the audit log file `+auditPath+`, which holds the records since `,
 		`<span class="activity-kind" data-kind="revocations">Verdict revoked</span>`,
 		`<span class="activity-kind" data-kind="blocks">Block removed</span>`,
 		`<span class="activity-kind" data-kind="overrides">Always block set</span>`,

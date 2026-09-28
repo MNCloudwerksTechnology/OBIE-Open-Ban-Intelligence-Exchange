@@ -15,21 +15,17 @@ type ActivityEntry struct {
 	// Range is the address or network the entry is about; not valid for
 	// an entry about none.
 	Range netip.Prefix
-	// Reason is the record's event.reason; Rule its rule.name, State the
-	// decision's state after the change and Cause what triggered it.
-	Reason, Rule, State, Cause string
-	// Mode is node.mode at the time; PreviousMode the one before a mode
-	// change.
-	Mode, PreviousMode string
+	// Reason is the record's event.reason, Rule its rule.name and Cause
+	// what triggered a decision change.
+	Reason, Rule, Cause string
+	// Mode is node.mode at the time, the new one for a mode change.
+	Mode string
 	// ExpiresAt is when a block, override or verdict ends; zero if never.
 	ExpiresAt time.Time
 	// Note is the note of an override.
 	Note string
 	// PeerID and PeerName are the peer of a connection change.
 	PeerID, PeerName string
-	// Settings are the keys a reload changed; RestartSettings the keys
-	// that wait for a restart.
-	Settings, RestartSettings []string
 }
 
 // ActivityFilter selects entries of the timeline.
@@ -66,6 +62,9 @@ type ActivityPage struct {
 	SearchedTo time.Time
 	// Skipped counts the lines of the file that are no records.
 	Skipped int
+	// FileSince is when the file's first record happened; zero if not
+	// known.
+	FileSince time.Time
 }
 
 // ActivityBatch are the entries recorded after a point, for the live

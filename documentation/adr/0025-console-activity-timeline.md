@@ -62,8 +62,11 @@ story as the decision audit log a SIEM reads. Four things need a decision:
   the ring and the file hold the same records in the same order.
 - The file is opened read-write (append-only writes, as before) so that the
   node can read back what it wrote through the same descriptor, whatever
-  logrotate did to the path. If it may only be opened for writing, the node
-  writes as before and the console says it cannot read it.
+  logrotate did to the path. If it may only be opened for writing, or is
+  no regular file (such as `/dev/stdout`), the node writes as before and
+  the console says it cannot read it. Every file opened starts a new
+  generation, which positions in the file carry; a reload that reopens
+  the same file keeps the generation, so paging survives it.
 
 ### The timeline reads the audit trail
 
@@ -77,8 +80,9 @@ story as the decision audit log a SIEM reads. Four things need a decision:
   same records a SIEM ingests, also those written before the last restart,
   for as long as the file holds them. The file is the current one: after
   logrotate reopened it, older records are in the rotated files and the
-  SIEM; the page says since when the file holds records. Lines that are not
-  records of this format are skipped and counted.
+  SIEM; the page says since when the file holds records (the time of its
+  first line). Lines that are not records of this format are skipped and
+  counted, and so is a line longer than a page may read.
 - **Paging and filtering happen on the node.** The page opens at a mark
   taken under the log's lock: the sequence number of the last record and the
   file's size. It reads the file backwards from the size, and the live feed
@@ -104,8 +108,10 @@ story as the decision audit log a SIEM reads. Four things need a decision:
   and not paused, the script asks every **1 second**, parses the answer into
   an inert document (as ADR 0020) and puts the new rows on top. So an
   entry appears within about 1 second, and nothing is requested while the
-  page is hidden or paused. *Pause* stops the requests; *Resume* fetches
-  everything since the pause at once.
+  page is hidden or paused. *Pause* stops the requests and drops an answer
+  still on its way; *Resume* fetches everything since the pause at once. A
+  failed request is said in the live status, and a session that ended
+  hides the live controls.
 - **Bursts are summarised on the node.** One answer holds at most the
   newest **50** matching rows; the rest become one summary row — how many
   entries of which kinds between which times were not listed one by one,

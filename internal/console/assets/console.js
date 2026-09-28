@@ -75,6 +75,9 @@
   function signedOutBanner() {
     signedOut = true;
     showLiveHints(false);
+    if (feed) {
+      feed.hidden = true; // the timeline no longer follows the node
+    }
     showBanner(
       'You were signed out: the console token was replaced (obiectl console --rotate) or obied restarted.',
       { href: '/login?next=' + encodeURIComponent(location.pathname + location.search), text: 'Sign in again' });
@@ -346,7 +349,9 @@
   var liveTimer = 0;
   var liveBusy = false;
   var paused = false;
+  var failed = false;
   var after = '';
+  var LIVE_TEXT = 'Live: new entries appear at the top as they happen.';
 
   function liveURL() {
     var url = new URL(feed.getAttribute('data-live-feed'), location.href);
@@ -398,15 +403,35 @@
       clockNow() + ' UTC.';
   }
 
+  // pollLive asks for the entries after the last one. An answer that
+  // arrives after Pause is dropped, and asked for again on Resume. A
+  // failure is said in the live status: the health poll, which owns the
+  // banner, would hide it again.
   function pollLive() {
     liveTimer = 0;
     liveBusy = true;
     fetch(liveURL(), { credentials: 'same-origin', cache: 'no-store', headers: { Accept: 'text/html' } })
       .then(function (resp) {
-        if (!answered(resp)) {
+        if (resp.status === 401) {
+          signedOutBanner();
           return;
         }
-        return resp.text().then(addEntries);
+        if (!resp.ok) {
+          failed = true;
+          feedStatus.textContent = 'Live updates failed: the console answered HTTP ' + resp.status +
+            '. The obied log says why; this page keeps trying.';
+          return;
+        }
+        return resp.text().then(function (html) {
+          if (paused) {
+            return;
+          }
+          if (failed) {
+            failed = false;
+            feedStatus.textContent = LIVE_TEXT;
+          }
+          addEntries(html);
+        });
       })
       .catch(function () {
         // The health poll tells when the console cannot be reached.
@@ -439,7 +464,7 @@
       stopLive();
       feedStatus.textContent = 'Paused: new entries are not shown until you resume.';
     } else {
-      feedStatus.textContent = 'Live: new entries appear at the top as they happen.';
+      feedStatus.textContent = LIVE_TEXT;
       scheduleLive(0); // everything since the pause, at once
     }
   }
