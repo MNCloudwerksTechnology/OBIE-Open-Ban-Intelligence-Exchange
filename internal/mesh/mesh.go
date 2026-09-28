@@ -106,6 +106,14 @@ type Mesh struct {
 	publishers    map[peer.ID]config.Publisher
 	defaultWeight float64
 
+	// tally counts the events each peer sent (ADR 0021).
+	tally *gossip.Tally
+	// historyMu guards lastSeen and dialFailures, which are kept for
+	// configured peers only.
+	historyMu    sync.Mutex
+	lastSeen     map[peer.ID]time.Time
+	dialFailures map[peer.ID]dialFailure
+
 	mu     sync.Mutex
 	host   host.Host
 	gossip *gossip.Gossip
@@ -121,7 +129,8 @@ func New(id identity.Identity, opts Options, log *slog.Logger) (*Mesh, error) {
 		return nil, errors.New("no store")
 	}
 	opts = withDefaults(opts)
-	m := &Mesh{id: id, opts: opts, log: log}
+	m := &Mesh{id: id, opts: opts, log: log, tally: gossip.NewTally(nil),
+		lastSeen: map[peer.ID]time.Time{}, dialFailures: map[peer.ID]dialFailure{}}
 
 	for _, s := range opts.Listen {
 		addr, err := ma.NewMultiaddr(s)
@@ -177,6 +186,22 @@ func (m *Mesh) trustOf(id peer.ID) (name string, weight float64) {
 	return "", m.defaultWeight
 }
 
+// isPublisher reports whether peer id is listed in trust.publishers.
+func (m *Mesh) isPublisher(id peer.ID) bool {
+	m.trustMu.RLock()
+	defer m.trustMu.RUnlock()
+	_, ok := m.publishers[id]
+	return ok
+}
+
+// DefaultWeight returns trust.default_weight: the trust weight of
+// publishers not listed in trust.publishers.
+func (m *Mesh) DefaultWeight() float64 {
+	m.trustMu.RLock()
+	defer m.trustMu.RUnlock()
+	return m.defaultWeight
+}
+
 func withDefaults(opts Options) Options {
 	if opts.InitialBackoff <= 0 {
 		opts.InitialBackoff = DefaultInitialBackoff
@@ -222,11 +247,15 @@ func (m *Mesh) Start(context.Context) error {
 	if err != nil {
 		return err
 	}
+	var metrics gossip.Metrics = m.tally
+	if m.opts.GossipMetrics != nil {
+		metrics = observers{m.tally, m.opts.GossipMetrics}
+	}
 	g, err := gossip.New(h, gossip.Options{
 		Store:          m.opts.Store,
 		PublisherLimit: m.opts.RateLimit.Publisher,
 		PeerLimit:      m.opts.RateLimit.Peer,
-		Metrics:        m.opts.GossipMetrics,
+		Metrics:        metrics,
 
 		AllowDocumentationRanges: m.opts.AllowDocumentationRanges,
 	}, m.log)
