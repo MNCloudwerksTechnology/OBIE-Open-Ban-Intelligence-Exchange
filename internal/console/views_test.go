@@ -24,7 +24,7 @@ func signedInBrowser(t *testing.T) (*Console, *browser) {
 
 var (
 	navBlock = regexp.MustCompile(`(?s)<nav class="nav" aria-label="Console">(.*?)</nav>`)
-	navLink  = regexp.MustCompile(`<a href="([^"]*)"( aria-current="page")?>([^<]*)</a>`)
+	navLink  = regexp.MustCompile(`<a href="([^"]*)"(?: aria-current="(page|true)")?>([^<]*)</a>`)
 )
 
 // navOf returns the navigation links of a page: path, title and whether
@@ -37,7 +37,7 @@ func navOf(t *testing.T, page string) []navItem {
 	}
 	var items []navItem
 	for _, l := range navLink.FindAllStringSubmatch(m[1], -1) {
-		items = append(items, navItem{Path: l[1], Title: l[3], Current: l[2] != ""})
+		items = append(items, navItem{Path: l[1], Title: l[3], Current: l[2]})
 	}
 	return items
 }
@@ -57,7 +57,11 @@ func TestNavigationListsExactlyTheViews(t *testing.T) {
 			t.Fatalf("%s: navigation %+v, want the %d views", current.Path, nav, len(c.pages))
 		}
 		for i, v := range c.pages {
-			if want := (navItem{Path: v.Path, Title: v.Title, Current: v.Path == current.Path}); nav[i] != want {
+			want := navItem{Path: v.Path, Title: v.Title}
+			if v.Path == current.Path {
+				want.Current = "page"
+			}
+			if nav[i] != want {
 				t.Errorf("%s: navigation item %d = %+v, want %+v", current.Path, i, nav[i], want)
 			}
 		}
@@ -72,7 +76,7 @@ func TestNavigationListsExactlyTheViews(t *testing.T) {
 		t.Errorf("unknown page = %d:\n%s", resp.StatusCode, page)
 	}
 	for _, item := range navOf(t, page) {
-		if item.Current {
+		if item.Current != "" {
 			t.Errorf("not-found page marks %s as current", item.Path)
 		}
 	}
@@ -410,7 +414,10 @@ func TestScriptInsertsOnlyInertFragments(t *testing.T) {
 		t.Errorf("console.js turns a string into markup: %q", m)
 	}
 	for _, want := range []string{"new DOMParser().parseFromString(html, 'text/html')", "getAttribute('data-refresh')",
-		"credentials: 'same-origin'", "document.hidden", "querySelectorAll('[data-tick]')", "preventScroll: true"} {
+		"credentials: 'same-origin'", "document.hidden", "querySelectorAll('[data-tick]')", "preventScroll: true",
+		// A filter and a column heading may share an href: the focused
+		// occurrence is restored (ADR 0021).
+		"linksTo(region, href).indexOf(el)", "links[focused.index]"} {
 		if !strings.Contains(string(script), want) {
 			t.Errorf("console.js lacks %q", want)
 		}

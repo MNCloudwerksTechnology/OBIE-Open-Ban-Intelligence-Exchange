@@ -338,7 +338,7 @@ func TestPeerVerdicts(t *testing.T) {
 				Protocol: "ssh", ExpiresAt: peersNow.Add(time.Hour)},
 		}, Next: "ipv4:203.0.113.7"}, nil
 	}
-	e := peerEntry{Peer: Peer{ID: idAlpha, Weight: 0.7}}
+	e := peerEntry{Peer: Peer{ID: idAlpha, Weight: 0.7}, verdicts: VerdictCount{Held: 2, Counting: 1}}
 	l := c.peerVerdicts(&e, "")
 	if len(asked) != 1 || asked[0] != idAlpha+` after "" limit 50` {
 		t.Errorf("asked %v", asked)
@@ -363,7 +363,7 @@ func TestPeerVerdicts(t *testing.T) {
 	}
 
 	c.pages = append(c.pages, view{Path: "/verdicts", Title: "Verdicts"})
-	untrusted := peerEntry{Peer: Peer{ID: idBravo}}
+	untrusted := peerEntry{Peer: Peer{ID: idBravo}, verdicts: VerdictCount{Held: 2}}
 	l = c.peerVerdicts(&untrusted, "ipv4:1.2.3.4")
 	if l.Rows[0].Href != "/verdicts?address=198.51.100.0%2F24" || l.All != "/verdicts?publisher="+idBravo ||
 		l.AllCommand != "" || l.ShowCommand != "" || l.First != "/peers/"+idBravo {
@@ -371,6 +371,14 @@ func TestPeerVerdicts(t *testing.T) {
 	}
 	if l.Rows[0].Counting || l.Rows[0].Counts != "No: weight 0" {
 		t.Errorf("ban of an untrusted peer: %+v", l.Rows[0])
+	}
+
+	// A peer the node holds no verdict of is not looked up: that would
+	// walk every verdict key.
+	asked = nil
+	none := peerEntry{Peer: Peer{ID: idCharlie, Weight: 1}}
+	if l := c.peerVerdicts(&none, ""); len(asked) != 0 || len(l.Rows) != 0 || l.Err != "" {
+		t.Errorf("a peer without verdicts: asked %v, list %+v", asked, l)
 	}
 
 	c.node.PeerVerdicts = func(string, string, int) (VerdictPage, error) { return VerdictPage{}, errors.New("store is not open") }
@@ -404,8 +412,8 @@ func TestItemPages(t *testing.T) {
 		!strings.Contains(page, "<title>Thing one · OBIE console</title>") {
 		t.Fatalf("GET /things/one = %d:\n%s", resp.StatusCode, page)
 	}
-	if nav := navOf(t, page); nav[len(nav)-1] != (navItem{Path: "/things", Title: "Things", Current: true}) {
-		t.Errorf("navigation = %+v, want the view marked", nav)
+	if nav := navOf(t, page); nav[len(nav)-1] != (navItem{Path: "/things", Title: "Things", Current: "true"}) {
+		t.Errorf("navigation = %+v, want the view marked as containing the page", nav)
 	}
 	if resp, body := b.get("/api/things/one"); resp.StatusCode != http.StatusOK || body != "<p>item one region=true</p>" {
 		t.Errorf("GET /api/things/one = %d %q", resp.StatusCode, body)
@@ -413,6 +421,11 @@ func TestItemPages(t *testing.T) {
 	resp, page = b.get("/things/gone")
 	if resp.StatusCode != http.StatusNotFound || !strings.Contains(page, "<code>/things/gone</code>. No such thing.</p>") {
 		t.Errorf("GET /things/gone = %d:\n%s", resp.StatusCode, page)
+	}
+	for _, item := range navOf(t, page) {
+		if item.Current != "" {
+			t.Errorf("the not-found page marks %s as current", item.Path)
+		}
 	}
 	if resp, body := b.get("/api/things/gone"); resp.StatusCode != http.StatusOK || body != "<p>item gone region=true</p>" {
 		t.Errorf("GET /api/things/gone = %d %q", resp.StatusCode, body)

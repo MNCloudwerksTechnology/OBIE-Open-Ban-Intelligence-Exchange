@@ -79,7 +79,7 @@ func TestPeersPage(t *testing.T) {
 		`<span class="weight">120</span>`+"\n        "+`<span class="cell-note">118 count in decisions</span>`,
 		`<span>57 accepted</span>`,
 		`<span class="rejected">3 rejected</span>`,
-		`<span class="cell-note">2 invalid signature, 1 expired or dated in the future</span>`,
+		`<span class="cell-note">2 invalid signature, 1 expired or dated in the future</span>`+"\n        "+`<span class="cell-note">4 already known</span>`,
 		// Edge case: an unreachable bootstrap peer, with when it was last seen.
 		`<span class="peer-state" data-state="warning">Disconnected</span>`,
 		`<span class="cell-note">last seen <time datetime="2026-09-28T11:30:00Z">2026-09-28 11:30:00 UTC</time></span>`,
@@ -92,7 +92,7 @@ func TestPeersPage(t *testing.T) {
 		`<p class="pager-text">4 peers</p>`,
 		`<p class="note">This node also holds 5 active verdicts from 1 other publisher that are neither configured nor connected. They carry the default weight 0: no influence on decisions.</p>`,
 	)
-	if nav := navOf(t, page); len(nav) < 2 || nav[1] != (navItem{Path: "/peers", Title: "Peers", Current: true}) {
+	if nav := navOf(t, page); len(nav) < 2 || nav[1] != (navItem{Path: "/peers", Title: "Peers", Current: "page"}) {
 		t.Errorf("navigation = %+v, want Peers after Overview, marked", nav)
 	}
 }
@@ -179,8 +179,8 @@ func TestPeerPage(t *testing.T) {
 		`<td><span class="cell-label">Counts in decisions</span> <span>Yes</span></td>`,
 		`<a href="/peers/`+idAlpha+`?after=ipv4%3A203.0.113.7" rel="next">Next verdicts</a>`,
 	)
-	if nav := navOf(t, page); len(nav) < 2 || !nav[1].Current {
-		t.Errorf("navigation = %+v, want Peers marked", nav)
+	if nav := navOf(t, page); len(nav) < 2 || nav[1].Current != "true" {
+		t.Errorf("navigation = %+v, want Peers marked as containing the page", nav)
 	}
 	if n := reads.Load(); n != 1 {
 		t.Errorf("the page read the verdicts %d times, want once", n)
@@ -225,7 +225,7 @@ func TestPeerPageStates(t *testing.T) {
 	_, page = b.get("/peers/" + idStray)
 	wantAll(t, "the stray peer's page", page,
 		"<title>Peer 12D3KooW…rayPee · OBIE console</title>",
-		"<h1>Unnamed peer</h1>",
+		`<h1>Unnamed peer <span class="mono">12D3KooW…rayPee</span></h1>`,
 		`<dd>None: the peer is not listed in trust.publishers</dd>`,
 		`<span class="role">Not configured</span></span> It connected to this node on its own.</dd>`)
 

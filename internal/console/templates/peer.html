@@ -1,6 +1,6 @@
 {{define "content" -}}
 <p class="back"><a href="/peers">All peers</a></p>
-<h1>{{.Peer.Title}}</h1>
+<h1>{{.Peer.Title}}{{if not .Peer.Named}} <span class="mono">{{.Peer.ShortID}}</span>{{end}}</h1>
 <p class="lead">A peer of this node: its connection, the trust placed in it, and what it sends. <span data-live hidden>This part of the page updates itself every 5 seconds.</span></p>
 <div class="refresh" data-refresh="{{.Fragment}}">
 {{template "region" .}}

@@ -35,9 +35,9 @@ accepted or rejected recently. Four things need a decision:
   marked *bootstrap peer*, *trusted publisher* or *not configured*, and
   *connected* or *disconnected*.
 - The mesh keeps, for configured peers only (so the memory is bounded by
-  the configuration), when a peer last disconnected (*last seen*), and for
-  bootstrap peers the last failed dial and its error, until the next
-  connection. A configured peer that has not been connected since `obied`
+  the configuration), when a peer last disconnected or the mesh stopped
+  (*last seen*), and for bootstrap peers the last failed dial and its
+  error, until the next connection. A configured peer that has not been connected since `obied`
   started says so. A disconnected bootstrap peer shows its configured
   addresses; a connected peer the addresses of its open connections.
 - **Trust.** The weight shown is the one the decision engine applies: the
@@ -57,8 +57,10 @@ accepted or rejected recently. Four things need a decision:
 - The gossip validator passes the sending peer to its observer. A tally
   counts the outcomes per peer over the **last hour, in twelve 5-minute
   buckets**; peers without events in the window are dropped, and at most
-  4,096 peers are tallied at once (a peer beyond that is not counted until
-  others age out). The tally lives in the mesh and survives reconnects.
+  4,096 other peers are tallied at once (a peer beyond that is not counted
+  until others age out). Configured peers are always tallied, so that
+  throwaway peers cannot crowd them out. The tally lives in the mesh and
+  survives reconnects.
 
 ### Verdict counts
 
@@ -87,8 +89,9 @@ accepted or rejected recently. Four things need a decision:
   keys (`v/<indicator>\0<publisher>`) and decoding only the records whose
   key names that publisher. It stops once a page is full, so a publisher
   with many verdicts pages quickly; one with few costs one walk over the
-  keys. This list is outside the page's refreshing region: it is read
-  when the page is opened, not every 5 seconds.
+  keys, and one the engine counts no active verdict of is not looked up at
+  all. This list is outside the page's refreshing region: it is read when
+  the page is opened, not every 5 seconds.
 - Each verdict links into the verdict view for its address
   (`/verdicts?address=…`) and the page to all the peer's verdicts
   (`/verdicts?publisher=…`), once that view exists; until then they name
@@ -130,5 +133,7 @@ accepted or rejected recently. Four things need a decision:
 - The engine's memory per held indicator grows by about 40 bytes.
 - `store.DB.PublisherVerdicts` joins the store's read methods.
 - A view may now serve item pages below its path (`/peers/{id}`), marked
-  as the view in the navigation, with their own refreshing fragment
-  (`/api/peers/{id}`).
+  as belonging to the view in the navigation (`aria-current="true"`), with
+  their own refreshing fragment (`/api/peers/{id}`). A refresh restores
+  the focus to the same link even where several links of a region share
+  an address (a filter and a column heading).

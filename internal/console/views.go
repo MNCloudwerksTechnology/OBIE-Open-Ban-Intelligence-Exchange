@@ -90,7 +90,9 @@ type layoutPage struct {
 
 type navItem struct {
 	Path, Title string
-	Current     bool
+	// Current is the link's aria-current: "page" on the view itself,
+	// "true" on the page of one of its items, empty elsewhere.
+	Current string
 }
 
 type nodeSummary struct {
@@ -100,8 +102,8 @@ type nodeSummary struct {
 // modeLabels name node.mode.
 var modeLabels = map[string]string{"observe": "Observe", "enforce": "Enforce"}
 
-// layout returns the layout data for a page titled title whose navigation
-// marks current.
+// layout returns the layout data for a page titled title at the path
+// current, whose navigation marks the view current is, or belongs to.
 func (c *Console) layout(title, current string, content any) layoutPage {
 	mode := c.node.Mode()
 	label, ok := modeLabels[mode]
@@ -117,7 +119,14 @@ func (c *Console) layout(title, current string, content any) layoutPage {
 		Content:   content,
 	}
 	for _, v := range c.pages {
-		p.Nav = append(p.Nav, navItem{Path: v.Path, Title: v.Title, Current: v.Path == current})
+		item := navItem{Path: v.Path, Title: v.Title}
+		switch {
+		case v.Path == current:
+			item.Current = "page"
+		case v.item != nil && strings.HasPrefix(current, v.Path+"/"):
+			item.Current = "true"
+		}
+		p.Nav = append(p.Nav, item)
 	}
 	return p
 }
@@ -155,11 +164,11 @@ func (c *Console) serveItem(v view) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		title, data, ok := v.item.content(r, false)
 		if !ok {
-			c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", v.Path,
+			c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", "",
 				notFoundPage{Path: r.URL.Path, Message: v.item.missing}))
 			return
 		}
-		c.render(w, http.StatusOK, v.item.template, c.layout(title, v.Path, data))
+		c.render(w, http.StatusOK, v.item.template, c.layout(title, r.URL.Path, data))
 	})
 }
 

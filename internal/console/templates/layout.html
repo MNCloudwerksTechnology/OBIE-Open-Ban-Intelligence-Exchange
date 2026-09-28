@@ -30,7 +30,7 @@
   <nav class="nav" aria-label="Console">
     <ul>
       {{- range .Nav}}
-      <li><a href="{{.Path}}"{{if .Current}} aria-current="page"{{end}}>{{.Title}}</a></li>
+      <li><a href="{{.Path}}"{{with .Current}} aria-current="{{.}}"{{end}}>{{.Title}}</a></li>
       {{- end}}
     </ul>
   </nav>

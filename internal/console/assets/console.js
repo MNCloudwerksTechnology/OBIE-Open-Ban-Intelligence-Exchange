@@ -97,19 +97,32 @@
     return copy.innerHTML.trim();
   }
 
-  // focusedLink returns the href of the focused link inside region, or null.
-  function focusedLink(region) {
-    var el = document.activeElement;
-    return el && region.contains(el) && el.hasAttribute('href') ? el.getAttribute('href') : null;
+  // linksTo returns the links inside region that point to href.
+  function linksTo(region, href) {
+    return Array.prototype.filter.call(region.querySelectorAll('a[href]'), function (a) {
+      return a.getAttribute('href') === href;
+    });
   }
 
-  function focusLink(region, href) {
-    var links = region.querySelectorAll('a[href]');
-    for (var i = 0; i < links.length; i++) {
-      if (links[i].getAttribute('href') === href) {
-        links[i].focus({ preventScroll: true });
-        return;
-      }
+  // focusedLink returns the href of the focused link inside region and
+  // which of the links to that href it is (a filter and a column heading
+  // may share one), or null.
+  function focusedLink(region) {
+    var el = document.activeElement;
+    if (!el || !region.contains(el) || !el.hasAttribute('href')) {
+      return null;
+    }
+    var href = el.getAttribute('href');
+    return { href: href, index: linksTo(region, href).indexOf(el) };
+  }
+
+  // focusLink focuses the same link again: the same occurrence of its
+  // href, or the first one if there are fewer now.
+  function focusLink(region, focused) {
+    var links = linksTo(region, focused.href);
+    var link = links[focused.index] || links[0];
+    if (link) {
+      link.focus({ preventScroll: true });
     }
   }
 

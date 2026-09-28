@@ -104,7 +104,9 @@ func (c *Console) peerVerdicts(e *peerEntry, after string) *verdictList {
 	l := &verdictList{ReadAt: stamp(c.now())}
 	l.All, l.AllCommand = c.detailLink("/verdicts?publisher="+url.QueryEscape(e.ID), "obiectl indicators --publisher "+e.ID)
 	_, l.ShowCommand = c.detailLink("/verdicts", "obiectl show <address>")
-	if c.node.PeerVerdicts == nil {
+	// A peer without active verdicts is common (a relay); finding none
+	// would walk every verdict key.
+	if c.node.PeerVerdicts == nil || e.verdicts.Held == 0 {
 		return l
 	}
 	page, err := c.node.PeerVerdicts(e.ID, after, verdictsPageSize)

@@ -65,11 +65,14 @@
       </td>
       <td>
         <span class="cell-label">Events, {{.Window}}</span>
-        {{- if or .Accepted .Rejected}}
+        {{- if or .Accepted .Rejected .Duplicates}}
         <span>{{count .Accepted}} accepted</span>
         {{- if .Rejected}}
         <span class="rejected">{{count .Rejected}} rejected</span>
         <span class="cell-note">{{range $i, $r := .Reasons}}{{if $i}}, {{end}}{{count $r.Count}} {{$r.Reason}}{{end}}</span>
+        {{- end}}
+        {{- with .Duplicates}}
+        <span class="cell-note">{{count .}} already known</span>
         {{- end}}
         {{- else}}
         <span class="cell-note">None</span>
