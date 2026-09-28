@@ -78,6 +78,12 @@ is throttled without starving the others.
   that have refilled are forgotten, so memory follows the active keys.
   A rate-limited event is remembered by GossipSub like any other and is
   not accepted from another peer while that lasts.
+- **Validation queue:** received messages wait in GossipSub's validation
+  queue before any bucket sees them, and a full queue drops the messages of
+  every peer alike. The queue holds four full peer bursts (1000 messages
+  with the defaults) instead of GossipSub's 32: with 32, a flooder's burst
+  on a busy node filled it, and honest events arriving meanwhile were lost
+  (`TestGossipRateLimitsFlooder` failed on two-CPU CI runners).
 - **Peer scoring:** enabled with conservative parameters: invalid messages
   (P4, weight −10, squared, decaying within an hour) drive the score;
   thresholds gossip −50, publish −100, graylist −200, i.e. a peer is
@@ -89,7 +95,10 @@ is throttled without starving the others.
   publisher is the node itself, checks them with `obieproto.Receive`,
   stores them, then publishes. The validator accepts the node's own
   messages without counting them. With no peers the event is stored and the
-  publication is a no-op on the wire.
+  publication is a no-op on the wire. Own events are flood-published
+  (GossipSub v1.1): sent to every topic peer above the publish threshold,
+  not only to the mesh peers, so a single peer that drops one does not
+  stop it.
 - **Metrics hook:** `gossip.Metrics` (`Observe(Outcome)`) receives the
   outcome of every message from a peer; `gossip.Outcomes` lists the
   outcomes. The metrics work package (#1663) wires it to Prometheus; until
@@ -100,7 +109,7 @@ is throttled without starving the others.
 - The spec (sections 8–11, appendices A and C) changes accordingly; the
   new `obieproto.ErrClockSkew` separates a future `issued_at` from other
   field errors, and `obieproto.Receive` no longer takes the message author.
-- GossipSub forwards only to peers in the topic mesh, which forms in the
+- GossipSub relays only to peers in the topic mesh, which forms in the
   heartbeat (1 s) after peers connect; an event published before that
   reaches the direct peers only. v0.1 has no anti-entropy sync, so such an
   event is not delivered further later.

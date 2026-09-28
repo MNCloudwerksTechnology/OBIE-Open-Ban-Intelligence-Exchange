@@ -31,6 +31,13 @@ import (
 // published: a node only publishes its own events.
 var ErrNotLocal = errors.New("event was not published by this node")
 
+// validateQueueBursts is how many full peer bursts (mesh.rate_limit.peer)
+// the GossipSub validation queue holds. Messages waiting in the queue are
+// not yet charged to any rate limit, and a full queue drops every peer's
+// messages alike: GossipSub's default of 32 would let a single flooding
+// neighbor crowd out the events of honest ones before the limits see it.
+const validateQueueBursts = 4
+
 // Options configures a Gossip.
 type Options struct {
 	// Store receives every accepted event and answers the duplicate check.
@@ -81,7 +88,7 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	topic, sub, err := join(ctx, h, v)
+	topic, sub, err := join(ctx, h, v, validateQueueBursts*opts.PeerLimit.Burst)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -108,8 +115,8 @@ func bucketOrDefault(b, def config.TokenBucket) config.TokenBucket {
 }
 
 // join starts GossipSub on h and subscribes to the topic with v as its
-// validator.
-func join(ctx context.Context, h host.Host, v *validator) (*pubsub.Topic, *pubsub.Subscription, error) {
+// validator, which up to queueSize received messages wait for.
+func join(ctx context.Context, h host.Host, v *validator, queueSize int) (*pubsub.Topic, *pubsub.Subscription, error) {
 	ps, err := pubsub.NewGossipSub(ctx, h,
 		// Events carry their own signature: messages have no author,
 		// sequence number or pubsub signature, and are rejected if they do.
@@ -117,6 +124,11 @@ func join(ctx context.Context, h host.Host, v *validator) (*pubsub.Topic, *pubsu
 		pubsub.WithNoAuthor(),
 		pubsub.WithMessageIdFn(messageID),
 		pubsub.WithPeerScore(peerScoreParams(), peerScoreThresholds()),
+		pubsub.WithValidateQueueSize(queueSize),
+		// The node's own events go to every topic peer above the publish
+		// threshold, not only to its mesh peers (GossipSub v1.1 flood
+		// publishing): one peer dropping them does not lose them.
+		pubsub.WithFloodPublish(true),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start gossipsub: %w", err)
