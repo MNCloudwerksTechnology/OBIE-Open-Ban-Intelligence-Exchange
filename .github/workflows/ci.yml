@@ -135,6 +135,18 @@ jobs:
           GOCACHE="$(mktemp -d)" make release VERSION=0.0.0-ci
           diff "$RUNNER_TEMP/SHA256SUMS" dist/release/SHA256SUMS
 
+      # The install commands of documentation/operations/quickstart.md, on
+      # the tarball just built: verify, extract, install (staged below
+      # DESTDIR, without root and systemd) and check the installed config.
+      - name: quickstart steps on the release tarball
+        run: |
+          cp dist/release/obie-0.0.0-ci-linux-amd64.tar.gz dist/release/SHA256SUMS "$RUNNER_TEMP/"
+          cd "$RUNNER_TEMP"
+          sha256sum -c --ignore-missing SHA256SUMS
+          tar -xzf obie-0.0.0-ci-linux-amd64.tar.gz
+          DESTDIR="$RUNNER_TEMP/root" ./obie-0.0.0-ci-linux-amd64/install.sh
+          "$RUNNER_TEMP/root/usr/local/bin/obied" --config "$RUNNER_TEMP/root/etc/obie/obie.yaml" --check-config
+
       - name: make check-unit
         run: |
           if ! command -v systemd-analyze >/dev/null; then
