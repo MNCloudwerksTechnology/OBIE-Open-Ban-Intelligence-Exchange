@@ -52,6 +52,13 @@ The first release, v0.1.0 "Stable Base".
 - **Admin API and CLI.** A local Unix-socket API restricted to root, the
   service user and the `obie` group, and `obiectl` on top of it
   (`status`, `peers` and the commands above).
+- **Web console.** An opt-in, read-only browser view of the node
+  (`console.enabled`, switched on and off by a reload), listening on a
+  loopback address only, for the users of `obiectl` only and behind a
+  token kept in `obied`'s memory (`obiectl console`, `--rotate`); it shows
+  the node's health on every page and never stops the node
+  ([web console](documentation/operations/console.md),
+  [ADR 0019](documentation/adr/0019-local-web-console.md)).
 - **Packaging.** Reproducible static release tarballs for linux/amd64 and
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
   hardened systemd unit, a distroless container image, and a three-node

@@ -142,6 +142,16 @@ No message at all: check that the jail lists `obie` among its actions
 reloaded. The [Fail2Ban guide](../guides/fail2ban.md#verify) has a
 step-by-step check.
 
+## The web console does not open
+
+`sudo obiectl console` says whether the console is switched on and
+serving, and why not. It never keeps the node from running: a console that
+cannot listen (port taken) is logged as `console not started; the node
+runs without it`. A refusal in the browser names its cause — your user is
+not in the group `obie`, or the console was opened under another name than
+`127.0.0.1` or `localhost`. [Web console](console.md#when-it-does-not-work)
+lists every message and its fix.
+
 ## obied does not start
 
 `sudo systemctl status obied` and `sudo journalctl -u obied -n 20` show the reason

@@ -132,6 +132,7 @@ The console admits only root, the user `obied` runs as and members of
 `admin.socket_group`, and only with the token; its security model is
 [ADR 0019](../adr/0019-local-web-console.md). If it cannot start, for
 example because its port is taken, the node runs without it and logs why.
+How to sign in and reach it from another machine: [Web console](console.md).
 
 ## audit
 
