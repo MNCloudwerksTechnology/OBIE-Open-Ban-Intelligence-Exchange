@@ -2,7 +2,8 @@
 
 Honest answers to the questions people ask before they let OBIE near their
 firewall. Each answer states what OBIE v0.1 protects against and what risk
-remains. Every term is explained in the [glossary](glossary.md).
+remains. New to OBIE? Start with [What is OBIE?](introduction.md) Every
+term is explained in the [glossary](glossary.md).
 
 ## Can a peer lock me out?
 

@@ -1,7 +1,8 @@
 # Glossary
 
 Every OBIE term you meet in this documentation, each explained in one or
-two sentences. The pages link a term here the first time they use it.
+two sentences. The pages link a term here the first time they use it. New
+to OBIE? Start with [What is OBIE?](introduction.md)
 
 ## Allow-list
 
