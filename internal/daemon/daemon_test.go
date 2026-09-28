@@ -191,6 +191,25 @@ func TestReloadKeepsMeshAddresses(t *testing.T) {
 	}
 }
 
+func TestReloadAppliesConsole(t *testing.T) {
+	f := newReloadFixture(t)
+	var applied []config.Console
+	f.rl.console = func(c config.Console) { applied = append(applied, c) }
+	f.next.Console = config.Console{Enabled: true, Listen: "127.0.0.1:9470"}
+	if err := f.rl.reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(applied) != 1 || applied[0] != f.next.Console || f.rl.running.Console != f.next.Console {
+		t.Errorf("console applied %+v, running %+v; want %+v once", applied, f.rl.running.Console, f.next.Console)
+	}
+	if strings.Contains(f.logs.String(), "need a restart") {
+		t.Errorf("console changes reported as needing a restart:\n%s", f.logs)
+	}
+	if !strings.Contains(f.logs.String(), `"console_enabled":true`) {
+		t.Errorf("reload line without the console:\n%s", f.logs)
+	}
+}
+
 func TestReloadRejects(t *testing.T) {
 	for name, breakIt := range map[string]func(*reloadFixture, *testing.T){
 		"invalid config": func(f *reloadFixture, _ *testing.T) { f.err = errors.New("invalid configuration: decision.quorum") },
@@ -204,9 +223,15 @@ func TestReloadRejects(t *testing.T) {
 			f.put(t, "198.18.0.12", self)
 			f.next.Node.Mode = config.ModeEnforce
 			f.next.Allowlist.CIDRs = []string{"198.18.0.0/24"}
+			f.next.Console.Enabled = true
+			consoleApplied := false
+			f.rl.console = func(config.Console) { consoleApplied = true }
 			breakIt(f, t)
 			if err := f.rl.reload(context.Background()); err == nil {
 				t.Fatal("reload succeeded")
+			}
+			if consoleApplied || f.rl.running.Console.Enabled {
+				t.Error("a rejected reload switched the console")
 			}
 			if f.gate.Mode() != config.ModeObserve || f.rl.running.Node.Mode != config.ModeObserve || len(f.rl.running.Allowlist.CIDRs) != 0 {
 				t.Errorf("running configuration changed: mode %s, %+v", f.gate.Mode(), f.rl.running.Allowlist)

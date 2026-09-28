@@ -16,6 +16,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/audit"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/console"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce/nft"
@@ -79,6 +80,12 @@ type Testing struct {
 	// MetricsListen replaces metrics.listen, e.g. with "127.0.0.1:0" for a
 	// port chosen by the OS, which the configuration refuses.
 	MetricsListen string
+	// ConsoleListen replaces console.listen, at start and on every reload,
+	// e.g. with "127.0.0.1:0".
+	ConsoleListen string
+	// Console, if set, is called with the node's web console before it
+	// starts, e.g. to read the address it listens on.
+	Console func(*console.Console)
 	// NFTablesNetNS is a file descriptor of the network namespace the
 	// nftables backend programs; 0 for the process's own.
 	NFTablesNetNS int
@@ -153,7 +160,20 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	}
 
 	mgr := lifecycle.New(logs.Logger("lifecycle"), lifecycle.Options{StopTimeout: cfg.Node.ShutdownTimeout.Std()})
-	// The store starts first and stops last: every other subsystem may use it.
+	// The web console starts first and stops last, so that it can show the
+	// node starting and shutting down; it never fails to start (ADR 0019).
+	var gate *enforce.Gate
+	con := console.New(consoleConfig(cfg.Console, opts.Testing), console.Options{
+		Group: cfg.Admin.SocketGroup,
+		Node: console.Node{Version: version.Version, PeerID: id.PeerID(), Status: mgr.Status,
+			Mode: func() string { return string(gate.Mode()) }},
+	}, logs.Logger(console.Name))
+	if opts.Testing.Console != nil {
+		opts.Testing.Console(con)
+	}
+	mgr.Register(con)
+	// The store starts next and stops before it: every other subsystem may
+	// use it.
 	mgr.Register(db)
 	engine := decision.New(db, decision.NewPolicy(id.PeerID(), cfg.Trust, cfg.Decision), logs.Logger(decision.Name),
 		decision.Options{Allowlist: allow})
@@ -165,7 +185,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		return err
 	}
 	var reconciler *enforce.Reconciler
-	gate := enforce.NewGate(cfg.Node.Mode, func() { reconciler.Trigger() }, logs.Logger(enforceComponent))
+	gate = enforce.NewGate(cfg.Node.Mode, func() { reconciler.Trigger() }, logs.Logger(enforceComponent))
 	reconciler = enforce.NewReconciler(gate, backend, enforce.Options{
 		Backend:    string(cfg.Enforce.Backend),
 		MaxEntries: cfg.Enforce.MaxEntries,
@@ -230,6 +250,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 			return enforcedEntries(ctx, reconciler)
 		},
 		Verdicts: auditedVerdicts{VerdictService: reporter, audit: auditLog},
+		Console:  consoleService{console: con},
 	}, logs.Logger(admin.Name)))
 
 	if err := mgr.Start(ctx); err != nil {
@@ -244,14 +265,16 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		return fmt.Errorf("startup failed: %w", err)
 	}
 	log.Info("obied started", "version", version.Version, "mode", cfg.Node.Mode, "peer_id", id.PeerID(),
-		"admin_socket", cfg.Admin.Socket, "metrics_listen", opsServer.Addr().String(), "audit_path", cfg.Audit.Path)
+		"admin_socket", cfg.Admin.Socket, "metrics_listen", opsServer.Addr().String(), "audit_path", cfg.Audit.Path,
+		"console", con.Detail())
 
 	if opts.Testing.Started != nil {
 		opts.Testing.Started(Endpoints{Mesh: multiaddrStrings(m.ListenAddrs()), Metrics: opsServer.Addr().String()})
 	}
 
 	rl := &reloader{running: cfg, self: id.PeerID(), load: opts.LoadConfig, env: env,
-		engine: engine, gate: gate, mesh: m, audit: auditLog, log: logs.Logger(reloadComponent)}
+		engine: engine, gate: gate, mesh: m, audit: auditLog, log: logs.Logger(reloadComponent),
+		console: func(c config.Console) { con.Apply(consoleConfig(c, opts.Testing)) }}
 	waitForShutdown(ctx, opts.Reload, rl)
 	log.Info("shutdown requested", "timeout", cfg.Node.ShutdownTimeout.String())
 	if err := mgr.Stop(context.WithoutCancel(ctx)); err != nil {
