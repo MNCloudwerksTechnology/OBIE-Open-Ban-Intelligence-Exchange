@@ -36,6 +36,15 @@ const (
 // backends that report remaining timeouts.
 const ExpiryTolerance = 5 * time.Second
 
+// MinTimeout is the shortest remaining timeout an entry is added with;
+// blocks about to expire are left out rather than handed to a backend
+// that may reject a zero timeout.
+const MinTimeout = time.Second
+
+// PassTimeout bounds one reconciliation pass, so a hanging backend call
+// fails, is retried and shows in the readiness.
+const PassTimeout = 30 * time.Second
+
 // Skip reasons of decided blocks that are not applied.
 const (
 	SkipAllowlist  = "allowlist"
@@ -203,7 +212,8 @@ func (r *Reconciler) Status() Status {
 	return s
 }
 
-// Ready reports the last failure while the reconciler retries it.
+// Ready reports the last failure while the loop retries it; a failed
+// direct call of Reconcile is not counted.
 func (r *Reconciler) Ready() error {
 	s := r.Status()
 	if s.Failures == 0 {
@@ -219,6 +229,9 @@ func (r *Reconciler) Detail() string {
 	case "":
 		return "starting"
 	case config.ModeObserve:
+		if s.Failures > 0 {
+			return "observing (withdrawing the applied blocks failed)"
+		}
 		return "observing"
 	}
 	var b strings.Builder
@@ -232,7 +245,8 @@ func (r *Reconciler) Detail() string {
 	return b.String()
 }
 
-// Entries lists the entries the backend currently applies.
+// Entries lists the entries the backend currently applies. It waits for
+// a pass in progress, at most PassTimeout.
 func (r *Reconciler) Entries(ctx context.Context) ([]Entry, error) {
 	r.enfMu.Lock()
 	defer r.enfMu.Unlock()
@@ -241,7 +255,8 @@ func (r *Reconciler) Entries(ctx context.Context) ([]Entry, error) {
 
 // loop reconciles at once, then after every notification (debounced) and
 // every Interval; after a failure it retries with exponential backoff and
-// ignores notifications until then.
+// ignores notifications until then (a mode switch then takes effect with
+// the retry, at most Interval later).
 func (r *Reconciler) loop(ctx context.Context, done chan<- struct{}) {
 	defer close(done)
 	timer := time.NewTimer(0)
@@ -259,7 +274,7 @@ func (r *Reconciler) loop(ctx context.Context, done chan<- struct{}) {
 			}
 		case <-timer.C:
 			delay := r.opts.Interval
-			if err := r.Reconcile(ctx); err != nil {
+			if err := r.pass(ctx); err != nil {
 				if ctx.Err() != nil {
 					return
 				}
@@ -274,6 +289,13 @@ func (r *Reconciler) loop(ctx context.Context, done chan<- struct{}) {
 			next = time.Now().Add(delay)
 		}
 	}
+}
+
+// pass runs Reconcile within PassTimeout.
+func (r *Reconciler) pass(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, PassTimeout)
+	defer cancel()
+	return r.Reconcile(ctx)
 }
 
 // backoff returns the delay before retry n (from 1): MinBackoff doubling
@@ -340,18 +362,22 @@ func (r *Reconciler) observe(ctx context.Context) error {
 type candidate struct {
 	entry Entry
 	score float64
+	// forced is set for the operator's force-blocks, which the cap keeps
+	// first whatever their score.
+	forced bool
 }
 
-// desired returns the entries to apply at now: the unexpired blocks of the
-// gate that the allow-list does not refuse, the highest scores first up
-// to MaxEntries, ordered by prefix. It logs newly skipped blocks and
+// desired returns the entries to apply at now: the blocks of the gate
+// with at least MinTimeout left that the allow-list does not refuse, the
+// operator's force-blocks and then the highest scores first up to
+// MaxEntries, ordered by prefix. It logs newly skipped blocks and
 // counts the skipped ones by reason. Callers hold enfMu.
 func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 	allow := r.opts.Allowlist()
 	byPrefix := map[netip.Prefix]candidate{}
 	skipped := map[netip.Prefix]string{}
 	for _, d := range r.gate.Blocks() {
-		if d.State != decision.StateBlock || !now.Before(d.ExpiresAt) {
+		if d.State != decision.StateBlock || d.ExpiresAt.Sub(now) < MinTimeout {
 			continue
 		}
 		p, err := sovereignty.PrefixOf(d.Indicator)
@@ -367,19 +393,24 @@ func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 			skipped[p] = SkipAllowlist
 			continue
 		}
-		c := candidate{entry: Entry{Prefix: p, Expires: d.ExpiresAt}, score: d.Score}
+		c := candidate{entry: Entry{Prefix: p, Expires: d.ExpiresAt}, score: d.Score,
+			forced: d.Sovereignty.Rule == sovereignty.RuleForceBlock}
 		if old, dup := byPrefix[p]; dup { // e.g. ipv4:192.0.2.1 and cidr:192.0.2.1/32
 			c.entry.Expires = later(old.entry.Expires, c.entry.Expires)
 			c.score = max(old.score, c.score)
+			c.forced = c.forced || old.forced
 		}
 		byPrefix[p] = c
+	}
+	for p := range byPrefix { // applied through another indicator
+		delete(skipped, p)
 	}
 	cands := make([]candidate, 0, len(byPrefix))
 	for _, c := range byPrefix {
 		cands = append(cands, c)
 	}
 	slices.SortFunc(cands, func(a, b candidate) int {
-		return cmp.Or(cmp.Compare(b.score, a.score), comparePrefix(a.entry.Prefix, b.entry.Prefix))
+		return cmp.Or(compareForced(a.forced, b.forced), cmp.Compare(b.score, a.score), comparePrefix(a.entry.Prefix, b.entry.Prefix))
 	})
 	if len(cands) > r.opts.MaxEntries {
 		var fresh []string
@@ -406,6 +437,18 @@ func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 		counts[reason]++
 	}
 	return want, counts
+}
+
+// compareForced orders force-blocks first.
+func compareForced(a, b bool) int {
+	switch {
+	case a == b:
+		return 0
+	case a:
+		return -1
+	default:
+		return 1
+	}
 }
 
 // refusedBy returns the allow-list entry that forbids blocking p: any

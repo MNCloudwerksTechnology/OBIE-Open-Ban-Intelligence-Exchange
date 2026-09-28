@@ -30,22 +30,25 @@ or a gap in the allow-list must never lock the operator out.
   `enforce.reconcile_interval`. A pass computes the desired entries, lists
   the applied ones, and applies the minimal difference; an entry whose
   expiry differs by more than 5 s is replaced.
-- **Desired entries** = the gate's unexpired `block` decisions of address
-  and CIDR indicators, deduplicated by prefix, then:
+- **Desired entries** = the gate's `block` decisions of address and CIDR
+  indicators with at least 1 s left, deduplicated by prefix, then:
   - *Allow-list defence in depth:* every entry is checked against the
     effective allow-list right before apply. A protected entry (built-in,
     own, bootstrap) always refuses it; an `allowlist.cidrs`/files entry
     refuses it unless it is the operator's own `force_block` (the ADR 0013
     precedence). Refused blocks are logged once and counted.
-  - *Cap:* at most `enforce.max_entries`, highest score first; the rest is
-    skipped, logged once with a sample and counted.
+  - *Cap:* at most `enforce.max_entries`, the operator's force-blocks
+    first, then the highest score; the rest is skipped, logged once with a
+    sample and counted.
 - **Modes.** In `observe` the reconciler never calls `Setup`, `List` or
   `Apply`; it calls `Teardown` once (at the first pass, or after a switch
   from `enforce`), withdrawing whatever an earlier enforce run left. Its
   status detail says `observing`. Switching to `enforce` sets up the
   backend and applies the blocks within the debounce delay.
 - **Failures** are retried with exponential backoff (1 s doubling up to
-  `enforce.reconcile_interval`); notifications do not shorten the wait.
+  `enforce.reconcile_interval`); notifications do not shorten the wait, so
+  a mode switch during a failure takes effect with the next retry. A pass
+  is bounded by 30 s, so a hanging backend call fails too.
   While failing, the subsystem is not ready: `/readyz` answers 503 and
   `obiectl status` shows the error. `obied` stops without tearing the
   backend down: entries expire by themselves and the next start reconciles

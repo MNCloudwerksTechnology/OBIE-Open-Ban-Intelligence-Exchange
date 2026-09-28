@@ -24,6 +24,8 @@ type fakeEnforcer struct {
 	calls     []string
 	applies   [][2][]Entry
 	failApply int // the next failApply applies fail
+	// failTeardown makes the next teardowns fail.
+	failTeardown int
 }
 
 func newFake(entries ...Entry) *fakeEnforcer {
@@ -83,6 +85,10 @@ func (f *fakeEnforcer) Teardown(context.Context) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.record("teardown")
+	if f.failTeardown > 0 {
+		f.failTeardown--
+		return errors.New("netlink: operation not permitted")
+	}
 	clear(f.entries)
 	return nil
 }
@@ -248,6 +254,11 @@ func TestExpiryAndRemoval(t *testing.T) {
 	f.gate.Handle(block("198.51.100.3", decision.ChangeRemoved, time.Time{}))
 	f.reconcile(t)
 	wantState(t, f.enf, "198.51.100.2/32@1h0m0s")
+
+	// A block with less than MinTimeout left is not added.
+	f.add("198.51.100.4", time.Minute+MinTimeout/2, 1)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.2/32@1h0m0s")
 }
 
 // TestAllowlistDefence: right before apply, blocks overlapping the
@@ -284,6 +295,18 @@ func TestAllowlistDefence(t *testing.T) {
 		t.Errorf("logged %d refusals after the second pass", n)
 	}
 
+	// The same prefix through another indicator that is force-blocked is
+	// applied, and not counted as refused.
+	same := block("203.0.113.5/32", decision.ChangeAdded, t0.Add(time.Hour))
+	same.Decision.Sovereignty = sovereignty.Ruling{Effect: sovereignty.EffectBlock, Rule: sovereignty.RuleForceBlock}
+	f.gate.Handle(same)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.7/32@1h0m0s 203.0.113.5/32@1h0m0s 203.0.113.9/32@1h0m0s")
+	if got := f.rec.Detail(); got != "enforcing via fake: 3 entries, 1 refused by the allow-list" {
+		t.Errorf("Detail = %q", got)
+	}
+	f.gate.Handle(block("203.0.113.5/32", decision.ChangeRemoved, time.Time{}))
+
 	// A protected entry wins over a force-block.
 	allow = sovereignty.NewAllowlist(sovereignty.Entry{Prefix: netip.MustParsePrefix("203.0.113.9/32"), Source: sovereignty.SourceBootstrap})
 	f.reconcile(t)
@@ -316,6 +339,14 @@ func TestMaxEntries(t *testing.T) {
 	f.add("198.51.100.1", time.Hour, 3)
 	f.reconcile(t)
 	wantState(t, f.enf, "198.51.100.1/32@1h0m0s 198.51.100.2/32@1h0m0s")
+
+	// The operator's force-block is kept first, whatever its score.
+	forced := block("198.51.100.5", decision.ChangeAdded, t0.Add(time.Hour))
+	forced.Decision.Score = 0
+	forced.Decision.Sovereignty = sovereignty.Ruling{Effect: sovereignty.EffectBlock, Rule: sovereignty.RuleForceBlock}
+	f.gate.Handle(forced)
+	f.reconcile(t)
+	wantState(t, f.enf, "198.51.100.1/32@1h0m0s 198.51.100.5/32@1h0m0s")
 }
 
 // TestObserveNeverApplies: in observe mode the reconciler neither sets up
@@ -368,7 +399,7 @@ func TestModeSwitch(t *testing.T) {
 // TestDebounce: changes that arrive together are applied in one pass,
 // without waiting for the reconcile interval.
 func TestDebounce(t *testing.T) {
-	f := newFixture(t, config.ModeEnforce, newFake(), Options{Debounce: 20 * time.Millisecond})
+	f := newFixture(t, config.ModeEnforce, newFake(), Options{Debounce: 200 * time.Millisecond})
 	if err := f.rec.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +409,7 @@ func TestDebounce(t *testing.T) {
 		f.add(v, time.Hour, 1)
 	}
 	waitFor(t, "the blocks applied", func() bool { return f.enf.count("apply") > 0 })
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 	if n := f.enf.count("apply"); n != 1 {
 		t.Errorf("applied %d times, want 1", n)
 	}
@@ -459,5 +490,24 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 			t.Fatalf("timed out waiting for %s", what)
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// TestObserveWithdrawalFailure: a failed teardown in observe mode is
+// retried and reported.
+func TestObserveWithdrawalFailure(t *testing.T) {
+	enf := newFake(entry("198.51.100.9/32", t0.Add(time.Hour)))
+	enf.failTeardown = 1
+	f := newFixture(t, config.ModeObserve, enf, Options{MinBackoff: time.Hour, Interval: time.Hour})
+	if err := f.rec.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.rec.Stop(context.Background()) })
+	waitFor(t, "the failure", func() bool { return f.rec.Ready() != nil })
+	if got := f.rec.Detail(); got != "observing (withdrawing the applied blocks failed)" {
+		t.Errorf("Detail = %q", got)
+	}
+	if got := enf.callsString(); got != "teardown" {
+		t.Errorf("calls = %q", got)
 	}
 }
