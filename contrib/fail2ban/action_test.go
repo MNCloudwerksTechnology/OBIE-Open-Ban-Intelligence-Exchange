@@ -308,7 +308,7 @@ func TestFail2BanAcceptsAction(t *testing.T) {
 	if src == "" {
 		src = "/etc/fail2ban"
 	}
-	if _, err := os.Stat(filepath.Join(src, "jail.conf")); err != nil {
+	if _, err := os.Stat(filepath.Join(src, "jail.conf")); err != nil { // #nosec G703 -- the tester chooses the configuration directory.
 		t.Skipf("no Fail2Ban configuration: %v", err)
 	}
 	dir := t.TempDir()
