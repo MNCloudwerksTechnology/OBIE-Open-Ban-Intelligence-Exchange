@@ -437,6 +437,91 @@ func TestApply100kUnder5s(t *testing.T) {
 	}
 }
 
+// TestReplaceAndRemove100k replaces every one of 100k entries in one
+// Apply, then removes them all: one ack per message must fit.
+func TestReplaceAndRemove100k(t *testing.T) {
+	b := newBackend(t, false)
+	ctx := context.Background()
+	if err := b.Setup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	old := entries100k()
+	if err := b.Apply(ctx, old, nil); err != nil {
+		t.Fatal(err)
+	}
+	renewed := entries100k()
+	for i := range renewed {
+		renewed[i].Expires = renewed[i].Expires.Add(time.Hour)
+	}
+	start := time.Now()
+	if err := b.Apply(ctx, renewed, old); err != nil {
+		t.Fatalf("replace all: %v", err)
+	}
+	t.Logf("replaced %d entries in %v", len(renewed), time.Since(start))
+	got := list(t, b)
+	if len(got) != len(renewed) || got[0].Expires.Sub(renewed[0].Expires).Abs() > enforce.ExpiryTolerance {
+		t.Fatalf("after replace: %d entries, first %v", len(got), got[0])
+	}
+	if err := b.Apply(ctx, nil, renewed); err != nil {
+		t.Fatalf("remove all: %v", err)
+	}
+	if got := list(t, b); len(got) != 0 {
+		t.Errorf("after remove: %d entries", len(got))
+	}
+}
+
+// TestForeignElementIsReplaced: a range obied cannot have added makes
+// List fail with ErrDrift, and Setup replaces the table.
+func TestForeignElementIsReplaced(t *testing.T) {
+	b := newBackend(t, false)
+	ctx := context.Background()
+	if err := b.Setup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	conn := &nftables.Conn{}
+	err := conn.SetAddElements(newSet(table(), families[0]), []nftables.SetElement{
+		{Key: netip.MustParseAddr("192.0.2.1").AsSlice(), Timeout: time.Hour},
+		{Key: netip.MustParseAddr("192.0.2.4").AsSlice(), IntervalEnd: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := conn.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.List(ctx); !errors.Is(err, ErrDrift) {
+		t.Fatalf("List with a foreign range: %v, want ErrDrift", err)
+	}
+	if err := b.Setup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	assertEntries(t, list(t, b), nil)
+}
+
+// TestDormantTableIsReplaced: a table with flags (dormant filters
+// nothing) does not count as set up. Needs the nft tool to set the flag.
+func TestDormantTableIsReplaced(t *testing.T) {
+	b := newBackend(t, false)
+	ctx := context.Background()
+	if err := b.Setup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// google/nftables always sends flags 0; set them with the nft tool.
+	if out, err := exec.Command("nft", "add table inet "+Table+" { flags dormant; }").CombinedOutput(); err != nil {
+		t.Skipf("nft: %v %s", err, out)
+	}
+	conn := &nftables.Conn{}
+	if _, err := b.List(ctx); !errors.Is(err, ErrDrift) {
+		t.Fatalf("List of a dormant table: %v, want ErrDrift", err)
+	}
+	if err := b.Setup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if tbl, err := findTable(conn); err != nil || tbl.Flags != 0 {
+		t.Errorf("table after Setup: %+v %v", tbl, err)
+	}
+}
+
 func BenchmarkApply100k(b *testing.B) {
 	be := newBackend(b, false)
 	ctx := context.Background()

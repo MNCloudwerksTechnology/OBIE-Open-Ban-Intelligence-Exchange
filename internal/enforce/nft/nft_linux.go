@@ -103,10 +103,18 @@ func (b *Backend) Setup(ctx context.Context) error {
 			return err
 		}
 		if ok {
-			b.log.Info("nftables: reusing table inet " + Table)
-			return nil
+			_, err := b.entries(conn, existing)
+			if err == nil {
+				b.log.Info("nftables: reusing table inet " + Table)
+				return nil
+			}
+			if !errors.Is(err, errForeign) {
+				return err
+			}
+			b.log.Warn("nftables: table inet "+Table+" holds elements obied did not add; replacing it", "error", err)
+		} else {
+			b.log.Warn("nftables: table inet " + Table + " has an unexpected structure; replacing it")
 		}
-		b.log.Warn("nftables: table inet " + Table + " has an unexpected structure; replacing it")
 		conn.DelTable(existing)
 	}
 	t := conn.AddTable(table())
@@ -133,6 +141,9 @@ func (b *Backend) Setup(ctx context.Context) error {
 // matches reports whether t has exactly the sets, chains and rules Setup
 // creates.
 func (b *Backend) matches(conn *nftables.Conn, t *nftables.Table) (bool, error) {
+	if t.Flags != 0 { // e.g. dormant: its chains filter nothing
+		return false, nil
+	}
 	sets, err := conn.GetSets(t)
 	if err != nil {
 		return false, fmt.Errorf("list the sets: %w", err)
@@ -209,9 +220,9 @@ func normalize(exprs []expr.Any) []expr.Any {
 	return out
 }
 
-// List returns the unexpired entries of both sets, leaving out those with
-// less than enforce.MinTimeout left: they expire before a removal could
-// reach them. It fails with ErrDrift if the table is not as Setup made it.
+// List returns the unexpired entries of both sets. It fails with ErrDrift
+// if the table is missing, is not as Setup made it or holds elements
+// obied did not add; the next Setup restores it.
 func (b *Backend) List(ctx context.Context) ([]enforce.Entry, error) {
 	conn, err := newConn(ctx)
 	if err != nil {
@@ -231,6 +242,15 @@ func (b *Backend) List(ctx context.Context) ([]enforce.Entry, error) {
 	if !ok {
 		return nil, ErrDrift
 	}
+	entries, err := b.entries(conn, t)
+	if errors.Is(err, errForeign) {
+		return nil, fmt.Errorf("%w: %w", ErrDrift, err)
+	}
+	return entries, err
+}
+
+// entries reads the entries of both sets of t.
+func (b *Backend) entries(conn *nftables.Conn, t *nftables.Table) ([]enforce.Entry, error) {
 	now := b.opts.Now()
 	var out []enforce.Entry
 	for _, f := range families {
@@ -242,7 +262,7 @@ func (b *Backend) List(ctx context.Context) ([]enforce.Entry, error) {
 		for i, el := range elems {
 			mapped[i] = element{key: el.Key, end: el.IntervalEnd, comment: el.Comment, timeout: el.Timeout, expires: el.Expires}
 		}
-		entries, err := fromElements(mapped, now, enforce.MinTimeout, now.Add(never))
+		entries, err := fromElements(mapped, now, now.Add(never))
 		if err != nil {
 			return nil, fmt.Errorf("set %s: %w", f.set, err)
 		}
@@ -261,65 +281,34 @@ type chunk struct {
 
 // Apply deletes remove, then adds add with their remaining timeouts, in
 // one netlink transaction of messages with at most MaxChunk elements. Only
-// if the socket buffer cannot hold the transaction (obied lacks
-// CAP_NET_ADMIN in the initial user namespace to enlarge it) is it split.
+// if the socket buffers cannot hold the transaction or its acks (obied
+// lacks CAP_NET_ADMIN in the initial user namespace to enlarge them) is
+// it split; the next pass corrects a partial result.
 func (b *Backend) Apply(ctx context.Context, add, remove []enforce.Entry) error {
-	now := b.opts.Now()
-	t := table()
-	sets := map[bool]*nftables.Set{true: newSet(t, families[0]), false: newSet(t, families[1])}
-	var chunks []chunk
-	for _, del := range []bool{true, false} {
-		entries := add
-		if del {
-			entries = remove
-		}
-		for _, is4 := range []bool{true, false} {
-			var cur []nftables.SetElement
-			emit := func() {
-				if len(cur) > 0 {
-					chunks = append(chunks, chunk{set: sets[is4], del: del, elems: cur, size: messageSize(cur)})
-					cur = nil
-				}
-			}
-			for _, e := range entries {
-				if e.Prefix.Addr().Is4() != is4 {
-					continue
-				}
-				elems, err := elementsOf(e, del, now)
-				if err != nil {
-					return err
-				}
-				if len(cur)+len(elems) > MaxChunk {
-					emit()
-				}
-				cur = append(cur, elems...)
-			}
-			emit()
-		}
-	}
-	if len(chunks) == 0 {
-		return nil
+	chunks, err := b.chunks(add, remove)
+	if err != nil || len(chunks) == 0 {
+		return err
 	}
 	total := batchOverhead
 	for _, c := range chunks {
 		total += c.size
 	}
-	var sndbuf int
+	var bufs buffers
 	conn, err := newConn(ctx, nftables.AsLasting(), nftables.WithSockOptions(func(c *netlink.Conn) error {
-		n, err := growSendBuffer(c, total)
-		sndbuf = n
+		var err error
+		bufs, err = growBuffers(c, total, len(chunks))
 		return err
 	}))
 	if err != nil {
 		return err
 	}
 	defer func() { _ = conn.CloseLasting() }()
-	txs := split(chunks, sndbuf-sndbufReserve)
+	txs := split(chunks, bufs.send-sndbufReserve, (bufs.recv-rcvbufReserve)/ackSize)
 	if len(txs) > 1 {
-		b.log.Warn("nftables: the socket buffer cannot hold the whole change; applying it in several transactions",
-			"transactions", len(txs), "bytes", total, "socket_buffer", sndbuf)
+		b.log.Warn("nftables: the socket buffers cannot hold the whole change; applying it in several transactions",
+			"transactions", len(txs), "bytes", total, "messages", len(chunks), "send_buffer", bufs.send, "receive_buffer", bufs.recv)
 	}
-	for _, tx := range txs {
+	for i, tx := range txs {
 		for _, c := range tx {
 			if c.del {
 				err = conn.SetDeleteElements(c.set, c.elems)
@@ -331,10 +320,52 @@ func (b *Backend) Apply(ctx context.Context, add, remove []enforce.Entry) error 
 			}
 		}
 		if err := flush(conn); err != nil {
-			return err
+			return fmt.Errorf("transaction %d of %d (%d additions, %d removals): %w", i+1, len(txs), len(add), len(remove), err)
 		}
 	}
 	return nil
+}
+
+// chunks maps the removals, then the additions, to element messages per
+// set of at most MaxChunk elements and maxChunkBytes.
+func (b *Backend) chunks(add, remove []enforce.Entry) ([]chunk, error) {
+	now := b.opts.Now()
+	t := table()
+	var chunks []chunk
+	for _, del := range []bool{true, false} {
+		entries := add
+		if del {
+			entries = remove
+		}
+		for _, f := range families {
+			set := newSet(t, f)
+			var cur []nftables.SetElement
+			size := messageOverhead
+			emit := func() {
+				if len(cur) > 0 {
+					chunks = append(chunks, chunk{set: set, del: del, elems: cur, size: size})
+					cur, size = nil, messageOverhead
+				}
+			}
+			for _, e := range entries {
+				if e.Prefix.Addr().Is4() != (f.set == SetV4) {
+					continue
+				}
+				elems, err := elementsOf(e, del, now)
+				if err != nil {
+					return nil, err
+				}
+				n := elementsSize(elems)
+				if len(cur)+len(elems) > MaxChunk || size+n > maxChunkBytes {
+					emit()
+				}
+				cur = append(cur, elems...)
+				size += n
+			}
+			emit()
+		}
+	}
+	return chunks, nil
 }
 
 // elementsOf maps e to the netlink elements that add it or, with del, that
@@ -361,15 +392,22 @@ const (
 	// messageOverhead covers the headers of one element message: netlink
 	// and nfgen headers, the table and set names, the set ID and the list.
 	messageOverhead = 128
+	// maxChunkBytes keeps a message's element list below the 64 KiB
+	// limit of a netlink attribute.
+	maxChunkBytes = 56 << 10
 	// batchOverhead covers the batch begin and end messages.
 	batchOverhead = 64
 	// sndbufReserve is what the kernel keeps back from the send buffer.
 	sndbufReserve = 1024
+	// ackSize is the receive buffer one ack takes (its skb's truesize).
+	ackSize = 2048
+	// rcvbufReserve leaves room for the error of a failed message.
+	rcvbufReserve = 64 << 10
 )
 
-// messageSize estimates the encoded size of one element message.
-func messageSize(elems []nftables.SetElement) int {
-	n := messageOverhead
+// elementsSize estimates the encoded size of elems.
+func elementsSize(elems []nftables.SetElement) int {
+	n := 0
 	for _, el := range elems {
 		n += 4 + 12 + len(el.Key) // element, key
 		if el.Timeout > 0 {
@@ -385,14 +423,14 @@ func messageSize(elems []nftables.SetElement) int {
 	return n
 }
 
-// split groups chunks into transactions that fit limit bytes, keeping their
-// order; a chunk larger than limit gets a transaction of its own.
-func split(chunks []chunk, limit int) [][]chunk {
+// split groups chunks into transactions of at most maxBytes and maxMsgs
+// messages, keeping their order; each transaction holds one chunk at least.
+func split(chunks []chunk, maxBytes, maxMsgs int) [][]chunk {
 	var txs [][]chunk
 	var cur []chunk
 	size := batchOverhead
 	for _, c := range chunks {
-		if len(cur) > 0 && size+c.size > limit {
+		if len(cur) > 0 && (size+c.size > maxBytes || len(cur) >= maxMsgs) {
 			txs = append(txs, cur)
 			cur, size = nil, batchOverhead
 		}
@@ -402,28 +440,47 @@ func split(chunks []chunk, limit int) [][]chunk {
 	return append(txs, cur)
 }
 
-// growSendBuffer raises the socket's send buffer to hold want bytes, which
-// beyond net.core.wmem_max needs CAP_NET_ADMIN in the initial user
-// namespace, and returns the size it got.
-func growSendBuffer(c *netlink.Conn, want int) (int, error) {
+// buffers are the socket buffer sizes a connection got.
+type buffers struct{ send, recv int }
+
+// growBuffers sizes the socket for a transaction of sendBytes in msgs
+// messages: the send buffer holds the transaction, the receive buffer one
+// ack per message. Beyond net.core.wmem_max/rmem_max this needs
+// CAP_NET_ADMIN in the initial user namespace. Acks carry no copy of the
+// request (NETLINK_CAP_ACK), so an error cannot overflow the buffer.
+func growBuffers(c *netlink.Conn, sendBytes, msgs int) (buffers, error) {
+	if err := c.SetOption(netlink.CapAcknowledge, true); err != nil {
+		return buffers{}, err
+	}
 	raw, err := c.SyscallConn()
 	if err != nil {
-		return 0, err
+		return buffers{}, err
 	}
-	var got int
+	var got buffers
 	var sockErr error
-	want += sndbufReserve
 	err = raw.Control(func(fd uintptr) {
-		// The kernel doubles the value it is given.
-		if unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUFFORCE, want/2+1) != nil {
-			_ = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF, want/2+1)
+		got.send, sockErr = grow(int(fd), unix.SO_SNDBUF, unix.SO_SNDBUFFORCE, sendBytes+sndbufReserve)
+		if sockErr == nil {
+			got.recv, sockErr = grow(int(fd), unix.SO_RCVBUF, unix.SO_RCVBUFFORCE, msgs*ackSize+rcvbufReserve)
 		}
-		got, sockErr = unix.GetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_SNDBUF)
 	})
 	if err == nil {
 		err = sockErr
 	}
 	return got, err
+}
+
+// grow raises the socket buffer opt of fd to want bytes if it is smaller,
+// through force if permitted, and returns its size.
+func grow(fd, opt, force, want int) (int, error) {
+	if got, err := unix.GetsockoptInt(fd, unix.SOL_SOCKET, opt); err != nil || got >= want {
+		return got, err
+	}
+	// The kernel doubles the value it is given.
+	if unix.SetsockoptInt(fd, unix.SOL_SOCKET, force, want/2+1) != nil {
+		_ = unix.SetsockoptInt(fd, unix.SOL_SOCKET, opt, want/2+1)
+	}
+	return unix.GetsockoptInt(fd, unix.SOL_SOCKET, opt)
 }
 
 // Teardown deletes the table inet obie with every entry; a missing table

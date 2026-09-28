@@ -27,12 +27,13 @@ CAP_NET_ADMIN.
   the same rules in a chain `forward`. Priority -10 runs before the
   usual filter chains at 0; an accept there cannot let a blocked source
   through, since a drop in any base chain is final.
-- **Setup** reuses the table if its sets, chains and rules are exactly as
-  above, and otherwise deletes and recreates it in one transaction (its
-  entries return with the same reconciliation pass). `List` checks the
-  structure too and fails with `ErrDrift` if the table is missing or was
-  changed; the reconciler now sets the backend up again after any failed
-  pass, so a deleted or flushed table heals with the next retry (≈1 s).
+- **Setup** reuses the table if it has no flags (e.g. not `dormant`), its
+  sets, chains and rules are exactly as above and every element is one
+  obied can have added; otherwise it deletes and recreates it in one
+  transaction (its entries return with the same reconciliation pass).
+  `List` checks the same and fails with `ErrDrift` otherwise; the
+  reconciler now sets the backend up again after any failed pass, so a
+  deleted, flushed or hand-edited table heals with the next retry (≈1 s).
 - **Elements.** A prefix is the interval `[first, last+1)`: a start
   element with the remaining timeout (rounded up to milliseconds, never 0,
   which would mean "no timeout") and the prefix as its comment, and an
@@ -41,18 +42,28 @@ CAP_NET_ADMIN.
   address space has no end element. `List` reads the prefix from the
   comment, because the kernel keeps an expired range's end element until
   the next change of the set, which makes pairing starts and ends
-  ambiguous; entries with less than `enforce.MinTimeout` left are not
-  listed, so they are never deleted just as they expire.
-- **No overlaps.** Interval sets reject overlapping ranges, so the
-  reconciler leaves out a prefix inside a wider desired one (for every
-  backend). If the narrower block outlives the wider one, it is applied by
-  the first pass after the wider one ended.
+  ambiguous.
+- **No overlaps.** Interval sets reject overlapping ranges (EEXIST), so
+  the reconciler (for every backend) leaves out a prefix inside a wider
+  desired one before applying `enforce.max_entries`; the wider one takes
+  on the highest score (and force-block) of the prefixes it covers, and
+  covered prefixes take no slot. If the narrower block outlives the wider
+  one, it is applied by the first pass after the wider one ended.
+- **Near expiry.** The reconciler never removes an applied entry with less
+  than `ExpiryTolerance` (5 s) left: it may expire before the removal
+  reaches the kernel, and deleting a missing element (ENOENT) fails the
+  whole transaction. An addition overlapping an entry that stays applied
+  (e.g. a /25 under a /24 about to expire) is deferred, and the next pass
+  runs after `ExpiryTolerance` + 1 s instead of a full interval.
 - **Apply** deletes, then adds, in one netlink transaction made of
-  messages of at most 1000 elements. The socket send buffer is raised to
-  hold the transaction (`SO_SNDBUFFORCE`, else `SO_SNDBUF` up to
-  `net.core.wmem_max`); only if it still cannot, the change is split into
-  several transactions, logged as a warning, and the next pass corrects
-  any partial result.
+  messages of at most 1000 elements (and 56 KiB, below the 64 KiB
+  attribute limit). The kernel acks every message, so the socket's send
+  buffer is raised to hold the transaction and its receive buffer to hold
+  one ack per message (`SO_*BUFFORCE`, else `SO_*BUF` up to
+  `net.core.wmem_max`/`rmem_max`), with `NETLINK_CAP_ACK` so an error does
+  not echo the request. Only if the buffers still cannot, the change is
+  split into several transactions, logged as a warning, and the next pass
+  corrects any partial result.
 - **Permissions.** Only CAP_NET_ADMIN is needed. A refusal by the kernel
   is reported as `ErrPermission`, naming the capability.
 - **Teardown.** `obied teardown-firewall` deletes the table (a missing one

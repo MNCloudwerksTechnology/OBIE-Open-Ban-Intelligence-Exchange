@@ -57,6 +57,10 @@ func TestToElements(t *testing.T) {
 			{key: addr("192.0.2.1"), timeout: 1501 * time.Millisecond},
 			{key: addr("192.0.2.2"), end: true},
 		}},
+		{"huge timeout is capped", "192.0.2.1/32", time.Duration(1<<63 - 1), []element{
+			{key: addr("192.0.2.1"), timeout: maxTimeout},
+			{key: addr("192.0.2.2"), end: true},
+		}},
 		{"sub-ms timeout is not zero", "192.0.2.1/32", time.Nanosecond, []element{
 			{key: addr("192.0.2.1"), timeout: time.Millisecond},
 			{key: addr("192.0.2.2"), end: true},
@@ -118,7 +122,7 @@ func TestRoundTrip(t *testing.T) {
 			elems = append([]element{el}, elems...)
 		}
 	}
-	got, err := fromElements(elems, now, time.Second, forever)
+	got, err := fromElements(elems, now, forever)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,10 +152,10 @@ func TestFromElements(t *testing.T) {
 			{key: addr("192.0.2.0"), comment: "192.0.2.1/32", timeout: time.Hour, expires: time.Hour},
 			{key: addr("192.0.3.0"), end: true},
 		}, []enforce.Entry{{Prefix: netip.MustParsePrefix("192.0.2.0/24"), Expires: later(time.Hour)}}, false},
-		{"about to expire is left out", []element{
+		{"about to expire is listed", []element{
 			{key: addr("192.0.2.1"), timeout: time.Hour, expires: 999 * time.Millisecond},
 			{key: addr("192.0.2.2"), end: true},
-		}, []enforce.Entry{}, false},
+		}, []enforce.Entry{{Prefix: netip.MustParsePrefix("192.0.2.1/32"), Expires: later(999 * time.Millisecond)}}, false},
 		{"without timeout never expires", []element{
 			{key: addr("2001:db8::")},
 			{key: addr("2001:db8::1:0"), end: true},
@@ -167,8 +171,8 @@ func TestFromElements(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := fromElements(tt.elems, now, time.Second, forever)
-			if (err != nil) != tt.wantErr {
+			got, err := fromElements(tt.elems, now, forever)
+			if (err != nil) != tt.wantErr || (err != nil && !errors.Is(err, errForeign)) {
 				t.Fatalf("err = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !tt.wantErr && !reflect.DeepEqual(got, tt.want) {

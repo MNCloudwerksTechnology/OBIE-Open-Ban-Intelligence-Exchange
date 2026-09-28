@@ -29,6 +29,13 @@ type element struct {
 	expires time.Duration
 }
 
+// errForeign rejects a set element obied cannot have added.
+var errForeign = errors.New("foreign set element")
+
+// maxTimeout caps the timeout of an element; far beyond any TTL, it
+// keeps the millisecond rounding from overflowing.
+const maxTimeout = 10 * 365 * 24 * time.Hour
+
 // errExpired rejects an entry without time left: a zero timeout would add
 // it without one, blocking forever.
 var errExpired = errors.New("entry has no time left")
@@ -46,6 +53,7 @@ func toElements(e enforce.Entry, now time.Time) ([]element, error) {
 	if left <= 0 {
 		return nil, fmt.Errorf("%v: %w", p, errExpired)
 	}
+	left = min(left, maxTimeout)
 	timeout := left.Truncate(time.Millisecond)
 	if timeout < left {
 		timeout += time.Millisecond
@@ -83,16 +91,15 @@ func rangeEnd(p netip.Prefix) (netip.Addr, bool) {
 // fromElements maps the listed elements of one set back to entries,
 // ordered by prefix. A start element's prefix is its comment; a start
 // without one (not added by obied) is paired with the lowest interval end
-// above it. Entries with less than minLeft to live are left out, and one
-// without a timeout expires at never. A range that is not a single prefix
-// is an error: obied never adds one.
-func fromElements(elems []element, now time.Time, minLeft time.Duration, never time.Time) ([]enforce.Entry, error) {
+// above it. An entry without a timeout expires at never. A range that is
+// not a single prefix fails with errForeign: obied never adds one.
+func fromElements(elems []element, now, never time.Time) ([]enforce.Entry, error) {
 	var starts []element
 	var ends []netip.Addr
 	for _, el := range elems {
 		addr, ok := netip.AddrFromSlice(el.key)
 		if !ok {
-			return nil, fmt.Errorf("element key of %d bytes is no address", len(el.key))
+			return nil, fmt.Errorf("%w: element key of %d bytes is no address", errForeign, len(el.key))
 		}
 		if el.end {
 			ends = append(ends, addr)
@@ -112,9 +119,6 @@ func fromElements(elems []element, now time.Time, minLeft time.Duration, never t
 		}
 		expires := never
 		if el.timeout > 0 {
-			if el.expires < minLeft {
-				continue
-			}
 			expires = now.Add(el.expires)
 		}
 		out = append(out, enforce.Entry{Prefix: p, Expires: expires})
@@ -155,7 +159,7 @@ func toPrefix(start, end netip.Addr) (netip.Prefix, error) {
 		}
 	}
 	if !end.IsValid() {
-		return netip.Prefix{}, fmt.Errorf("range %v- is not a single prefix", start)
+		return netip.Prefix{}, fmt.Errorf("%w: range %v- is not a single prefix", errForeign, start)
 	}
-	return netip.Prefix{}, fmt.Errorf("range %v-%v is not a single prefix", start, end.Prev())
+	return netip.Prefix{}, fmt.Errorf("%w: range %v-%v is not a single prefix", errForeign, start, end.Prev())
 }
