@@ -453,7 +453,7 @@ func TestConsolePeersEndToEnd(t *testing.T) {
 			t.Errorf("A's page (%d) lacks %q:\n%s", code, want, page)
 		}
 	}
-	if !regexp.MustCompile(`<th scope="row"><span class="mono">85\.10\.20\.[0-9]+</span></th>`).MatchString(page) {
+	if !regexp.MustCompile(`<th scope="row"><a class="mono" href="/verdicts\?address=85\.10\.20\.[0-9]+">85\.10\.20\.[0-9]+</a></th>`).MatchString(page) {
 		t.Errorf("A's page lists none of its verdicts:\n%s", page)
 	}
 	if code, _ := browser.do(http.MethodGet, "/peers/12D3KooWNoSuchPeer", nil); code != http.StatusNotFound {

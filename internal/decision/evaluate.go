@@ -74,8 +74,10 @@ func NewPolicy(self string, trust config.Trust, dec config.Decision) Policy {
 	return p
 }
 
-// weight returns the trust weight of a publisher.
-func (p *Policy) weight(peerID string) float64 {
+// Weight returns the trust weight of the publisher with peerID:
+// trust.local_weight for this node, its trust.publishers weight, else
+// trust.default_weight.
+func (p *Policy) Weight(peerID string) float64 {
 	if peerID == p.Self {
 		return p.LocalWeight
 	}
@@ -228,7 +230,7 @@ func contribution(v *obieproto.Event, p *Policy) Contribution {
 		EventID:    v.ID,
 		Action:     v.Verdict.SuggestedAction,
 		Protocol:   v.Protocol,
-		Weight:     p.weight(v.Publisher.PeerID),
+		Weight:     p.Weight(v.Publisher.PeerID),
 		Confidence: v.Verdict.Confidence,
 		IssuedAt:   v.IssuedAt.UTC(),
 		ExpiresAt:  v.ExpiresAt().UTC(),

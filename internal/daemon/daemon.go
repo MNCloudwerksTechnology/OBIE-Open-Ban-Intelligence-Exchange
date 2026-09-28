@@ -163,12 +163,13 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	mgr := lifecycle.New(logs.Logger("lifecycle"), lifecycle.Options{StopTimeout: cfg.Node.ShutdownTimeout.Std()})
 	// The web console starts first and stops last, so that it can show the
 	// node starting and shutting down; it never fails to start (ADR 0019).
-	// The gate and the console's facts, peers and decisions are set below,
-	// before anything starts.
+	// The gate and the console's facts, peers, decisions and verdicts are
+	// set below, before anything starts.
 	var gate *enforce.Gate
 	var facts *consoleFacts
 	var peers *consolePeers
 	decisions := &consoleDecisions{enforce: cfg.Enforce}
+	verdictSource := &consoleVerdicts{store: db, now: time.Now}
 	con := console.New(consoleConfig(cfg.Console, opts.Testing), console.Options{
 		Group: cfg.Admin.SocketGroup,
 		Node: console.Node{Version: version.Version, PeerID: id.PeerID(), Fingerprint: identity.Fingerprint(id.PublicKey()),
@@ -178,7 +179,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 			PeerVerdicts: func(id, after string, limit int) (console.VerdictPage, error) {
 				return peers.verdicts(id, after, limit)
 			},
-			Decisions: decisions},
+			Decisions: decisions, Verdicts: verdictSource},
 	}, logs.Logger(console.Name))
 	if opts.Testing.Console != nil {
 		opts.Testing.Console(con)
@@ -208,6 +209,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	facts = &consoleFacts{mesh: m, engine: engine, reconciler: reconciler, store: db, loads: loads, enforce: cfg.Enforce, now: time.Now}
 	peers = &consolePeers{mesh: m, engine: engine, store: db, now: time.Now}
 	decisions.engine, decisions.reconciler = engine, reconciler
+	verdictSource.engine = engine
 	// The audit log opens before the engine starts and closes after
 	// everything that writes to it has stopped.
 	auditLog := newAuditLog(cfg.Audit.Path, gate, logs.Logger(audit.Name))
