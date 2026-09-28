@@ -64,7 +64,15 @@ The first release, v0.1.0 "Stable Base".
   by state, applied firewall entries, overrides) and the conditions that
   need attention with a next step, explains what will appear on a node
   that has just started, and refreshes itself every 5 seconds
-  ([ADR 0020](documentation/adr/0020-console-overview.md)).
+  ([ADR 0020](documentation/adr/0020-console-overview.md)). Its peers view
+  lists every configured and connected peer — bootstrap peers, trusted
+  publishers, peers that connected on their own — with its connection
+  (since when, last seen, the last failed dial), its trust weight (and
+  whether it has any influence on decisions), the verdicts the node holds
+  and counts from it, and the events it sent in the last hour, accepted
+  or rejected and why; it filters, sorts and pages on the node, and a
+  peer's page lists the verdicts the node holds from it
+  ([ADR 0021](documentation/adr/0021-console-peers.md)).
 - **Packaging.** Reproducible static release tarballs for linux/amd64 and
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
   hardened systemd unit, a distroless container image, and a three-node

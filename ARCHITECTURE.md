@@ -37,8 +37,9 @@ packaging (tarballs, systemd unit, container image, compose lab) and the state
 directory format in
 [ADR 0017](documentation/adr/0017-packaging-and-state-format.md); the local
 web console, its security model and its technology in
-[ADR 0019](documentation/adr/0019-local-web-console.md) and its overview
-in [ADR 0020](documentation/adr/0020-console-overview.md); the website
+[ADR 0019](documentation/adr/0019-local-web-console.md), its overview
+in [ADR 0020](documentation/adr/0020-console-overview.md) and its peers
+view in [ADR 0021](documentation/adr/0021-console-peers.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -63,7 +64,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins (built-in ranges, own and bootstrap addresses, `allowlist.cidrs`, `allowlist.files`); operator force-allow / force-block overrides; mode `observe` (default) or `enforce`; SIGHUP reloads (ADR 0013).
 - **Enforcement:** pluggable enforcer (`Setup`/`List`/`Apply`/`Teardown`, entries with timeouts); `dryrun` (default) and `nftables` (netlink via google/nftables, own table `inet obie` with interval+timeout sets `obie_v4`/`obie_v6` and a priority -10 input chain, optional forward chain, CAP_NET_ADMIN only, `obied teardown-firewall`; ADR 0015) backends; reconcile loop with `enforce.max_entries` cap and allow-list re-check (ADR 0014).
 - **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015).
-- **Console:** opt-in (`console.enabled`, default off), read-only web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019); an overview of health, key numbers and attention conditions that refreshes itself through a fragment endpoint (ADR 0020).
+- **Console:** opt-in (`console.enabled`, default off), read-only web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019); an overview of health, key numbers and attention conditions that refreshes itself through a fragment endpoint (ADR 0020); a peers view of every configured and connected peer with its trust, held verdicts and recent events (ADR 0021).
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests, above all the four-node end-to-end test in `test/e2e` (ADR 0016); goleak in every package's `TestMain`; the soak test behind the `soak` build tag (`make soak`, ADR 0017); privileged tests behind the `privileged` build tag, run in a fresh network namespace (see [Privileged tests](CONTRIBUTING.md#privileged-tests)).
 
 ## Repository layout
@@ -294,7 +295,18 @@ Only the packages that exist today are listed in detail; the remaining
   2-minute startup grace and links a number to its view only once that
   view exists. A view may declare a fragment under `/api/` that renders its
   refreshing region alone; the script swaps it in from an inert
-  `DOMParser` document with every health poll (ADR 0020).
+  `DOMParser` document with every health poll (ADR 0020). The peers view
+  at `/peers` reads `console.Node.Peers`: `Mesh.KnownPeers` (the
+  `mesh.bootstrap` and `trust.publishers` peers and the connected ones,
+  with the last-seen time and last failed dial the mesh keeps for
+  configured peers, and the outcomes of the events each peer sent in the
+  last hour, tallied by `gossip.Tally` from the validator's observer) and
+  `Engine.PublisherCounts` (active and counting verdicts per publisher,
+  kept incrementally with the decisions); it filters, sorts and pages on
+  the node. A view may serve item pages below its path: `/peers/{id}`
+  adds the verdicts the node holds from that publisher, read on request
+  with `store.DB.PublisherVerdicts`, which walks the verdict keys and
+  decodes only that publisher's records (ADR 0021).
 - **Observability.** Metrics are defined in the package that updates them
   and registered on the Prometheus default registry, which `internal/ops`
   serves; label values come from closed sets only (the admin endpoint label
