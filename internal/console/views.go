@@ -70,7 +70,8 @@ func (c *Console) views() []view {
 			item: &item{template: peerTemplate, content: c.peerContent,
 				missing: "This node knows no such peer: it is neither configured nor connected, and the node holds no verdict of it."}},
 		{Path: "/decisions", Title: "Decisions", Fragment: "/api/decisions", template: decisionsTemplate,
-			content: c.decisionsContent, region: c.decisionsStatusContent},
+			content: c.decisionsContent, region: c.decisionsStatusContent,
+			item: &item{template: decisionTemplate, content: c.decisionContent, missing: missingDecision, rest: true}},
 	}
 }
 
@@ -80,6 +81,7 @@ var (
 	peersTemplate     = pageTemplate("peers.html")
 	peerTemplate      = pageTemplate("peer.html")
 	decisionsTemplate = pageTemplate("decisions.html")
+	decisionTemplate  = pageTemplate("decision.html")
 	notFoundTemplate  = pageTemplate("notfound.html")
 )
 

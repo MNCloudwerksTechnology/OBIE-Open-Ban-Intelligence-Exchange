@@ -2,7 +2,7 @@ package console
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"html"
 	"net/http"
 	"net/netip"
@@ -56,7 +56,7 @@ func (f *fakeDecisions) Explain(p netip.Prefix) (Explanation, error) {
 	f.explains++
 	ex, ok := f.explained[p]
 	if !ok {
-		return Explanation{}, errors.New(`"` + p.String() + `" is broader than /16`)
+		return Explanation{}, fmt.Errorf("%w: %q is broader than /16", ErrNoIndicator, p.String())
 	}
 	return ex, nil
 }
@@ -443,7 +443,7 @@ func TestDecisionsSearch(t *testing.T) {
 
 	_, page = b.get("/decisions?q=10.0.0.0/8")
 	wantAll(t, "a search for a wide network", page,
-		`<p><span class="mono">10.0.0.0/8</span> cannot be explained: &#34;10.0.0.0/8&#34; is broader than /16</p>`)
+		`<p><span class="mono">10.0.0.0/8</span> cannot be explained: not an address or network the node decides on: &#34;10.0.0.0/8&#34; is broader than /16</p>`)
 	if got := src.lastQuery(t).Search; got != pfx("10.0.0.0/8") {
 		t.Errorf("searched %v", got)
 	}

@@ -649,11 +649,17 @@ func protection(r *Ruling) string {
 	}
 }
 
-// categoryText formats a category like obiectl: "password_bruteforce
-// (ssh)".
+// categoryText formats a category, "password_bruteforce/ssh", as
+// "password_bruteforce (ssh)".
 func categoryText(category string) string {
-	reason, protocol, ok := strings.Cut(category, "/")
-	if !ok || protocol == "" {
+	reason, protocol, _ := strings.Cut(category, "/")
+	return reasonText(reason, protocol)
+}
+
+// reasonText formats a verdict's reason and protocol like the peer page:
+// "password_bruteforce (ssh)".
+func reasonText(reason, protocol string) string {
+	if protocol == "" {
 		return reason
 	}
 	return reason + " (" + protocol + ")"

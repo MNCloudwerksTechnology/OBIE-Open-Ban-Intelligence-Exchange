@@ -131,9 +131,10 @@ type Explanation struct {
 	// Ruling is what the allow-list and the overrides do to the range.
 	Ruling Ruling
 	// Kept is set if the node holds a decision on the range: KeptState,
-	// as the decisions list shows it.
+	// as the decisions list shows it, last evaluated at KeptAt.
 	Kept      bool
 	KeptState string
+	KeptAt    time.Time
 	// Around are the decisions the node holds on the networks around the
 	// range, the widest first.
 	Around []DecisionItem
