@@ -50,16 +50,8 @@ func nodeHealth(statuses []lifecycle.Status) Health {
 			starting = true
 		case lifecycle.StateRunning:
 			if !s.Ready {
-				reason := s.Error
-				if reason == "" {
-					reason = "not ready"
-				}
-				problems = append(problems, s.Name+": "+reason)
-			} else if rest, ok := strings.CutPrefix(s.Detail, degradedPrefix); ok {
-				reason := strings.TrimLeft(rest, ": ")
-				if reason == "" {
-					reason = degradedPrefix
-				}
+				problems = append(problems, s.Name+": "+notReadyReason(s))
+			} else if reason, ok := degradedReason(s.Detail); ok {
 				problems = append(problems, s.Name+": "+reason)
 			}
 		}
@@ -74,4 +66,25 @@ func nodeHealth(statuses []lifecycle.Status) Health {
 		state = HealthDegraded
 	}
 	return Health{State: state, Label: healthLabels[state], Problems: problems}
+}
+
+// notReadyReason is why the running subsystem s is not ready.
+func notReadyReason(s lifecycle.Status) string {
+	if s.Error == "" {
+		return "not ready"
+	}
+	return s.Error
+}
+
+// degradedReason returns why a subsystem whose status detail is detail
+// runs in a degraded way, and whether it does.
+func degradedReason(detail string) (string, bool) {
+	rest, ok := strings.CutPrefix(detail, degradedPrefix)
+	if !ok {
+		return "", false
+	}
+	if reason := strings.TrimLeft(rest, ": "); reason != "" {
+		return reason, true
+	}
+	return degradedPrefix, true
 }
