@@ -34,7 +34,7 @@
   {{- with .Live}}
   <div class="live" data-live-feed="{{.}}" data-max-rows="{{$.MaxRows}}" hidden>
     <p class="live-status" role="status" data-live-status>Live: new entries appear at the top as they happen.</p>
-    <button type="button" class="button button-secondary" data-live-toggle aria-pressed="false">Pause live updates</button>
+    <button type="button" class="button button-secondary" data-live-toggle>Pause live updates</button>
   </div>
   {{- end}}
   {{- with .Newest}}
@@ -52,6 +52,7 @@
   </table>
   </div>
   <p class="note" data-activity-trimmed hidden>To keep this page responsive, it keeps only the newest {{count .MaxRows}} entries; older ones were taken off it. <a href="{{.Reload}}">Reload the page</a> to page through all of them.</p>
+  <div data-activity-tail>
   {{- with .Searched}}
   <p class="note">{{.}}</p>
   {{- end}}
@@ -71,6 +72,7 @@
     {{- end}}
   </nav>
   {{- end}}
+  </div>
   {{- end}}
 </section>
 {{- end}}

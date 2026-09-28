@@ -119,7 +119,7 @@ func TestActivityPage(t *testing.T) {
 		`<option value="" selected>All activity</option>`,
 		`<option value="peers">Peers connecting or disconnecting</option>`,
 		`<div class="live" data-live-feed="/api/activity?after=42" data-max-rows="500" hidden>`,
-		`<button type="button" class="button button-secondary" data-live-toggle aria-pressed="false">Pause live updates</button>`,
+		`<button type="button" class="button button-secondary" data-live-toggle>Pause live updates</button>`,
 		`<th scope="row"><time datetime="2026-09-29T12:00:00Z"><span class="day">2026-09-29</span> 12:00:00 UTC</time></th>`,
 		// Mode change and reload link to the settings.
 		`<span class="activity-kind" data-kind="mode">Mode changed to Enforce</span>`,
