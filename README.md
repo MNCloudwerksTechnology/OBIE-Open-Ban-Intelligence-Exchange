@@ -24,13 +24,14 @@ make build           # static binaries in ./bin/
 ./bin/obied --config /etc/obie/obie.yaml
 ./bin/obied keygen [--force] [--config file | --state-dir dir]   # offline, as the service user
 ./bin/obied identity [--json] [--config file | --state-dir dir]  # offline: peer ID + fingerprint
-./bin/obiectl --socket /run/obie/obie.sock status [--json]
+./bin/obiectl [--socket /run/obie/obie.sock] [--timeout 10s] status [--json]
 ./bin/obiectl --socket /run/obie/obie.sock identity [--json]
 ./bin/obiectl --socket /run/obie/obie.sock peers [--json]      # connected mesh peers
 ./bin/obiectl --socket /run/obie/obie.sock explain [--json] 203.0.113.7   # why (not) blocked
 ./bin/obiectl --socket /run/obie/obie.sock decisions [--state block] [--json]
 ./bin/obiectl report --protocol ssh --reason password_bruteforce --events 5 \
-    [--evidence-file auth.log] [--ttl 12h] [--action watch] [--json] <ip | cidr>  # publish a verdict
+    [--evidence-file auth.log | --evidence-from-stdin] [--ttl 12h] [--action watch] \
+    [--json] <ip | cidr>                     # publish a verdict (or --ip <ip | cidr>)
 ./bin/obiectl revoke [--reason false_positive] <ip | cidr | event-id>             # withdraw it
 ./bin/obiectl indicators [--mine | --publisher <peer-id>] [--json]                # active verdicts
 ./bin/obiectl show [--json] <ip | cidr>                                            # verdicts on one

@@ -15,7 +15,8 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 )
 
-// requestTimeout bounds every admin API call of obiectl.
+// requestTimeout bounds every admin API call of obiectl unless --timeout
+// says otherwise.
 const requestTimeout = 10 * time.Second
 
 // command is an obiectl subcommand.
@@ -41,9 +42,14 @@ func RunCtl(args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl"
 	fs := newFlagSet(program, stderr)
 	socket := fs.String("socket", config.Default().Admin.Socket, "path of the obied admin `socket`")
+	timeout := fs.Duration("timeout", requestTimeout, "give up on obied after this `duration`, e.g. 5s")
 	fs.Usage = func() { ctlUsage(fs) }
 	if code, done := parse(fs, program, args, true, stdout, stderr); done {
 		return code
+	}
+	if *timeout <= 0 {
+		_, _ = fmt.Fprintf(stderr, "%s: --timeout must be positive\n", program)
+		return ExitUsage
 	}
 	if fs.NArg() == 0 {
 		_, _ = fmt.Fprintf(stderr, "%s: missing command\n", program)
@@ -57,7 +63,7 @@ func RunCtl(args []string, stdout, stderr io.Writer) int {
 		fs.Usage()
 		return ExitUsage
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
 	return cmd.run(ctx, admin.NewClient(*socket), fs.Args()[1:], stdout, stderr)
 }

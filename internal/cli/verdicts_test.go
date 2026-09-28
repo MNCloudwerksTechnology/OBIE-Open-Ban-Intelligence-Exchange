@@ -147,27 +147,49 @@ func TestReadEvidence(t *testing.T) {
 	}
 }
 
+// withStdin runs f with os.Stdin reading input.
+func withStdin(t *testing.T, input string, f func()) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "stdin")
+	if err := os.WriteFile(path, []byte(input), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	in, err := os.Open(path) // #nosec G304 -- a file of the test's temporary directory.
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = in.Close() }()
+	saved := os.Stdin
+	os.Stdin = in
+	defer func() { os.Stdin = saved }()
+	f()
+}
+
 func TestVerdictCommandsUsage(t *testing.T) {
 	for name, tc := range map[string]struct {
 		args   []string
 		code   int
 		stderr string
 	}{
-		"report no target":      {[]string{"report", "--protocol", "ssh", "--reason", "x"}, ExitUsage, "want 1 argument, got 0"},
-		"report two targets":    {[]string{"report", "85.10.0.7", "85.10.0.8"}, ExitUsage, "want 1 argument, got 2"},
-		"report help":           {[]string{"report", "--help"}, ExitOK, "Usage: obiectl report --protocol <service> --reason <class>"},
-		"report bad ttl":        {[]string{"report", "--ttl", "soon", "85.10.0.7"}, ExitUsage, "--ttl: invalid duration"},
-		"report bad flag":       {[]string{"report", "--user", "root", "85.10.0.7"}, ExitUsage, "flag provided but not defined"},
-		"report missing file":   {[]string{"report", "--evidence-file", "/nonexistent/log", "85.10.0.7"}, ExitFailure, "--evidence-file"},
-		"report not running":    {[]string{"report", "85.10.0.7", "--protocol", "ssh", "--reason", "x"}, ExitFailure, "obied is not running"},
-		"revoke no target":      {[]string{"revoke"}, ExitUsage, "want 1 argument, got 0"},
-		"revoke help":           {[]string{"revoke", "-h"}, ExitOK, "Usage: obiectl revoke"},
-		"revoke not running":    {[]string{"revoke", "85.10.0.7"}, ExitFailure, "obied is not running"},
-		"show no target":        {[]string{"show"}, ExitUsage, "want 1 argument, got 0"},
-		"show not running":      {[]string{"show", "85.10.0.7"}, ExitFailure, "obied is not running"},
-		"indicators arg":        {[]string{"indicators", "85.10.0.7"}, ExitUsage, `unexpected argument "85.10.0.7"`},
-		"indicators both":       {[]string{"indicators", "--mine", "--publisher", "12D3KooWAAA"}, ExitUsage, "only one of --mine and --publisher"},
-		"indicators not runnin": {[]string{"indicators"}, ExitFailure, "obied is not running"},
+		"report no target":        {[]string{"report", "--protocol", "ssh", "--reason", "x"}, ExitUsage, "want 1 argument, got 0"},
+		"report two targets":      {[]string{"report", "85.10.0.7", "85.10.0.8"}, ExitUsage, "want 1 argument, got 2"},
+		"report help":             {[]string{"report", "--help"}, ExitOK, "Usage: obiectl report --protocol <service> --reason <class>"},
+		"report bad ttl":          {[]string{"report", "--ttl", "soon", "85.10.0.7"}, ExitUsage, "--ttl: invalid duration"},
+		"report bad flag":         {[]string{"report", "--user", "root", "85.10.0.7"}, ExitUsage, "flag provided but not defined"},
+		"report missing file":     {[]string{"report", "--evidence-file", "/nonexistent/log", "85.10.0.7"}, ExitFailure, "--evidence-file"},
+		"report ip and argument":  {[]string{"report", "--ip", "85.10.0.7", "85.10.0.8"}, ExitUsage, "either with --ip or as the argument"},
+		"report two evidences":    {[]string{"report", "--evidence-file", "log", "--evidence-from-stdin", "--ip", "85.10.0.7"}, ExitUsage, "only one of --evidence-file and --evidence-from-stdin"},
+		"report --ip not running": {[]string{"report", "--ip", "85.10.0.7", "--protocol", "ssh", "--reason", "x"}, ExitFailure, "obied is not running"},
+		"zero timeout":            {[]string{"--timeout", "0s", "status"}, ExitUsage, "--timeout must be positive"},
+		"report not running":      {[]string{"report", "85.10.0.7", "--protocol", "ssh", "--reason", "x"}, ExitFailure, "obied is not running"},
+		"revoke no target":        {[]string{"revoke"}, ExitUsage, "want 1 argument, got 0"},
+		"revoke help":             {[]string{"revoke", "-h"}, ExitOK, "Usage: obiectl revoke"},
+		"revoke not running":      {[]string{"revoke", "85.10.0.7"}, ExitFailure, "obied is not running"},
+		"show no target":          {[]string{"show"}, ExitUsage, "want 1 argument, got 0"},
+		"show not running":        {[]string{"show", "85.10.0.7"}, ExitFailure, "obied is not running"},
+		"indicators arg":          {[]string{"indicators", "85.10.0.7"}, ExitUsage, `unexpected argument "85.10.0.7"`},
+		"indicators both":         {[]string{"indicators", "--mine", "--publisher", "12D3KooWAAA"}, ExitUsage, "only one of --mine and --publisher"},
+		"indicators not runnin":   {[]string{"indicators"}, ExitFailure, "obied is not running"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
@@ -224,6 +246,18 @@ func TestObiectlVerdictsAgainstInProcessDaemon(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &watch); err != nil || watch.Event.Verdict.Confidence != 0 ||
 		watch.Event.Verdict.TTLSeconds != 3*86400 || watch.Event.Indicator.Key() != "cidr:85.10.1.0/24" {
 		t.Errorf("watch report = %s, %v", out, err)
+	}
+
+	// As Fail2Ban's action calls it: target by --ip, matched lines on stdin.
+	var piped admin.ReportResponse
+	withStdin(t, "Sep 28 12:00:02 host sshd[2]: Failed password for secret-user from 85.10.0.9\n", func() {
+		out, _ = ctl(ExitOK, "--timeout", "5s", "report", "--ip", "85.10.0.9", "--protocol", "ssh", "--reason", "bruteforce",
+			"--events", "3", "--ttl", "600s", "--evidence-from-stdin", "--json")
+	})
+	if err := json.Unmarshal([]byte(out), &piped); err != nil || piped.Event.Indicator.Key() != "ipv4:85.10.0.9" ||
+		piped.Event.Evidence.Events != 3 || !strings.HasPrefix(piped.Event.Evidence.LogHash, "sha256:") ||
+		piped.Event.Verdict.TTLSeconds != 600 {
+		t.Errorf("report with --ip and --evidence-from-stdin = %s, %v", out, err)
 	}
 
 	_, errOut := ctl(ExitFailure, "report", "--protocol", "ssh", "--reason", "x", "192.168.1.9")
