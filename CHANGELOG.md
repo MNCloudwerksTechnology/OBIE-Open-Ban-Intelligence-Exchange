@@ -58,7 +58,13 @@ The first release, v0.1.0 "Stable Base".
   token kept in `obied`'s memory (`obiectl console`, `--rotate`); it shows
   the node's health on every page and never stops the node
   ([web console](documentation/operations/console.md),
-  [ADR 0019](documentation/adr/0019-local-web-console.md)).
+  [ADR 0019](documentation/adr/0019-local-web-console.md)). Its overview
+  shows the node's identity, mode, uptime and configuration load, the
+  readiness of every part, the key numbers (peers, indicators, decisions
+  by state, applied firewall entries, overrides) and the conditions that
+  need attention with a next step, explains what will appear on a node
+  that has just started, and refreshes itself every 5 seconds
+  ([ADR 0020](documentation/adr/0020-console-overview.md)).
 - **Packaging.** Reproducible static release tarballs for linux/amd64 and
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
   hardened systemd unit, a distroless container image, and a three-node

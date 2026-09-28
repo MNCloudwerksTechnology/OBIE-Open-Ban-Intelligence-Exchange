@@ -39,8 +39,8 @@ it with a production firewall, and start in observe mode.
   [Grafana dashboard](documentation/operations/monitoring.md), static
   binaries with checksums and SBOMs, a hardened systemd unit and a
   container image. An opt-in [web console](documentation/operations/console.md)
-  shows the node's health in a browser on its own host, behind a token
-  only its operator can obtain.
+  shows the node's health, its key numbers and what needs attention in a
+  browser on its own host, behind a token only its operator can obtain.
 
 ## What it does not do yet
 

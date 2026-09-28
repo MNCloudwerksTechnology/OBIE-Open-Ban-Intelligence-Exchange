@@ -65,9 +65,10 @@ step, *warning* or *info*, warnings first:
 |-----------|------|
 | No peer connected / no peer configured | The mesh runs with 0 peers, after the first 2 minutes |
 | No event received | The store holds no verdicts and none arrived since the start, after the first 2 minutes |
-| Enforce mode with the dry-run backend | `node.mode: enforce` and `enforce.backend: dryrun` |
-| Enforce mode, nothing applied | The last pass ran in enforce mode, blocks are decided and 0 entries are applied |
-| Decided blocks differ from applied entries | The last pass failed, or blocks were refused by the allow-list right before apply |
+| Enforce mode, but nothing applied to the firewall | `node.mode: enforce` and `enforce.backend: dryrun` |
+| Enforce mode, nothing applied | Enforcement fails while blocks are decided and 0 entries are applied, or the allow-list refuses every decided block |
+| Decided blocks differ from applied entries | Enforcement fails, or blocks were refused by the allow-list right before apply |
+| Blocks of an earlier enforce run may remain | In observe mode, withdrawing the entries fails |
 | Blocks capped by the entry limit | Blocks were left out over `enforce.max_entries` |
 | A part is not ready | A running subsystem reports not ready or degraded (unless a condition above explains it) |
 | Configuration reload rejected | The last reload failed; the node keeps the previous configuration |
@@ -75,8 +76,9 @@ step, *warning* or *info*, warnings first:
 
 **Startup grace.** For the first 2 minutes a node without peers or data
 shows an empty state instead — what will appear (peers, verdicts,
-decisions, blocks) and when — and numbers that are still zero say so in
-words. After the grace, the same state is a condition to act on.
+decisions, blocks) and when — numbers that are still zero say so in
+words, and the mesh without peers is *waiting for peers* rather than
+degraded. After the grace, the same state is a condition to act on.
 
 ### Self-refreshing views
 
@@ -116,6 +118,9 @@ else.
 - `enforce.Status` also reports how many decided blocks the last pass
   considered and how many share an entry with another block, so the
   overview can explain why decided blocks and applied entries differ.
+- The decision engine's status detail uses the counts of the last
+  evaluation pass too, so reading the node's status no longer walks the
+  decisions either.
 - Later views (#1684–#1688) register at the paths above; a view that
   follows live data declares a fragment instead of adding its own
   refresh.
