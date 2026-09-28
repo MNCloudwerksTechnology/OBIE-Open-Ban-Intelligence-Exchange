@@ -44,10 +44,12 @@ type Overrides interface {
 	// List returns the overrides in effect, ordered by indicator key.
 	List() ([]OverrideResponse, error)
 	// Set stores or replaces the override of ind; ttl 0 means no expiry.
-	// Errors wrapping ErrInvalid are the operator's mistake.
-	Set(ind obieproto.Indicator, action string, ttl time.Duration, note string) (OverrideResponse, error)
-	// Delete removes the override of ind and reports whether it existed.
-	Delete(ind obieproto.Indicator) (bool, error)
+	// Errors wrapping ErrInvalid are the operator's mistake. ctx carries
+	// the origin of the change for the audit trail (audit.WithOrigin).
+	Set(ctx context.Context, ind obieproto.Indicator, action string, ttl time.Duration, note string) (OverrideResponse, error)
+	// Delete removes the override of ind and reports whether it existed;
+	// ctx carries the origin, as for Set.
+	Delete(ctx context.Context, ind obieproto.Indicator) (bool, error)
 }
 
 // OverrideRequest is the JSON body of POST /v1/overrides.
@@ -117,12 +119,12 @@ func handleOverrides(mux *http.ServeMux, info Info, log *slog.Logger) {
 		if !decodeLimited(w, r, &req, maxOverrideBody) {
 			return
 		}
-		ind, err := req.check()
+		ind, err := req.Check()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		o, err := info.Overrides.Set(ind, req.Action, time.Duration(req.TTLSeconds)*time.Second, req.Note)
+		o, err := info.Overrides.Set(withOrigin(r), ind, req.Action, time.Duration(req.TTLSeconds)*time.Second, req.Note)
 		switch {
 		case errors.Is(err, ErrInvalid):
 			http.Error(w, err.Error(), http.StatusBadRequest)
@@ -134,9 +136,7 @@ func handleOverrides(mux *http.ServeMux, info Info, log *slog.Logger) {
 		}
 		log.Info("operator override set", "indicator", ind.Key(), "action", o.Action, "expires_at", o.ExpiresAt, "note", o.Note)
 		res := OverrideResult{Override: &o, Decision: explainAfter(info, ind, log)}
-		if o.Action == ActionForceBlock && res.Decision != nil && res.Decision.State != StateBlock {
-			res.Warning = "the force-block does not take effect: " + res.Decision.Reason
-		}
+		res.Warning = OverrideWarning(o.Action, res.Decision)
 		writeJSON(w, res, log)
 	})
 	mux.HandleFunc("DELETE "+OverridesPath+"/{indicator...}", func(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +148,7 @@ func handleOverrides(mux *http.ServeMux, info Info, log *slog.Logger) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		deleted, err := info.Overrides.Delete(ind)
+		deleted, err := info.Overrides.Delete(withOrigin(r), ind)
 		switch {
 		case err != nil:
 			log.Error("deleting an override failed", "indicator", ind.Key(), "error", err)
@@ -163,8 +163,20 @@ func handleOverrides(mux *http.ServeMux, info Info, log *slog.Logger) {
 	})
 }
 
-// check checks the body of POST /v1/overrides and returns its indicator.
-func (req *OverrideRequest) check() (obieproto.Indicator, error) {
+// OverrideWarning returns the warning for an override of action that
+// leaves the decision d on its indicator: a force-block that does not
+// take effect, e.g. on an address of the built-in allow-list. It is empty
+// if there is nothing to warn about or d is nil.
+func OverrideWarning(action string, d *DecisionResponse) string {
+	if action != ActionForceBlock || d == nil || d.State == StateBlock {
+		return ""
+	}
+	return "the force-block does not take effect: " + d.Reason
+}
+
+// Check checks the body of POST /v1/overrides, as the admin API and the
+// console do before setting an override, and returns its indicator.
+func (req *OverrideRequest) Check() (obieproto.Indicator, error) {
 	if req.Action != ActionForceAllow && req.Action != ActionForceBlock {
 		return obieproto.Indicator{}, fmt.Errorf("invalid action %q: want %s or %s", req.Action, ActionForceAllow, ActionForceBlock)
 	}

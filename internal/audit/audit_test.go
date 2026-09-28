@@ -80,16 +80,26 @@ func goldenRecords() []Record {
 	revoke := &obieproto.Event{ID: "0199a1b2-c3d4-7e5f-8a6b-000000000002", Type: obieproto.TypeRevoke,
 		IssuedAt: obieproto.NewTimestamp(t0), Indicator: ipv4("203.0.113.7"), Revokes: report.ID, Reason: "false_positive"}
 
+	// Operator actions name the door and the local user (ADR 0026).
+	set := OverrideSet(&override)
+	set.Origin = Origin{Via: OriginConsole, UserID: "1000", UserName: "alice"}
+	unset := OverrideRemoved(override.Indicator, override.Action)
+	unset.Origin = Origin{Via: OriginAdminAPI, UserID: "0", UserName: "root"}
+	reported := LocalReport(report)
+	reported.Origin = Origin{Via: OriginAdminAPI, UserID: "994"}
+	revoked := Revocation(revoke)
+	revoked.Origin = Origin{Via: OriginConsole, UserID: "1000", UserName: "alice"}
+
 	return []Record{
 		BlockChange(decision.Change{Type: decision.ChangeAdded, Key: consensus.Indicator.Key(), Decision: consensus, Cause: "verdict"}),
 		BlockChange(decision.Change{Type: decision.ChangeUpdated, Key: autoblock.Indicator.Key(), Decision: autoblock, Cause: "refresh"}),
 		BlockChange(decision.Change{Type: decision.ChangeRemoved, Key: removed.Indicator.Key(), Decision: removed, Cause: "revoke"}),
 		Allowed(decision.Transition{Key: allowed.Indicator.Key(), From: decision.StateNone, Decision: allowed, Cause: "verdict"}),
-		OverrideSet(&override),
+		set,
 		BlockChange(decision.Change{Type: decision.ChangeAdded, Key: forced.Indicator.Key(), Decision: forced, Cause: "override"}),
-		OverrideRemoved(override.Indicator, override.Action),
-		LocalReport(report),
-		Revocation(revoke),
+		unset,
+		reported,
+		revoked,
 		PeerConnection(Peer{ID: "12D3KooWPeerB", Name: "node-b", Bootstrap: true, Publisher: true}, true),
 		PeerConnection(Peer{ID: "12D3KooWPeerC"}, false),
 		ConfigReloaded("/etc/obie/obied.yaml", []string{"node.mode", "decision.threshold"}, []string{"mesh.listen"}),

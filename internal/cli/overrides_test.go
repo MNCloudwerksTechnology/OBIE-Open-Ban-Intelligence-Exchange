@@ -32,7 +32,7 @@ func (m *memOverrides) List() ([]admin.OverrideResponse, error) {
 	return out, nil
 }
 
-func (m *memOverrides) Set(ind obieproto.Indicator, action string, ttl time.Duration, note string) (admin.OverrideResponse, error) {
+func (m *memOverrides) Set(_ context.Context, ind obieproto.Indicator, action string, ttl time.Duration, note string) (admin.OverrideResponse, error) {
 	o := admin.OverrideResponse{Indicator: ind, Action: action, Note: note, CreatedAt: explainAt}
 	if ttl > 0 {
 		end := explainAt.Add(ttl)
@@ -51,7 +51,7 @@ func (m *memOverrides) get(key string) (admin.OverrideResponse, bool) {
 	return o, ok
 }
 
-func (m *memOverrides) Delete(ind obieproto.Indicator) (bool, error) {
+func (m *memOverrides) Delete(_ context.Context, ind obieproto.Indicator) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	_, ok := m.list[ind.Key()]

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/audit"
 	"github.com/MNCloudwerksTechnology/obie/internal/peercred"
 )
 
@@ -36,6 +37,17 @@ type credResult struct {
 func withPeerCred(ctx context.Context, c net.Conn) context.Context {
 	cred, err := peercred.Unix(c)
 	return context.WithValue(ctx, credKey{}, credResult{cred: cred, err: err})
+}
+
+// withOrigin returns the context of r carrying the origin of the operator
+// action it asks for: the admin API and the peer's UID, if known, for the
+// audit trail (ADR 0026).
+func withOrigin(r *http.Request) context.Context {
+	o := audit.Origin{Via: audit.OriginAdminAPI}
+	if res, ok := r.Context().Value(credKey{}).(credResult); ok && res.err == nil {
+		o = audit.LocalUser(audit.OriginAdminAPI, res.cred.UID)
+	}
+	return audit.WithOrigin(r.Context(), o)
 }
 
 // authorize answers 403 to requests whose peer the policy does not allow,

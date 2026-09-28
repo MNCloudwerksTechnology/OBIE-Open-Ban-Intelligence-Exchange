@@ -26,6 +26,10 @@ type ActivityEntry struct {
 	Note string
 	// PeerID and PeerName are the peer of a connection change.
 	PeerID, PeerName string
+	// Origin is the door of an operator action, "console" or "admin-api",
+	// and UserID and UserName the local user who acted; empty for changes
+	// no operator made, and a user the node could not tell (ADR 0026).
+	Origin, UserID, UserName string
 }
 
 // ActivityFilter selects entries of the timeline.
