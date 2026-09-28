@@ -11,11 +11,14 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 )
 
 // consoleOf runs obiectl console --json against n.
@@ -258,7 +261,7 @@ func TestConsoleOverviewEndToEnd(t *testing.T) {
 		`<span class="number-label">Indicators held</span> <span class="number-value">None yet</span>`,
 		`<span class="number-label">Firewall entries</span> <span class="number-value">None</span>`,
 		`<span class="number-label">Active overrides</span> <span class="number-value">0</span>`,
-		`Details: <code>obiectl peers</code>`,
+		`<a class="number-main" href="/peers"><span class="number-label">Peers connected</span>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("overview (%d) lacks %q:\n%s", code, want, page)
@@ -340,5 +343,127 @@ func TestConsolePortInUse(t *testing.T) {
 	l := findLog(logLines(t, bytes.NewBufferString(logs.String())), "console", "console not started; the node runs without it")
 	if l == nil || !strings.Contains(fmt.Sprint(l["error"]), "address already in use") {
 		t.Errorf("no log line saying why the console did not start:\n%s", logs.String())
+	}
+}
+
+// TestConsolePeersEndToEnd runs two nodes: B bootstraps to A, trusts it,
+// and also lists an unreachable bootstrap peer C. A reports attacks; B's
+// console shows both peers, the events A sent, the verdicts B holds from
+// it and C as disconnected without influence (WP-1684).
+func TestConsolePeersEndToEnd(t *testing.T) {
+	meshA := freeAddr(t)
+	host, port, err := net.SplitHostPort(meshA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := newTestNodeWith(t, "", fmt.Sprintf("mesh:\n  listen: [/ip4/%s/tcp/%s]\n", host, port))
+	keyA, err := identity.Create(a.stateDir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyC, err := identity.Create(filepath.Join(t.TempDir(), "c"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, closedPort, err := net.SplitHostPort(freeAddr(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	addr := freeAddr(t)
+	b := newTestNodeWith(t, "", fmt.Sprintf(
+		"mesh:\n  listen: [/ip4/127.0.0.1/tcp/0]\n  bootstrap: [/ip4/%s/tcp/%s/p2p/%s, /ip4/127.0.0.1/tcp/%s/p2p/%s]\n"+
+			"trust:\n  publishers:\n    - {peer_id: %s, name: alpha, weight: 0.6}\n"+
+			"console:\n  enabled: true\n  listen: %s\n",
+		host, port, keyA.PeerID(), closedPort, keyC.PeerID(), keyA.PeerID(), addr))
+
+	var stderrA, logsB syncBuffer
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	exitA := startDaemon(ctx, t, a, &stderrA.buf, func(ctx context.Context, args []string) int {
+		return runDaemon(ctx, args, &bytes.Buffer{}, &stderrA)
+	})
+	exitB := startDaemon(ctx, t, b, &logsB.buf, func(ctx context.Context, args []string) int {
+		return runDaemon(ctx, args, &bytes.Buffer{}, &logsB)
+	})
+
+	browser := newConsoleBrowser(t, addr)
+	eventually(t, "B's console serves", func() bool { return listening(addr) })
+	if code, _ := browser.do(http.MethodPost, "/login", url.Values{"token": {consoleOf(t, b).Token}, "next": {"/"}}); code != http.StatusSeeOther {
+		t.Fatalf("sign-in = %d", code)
+	}
+	peers := func() string {
+		code, body := browser.do(http.MethodGet, "/api/peers", nil)
+		if code != http.StatusOK {
+			t.Fatalf("GET /api/peers = %d: %s", code, body)
+		}
+		return body
+	}
+	eventually(t, "B connects to A", func() bool { return strings.Contains(peers(), `data-state="ready">Connected</span>`) })
+
+	// A reports attacks until one of its verdicts reaches B.
+	held := regexp.MustCompile(`<span class="cell-note">(all count|counts) in decisions</span>`)
+	for i := 1; !held.MatchString(peers()); i++ {
+		if i > 50 {
+			t.Fatalf("no verdict of A reached B:\n%s", peers())
+		}
+		var stderr bytes.Buffer
+		if code := RunCtl([]string{"--socket", a.socket, "report", "--protocol", "ssh", "--reason", "password_bruteforce",
+			fmt.Sprintf("85.10.20.%d", i)}, io.Discard, &stderr); code != ExitOK {
+			t.Fatalf("obiectl report = %d: %s", code, stderr.String())
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	eventually(t, "C's dial fails", func() bool { return strings.Contains(peers(), "last dial failed") })
+
+	code, page := browser.do(http.MethodGet, "/peers", nil)
+	for _, want := range []string{
+		"<h1>Peers</h1>",
+		`<li><a href="/peers" aria-current="page">All <span class="filter-count">2</span></a></li>`,
+		`<a class="peer-name" href="/peers/` + keyA.PeerID() + `">alpha</a>`,
+		`<span class="roles"><span class="role">Bootstrap peer</span><span class="role">Trusted publisher</span></span>`,
+		`<li>/ip4/` + host + `/tcp/` + port + `</li>`,
+		`<span class="weight">0.6</span>`,
+		`<a class="peer-name" href="/peers/` + keyC.PeerID() + `">Unnamed peer</a>`,
+		`<span class="peer-state" data-state="warning">Disconnected</span>`,
+		`<span class="cell-note">not connected since obied started</span>`,
+		`<li>/ip4/127.0.0.1/tcp/` + closedPort + `</li>`,
+		`<span class="badge">No influence on decisions</span>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("peers view (%d) lacks %q:\n%s", code, want, page)
+		}
+	}
+	if !regexp.MustCompile(`<span>[1-9][0-9]* accepted</span>`).MatchString(page) {
+		t.Errorf("the peers view counts no accepted event of A:\n%s", page)
+	}
+	if _, untrusted := browser.do(http.MethodGet, "/peers?show=untrusted", nil); strings.Contains(untrusted, `href="/peers/`+keyA.PeerID()+`"`) ||
+		!strings.Contains(untrusted, `href="/peers/`+keyC.PeerID()+`"`) {
+		t.Errorf("the untrusted filter lists A or misses C:\n%s", untrusted)
+	}
+
+	code, page = browser.do(http.MethodGet, "/peers/"+keyA.PeerID(), nil)
+	for _, want := range []string{
+		"<h1>alpha</h1>",
+		`<dd><strong>0.6</strong>, set in trust.publishers.</dd>`,
+		`<h2 id="verdicts-heading">Verdicts held from this peer</h2>`,
+		`<td><span class="cell-label">Reason</span> password_bruteforce (ssh)</td>`,
+		`<td><span class="cell-label">Counts in decisions</span> <span>Yes</span></td>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("A's page (%d) lacks %q:\n%s", code, want, page)
+		}
+	}
+	if !regexp.MustCompile(`<th scope="row"><span class="mono">85\.10\.20\.[0-9]+</span></th>`).MatchString(page) {
+		t.Errorf("A's page lists none of its verdicts:\n%s", page)
+	}
+	if code, _ := browser.do(http.MethodGet, "/peers/12D3KooWNoSuchPeer", nil); code != http.StatusNotFound {
+		t.Errorf("GET /peers/<unknown> = %d, want 404", code)
+	}
+
+	cancel()
+	for name, exit := range map[string]<-chan int{"A": exitA, "B": exitB} {
+		if code := waitExit(t, exit, &logsB.buf); code != ExitOK {
+			t.Errorf("obied %s exit code = %d", name, code)
+		}
 	}
 }
