@@ -143,6 +143,9 @@ type layoutPage struct {
 	Notice *actionNotice
 	// Actions is set if the console carries out operator actions.
 	Actions bool
+	// NoShare leaves out the link to the page: an action's page is not
+	// shared, so a link cannot present a prefilled confirmation (ADR 0026).
+	NoShare bool
 	// Content is the data of the page's own template.
 	Content any
 }

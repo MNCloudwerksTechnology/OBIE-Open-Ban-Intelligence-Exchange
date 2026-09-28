@@ -492,7 +492,9 @@ func (p *actionPage) off(why string) *actionPage {
 
 // renderAction renders the action page p.
 func (c *Console) renderAction(w http.ResponseWriter, r *http.Request, code int, p *actionPage) {
-	c.render(w, code, actionTemplate, c.page(r, p.Heading, "", p))
+	layout := c.page(r, p.Heading, "", p)
+	layout.NoShare = true
+	c.render(w, code, actionTemplate, layout)
 }
 
 // renderActionError shows the form with why the node does not carry the

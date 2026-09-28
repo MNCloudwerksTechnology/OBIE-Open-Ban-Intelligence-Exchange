@@ -181,6 +181,13 @@ func TestActionFormThenConfirmation(t *testing.T) {
 	if done, _ := src.calls(); len(done) != 0 {
 		t.Errorf("reviewing carried out %+v", done)
 	}
+	// B1: an action's page offers no link to share it.
+	if strings.Contains(page, "data-share") {
+		t.Error("the confirmation offers a link to share it")
+	}
+	if _, view := b.get("/overrides"); !strings.Contains(view, "data-share") {
+		t.Error("a view lost its share link")
+	}
 	form := confirmForm(t, page)
 	if form.Get("address") != "203.0.113.7" || form.Get("ttl") != "36h" || form.Get("note") != "scanner <b>" ||
 		form.Get("return") != "/decisions/203.0.113.7" || form.Get("state") == "" {
