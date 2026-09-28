@@ -17,6 +17,6 @@ export const routes: Routes = [
   { path: '', component: Home },
   { path: IMPRESSUM_PATH, ...legalPage('impressum') },
   { path: PRIVACY_PATH, ...legalPage('privacy') },
-  { path: NOT_FOUND_PATH, component: NotFound, title: 'Page not found · OBIE' },
-  { path: '**', component: NotFound, title: 'Page not found · OBIE' },
+  { path: NOT_FOUND_PATH, component: NotFound },
+  { path: '**', component: NotFound },
 ];

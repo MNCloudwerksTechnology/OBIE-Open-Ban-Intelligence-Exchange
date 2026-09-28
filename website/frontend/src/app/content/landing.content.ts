@@ -40,9 +40,9 @@ export const FOUNDER_AVATAR_PLACEHOLDER = '/founder/avatar-placeholder.svg';
 /** English landing page copy. */
 export const LANDING_CONTENT_EN: LandingContent = {
   meta: {
-    title: 'OBIE: a neighbourhood watch for servers',
+    title: 'OBIE: open-source threat intelligence sharing for servers',
     description:
-      'OBIE, the Open Ban Intelligence Exchange: servers share signed reports about attackers, and each server decides for itself what to block. Open source, no central authority.',
+      'OBIE is an open, leaderless protocol for sharing signed attacker signals between servers, where every node keeps the final say over what it blocks.',
     locale: 'en-GB',
   },
   a11y: {
