@@ -1,0 +1,68 @@
+<article class="container section legal" aria-labelledby="legal-heading">
+  @if (content.reviewPending) {
+    <div class="review-notice" role="note" aria-labelledby="review-notice-heading">
+      <p class="review-notice__heading" id="review-notice-heading">
+        {{ content.reviewNotice.heading }}
+      </p>
+      <p>{{ content.reviewNotice.text }}</p>
+    </div>
+  }
+
+  <h1 id="legal-heading">
+    @if (page.legalTerm) {
+      <span class="legal-term" lang="de">{{ page.legalTerm }}</span>
+    }
+    {{ page.heading }}
+  </h1>
+  @if (page.updated) {
+    <p class="updated">{{ page.updated }}</p>
+  }
+  @if (page.intro) {
+    <p class="lead">{{ page.intro }}</p>
+  }
+
+  @for (section of page.sections; track section.id) {
+    <section [id]="section.id" [attr.aria-labelledby]="section.id + '-heading'">
+      <h2 [id]="section.id + '-heading'">
+        {{ section.heading }}
+        @if (section.legalTerm) {
+          <span class="legal-term" lang="de">{{ section.legalTerm }}</span>
+        }
+      </h2>
+      @for (block of section.blocks; track $index) {
+        @switch (block.kind) {
+          @case ('paragraph') {
+            <!-- No whitespace around the link: the text supplies its own spaces. -->
+            <!-- prettier-ignore -->
+            <p>{{ block.text }}@if (block.link; as link) {<a [href]="link.href">{{ link.label }}</a>}{{ block.after }}</p>
+          }
+          @case ('list') {
+            <ul>
+              @for (item of block.items; track $index) {
+                <li>{{ item }}</li>
+              }
+            </ul>
+          }
+          @case ('facts') {
+            <dl>
+              @for (fact of block.items; track fact.term) {
+                <div class="fact">
+                  <dt>{{ fact.term }}</dt>
+                  <dd>
+                    @if (fact.href) {
+                      <a [href]="fact.href">{{ fact.lines.join(', ') }}</a>
+                    } @else {
+                      @for (line of fact.lines; track $index) {
+                        <span class="line">{{ line }}</span>
+                      }
+                    }
+                  </dd>
+                </div>
+              }
+            </dl>
+          }
+        }
+      }
+    </section>
+  }
+</article>
