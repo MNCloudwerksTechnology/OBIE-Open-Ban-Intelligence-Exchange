@@ -6,6 +6,10 @@ NPM  ?= npm
 JAVA ?= java
 GO   ?= go
 
+# Version baked into the container image's label and tag (`make image`).
+VERSION ?= dev
+IMAGE   ?= obie-website:$(VERSION)
+
 FRONTEND := frontend
 BACKEND  := backend
 MVNW     := ./mvnw -B
@@ -70,6 +74,10 @@ vuln: $(NODE_MODULES) $(OSV_SCANNER) ## Scan runtime dependencies for known vuln
 .PHONY: lighthouse
 lighthouse: build ## Lighthouse CI (mobile) against the locally started jar; fails below 95 in any category
 	JAR=$(JAR) LHCI_VERSION=$(LHCI_VERSION) ./scripts/lighthouse.sh
+
+.PHONY: image
+image: ## Build the container image $(IMAGE) from the Dockerfile (docker)
+	docker build --build-arg VERSION='$(VERSION)' -t '$(IMAGE)' .
 
 .PHONY: ci
 ci: frontend-lint frontend-test backend vuln ## Run every check the CI website job runs
