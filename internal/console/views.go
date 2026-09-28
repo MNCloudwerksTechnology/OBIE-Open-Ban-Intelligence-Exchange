@@ -74,6 +74,7 @@ func (c *Console) views() []view {
 			item: &item{template: decisionTemplate, content: c.decisionContent, missing: missingDecision, rest: true}},
 		{Path: "/enforcement", Title: "Firewall", Fragment: "/api/enforcement", template: firewallTemplate,
 			content: c.firewallContent, region: c.firewallSummaryContent},
+		{Path: "/verdicts", Title: "Verdicts", template: verdictsTemplate, content: c.verdictsContent},
 	}
 }
 
@@ -82,6 +83,7 @@ var (
 	overviewTemplate  = pageTemplate("overview.html")
 	peersTemplate     = pageTemplate("peers.html")
 	peerTemplate      = pageTemplate("peer.html")
+	verdictsTemplate  = pageTemplate("verdicts.html")
 	decisionsTemplate = pageTemplate("decisions.html")
 	decisionTemplate  = pageTemplate("decision.html")
 	firewallTemplate  = pageTemplate("firewall.html")
@@ -95,8 +97,10 @@ func pageTemplate(file string) *template.Template {
 
 // templateFuncs are the functions page templates may call.
 var templateFuncs = template.FuncMap{
-	// count formats a number with thousands separators.
-	"count": count,
+	// count formats a number with thousands separators, and plural with
+	// the noun for one or many.
+	"count":  count,
+	"plural": plural,
 	// day and clock split a timestamp's text into the date and the time
 	// of day, so a narrow column wraps between them only.
 	"day": func(t timestamp) string {

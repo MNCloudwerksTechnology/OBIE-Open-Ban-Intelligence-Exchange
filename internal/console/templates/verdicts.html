@@ -1,0 +1,202 @@
+{{define "content" -}}
+<h1>Verdicts</h1>
+<p class="lead">What this node told the mesh, and what the mesh told it: every verdict this node published and every verdict it holds from other publishers. The evidence behind a verdict never leaves the node that reported it; only its hash and the event count do. The page is read when it opens; reload it to read it again.</p>
+<p class="updated">Read at <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time></p>
+{{- with .Notice}}
+<p class="callout">{{.}}</p>
+{{- end}}
+
+<section class="section" aria-labelledby="totals-heading">
+  <h2 id="totals-heading">Totals</h2>
+  {{- if .TotalsErr}}
+  <p class="callout" data-level="warning">The totals could not be read: {{.TotalsErr}}</p>
+  {{- end}}
+  {{- with .Totals}}
+  <div class="table-scroll">
+  <table class="list totals">
+    <thead>
+      <tr><th scope="col">Publisher</th><th scope="col">Trust weight</th><th scope="col">Active</th><th scope="col">Revoked</th><th scope="col">Expired</th></tr>
+    </thead>
+    <tbody>
+      {{- with .Mine}}
+      <tr class="totals-mine">
+        <th scope="row"><span class="peer-name">This node</span><span class="cell-note">published</span></th>
+        <td><span class="cell-label">Trust weight</span> <span class="cell-note">trust.local_weight</span></td>
+        {{- template "counts" .}}
+      </tr>
+      {{- end}}
+      {{- range .Received}}
+      <tr>
+        <th scope="row"><a class="peer-name" href="{{.Href}}">{{.Title}}</a>{{if .Named}}<span class="peer-id mono" title="{{.PeerID}}">{{.ShortID}}</span>{{end}}</th>
+        <td><span class="cell-label">Trust weight</span> <span class="weight">{{.Weight}}</span>{{if .NoWeight}} <span class="badge">No weight</span>{{end}}</td>
+        {{- template "counts" .}}
+      </tr>
+      {{- end}}
+      {{- with .ReceivedAll}}
+      <tr class="totals-sum">
+        <th scope="row"><span class="peer-name">{{.Title}}</span><span class="cell-note">received from {{plural $.Totals.Publishers "publisher" "publishers"}}</span></th>
+        <td><span class="cell-label">Trust weight</span> <span class="cell-note">each its own</span></td>
+        {{- template "counts" .}}
+      </tr>
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  {{- with .More}}
+  <p class="note">{{plural . "more publisher is" "more publishers are"}} not listed here; choose one in the Publisher filter below.</p>
+  {{- end}}
+  {{- end}}
+  <p class="note">A publisher with the trust weight 0 has <strong>no weight</strong>: its verdicts are held and shown, but never count in decisions.{{with .Retention}} A verdict that was revoked or expired is kept for {{.}} after its expiry, then forgotten.{{end}}</p>
+</section>
+
+<section class="section" aria-labelledby="list-heading">
+  <h2 id="list-heading">{{.Heading}}</h2>
+  <nav class="filters scopes" aria-label="Whose verdicts">
+    <ul>
+      {{- range .Scopes}}
+      <li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}}</a></li>
+      {{- end}}
+    </ul>
+  </nav>
+  {{- with .Whose}}
+  <p class="whose">The verdicts of {{if .Href}}<a href="{{.Href}}">{{.Title}}</a>{{else}}{{.Title}}{{end}} <code class="id">{{.PeerID}}</code>, trust weight <span class="weight">{{.Weight}}</span>.{{if .NoWeight}} <span class="badge">No weight</span> Its verdicts never count in decisions.{{end}}</p>
+  {{- end}}
+  <form class="filter-form" method="get" action="/verdicts" role="search" aria-label="Filter verdicts">
+    <div class="field field-wide">
+      <label for="verdicts-address">Address or network</label>
+      <input id="verdicts-address" name="address" type="search" value="{{.Address}}" placeholder="203.0.113.7 or 198.51.100.0/24" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="verdicts-reason">Reason</label>
+      <select id="verdicts-reason" name="reason">
+        {{- range .Reasons}}
+        <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+        {{- end}}
+      </select>
+    </div>
+    <div class="field">
+      <label for="verdicts-publisher">Publisher</label>
+      <select id="verdicts-publisher" name="publisher">
+        {{- range .Publishers}}
+        <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+        {{- end}}
+      </select>
+    </div>
+    {{- with .From}}
+    <input type="hidden" name="from" value="{{.}}">
+    {{- end}}
+    {{- with .State}}
+    <input type="hidden" name="state" value="{{.}}">
+    {{- end}}
+    <div class="form-actions">
+      <button type="submit" class="button">Show</button>
+      {{- with .Clear}}
+      <a href="{{.}}">Clear filters</a>
+      {{- end}}
+    </div>
+  </form>
+  {{- with .AddressErr}}
+  <p class="callout" data-level="warning">{{.}}</p>
+  {{- end}}
+  {{- with .Searched}}
+  <div class="searched">
+    <p>The verdicts on <a class="mono" href="{{.DecisionHref}}" data-copy>{{.Address}}</a> itself, as <code>{{.Command}}</code> lists the active ones. <a href="{{.DecisionHref}}">Its decision and the full explanation</a>, with the networks around it.</p>
+  </div>
+  {{- end}}
+  <div class="list-head">
+    <nav class="filters" aria-label="Verdict state">
+      <ul>
+        {{- range .States}}
+        <li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}} <span class="filter-count">{{count .Count}}</span></a></li>
+        {{- end}}
+      </ul>
+    </nav>
+  </div>
+  {{- with .StateNote}}
+  <p class="callout">{{.}}</p>
+  {{- end}}
+  {{- if .Err}}
+  <p class="callout" data-level="warning">The verdicts could not be read: {{.Err}}</p>
+  {{- else if .Rows}}
+  <div class="table-scroll">
+  <table class="list verdicts verdict-list">
+    <thead>
+      <tr><th scope="col">Address</th><th scope="col">Publisher</th><th scope="col">Verdict</th><th scope="col">Reason</th><th scope="col">Evidence</th><th scope="col">Issued</th><th scope="col">Expires</th><th scope="col">State</th><th scope="col">Decision</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Rows}}
+      <tr data-state="{{.State}}">
+        <th scope="row"><a class="mono address" href="{{.Href}}" data-copy>{{.Address}}</a></th>
+        <td>
+          <span class="cell-label">Publisher</span>
+          {{- if .PublisherHref}}
+          <a href="{{.PublisherHref}}">{{.Publisher}}</a>
+          {{- else}}
+          <span class="peer-name">{{.Publisher}}</span>
+          {{- end}}
+          <span class="cell-note">weight {{.Weight}}</span>
+          {{- if .NoWeight}}
+          <span class="badge">No weight</span>
+          {{- end}}
+        </td>
+        <td><span class="cell-label">Verdict</span> {{.Action}}<span class="cell-note">confidence {{.Confidence}}</span></td>
+        <td><span class="cell-label">Reason</span> {{.Reason}}</td>
+        <td>
+          <span class="cell-label">Evidence</span>
+          {{.Events}}
+          {{- if .LogHash}}
+          <span class="cell-note">log hash <code class="hash" data-copy>{{.LogHash}}</code></span>
+          {{- else}}
+          <span class="cell-note">no log lines given</span>
+          {{- end}}
+          <span class="cell-note">event <code class="hash">{{.EventID}}</code></span>
+        </td>
+        <td><span class="cell-label">Issued</span> <time datetime="{{.Issued.ISO}}"><span class="day">{{day .Issued}}</span> {{clock .Issued}}</time></td>
+        <td><span class="cell-label">Expires</span> <time datetime="{{.Expires.ISO}}"><span class="day">{{day .Expires}}</span> {{clock .Expires}}</time></td>
+        <td>
+          <span class="cell-label">State</span>
+          <span class="verdict-state" data-state="{{.State}}">{{.StateLabel}}</span>
+          {{- if eq .State "active"}}
+          <span class="cell-note">counts: {{.Counts}}</span>
+          {{- else if eq .State "revoked"}}
+          {{- if .RevokeReason}}
+          <span class="cell-note">why: {{.RevokeReason}}</span>
+          <span class="cell-note">at <time datetime="{{.Ended.ISO}}">{{.Ended.Text}}</time></span>
+          <span class="cell-note">revocation <code class="hash">{{.RevokedByID}}</code></span>
+          {{- else}}
+          <span class="cell-note">why: not known; the revocation arrived before this version kept it</span>
+          {{- end}}
+          {{- else}}
+          <span class="cell-note">at <time datetime="{{.Ended.ISO}}">{{.Ended.Text}}</time></span>
+          {{- end}}
+        </td>
+        <td><span class="cell-label">Decision</span> <a href="{{.DecisionHref}}"><span class="decision-state" data-state="{{.DecisionState}}">{{.DecisionLabel}}</span></a></td>
+      </tr>
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  <p class="pager-text">{{.Pager.Text}}</p>
+  {{- if or .Pager.First .Pager.Next}}
+  <nav class="pager" aria-label="Pages of verdicts">
+    {{- with .Pager.First}}
+    <a href="{{.}}">First page</a>
+    {{- end}}
+    {{- with .Pager.Next}}
+    <a href="{{.}}" rel="next">Next page</a>
+    {{- end}}
+  </nav>
+  {{- end}}
+  {{- else}}
+  <p class="empty">{{.Empty}}{{with .Clear}} <a href="{{.}}">Clear filters</a>{{end}}</p>
+  {{- end}}
+</section>
+{{- end}}
+
+{{define "counts"}}
+        <td><span class="cell-label">Active</span> {{template "count-link" .Active}}{{with .CountingNote}}<span class="cell-note">{{.}}</span>{{end}}</td>
+        <td><span class="cell-label">Revoked</span> {{template "count-link" .Revoked}}</td>
+        <td><span class="cell-label">Expired</span> {{template "count-link" .Expired}}</td>
+{{- end}}
+
+{{define "count-link"}}{{if .Href}}<a class="weight" href="{{.Href}}">{{count .Count}}</a>{{else}}<span class="weight">{{count .Count}}</span>{{end}}{{end}}

@@ -113,9 +113,10 @@ type verdictsPage struct {
 	Reasons, Publishers    []option
 	// Clear links to the list without filters; empty without any.
 	Clear string
-	// Heading says what the list shows.
-	Heading string
-	Rows    []verdictItemRow
+	// Heading says what the list shows, and StateNote what its state
+	// means for a list of verdicts that ended.
+	Heading, StateNote string
+	Rows               []verdictItemRow
 	// Empty explains why no verdict is listed; empty if some are.
 	Empty string
 	Pager verdictsPager
@@ -164,8 +165,8 @@ type verdictItemRow struct {
 	NoWeight           bool
 	Action, Confidence string
 	Reason             string
-	// Events counts the events behind the verdict; LogHash is the hash of
-	// the log lines, empty if none were given.
+	// Events says how many events are behind the verdict; LogHash is the
+	// hash of the log lines, empty if none were given.
 	Events, LogHash string
 	EventID         string
 	Issued, Expires timestamp
@@ -251,6 +252,7 @@ func buildVerdicts(in verdictsInput) verdictsPage {
 		Retention:  retentionText(in.totals.Retention),
 		Heading:    verdictsHeading(q, in.self, names),
 	}
+	p.StateNote = stateNoteOf(q.state, p.Retention)
 	if in.listErr != nil {
 		p.Err = in.listErr.Error()
 	}
@@ -389,7 +391,7 @@ func newVerdictItemRow(it *VerdictItem, self string, names map[string]string) ve
 		Action:        it.Action,
 		Confidence:    score(it.Confidence),
 		Reason:        reasonText(it.Reason, it.Protocol),
-		Events:        count(int(it.Events)),
+		Events:        plural(int(it.Events), "event", "events"),
 		LogHash:       it.LogHash,
 		EventID:       it.EventID,
 		Issued:        stamp(it.IssuedAt),
@@ -521,6 +523,23 @@ func emptyVerdicts(q verdictsQuery, retention string) string {
 	default:
 		return "The node holds no active verdict. Verdicts appear once this node or its peers report addresses " +
 			"(obiectl report, or the Fail2Ban action on every ban)."
+	}
+}
+
+// stateNoteOf says what the state tab state means, for the verdicts that
+// ended, which the node keeps for retention after their expiry.
+func stateNoteOf(state, retention string) string {
+	kept := ""
+	if retention != "" {
+		kept = " The node keeps them for " + retention + " after their expiry, then forgets them."
+	}
+	switch state {
+	case VerdictRevoked:
+		return "Revoked verdicts: their publisher withdrew them, so they count in no decision any more." + kept
+	case VerdictExpired:
+		return "Expired verdicts: they reached their expiry unrevoked, so they count in no decision any more." + kept
+	default:
+		return ""
 	}
 }
 

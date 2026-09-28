@@ -326,7 +326,7 @@ func TestFindPeer(t *testing.T) {
 }
 
 // TestPeerVerdicts: AC4 — a peer's verdicts, whether each counts, links
-// into the verdict view once it exists, and paging.
+// into the verdict view (or the commands without it), and paging.
 func TestPeerVerdicts(t *testing.T) {
 	c := newConsole(t, testConsoleConfig, &syncBuffer{})
 	var asked []string
@@ -354,20 +354,22 @@ func TestPeerVerdicts(t *testing.T) {
 	if v4.Reason != "password_bruteforce (ssh)" || v4.Counting || v4.Counts != "No: a watch verdict" {
 		t.Errorf("watch row = %+v", v4)
 	}
-	// Until the verdict view exists, the page names the commands.
-	if cidr.Href != "" || l.All != "" || l.AllCommand != "obiectl indicators --publisher "+idAlpha || l.ShowCommand != "obiectl show <address>" {
-		t.Errorf("links without a verdict view: row %q, all %q / %q, show %q", cidr.Href, l.All, l.AllCommand, l.ShowCommand)
+	// The verdicts link into the verdict view (ADR 0023).
+	if cidr.Href != "/verdicts?address=198.51.100.0%2F24" || l.All != "/verdicts?publisher="+idAlpha || l.AllCommand != "" ||
+		l.ShowCommand != "" {
+		t.Errorf("links with a verdict view: row %q, all %q / %q, show %q", cidr.Href, l.All, l.AllCommand, l.ShowCommand)
 	}
 	if l.Next != "/peers/"+idAlpha+"?after=ipv4%3A203.0.113.7" || l.First != "" {
 		t.Errorf("paging: next %q, first %q", l.Next, l.First)
 	}
 
-	c.pages = append(c.pages, view{Path: "/verdicts", Title: "Verdicts"})
+	// Without the verdict view, the page names the commands.
+	c.pages = slices.DeleteFunc(c.pages, func(v view) bool { return v.Path == "/verdicts" })
 	untrusted := peerEntry{Peer: Peer{ID: idBravo}, verdicts: VerdictCount{Held: 2}}
 	l = c.peerVerdicts(&untrusted, "ipv4:1.2.3.4")
-	if l.Rows[0].Href != "/verdicts?address=198.51.100.0%2F24" || l.All != "/verdicts?publisher="+idBravo ||
-		l.AllCommand != "" || l.ShowCommand != "" || l.First != "/peers/"+idBravo {
-		t.Errorf("links with a verdict view: row %q, all %q / %q, show %q, first %q", l.Rows[0].Href, l.All, l.AllCommand, l.ShowCommand, l.First)
+	if l.Rows[0].Href != "" || l.All != "" || l.AllCommand != "obiectl indicators --publisher "+idBravo ||
+		l.ShowCommand != "obiectl show <address>" || l.First != "/peers/"+idBravo {
+		t.Errorf("links without a verdict view: row %q, all %q / %q, show %q, first %q", l.Rows[0].Href, l.All, l.AllCommand, l.ShowCommand, l.First)
 	}
 	if l.Rows[0].Counting || l.Rows[0].Counts != "No: weight 0" {
 		t.Errorf("ban of an untrusted peer: %+v", l.Rows[0])
