@@ -658,7 +658,9 @@ func (e *Engine) apply(key string, d Decision, cause string) {
 		e.log.Debug("block decision changed", "indicator", key, "change", typ, "cause", cause, "reason", d.Reason)
 		e.notify(Change{Type: typ, Key: key, Decision: d, Cause: cause})
 	}
-	if from != d.State {
+	// A decision that is not kept (e.g. allowed without verdicts) is no
+	// transition: it would be announced again at every evaluation.
+	if from != d.State && (active || had) {
 		e.notifyTransition(Transition{Key: key, From: from, Decision: d, Cause: cause})
 	}
 }

@@ -815,3 +815,22 @@ func TestEngineTransitions(t *testing.T) {
 		t.Errorf("transitions after unsubscribe: %v", got[len(want):])
 	}
 }
+
+// TestEngineNoTransitionForUnkeptDecisions: a force-allow on an address
+// without verdicts decides "allowed", but nothing is kept, so nothing
+// transitions.
+func TestEngineNoTransitionForUnkeptDecisions(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	var got []Transition
+	f.engine.SubscribeTransitions(func(tr Transition) { got = append(got, tr) })
+	f.start(t)
+	for range 2 {
+		if err := f.store.SetOverride(store.Override{Indicator: ipv4("198.51.100.40"), Action: store.ForceAllow}); err != nil {
+			t.Fatal(err)
+		}
+		f.engine.processDirty()
+	}
+	if len(got) != 0 {
+		t.Errorf("transitions = %+v, want none", got)
+	}
+}

@@ -93,8 +93,10 @@ The full set of fields per action is in
 
 ### Rotation
 
-`obied` reopens the audit log on SIGHUP (which also reloads the
-configuration; unchanged, that changes nothing). With logrotate:
+`obied` reopens the audit log on SIGHUP. SIGHUP also reloads the
+configuration and the allow-list files: a rotation applies any edit already
+saved to them, so finish and check edits (`obied --check-config`) before
+the nightly rotation. With logrotate:
 
 ```text
 /var/log/obie/audit.jsonl {

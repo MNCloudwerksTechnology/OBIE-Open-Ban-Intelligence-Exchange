@@ -2,6 +2,7 @@ package gossip
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -62,7 +63,7 @@ func TestValidateUpdatesMetrics(t *testing.T) {
 		}
 	}
 	gotCount, gotSum := histogram(t, propagationDelay)
-	if gotCount-count != 1 || gotSum-sum != 3 {
+	if gotCount-count != 1 || math.Abs(gotSum-sum-3) > 1e-9 {
 		t.Errorf("obie_propagation_delay_seconds: %d samples summing to %v, want one of 3s", gotCount-count, gotSum-sum)
 	}
 }

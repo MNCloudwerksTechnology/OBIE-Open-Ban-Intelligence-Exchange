@@ -79,5 +79,8 @@ per-package metrics (`obie_store_events_total`, `obie_enforce_*`), and
 - The audit log is not a second source of truth: changes while the node was
   down (e.g. expiries) are not recorded, and the startup state is only in
   `obiectl decisions`.
-- SIGHUP both reloads the configuration and reopens the audit log; sending
-  it for rotation is harmless when the configuration is unchanged.
+- SIGHUP both reloads the configuration and reopens the audit log: a
+  rotation also applies configuration edits already saved on disk.
+- Records are written synchronously from the engine's subscriber callbacks;
+  a hanging filesystem under `audit.path` stalls decisions, so the audit log
+  belongs on local disk.
