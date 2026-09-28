@@ -8,9 +8,11 @@ first — it is the binding technical baseline.
 
 - Go 1.26 or newer
 - GNU Make, Git
-- Network access on the first run: `make lint`, `make lint-workflows` and
-  `make vuln` install the pinned golangci-lint, actionlint and govulncheck
-  versions into `./bin/tools/`. These tools need a newer Go than `go.mod`
+- Node.js with npm (for `make lint-md` only)
+- Network access on the first run: `make lint`, `make lint-workflows`,
+  `make lint-md` and `make vuln` install the pinned golangci-lint,
+  actionlint, markdownlint-cli2 and govulncheck versions into
+  `./bin/tools/`. The Go tools need a newer Go than `go.mod`
   requires; with the default `GOTOOLCHAIN=auto` the `go` command downloads it
   automatically (do not set `GOTOOLCHAIN=local` on an older Go).
 
@@ -25,8 +27,9 @@ first — it is the binding technical baseline.
 | `make lint`            | golangci-lint with the committed `.golangci.yml`                 |
 | `make vuln`            | govulncheck against the Go vulnerability database                |
 | `make lint-workflows`  | actionlint on the CI workflows; checks both copies are identical |
+| `make lint-md`         | markdownlint-cli2 on every Markdown file (`.markdownlint-cli2.yaml`) |
 | `make test-privileged` | Tests including the `privileged` build tag (needs root)          |
-| `make ci`              | fmt-check + vet + lint + lint-workflows + test + vuln            |
+| `make ci`              | fmt-check + vet + lint + lint-workflows + lint-md + test + vuln  |
 | `make clean`           | Removes `./bin/` including installed tools                       |
 
 The version embedded in the binaries comes from `git describe`; override it

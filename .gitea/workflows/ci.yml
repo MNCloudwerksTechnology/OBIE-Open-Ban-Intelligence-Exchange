@@ -47,11 +47,26 @@ jobs:
           cache: true
           cache-dependency-path: go.mod
 
+      # make lint-md installs the pinned markdownlint-cli2 with npm.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
       - name: Cache pinned tools
         uses: actions/cache@v4
         with:
           path: bin/tools
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      # TestFail2BanAcceptsAction checks the Fail2Ban action with
+      # `fail2ban-client -t` (a command of the quick start); it is skipped
+      # without Fail2Ban.
+      - name: Install Fail2Ban
+        run: |
+          if ! command -v fail2ban-client >/dev/null; then
+            sudo=; [ "$(id -u)" -eq 0 ] || sudo=sudo
+            $sudo apt-get update && $sudo apt-get install -y --no-install-recommends fail2ban
+          fi
 
       - name: make ci
         run: make ci
@@ -129,6 +144,18 @@ jobs:
           # The second build starts from an empty build cache.
           GOCACHE="$(mktemp -d)" make release VERSION=0.0.0-ci
           diff "$RUNNER_TEMP/SHA256SUMS" dist/release/SHA256SUMS
+
+      # The install commands of documentation/operations/quickstart.md, on
+      # the tarball just built: verify, extract, install (staged below
+      # DESTDIR, without root and systemd) and check the installed config.
+      - name: quickstart steps on the release tarball
+        run: |
+          cp dist/release/obie-0.0.0-ci-linux-amd64.tar.gz dist/release/SHA256SUMS "$RUNNER_TEMP/"
+          cd "$RUNNER_TEMP"
+          sha256sum -c --ignore-missing SHA256SUMS
+          tar -xzf obie-0.0.0-ci-linux-amd64.tar.gz
+          DESTDIR="$RUNNER_TEMP/root" ./obie-0.0.0-ci-linux-amd64/install.sh
+          "$RUNNER_TEMP/root/usr/local/bin/obied" --config "$RUNNER_TEMP/root/etc/obie/obie.yaml" --check-config
 
       - name: make check-unit
         run: |

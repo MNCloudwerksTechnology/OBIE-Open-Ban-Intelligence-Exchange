@@ -38,7 +38,7 @@ stack and build in
 page content file and design system in
 [ADR 0012](documentation/adr/0012-landing-page-content-and-design-system.md).
 
-The [whitepaper in the README](README.md) describes the long-term vision. This
+The [whitepaper](documentation/whitepaper.md) describes the long-term vision. This
 file describes what v0.1 actually builds; where the two differ, this file wins
 for implementation work (see [Deviations from the whitepaper](#deviations-from-the-whitepaper)).
 

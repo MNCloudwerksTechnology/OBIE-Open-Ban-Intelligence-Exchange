@@ -1,0 +1,26 @@
+# markdownlint-cli2 configuration for `make lint-md` (part of `make ci`).
+# Rules: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+config:
+  default: true
+  # Prose is wrapped by hand and tables hold long cells; line length is
+  # not checked.
+  MD013: false
+  # Tables need not be padded to aligned columns.
+  MD060: false
+  # Tabs are allowed in code blocks (nft output, Makefile snippets).
+  MD010:
+    code_blocks: false
+  # Keep a Changelog repeats "Added", "Changed", ... under every release.
+  MD024:
+    siblings_only: true
+
+# Skip what .gitignore excludes (tools, build output, agent state).
+gitignore: true
+
+ignores:
+  # The website has its own toolchain and gate (make -C website ci).
+  - "website/**"
+  # The whitepaper is kept verbatim as published.
+  - "documentation/whitepaper.md"
+  # The license text is kept as issued.
+  - "LICENSE.md"
