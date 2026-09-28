@@ -52,8 +52,10 @@ is a byte-identical copy for the public GitHub mirror — change both together;
   unit), `make image` and `make lab-smoke` (the three-node compose lab comes
   up, the nodes see each other and block by consensus). Nothing is pushed.
 - **website** — `make -C website ci` for the website in `website/` (see
-  [`website/README.md`](website/README.md)); its steps are skipped when
-  nothing under `website/` changed.
+  [`website/README.md`](website/README.md)) and `make -C website smoke`
+  (builds the website image and checks it in its production compose stack;
+  nothing is pushed); its steps are skipped when nothing under `website/`
+  changed.
 - **privileged tests** — never part of the default run. Start it manually
   ("Run workflow" with the `privileged` input checked) to run the tests behind
   the `privileged` build tag as root.
@@ -64,6 +66,14 @@ pushes the multi-arch image and then attaches the tarballs, SBOMs and
 `SHA256SUMS` to the forge's release. To release, tag the merged commit on `main`
 (`git tag -a v0.1.0 -m "OBIE 0.1.0" && git push origin v0.1.0`); see
 [ADR 0017](documentation/adr/0017-packaging-and-state-format.md).
+
+`.gitea/workflows/website-release.yml` (byte-identical GitHub copy) runs
+only when a `website-v*` tag is pushed: it runs `make -C website ci` and the
+smoke test, then pushes the website's multi-arch image
+(`ghcr.io/<owner>/obie-website:<version>` on GitHub). The two release
+workflows never trigger on each other's tags; see
+[ADR 0018](documentation/adr/0018-website-container-and-deployment.md) and
+[`website/deploy/README.md`](website/deploy/README.md).
 
 **A red pipeline blocks merge.** A pull request is only merged when every job
 of its latest pipeline run is green; fix the failure (or the check) rather

@@ -9,9 +9,15 @@ design decisions are recorded in
 ```text
 website/
   Makefile    build and check commands (this file documents them)
+  Dockerfile  production container image (ADR 0018)
   frontend/   Angular 22, standalone components, strict TypeScript, SCSS
   backend/    Spring Boot 3.5, Java 21, Maven wrapper, package org.obie.website
+  deploy/     compose file, .env.example and smoke test for the server
 ```
+
+**Deploying:** [`deploy/README.md`](deploy/README.md) covers the first
+deploy with Docker Compose, reverse proxies (Caddy, Traefik), updates,
+backups and the checklist before going live.
 
 ## Prerequisites
 
@@ -19,7 +25,8 @@ website/
 - Java 21 (no Maven needed: the back end ships the Maven wrapper `./mvnw`)
 - Go (only to install the pinned `osv-scanner` for `make vuln`)
 - Docker (the back-end tests start PostgreSQL and, for the browser test,
-  Chromium with Testcontainers)
+  Chromium with Testcontainers; `make image` and `make smoke` need Docker
+  with the Compose plugin)
 - Google Chrome, only for `make lighthouse` and `npm run share-image`
 - To run the jar: a PostgreSQL database and an SMTP server (see
   [Configuration](#configuration))
@@ -64,6 +71,8 @@ http://localhost:4200.
 | `make -C website backend`      | `./mvnw verify`: tests (PostgreSQL and a Chromium browser via Testcontainers, GreenMail), Spotless, SpotBugs, jar |
 | `make -C website vuln`         | `npm audit --omit=dev --audit-level=high` and osv-scanner on the back end's runtime SBOM |
 | `make -C website lighthouse`   | Build the jar, start it with a throwaway PostgreSQL (Docker) and run Lighthouse CI (mobile) on every page; fails below 95 in any category |
+| `make -C website image`        | Build the container image `obie-website:dev` (`VERSION=`, `IMAGE=` override) |
+| `make -C website smoke`        | Build the image, start `deploy/compose.yaml` with Mailpit, check page, health, headers and one inquiry, remove it ([`deploy/README.md`](deploy/README.md#smoke-test)) |
 | `make -C website run`          | Run the built jar                                                   |
 | `make -C website clean`        | Remove build output and installed tools                             |
 
@@ -107,7 +116,7 @@ Durations use ISO-8601 (`PT3S` = 3 seconds, `PT1H` = 1 hour), periods too
 | `OBIE_GITHUB_RETRY_DELAY` | no | `PT1M` | After a failed fetch (error, timeout, rate limit), GitHub is not asked again before this has passed; meanwhile the last good stats are served. |
 | `OBIE_GITHUB_API_URL` | no | `https://api.github.com` | Base URL of the GitHub REST API. |
 | `SERVER_PORT` | no | `8080` | HTTP port (Spring Boot). |
-| `SERVER_FORWARD_HEADERS_STRATEGY` | no | – | Set to `native` behind a reverse proxy that sets `X-Forwarded-For`/`X-Forwarded-Proto`, so rate limit and IP hash see the visitor's address. Leave unset without a proxy: the headers could be forged. |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | no | – (`native` in `deploy/compose.yaml`) | Set to `native` behind a reverse proxy that sets `X-Forwarded-For`/`X-Forwarded-Proto`, so rate limit and IP hash see the visitor's address. Tomcat then accepts the headers only from private and loopback addresses. Leave unset when visitors can reach the application directly from such addresses: they could forge the headers. |
 
 ## Founder content: what the operator fills in
 
