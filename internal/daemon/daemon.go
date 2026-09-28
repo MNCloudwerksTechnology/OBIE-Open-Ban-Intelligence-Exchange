@@ -113,7 +113,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		return err
 	}
 	env := opts.Env
-	env.OmitDocumentationRanges = opts.Testing.AllowDocumentationRanges
+	env.OmitDocumentationRanges = env.OmitDocumentationRanges || opts.Testing.AllowDocumentationRanges
 	allow, err := sovereignty.Build(ctx, cfg, env, logs.Logger(sovereigntyComponent))
 	if err != nil {
 		return fmt.Errorf("allow-list: %w", err)
@@ -229,7 +229,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		return fmt.Errorf("startup failed: %w", err)
 	}
 	log.Info("obied started", "version", version.Version, "mode", cfg.Node.Mode, "peer_id", id.PeerID(),
-		"admin_socket", cfg.Admin.Socket, "metrics_listen", cfg.Metrics.Listen, "audit_path", cfg.Audit.Path)
+		"admin_socket", cfg.Admin.Socket, "metrics_listen", opsServer.Addr().String(), "audit_path", cfg.Audit.Path)
 
 	if opts.Testing.Started != nil {
 		opts.Testing.Started(Endpoints{Mesh: multiaddrStrings(m.ListenAddrs()), Metrics: opsServer.Addr().String()})
