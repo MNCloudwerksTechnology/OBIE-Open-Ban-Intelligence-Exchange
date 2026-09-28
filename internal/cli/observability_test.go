@@ -34,6 +34,33 @@ func waitFile(t *testing.T, path string, want ...string) string {
 	}
 }
 
+// waitMetrics scrapes /metrics at addr until it has every sample in want,
+// each a whole line, and returns the last scrape: the decision engine sets
+// its gauges after the admin request that changed a decision returned.
+func waitMetrics(t *testing.T, addr string, want ...string) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		resp, err := http.Get("http://" + addr + "/metrics") // #nosec G107 -- test server URL.
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		missing := false
+		for _, w := range want {
+			missing = missing || !strings.Contains(string(data), w+"\n")
+		}
+		if !missing || time.Now().After(deadline) {
+			return string(data)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 // TestObservabilityAgainstInProcessDaemon: a local report and a
 // force-block are written to the audit log, which a reload (SIGHUP)
 // reopens after logrotate moved it, and /metrics serves every obie_
@@ -66,30 +93,23 @@ func TestObservabilityAgainstInProcessDaemon(t *testing.T) {
 		t.Errorf("the reopened audit log repeats earlier records:\n%s", rotated)
 	}
 
-	resp, err := http.Get("http://" + n.metrics + "/metrics") // #nosec G107 -- test server URL.
-	if err != nil {
-		t.Fatal(err)
+	samples := []string{
+		`obie_node_mode{mode="observe"} 1`,
+		`obie_decisions{state="block"} 2`,
+		`obie_store_active_verdicts 1`,
 	}
-	body, err := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
+	body := waitMetrics(t, n.metrics, samples...)
 	for _, name := range []string{"build_info", "node_mode", "peers_connected", "peers_configured",
 		"events_received_total", "events_published_total", "store_active_indicators", "store_active_verdicts",
 		"decisions", "enforcer_entries", "enforcer_apply_total", "enforcer_apply_duration_seconds",
 		"enforcer_skipped_total", "propagation_delay_seconds", "admin_requests_total"} {
-		if !strings.Contains(string(body), "# TYPE obie_"+name+" ") {
+		if !strings.Contains(body, "# TYPE obie_"+name+" ") {
 			t.Errorf("/metrics lacks obie_%s", name)
 		}
 	}
-	checkDashboard(t, string(body))
-	for _, sample := range []string{
-		`obie_node_mode{mode="observe"} 1`,
-		`obie_decisions{state="block"} 2`,
-		`obie_store_active_verdicts 1`,
-	} {
-		if !strings.Contains(string(body), sample+"\n") {
+	checkDashboard(t, body)
+	for _, sample := range samples {
+		if !strings.Contains(body, sample+"\n") {
 			t.Errorf("/metrics lacks %s", sample)
 		}
 	}
@@ -98,7 +118,7 @@ func TestObservabilityAgainstInProcessDaemon(t *testing.T) {
 		`obie_events_published_total{type="verdict"} `,
 		`obie_admin_requests_total{code="201",endpoint="POST /v1/reports"} `,
 	} {
-		if !strings.Contains(string(body), series) || strings.Contains(string(body), series+"0\n") {
+		if !strings.Contains(body, series) || strings.Contains(body, series+"0\n") {
 			t.Errorf("/metrics lacks a count of %s", series)
 		}
 	}
