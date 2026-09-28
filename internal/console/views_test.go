@@ -210,27 +210,29 @@ func TestOverviewLinksOnlyToBuiltViews(t *testing.T) {
 	c, b := signedInBrowser(t)
 	overviewNode(c)
 	_, page := b.get("/")
-	for _, path := range []string{"/verdicts", "/enforcement", "/overrides"} {
+	for _, path := range []string{"/verdicts", "/overrides"} {
 		if strings.Contains(page, `href="`+path) {
 			t.Errorf("the overview links to %s, which the console does not serve", path)
 		}
 	}
-	for _, cmd := range []string{"obiectl indicators", "obiectl enforced", "obiectl overrides"} {
+	for _, cmd := range []string{"obiectl indicators", "obiectl overrides"} {
 		if !strings.Contains(page, "Details: <code>"+cmd+"</code>") {
 			t.Errorf("the overview does not name %q", cmd)
 		}
 	}
-	// The peers view (ADR 0021) and the decisions view (ADR 0022) exist.
+	// The peers view (ADR 0021), the decisions and the firewall view
+	// (ADR 0022) exist.
 	for _, want := range []string{
 		`<a class="number-main" href="/peers"><span class="number-label">Peers connected</span>`,
 		`<a class="number-main" href="/decisions?state=block">`,
 		`<a class="number-main" href="/decisions?state=allowed">`,
+		`<a class="number-main" href="/enforcement">`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("the overview lacks %q", want)
 		}
 	}
-	for _, cmd := range []string{"obiectl peers", "obiectl decisions --state block"} {
+	for _, cmd := range []string{"obiectl peers", "obiectl decisions --state block", "obiectl enforced"} {
 		if strings.Contains(page, "Details: <code>"+cmd+"</code>") {
 			t.Errorf("the overview names %q of a view it links to", cmd)
 		}

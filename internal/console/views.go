@@ -72,6 +72,8 @@ func (c *Console) views() []view {
 		{Path: "/decisions", Title: "Decisions", Fragment: "/api/decisions", template: decisionsTemplate,
 			content: c.decisionsContent, region: c.decisionsStatusContent,
 			item: &item{template: decisionTemplate, content: c.decisionContent, missing: missingDecision, rest: true}},
+		{Path: "/enforcement", Title: "Firewall", Fragment: "/api/enforcement", template: firewallTemplate,
+			content: c.firewallContent, region: c.firewallSummaryContent},
 	}
 }
 
@@ -82,6 +84,7 @@ var (
 	peerTemplate      = pageTemplate("peer.html")
 	decisionsTemplate = pageTemplate("decisions.html")
 	decisionTemplate  = pageTemplate("decision.html")
+	firewallTemplate  = pageTemplate("firewall.html")
 	notFoundTemplate  = pageTemplate("notfound.html")
 )
 
