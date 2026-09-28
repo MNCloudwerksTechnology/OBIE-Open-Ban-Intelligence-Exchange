@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 400" width="1040" height="400" role="img" aria-labelledby="title desc" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title id="title">One attack, start to finish</title>
+  <desc id="desc">Five numbered steps from left to right. 1, Detection: an attacker tries to guess passwords on server A, and Fail2Ban there bans it. 2, Signed verdict: server A's node writes a verdict to block the address for a week and signs it; the logs stay on server A. 3, Peers: the verdict goes to the peers server A chose, your server among them; servers B and C saw the same attacker and send verdicts too. 4, Trust-weighted decision: your node weighs each verdict by the trust you gave its sender; three trusted peers agree, and the address is not on your allow-list. 5, Firewall: in enforce mode your firewall keeps the attacker out until the verdicts expire; in observe mode the block is only shown.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#1f2328"/>
+    </marker>
+  </defs>
+  <!-- Opaque background: readable in light and dark themes. -->
+  <rect x="0.5" y="0.5" width="1039" height="399" rx="12" fill="#ffffff" stroke="#d0d7de"/>
+  <!-- Where each step happens. -->
+  <text x="211" y="38" text-anchor="middle" font-size="12" font-weight="600" letter-spacing="1" fill="#57606a">ON SERVER A</text>
+  <path d="M 24 50 H 398" stroke="#8c959f" stroke-width="1.5"/>
+  <text x="520" y="38" text-anchor="middle" font-size="12" font-weight="600" letter-spacing="1" fill="#57606a">BETWEEN SERVERS</text>
+  <path d="M 436 50 H 604" stroke="#8c959f" stroke-width="1.5"/>
+  <text x="829" y="38" text-anchor="middle" font-size="12" font-weight="600" letter-spacing="1" fill="#57606a">ON YOUR SERVER</text>
+  <path d="M 642 50 H 1016" stroke="#8c959f" stroke-width="1.5"/>
+  <!-- Step 1: Detection -->
+  <g>
+    <rect x="20" y="70" width="176" height="268" rx="10" fill="#ffffff" stroke="#1f2328" stroke-width="1.5"/>
+    <path d="M 21 81 a 10 10 0 0 1 10 -10 H 185 a 10 10 0 0 1 10 10 V 134 H 21 z" fill="#e7f0fa"/>
+    <path d="M 20 134 H 196" stroke="#1f2328" stroke-width="1.5"/>
+    <circle cx="45" cy="102" r="15" fill="#0b5cad"/>
+    <text x="45" y="108" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">1</text>
+    <text x="68" y="107" font-size="15" font-weight="700" fill="#1f2328">Detection</text>
+    <text x="34" y="162" font-size="13.5" fill="#1f2328">
+      <tspan x="34" y="162">An attacker tries</tspan>
+      <tspan x="34" y="181">to guess passwords</tspan>
+      <tspan x="34" y="200">on server A.</tspan>
+    </text>
+    <text x="34" y="231" font-size="13.5" fill="#1f2328">
+      <tspan x="34" y="231">Fail2Ban on</tspan>
+      <tspan x="34" y="250">server A notices</tspan>
+      <tspan x="34" y="269">the failed logins</tspan>
+      <tspan x="34" y="288">and bans the</tspan>
+      <tspan x="34" y="307">attacker there.</tspan>
+    </text>
+  </g>
+  <path d="M 200 204 H 221" stroke="#1f2328" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Step 2: Signed verdict -->
+  <g>
+    <rect x="226" y="70" width="176" height="268" rx="10" fill="#ffffff" stroke="#1f2328" stroke-width="1.5"/>
+    <path d="M 227 81 a 10 10 0 0 1 10 -10 H 391 a 10 10 0 0 1 10 10 V 134 H 227 z" fill="#e7f0fa"/>
+    <path d="M 226 134 H 402" stroke="#1f2328" stroke-width="1.5"/>
+    <circle cx="251" cy="102" r="15" fill="#0b5cad"/>
+    <text x="251" y="108" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">2</text>
+    <text x="274" y="107" font-size="15" font-weight="700" fill="#1f2328">Signed verdict</text>
+    <text x="240" y="162" font-size="13.5" fill="#1f2328">
+      <tspan x="240" y="162">Server A's node</tspan>
+      <tspan x="240" y="181">writes a verdict:</tspan>
+      <tspan x="240" y="200">“block this address</tspan>
+      <tspan x="240" y="219">for a week”.</tspan>
+    </text>
+    <text x="240" y="250" font-size="13.5" fill="#1f2328">
+      <tspan x="240" y="250">It signs it, so</tspan>
+      <tspan x="240" y="269">nobody can fake</tspan>
+      <tspan x="240" y="288">or change it. The</tspan>
+      <tspan x="240" y="307">logs stay on A.</tspan>
+    </text>
+  </g>
+  <path d="M 406 204 H 427" stroke="#1f2328" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Step 3: Peers -->
+  <g>
+    <rect x="432" y="70" width="176" height="268" rx="10" fill="#ffffff" stroke="#1f2328" stroke-width="1.5"/>
+    <path d="M 433 81 a 10 10 0 0 1 10 -10 H 597 a 10 10 0 0 1 10 10 V 134 H 433 z" fill="#e7f0fa"/>
+    <path d="M 432 134 H 608" stroke="#1f2328" stroke-width="1.5"/>
+    <circle cx="457" cy="102" r="15" fill="#0b5cad"/>
+    <text x="457" y="108" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">3</text>
+    <text x="480" y="107" font-size="15" font-weight="700" fill="#1f2328">Peers</text>
+    <text x="446" y="162" font-size="13.5" fill="#1f2328">
+      <tspan x="446" y="162">The verdict goes to</tspan>
+      <tspan x="446" y="181">the peers server A</tspan>
+      <tspan x="446" y="200">chose, your server</tspan>
+      <tspan x="446" y="219">among them.</tspan>
+    </text>
+    <text x="446" y="250" font-size="13.5" fill="#1f2328">
+      <tspan x="446" y="250">Servers B and C</tspan>
+      <tspan x="446" y="269">saw the same</tspan>
+      <tspan x="446" y="288">attacker and send</tspan>
+      <tspan x="446" y="307">verdicts too.</tspan>
+    </text>
+  </g>
+  <path d="M 612 204 H 633" stroke="#1f2328" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Step 4: Trust-weighted decision -->
+  <g>
+    <rect x="638" y="70" width="176" height="268" rx="10" fill="#ffffff" stroke="#1f2328" stroke-width="1.5"/>
+    <path d="M 639 81 a 10 10 0 0 1 10 -10 H 803 a 10 10 0 0 1 10 10 V 134 H 639 z" fill="#e7f0fa"/>
+    <path d="M 638 134 H 814" stroke="#1f2328" stroke-width="1.5"/>
+    <circle cx="663" cy="102" r="15" fill="#0b5cad"/>
+    <text x="663" y="108" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">4</text>
+    <text x="686" y="98" font-size="15" font-weight="700" fill="#1f2328"><tspan x="686" y="98">Trust-weighted</tspan> <tspan x="686" y="117">decision</tspan></text>
+    <text x="652" y="162" font-size="13.5" fill="#1f2328">
+      <tspan x="652" y="162">Your node weighs</tspan>
+      <tspan x="652" y="181">each verdict by the</tspan>
+      <tspan x="652" y="200">trust you gave its</tspan>
+      <tspan x="652" y="219">sender.</tspan>
+    </text>
+    <text x="652" y="250" font-size="13.5" fill="#1f2328">
+      <tspan x="652" y="250">A, B and C: three</tspan>
+      <tspan x="652" y="269">trusted peers agree.</tspan>
+      <tspan x="652" y="288">The address is not</tspan>
+      <tspan x="652" y="307">on your allow-list.</tspan>
+    </text>
+  </g>
+  <path d="M 818 204 H 839" stroke="#1f2328" stroke-width="2" marker-end="url(#arrow)"/>
+  <!-- Step 5: Firewall -->
+  <g>
+    <rect x="844" y="70" width="176" height="268" rx="10" fill="#ffffff" stroke="#1f2328" stroke-width="1.5"/>
+    <path d="M 845 81 a 10 10 0 0 1 10 -10 H 1009 a 10 10 0 0 1 10 10 V 134 H 845 z" fill="#e7f0fa"/>
+    <path d="M 844 134 H 1020" stroke="#1f2328" stroke-width="1.5"/>
+    <circle cx="869" cy="102" r="15" fill="#0b5cad"/>
+    <text x="869" y="108" text-anchor="middle" font-size="16" font-weight="700" fill="#ffffff">5</text>
+    <text x="892" y="107" font-size="15" font-weight="700" fill="#1f2328">Firewall</text>
+    <text x="858" y="162" font-size="13.5" fill="#1f2328">
+      <tspan x="858" y="162">In enforce mode,</tspan>
+      <tspan x="858" y="181">your firewall keeps</tspan>
+      <tspan x="858" y="200">the attacker out.</tspan>
+    </text>
+    <text x="858" y="231" font-size="13.5" fill="#1f2328">
+      <tspan x="858" y="231">The block ends by</tspan>
+      <tspan x="858" y="250">itself when the</tspan>
+      <tspan x="858" y="269">verdicts expire.</tspan>
+    </text>
+    <text x="858" y="300" font-size="13.5" fill="#1f2328">
+      <tspan x="858" y="300">In observe mode, it</tspan>
+      <tspan x="858" y="319">is only shown.</tspan>
+    </text>
+  </g>
+  <text x="520" y="374" text-anchor="middle" font-size="13" fill="#57606a">Protected addresses and your allow-list are checked before every block. Nothing is blocked until you switch on enforce mode.</text>
+</svg>

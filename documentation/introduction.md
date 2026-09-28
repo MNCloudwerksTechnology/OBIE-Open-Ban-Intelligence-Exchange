@@ -102,6 +102,28 @@ and when. That tells them a little about which services you run. Like any
 connection, it also shows them your server's internet address. The
 [FAQ](faq.md#what-does-obie-share-about-me) lists exactly what is shared.
 
+## One attack, start to finish
+
+![Diagram of one attack in five numbered steps, from left to right: detection on server A, a signed verdict, sent to the peers, a trust-weighted decision on your server, and a block in your firewall. The list below describes each step in words.](images/one-attack.svg)
+
+The same journey in words:
+
+1. **Detection.** An attacker tries to guess passwords on server A.
+   Fail2Ban on server A notices the failed logins and bans the attacker
+   there.
+2. **Signed verdict.** Server A's node writes a verdict: "block this
+   address for a week". It signs the verdict, so nobody can fake or change
+   it. The log lines stay on server A.
+3. **Peers.** The verdict goes to the peers that server A's operator chose,
+   your server among them. Servers B and C saw the same attacker and send
+   their own verdicts.
+4. **Trust-weighted decision.** Your node weighs each verdict by the trust
+   you gave its sender. Three trusted peers agree, which is enough. The
+   address is not on your allow-list.
+5. **Firewall.** In enforce mode, your firewall now keeps the attacker out.
+   The block ends by itself when the verdicts expire. In observe mode, your
+   node only shows that it would block.
+
 ## Is OBIE for you?
 
 OBIE may be for you if:
