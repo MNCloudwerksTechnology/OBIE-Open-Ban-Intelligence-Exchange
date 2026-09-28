@@ -74,6 +74,10 @@ lint-workflows: $(ACTIONLINT) ## Validate the CI workflows with actionlint and c
 		exit 1; \
 	}
 
+.PHONY: check-unit
+check-unit: build ## Check the systemd unit with systemd-analyze (verify, exposure <= 3.0)
+	packaging/systemd/check-unit.sh $(BIN_DIR)
+
 .PHONY: ci
 ci: fmt-check vet lint lint-workflows test vuln ## Run every check the CI gate runs
 
