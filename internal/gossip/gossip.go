@@ -46,7 +46,8 @@ type Options struct {
 	// and per forwarding peer (mesh.rate_limit); unusable (e.g. zero)
 	// buckets take the defaults of config.Default.
 	PublisherLimit, PeerLimit config.TokenBucket
-	// Metrics observes the outcome of every received message; nil for none.
+	// Metrics observes the outcome of every received message besides the
+	// Prometheus metrics; nil for none.
 	Metrics Metrics
 	// Now is the clock events are checked against; nil for time.Now.
 	Now func() time.Time
@@ -185,6 +186,7 @@ func (g *Gossip) Publish(ctx context.Context, ev *obieproto.Event) error {
 	if err := g.topic.Publish(ctx, data); err != nil {
 		return fmt.Errorf("publish event %s: %w", ev.ID, err)
 	}
+	publishedTotal.WithLabelValues(typeLabel(ev.Type)).Inc()
 	return nil
 }
 

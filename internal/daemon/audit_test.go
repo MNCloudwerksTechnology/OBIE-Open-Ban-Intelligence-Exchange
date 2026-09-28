@@ -1,0 +1,169 @@
+package daemon
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/audit"
+	"github.com/MNCloudwerksTechnology/obie/internal/decision"
+	"github.com/MNCloudwerksTechnology/obie/internal/verdicts"
+	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
+)
+
+// startAudit starts an audit log in a temporary directory.
+func startAudit(t *testing.T) (*audit.Log, string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "audit.jsonl")
+	l := audit.New(path, audit.Options{Mode: func() string { return "observe" }}, slog.New(slog.DiscardHandler))
+	if err := l.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Stop(context.Background()) })
+	return l, path
+}
+
+// auditEntries returns "action indicator" of every line at path.
+func auditEntries(t *testing.T, path string) []string {
+	t.Helper()
+	data, err := os.ReadFile(path) // #nosec G304 -- test file.
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for line := range strings.Lines(string(data)) {
+		var doc struct {
+			Event struct{ Action string }
+			Obie  struct{ Indicator string }
+		}
+		if err := json.Unmarshal([]byte(line), &doc); err != nil {
+			t.Fatalf("audit line %q: %v", line, err)
+		}
+		out = append(out, doc.Event.Action+" "+doc.Obie.Indicator)
+	}
+	return out
+}
+
+func waitEntries(t *testing.T, path string, n int) []string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got := auditEntries(t, path)
+		if len(got) >= n || time.Now().After(deadline) {
+			return got
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestAuditDecisionChanges: block changes and allow-listings are
+// recorded, the blocks that existed at subscription are not, and a reload
+// reopens the file.
+func TestAuditDecisionChanges(t *testing.T) {
+	f := newReloadFixture(t)
+	f.put(t, "198.18.0.11", self)
+	deadline := time.Now().Add(5 * time.Second)
+	for len(f.engine.Decisions(decision.StateBlock)) == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	log, path := startAudit(t)
+	subscribeAudit(f.engine, log)
+	f.rl.audit = log
+
+	f.put(t, "198.18.0.12", self)
+	if got := waitEntries(t, path, 1); strings.Join(got, ",") != "block-added ipv4:198.18.0.12" {
+		t.Fatalf("after a verdict: %q", got)
+	}
+
+	rotated := path + ".1"
+	if err := os.Rename(path, rotated); err != nil {
+		t.Fatal(err)
+	}
+	f.next.Allowlist.CIDRs = []string{"198.18.0.0/24"}
+	if err := f.rl.reload(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := "block-removed ipv4:198.18.0.11,allowed-by-allowlist ipv4:198.18.0.11," +
+		"block-removed ipv4:198.18.0.12,allowed-by-allowlist ipv4:198.18.0.12"
+	if got := auditEntries(t, path); strings.Join(got, ",") != want {
+		t.Errorf("after the reload: %q\nwant %q", got, want)
+	}
+	if got := auditEntries(t, rotated); len(got) != 1 {
+		t.Errorf("rotated file: %q", got)
+	}
+}
+
+// fakeVerdicts answers with fixed results; other methods are not used.
+type fakeVerdicts struct {
+	admin.VerdictService
+	result      verdicts.Result
+	revocations []*obieproto.Event
+	err         error
+}
+
+func (f fakeVerdicts) Report(context.Context, verdicts.Report) (verdicts.Result, error) {
+	return f.result, f.err
+}
+
+func (f fakeVerdicts) Revoke(context.Context, verdicts.Revocation) ([]*obieproto.Event, error) {
+	return f.revocations, f.err
+}
+
+func TestAuditedVerdicts(t *testing.T) {
+	log, path := startAudit(t)
+	ind := obieproto.Indicator{Kind: obieproto.KindIPv4, Value: "198.18.0.1", Scope: "/32"}
+	ev := &obieproto.Event{ID: "e1", Type: obieproto.TypeVerdict, Indicator: ind,
+		Evidence: &obieproto.Evidence{Events: 1}, Verdict: &obieproto.Verdict{SuggestedAction: obieproto.ActionBan}}
+	rev := &obieproto.Event{ID: "e2", Type: obieproto.TypeRevoke, Indicator: ind, Revokes: "e1", Reason: "false_positive"}
+	ctx := context.Background()
+
+	_, _ = auditedVerdicts{fakeVerdicts{result: verdicts.Result{Event: ev}}, log}.Report(ctx, verdicts.Report{})
+	_, _ = auditedVerdicts{fakeVerdicts{result: verdicts.Result{Event: ev, Coalesced: true}}, log}.Report(ctx, verdicts.Report{})
+	_, _ = auditedVerdicts{fakeVerdicts{err: verdicts.ErrRefused}, log}.Report(ctx, verdicts.Report{})
+	_, _ = auditedVerdicts{fakeVerdicts{revocations: []*obieproto.Event{rev}, err: errors.New("publish failed")}, log}.
+		Revoke(ctx, verdicts.Revocation{})
+
+	want := "local-report ipv4:198.18.0.1,revocation ipv4:198.18.0.1"
+	if got := auditEntries(t, path); strings.Join(got, ",") != want {
+		t.Errorf("audit = %q, want %q", got, want)
+	}
+}
+
+func TestAuditedOverrides(t *testing.T) {
+	log, path := startAudit(t)
+	s := storeOverrides{store: newStore(t), now: time.Now, audit: log}
+	ind := obieproto.Indicator{Kind: obieproto.KindIPv4, Value: "198.18.0.1", Scope: "/32"}
+	if _, err := s.Set(ind, admin.ActionForceAllow, time.Hour, "partner"); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 { // the second delete finds nothing
+		if _, err := s.Delete(ind); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := "override-set ipv4:198.18.0.1,override-removed ipv4:198.18.0.1"
+	if got := auditEntries(t, path); strings.Join(got, ",") != want {
+		t.Errorf("audit = %q, want %q", got, want)
+	}
+	data, _ := os.ReadFile(path) // #nosec G304 -- test file.
+	if strings.Count(string(data), `"rule":{"name":"force_allow"}`) != 2 || !strings.Contains(string(data), `"note":"partner"`) {
+		t.Errorf("audit lack the override details:\n%s", data)
+	}
+}
+
+func TestNewAuditLog(t *testing.T) {
+	gate := newReloadFixture(t).gate
+	if l := newAuditLog("", gate, slog.New(slog.DiscardHandler)); l != nil {
+		t.Errorf("newAuditLog without path = %v, want nil", l)
+	}
+	if l := newAuditLog("/var/log/obie/audit.jsonl", gate, slog.New(slog.DiscardHandler)); l == nil {
+		t.Error("newAuditLog with path = nil")
+	}
+}

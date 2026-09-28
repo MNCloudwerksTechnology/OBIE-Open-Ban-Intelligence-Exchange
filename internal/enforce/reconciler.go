@@ -331,12 +331,15 @@ func (r *Reconciler) Reconcile(ctx context.Context) error {
 	}
 	add, remove := Diff(want, have)
 	if len(add) > 0 || len(remove) > 0 {
-		if err := r.enf.Apply(ctx, add, remove); err != nil {
+		start := time.Now()
+		err := r.enf.Apply(ctx, add, remove)
+		observeApply(start)
+		if err != nil {
 			return r.fail(mode, fmt.Errorf("apply %d additions and %d removals: %w", len(add), len(remove), err))
 		}
 		r.log.Info("enforcement reconciled", "added", len(add), "removed", len(remove), "entries", len(want))
 	}
-	r.succeed(mode, len(want), skipped)
+	r.succeed(mode, want, skipped)
 	return nil
 }
 
@@ -354,7 +357,7 @@ func (r *Reconciler) observe(ctx context.Context) error {
 		r.backend = backendTornDown
 	}
 	clear(r.skipped)
-	r.succeed(config.ModeObserve, 0, nil)
+	r.succeed(config.ModeObserve, nil, nil)
 	return nil
 }
 
@@ -370,8 +373,8 @@ type candidate struct {
 // desired returns the entries to apply at now: the blocks of the gate
 // with at least MinTimeout left that the allow-list does not refuse, the
 // operator's force-blocks and then the highest scores first up to
-// MaxEntries, ordered by prefix. It logs newly skipped blocks and
-// counts the skipped ones by reason. Callers hold enfMu.
+// MaxEntries, ordered by prefix. It logs and counts newly skipped blocks
+// and counts the skipped ones by reason. Callers hold enfMu.
 func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 	allow := r.opts.Allowlist()
 	byPrefix := map[netip.Prefix]candidate{}
@@ -425,6 +428,11 @@ func (r *Reconciler) desired(now time.Time) ([]Entry, map[string]int) {
 				"max_entries", r.opts.MaxEntries, "skipped", len(cands)-r.opts.MaxEntries, "newly_skipped_sample", fresh)
 		}
 		cands = cands[:r.opts.MaxEntries]
+	}
+	for p, reason := range skipped {
+		if r.skipped[p] != reason {
+			skippedTotal.WithLabelValues(reason).Inc()
+		}
 	}
 	r.skipped = skipped
 	want := make([]Entry, len(cands))
@@ -494,18 +502,20 @@ func Diff(want, have []Entry) (add, remove []Entry) {
 
 // fail records a failed pass in mode and returns err.
 func (r *Reconciler) fail(mode config.Mode, err error) error {
+	applyTotal.WithLabelValues(resultError).Inc()
 	r.statusMu.Lock()
 	defer r.statusMu.Unlock()
 	r.status.Mode, r.status.Err = mode, err
 	return err
 }
 
-// succeed records a successful pass.
-func (r *Reconciler) succeed(mode config.Mode, applied int, skipped map[string]int) {
+// succeed records a successful pass that left entries applied.
+func (r *Reconciler) succeed(mode config.Mode, entries []Entry, skipped map[string]int) {
+	applyTotal.WithLabelValues(resultSuccess).Inc()
+	setEntriesMetric(entries)
 	r.statusMu.Lock()
 	defer r.statusMu.Unlock()
-	r.status = Status{Mode: mode, Applied: applied, Skipped: skipped}
-	setMetrics(mode, applied, skipped)
+	r.status = Status{Mode: mode, Applied: len(entries), Skipped: skipped}
 }
 
 // setFailure records the consecutive failures and the retry delay.
@@ -518,7 +528,6 @@ func (r *Reconciler) setFailure(failures int, retryIn time.Duration) {
 		return
 	}
 	r.status.RetryIn = retryIn
-	applyFailuresTotal.Inc()
 }
 
 func later(a, b time.Time) time.Time {

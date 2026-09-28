@@ -778,3 +778,59 @@ func TestEngineUnsubscribe(t *testing.T) {
 	}
 	wantChanges(t, f.rec.take(), "added/startup")
 }
+
+// TestEngineTransitions: every state change is streamed with its previous
+// state, allow-listing included; block updates are not.
+func TestEngineTransitions(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	f.engine = New(f.store, testPolicy(), discardLogger(), Options{Now: f.clock.Now, RefreshInterval: time.Hour,
+		Allowlist: sovereignty.NewAllowlist(sovereignty.Entry{Prefix: netip.MustParsePrefix("198.51.100.20/32"), Source: sovereignty.SourceConfig})})
+	var got []string
+	unsubscribe := f.engine.SubscribeTransitions(func(tr Transition) {
+		got = append(got, tr.Key+":"+string(tr.From)+">"+string(tr.Decision.State)+"/"+tr.Cause)
+	})
+	blocked, allowed := ipv4("203.0.113.1"), ipv4("198.51.100.20")
+	f.put(t, blocked, pubA, 1, time.Hour)
+	f.put(t, blocked, pubB, 1, time.Hour)
+	f.start(t)
+
+	f.put(t, allowed, pubA, 1, time.Hour)
+	f.engine.processDirty()
+	f.put(t, blocked, pubC, 1, time.Hour) // a block update: no transition
+	f.engine.processDirty()
+	f.engine.Reload(testPolicy(), sovereignty.NewAllowlist(sovereignty.Entry{Prefix: netip.MustParsePrefix("203.0.113.0/24"), Source: sovereignty.SourceFile}))
+	want := []string{
+		blocked.Key() + ":none>block/startup",
+		allowed.Key() + ":none>allowed/verdict",
+		allowed.Key() + ":allowed>none/reload",
+		blocked.Key() + ":block>allowed/reload",
+	}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("transitions = %v\nwant          %v", got, want)
+	}
+
+	unsubscribe()
+	f.engine.Reload(testPolicy(), nil)
+	if len(got) != len(want) {
+		t.Errorf("transitions after unsubscribe: %v", got[len(want):])
+	}
+}
+
+// TestEngineNoTransitionForUnkeptDecisions: a force-allow on an address
+// without verdicts decides "allowed", but nothing is kept, so nothing
+// transitions.
+func TestEngineNoTransitionForUnkeptDecisions(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	var got []Transition
+	f.engine.SubscribeTransitions(func(tr Transition) { got = append(got, tr) })
+	f.start(t)
+	for range 2 {
+		if err := f.store.SetOverride(store.Override{Indicator: ipv4("198.51.100.40"), Action: store.ForceAllow}); err != nil {
+			t.Fatal(err)
+		}
+		f.engine.processDirty()
+	}
+	if len(got) != 0 {
+		t.Errorf("transitions = %+v, want none", got)
+	}
+}
