@@ -538,3 +538,11 @@ func TestDecisionLinksSurviveSignIn(t *testing.T) {
 		}
 	}
 }
+
+func TestDayAndClock(t *testing.T) {
+	ts := stamp(decisionsNow)
+	day, clock := templateFuncs["day"].(func(timestamp) string), templateFuncs["clock"].(func(timestamp) string)
+	if day(ts) != "2026-09-28" || clock(ts) != "12:00:00 UTC" || day(timestamp{}) != "" || clock(timestamp{}) != "" {
+		t.Errorf("day, clock = %q, %q", day(ts), clock(ts))
+	}
+}

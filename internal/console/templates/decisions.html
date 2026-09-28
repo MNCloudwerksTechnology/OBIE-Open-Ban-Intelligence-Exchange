@@ -109,15 +109,17 @@
         {{- else}}
         <span class="cell-note">None: no active verdict</span>
         {{- end}}
+        {{- if .Reasons}}
         <span class="cell-note">{{.ReasonsNote}}</span>
+        {{- end}}
       </td>
-      <td><span class="cell-label">Decided</span> <time datetime="{{.Decided.ISO}}">{{.Decided.Text}}</time></td>
+      <td><span class="cell-label">Decided</span> <time datetime="{{.Decided.ISO}}"><span class="day">{{day .Decided}}</span> {{clock .Decided}}</time></td>
       <td>
         <span class="cell-label">Expires</span>
         {{- if .ExpiresNote}}
         <span class="cell-note">{{.ExpiresNote}}</span>
         {{- else}}
-        <time datetime="{{.Expires.ISO}}">{{.Expires.Text}}</time>
+        <time datetime="{{.Expires.ISO}}"><span class="day">{{day .Expires}}</span> {{clock .Expires}}</time>
         {{- end}}
       </td>
       <td>

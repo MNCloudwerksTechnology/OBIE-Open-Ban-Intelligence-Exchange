@@ -1,6 +1,6 @@
 {{define "content" -}}
 <p class="back"><a href="/decisions">All decisions</a></p>
-<h1><span class="mono" data-copy>{{.Address}}</span></h1>
+<div class="item-head"><h1><span class="mono" data-copy>{{.Address}}</span></h1></div>
 <p class="lead">Why this node decides as it does on this {{if .Network}}network{{else}}address{{end}}: the same facts as <code>obiectl explain {{.Address}}</code>. <span data-live hidden>It is evaluated again every 5 seconds, so a change shows here.</span></p>
 <div class="refresh" data-refresh="{{.Fragment}}">
 {{template "region" .}}
@@ -91,7 +91,7 @@
 <section class="section" aria-labelledby="firewall-heading">
   <h2 id="firewall-heading">Firewall</h2>
   <dl class="facts">
-    <dt>Applied</dt>
+    <dt>Status</dt>
     <dd><span class="peer-state" data-state="{{.Firewall.State}}">{{.Firewall.Label}}</span> {{.Firewall.Text}}</dd>
     {{- with .Firewall.Entry}}
     <dt>Entry</dt>

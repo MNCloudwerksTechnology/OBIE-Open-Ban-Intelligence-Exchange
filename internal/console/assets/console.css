@@ -964,11 +964,37 @@ a.number-main .number-label {
   overflow-x: auto;
 }
 
+/* The decisions list has eight columns: it may use a wide window. */
+main:has(.list.decisions) {
+  max-width: 84rem;
+}
+
 .list.decisions {
   font-size: 0.875rem;
 }
 
+.list.decisions time {
+  white-space: normal;
+}
+
+.list.decisions .day {
+  white-space: nowrap;
+}
+
 .list .address {
+  white-space: nowrap;
+}
+
+.item-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+.item-head h1 {
+  margin: 0;
   overflow-wrap: anywhere;
 }
 
@@ -993,7 +1019,6 @@ a.number-main .number-label {
 
 .reason {
   display: block;
-  overflow-wrap: anywhere;
 }
 
 .copy-button {

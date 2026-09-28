@@ -97,6 +97,16 @@ func pageTemplate(file string) *template.Template {
 var templateFuncs = template.FuncMap{
 	// count formats a number with thousands separators.
 	"count": count,
+	// day and clock split a timestamp's text into the date and the time
+	// of day, so a narrow column wraps between them only.
+	"day": func(t timestamp) string {
+		d, _, _ := strings.Cut(t.Text, " ")
+		return d
+	},
+	"clock": func(t timestamp) string {
+		_, c, _ := strings.Cut(t.Text, " ")
+		return c
+	},
 }
 
 // layoutPage is the data of the shared layout.
