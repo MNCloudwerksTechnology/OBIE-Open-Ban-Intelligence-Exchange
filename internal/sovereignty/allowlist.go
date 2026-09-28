@@ -5,6 +5,7 @@
 package sovereignty
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"net/netip"
 	"slices"
@@ -89,6 +90,29 @@ func Builtin() []Entry {
 type Allowlist struct {
 	protected []Entry
 	operator  []Entry
+	// files and warnings are what Build loaded and could not determine.
+	files    []FileLoad
+	warnings []Warning
+}
+
+// FileLoad is what the allow-list loaded from one of the allowlist.files.
+type FileLoad struct {
+	Path string
+	// Entries counts the entries loaded from it; Digest is the SHA-256 of
+	// the content read.
+	Entries int
+	Digest  [sha256.Size]byte
+}
+
+// Warning is an address the allow-list should hold but could not
+// determine, so it is not protected until the next reload.
+type Warning struct {
+	// Source is SourceSelf for the interface addresses of an unspecified
+	// listen address, SourceBootstrap for a bootstrap peer's DNS name;
+	// Subject is that listen or bootstrap address.
+	Source  Source
+	Subject string
+	Err     error
 }
 
 // NewAllowlist returns the allow-list of entries; the built-in entries are
@@ -112,6 +136,35 @@ func (a *Allowlist) Entries() []Entry {
 		return nil
 	}
 	return append(slices.Clone(a.protected), a.operator...)
+}
+
+// Files returns what was loaded from each of the allowlist.files, in their
+// order.
+func (a *Allowlist) Files() []FileLoad {
+	if a == nil {
+		return nil
+	}
+	return slices.Clone(a.files)
+}
+
+// Warnings returns the addresses the allow-list could not determine.
+func (a *Allowlist) Warnings() []Warning {
+	if a == nil {
+		return nil
+	}
+	return slices.Clone(a.warnings)
+}
+
+// Overlapping returns every entry that overlaps p, the protected ones
+// first.
+func (a *Allowlist) Overlapping(p netip.Prefix) []Entry {
+	var out []Entry
+	for _, e := range a.Entries() {
+		if e.Prefix.Overlaps(p) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // MatchProtected returns the first built-in, own or bootstrap entry that
