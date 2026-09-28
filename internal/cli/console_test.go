@@ -26,6 +26,8 @@ func TestWriteConsoleTable(t *testing.T) {
 			"Console:  disabled (console.enabled is false)\nToken:    tok\n"},
 		"port taken": {admin.ConsoleResponse{Enabled: true, Listen: "127.0.0.1:9465", Error: "listen tcp 127.0.0.1:9465: bind: address already in use", Token: "tok"},
 			"Console:  not serving: listen tcp 127.0.0.1:9465: bind: address already in use\nToken:    tok\n"},
+		"move failed": {admin.ConsoleResponse{Enabled: true, Listen: "127.0.0.1:9470", URL: "http://127.0.0.1:9465/", Error: "bind: address already in use", Token: "tok"},
+			"Console:  serving at http://127.0.0.1:9465/, not at 127.0.0.1:9470: bind: address already in use\nToken:    tok\n"},
 		"not started": {admin.ConsoleResponse{Enabled: true, Listen: "127.0.0.1:9465", Token: "tok"},
 			"Console:  enabled, not serving yet\nToken:    tok\n"},
 	} {
@@ -45,7 +47,9 @@ func TestConsoleHint(t *testing.T) {
 	}{
 		"serving": {admin.ConsoleResponse{Enabled: true, Listen: "127.0.0.1:9465", URL: "http://127.0.0.1:9465/"},
 			"obiectl: open http://127.0.0.1:9465/ in a browser on this host and sign in with the token. " +
-				"From another machine, forward the port first: ssh -L 9465:127.0.0.1:9465 <this host>, then open the same address there."},
+				"From another machine, forward the port first: ssh -L 9465:127.0.0.1:9465 <this host>, then open http://127.0.0.1:9465/ there."},
+		"other loopback address": {admin.ConsoleResponse{Enabled: true, Listen: "127.0.0.2:9465", URL: "http://127.0.0.2:9465/"},
+			"ssh -L 9465:127.0.0.2:9465 <this host>, then open http://127.0.0.1:9465/ there."},
 		"ipv6": {admin.ConsoleResponse{Enabled: true, Listen: "[::1]:8443", URL: "http://[::1]:8443/"},
 			"ssh -L 8443:[::1]:8443 <this host>"},
 		"disabled":    {admin.ConsoleResponse{Listen: "127.0.0.1:9465"}, "set console.enabled: true in the configuration and reload obied (sudo systemctl reload obied)"},

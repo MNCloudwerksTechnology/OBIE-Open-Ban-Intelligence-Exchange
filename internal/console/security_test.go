@@ -48,26 +48,26 @@ func TestCrossSite(t *testing.T) {
 		headers hdr
 		refused bool
 	}{
-		"same-origin GET":                   {http.MethodGet, hdr{"Sec-Fetch-Site": "same-origin"}, false},
-		"same-origin POST":                  {http.MethodPost, hdr{"Sec-Fetch-Site": "same-origin", "Origin": "http://127.0.0.1:9465"}, false},
-		"typed address":                     {http.MethodGet, hdr{"Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, false},
-		"POST not from a page":              {http.MethodPost, hdr{"Sec-Fetch-Site": "none"}, true},
-		"link from another site":            {http.MethodGet, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, false},
-		"link from another port":            {http.MethodGet, hdr{"Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, false},
-		"iframe from another site":          {http.MethodGet, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "iframe"}, true},
-		"image from another site":           {http.MethodGet, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "no-cors", "Sec-Fetch-Dest": "image"}, true},
-		"fetch from another port":           {http.MethodGet, hdr{"Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty"}, true},
-		"form POST from another site":       {http.MethodPost, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document", "Origin": "https://evil.example"}, true},
-		"form POST from another port":       {http.MethodPost, hdr{"Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document", "Origin": "http://127.0.0.1:8080"}, true},
-		"unknown fetch site":                {http.MethodGet, hdr{"Sec-Fetch-Site": "same-planet"}, true},
-		"old browser GET":                   {http.MethodGet, hdr{}, false},
-		"old browser POST, own origin":      {http.MethodPost, hdr{"Origin": "http://127.0.0.1:9465"}, false},
-		"old browser POST, other origin":    {http.MethodPost, hdr{"Origin": "http://evil.example"}, true},
-		"old browser POST, other port":      {http.MethodPost, hdr{"Origin": "http://127.0.0.1:8080"}, true},
-		"old browser POST, null origin":     {http.MethodPost, hdr{"Origin": "null"}, true},
-		"non-browser POST":                  {http.MethodPost, hdr{}, false},
-		"DELETE from another port":          {http.MethodDelete, hdr{"Sec-Fetch-Site": "same-site"}, true},
-		"HEAD navigation from another site": {http.MethodHead, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, false},
+		"same-origin GET":                       {http.MethodGet, hdr{"Sec-Fetch-Site": "same-origin"}, false},
+		"same-origin POST":                      {http.MethodPost, hdr{"Sec-Fetch-Site": "same-origin", "Origin": "http://127.0.0.1:9465"}, false},
+		"typed address":                         {http.MethodGet, hdr{"Sec-Fetch-Site": "none", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, false},
+		"POST not from a page":                  {http.MethodPost, hdr{"Sec-Fetch-Site": "none"}, true},
+		"link from another site":                {http.MethodGet, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, false},
+		"link from another port":                {http.MethodGet, hdr{"Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, false},
+		"iframe from another site":              {http.MethodGet, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "iframe"}, true},
+		"image from another site":               {http.MethodGet, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "no-cors", "Sec-Fetch-Dest": "image"}, true},
+		"fetch from another port":               {http.MethodGet, hdr{"Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Dest": "empty"}, true},
+		"form POST from another site":           {http.MethodPost, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document", "Origin": "https://evil.example"}, true},
+		"form POST from another port":           {http.MethodPost, hdr{"Sec-Fetch-Site": "same-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document", "Origin": "http://127.0.0.1:8080"}, true},
+		"unknown fetch site":                    {http.MethodGet, hdr{"Sec-Fetch-Site": "same-planet"}, true},
+		"old browser GET":                       {http.MethodGet, hdr{}, false},
+		"old browser POST, own origin":          {http.MethodPost, hdr{"Origin": "http://127.0.0.1:9465"}, false},
+		"old browser POST, other origin":        {http.MethodPost, hdr{"Origin": "http://evil.example"}, true},
+		"old browser POST, other port":          {http.MethodPost, hdr{"Origin": "http://127.0.0.1:8080"}, true},
+		"old browser POST, null origin":         {http.MethodPost, hdr{"Origin": "null"}, true},
+		"POST without Origin or Fetch Metadata": {http.MethodPost, hdr{}, true},
+		"DELETE from another port":              {http.MethodDelete, hdr{"Sec-Fetch-Site": "same-site"}, true},
+		"HEAD navigation from another site":     {http.MethodHead, hdr{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"}, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := httptest.NewRequest(tc.method, "http://127.0.0.1:9465/login", nil)
@@ -134,6 +134,33 @@ func TestLocalUserGuard(t *testing.T) {
 	}
 }
 
+func TestRefusedUserWithoutGroup(t *testing.T) {
+	p := peercred.Policy{SelfUID: 997, Group: "obie", GID: -1}
+	msg := refusedUser(p, "alice", 1000)
+	if !strings.Contains(msg, `The group "obie" does not exist, so only root and the user obied runs as are admitted`) ||
+		strings.Contains(msg, "usermod") {
+		t.Errorf("message = %q", msg)
+	}
+}
+
+func TestGroupWarningOnlyWhenServing(t *testing.T) {
+	logs := &syncBuffer{}
+	c := newConsole(t, config.Console{Listen: "127.0.0.1:0"}, logs)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	const warning = "admin socket group not found; only root and obied's own user may use the console"
+	if strings.Contains(logs.String(), warning) {
+		t.Errorf("a switched-off console warns about the group:\n%s", logs)
+	}
+	c.Apply(config.Console{Enabled: true, Listen: "127.0.0.1:0"})
+	c.Apply(config.Console{Enabled: false, Listen: "127.0.0.1:0"})
+	c.Apply(config.Console{Enabled: true, Listen: "127.0.0.1:0"})
+	if n := strings.Count(logs.String(), warning); n != 1 {
+		t.Errorf("group warning logged %d times, want once:\n%s", n, logs)
+	}
+}
+
 func TestGuardsRefuseWithSecurityHeaders(t *testing.T) {
 	c := newConsole(t, config.Console{Listen: "127.0.0.1:9465"}, &syncBuffer{})
 	c.lookup = func(net.Conn) (peercred.Cred, error) {
@@ -180,5 +207,27 @@ func TestGuardsRefuseWithSecurityHeaders(t *testing.T) {
 				t.Error("CORS header sent")
 			}
 		})
+	}
+}
+
+// TestRefusalsLogBounded: every refused connection is decided once, and
+// the warnings any local user can provoke are rate-limited.
+func TestRefusalsLogBounded(t *testing.T) {
+	logs := &syncBuffer{}
+	c := newConsole(t, config.Console{Listen: "127.0.0.1:9465"}, logs)
+	c.policy = peercred.Policy{SelfUID: 997, Group: "obie", GID: -1}
+	c.lookup = func(net.Conn) (peercred.Cred, error) {
+		return peercred.Cred{UID: 2000000042, GID: peercred.UnknownGID}, nil
+	}
+	h := c.localUser(http.NotFoundHandler())
+	for range 200 {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil).WithContext(withConn(context.Background(), nil)))
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("= %d, want 403", rec.Code)
+		}
+	}
+	if n := strings.Count(logs.String(), "refusing a console connection"); n == 0 || n > 20 {
+		t.Errorf("%d refusal warnings for 200 connections, want a few", n)
 	}
 }

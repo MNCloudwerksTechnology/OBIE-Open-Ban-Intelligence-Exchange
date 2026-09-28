@@ -29,6 +29,8 @@ func TestNodeHealth(t *testing.T) {
 			s.Detail = "degraded: 0 peers connected (0/2 bootstrap peers)"
 		}), with(running("decision"), func(s *lifecycle.Status) { s.Detail = "3 blocked of 9 indicators" })},
 			Health{State: HealthDegraded, Label: "Degraded", Problems: []string{"mesh: 0 peers connected (0/2 bootstrap peers)"}}},
+		"bare degraded detail": {[]lifecycle.Status{with(running("mesh"), func(s *lifecycle.Status) { s.Detail = "degraded" })},
+			Health{State: HealthDegraded, Label: "Degraded", Problems: []string{"mesh: degraded"}}},
 		"shutting down": {[]lifecycle.Status{running("console"), {Name: "store", State: lifecycle.StateRunning, Ready: true},
 			{Name: "mesh", State: lifecycle.StateStopping}, {Name: "admin", State: lifecycle.StateStopped}},
 			Health{State: HealthStopping, Label: "Shutting down"}},

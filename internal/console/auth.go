@@ -188,11 +188,12 @@ func safeNext(next string) string {
 	return next
 }
 
-// connUID returns the local user of r's connection, if it is known.
-func connUID(r *http.Request) (uint32, bool) {
+// userAttrs returns the log attributes naming the local user of r's
+// connection; none if it is not known.
+func userAttrs(r *http.Request) []any {
 	u, ok := r.Context().Value(connKey{}).(*connUser)
 	if !ok || u.err != nil {
-		return 0, false
+		return nil
 	}
-	return u.cred.UID, true
+	return []any{"uid", u.cred.UID}
 }

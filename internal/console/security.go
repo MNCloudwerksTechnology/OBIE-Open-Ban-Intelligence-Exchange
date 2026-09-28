@@ -81,14 +81,17 @@ func loopbackHost(host string) bool {
 // connKey is the context key of a request's connection.
 type connKey struct{}
 
-// connUser looks up the local user of a connection once, on its first
-// request: keep-alive requests reuse the answer, and the http.Server's
-// accept loop never waits for the lookup.
+// connUser looks up the local user of a connection and decides whether it
+// may use the console once, on its first request: keep-alive requests
+// reuse the answer, and the http.Server's accept loop never waits for the
+// lookup.
 type connUser struct {
 	once sync.Once
 	conn net.Conn
 	cred peercred.Cred
 	err  error
+	// refusal explains why the connection is refused; empty if it passes.
+	refusal string
 }
 
 // withConn attaches the connection to its requests' context; it is the
@@ -104,32 +107,60 @@ func withConn(ctx context.Context, c net.Conn) context.Context {
 func (c *Console) localUser(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, ok := r.Context().Value(connKey{}).(*connUser)
-		if ok {
-			u.once.Do(func() { u.cred, u.err = c.lookup(u.conn) })
+		if !ok {
+			refuse(w, http.StatusForbidden, unknownUser)
+			return
 		}
-		switch {
-		case ok && errors.Is(u.err, peercred.ErrUnsupported):
-			next.ServeHTTP(w, r)
-		case !ok || u.err != nil:
-			var err error
-			if ok {
-				err = u.err
-			}
-			c.log.Warn("refusing a console connection whose local user cannot be told", "error", err)
-			refuse(w, http.StatusForbidden, "refused: the console cannot tell which local user opened this connection, "+
-				"so it does not serve it. The obied log says why.")
-		case !c.policy.Allows(u.cred, c.log):
-			name := userName(u.cred.UID)
-			c.log.Warn("refusing a console connection of a local user outside the admin group",
-				"uid", u.cred.UID, "user", name, "group", c.policy.Group)
-			refuse(w, http.StatusForbidden, fmt.Sprintf(
-				"refused: this connection comes from the local user %s (uid %d), who is neither root, nor the user obied runs as, "+
-					"nor a member of the group %q. Only those may use the console, as for obiectl. "+
-					"To admit the user: sudo usermod -aG %s %s", name, u.cred.UID, c.policy.Group, c.policy.Group, name))
-		default:
-			next.ServeHTTP(w, r)
+		u.once.Do(func() { c.admit(u) })
+		if u.refusal != "" {
+			refuse(w, http.StatusForbidden, u.refusal)
+			return
 		}
+		next.ServeHTTP(w, r)
 	})
+}
+
+// unknownUser explains the refusal of a connection whose user is not known.
+const unknownUser = "refused: the console cannot tell which local user opened this connection, " +
+	"so it does not serve it. The obied log says why."
+
+// admit looks up the local user of u's connection and decides whether it
+// may use the console. Refusals are logged, at most about once a second:
+// any local user can open connections.
+func (c *Console) admit(u *connUser) {
+	u.cred, u.err = c.lookup(u.conn)
+	switch {
+	case errors.Is(u.err, peercred.ErrUnsupported):
+		// Only the token protects the console on this platform.
+	case u.err != nil:
+		c.warn("refusing a console connection whose local user cannot be told", "error", u.err)
+		u.refusal = unknownUser
+	case !c.policy.Allows(u.cred, c.log):
+		name := userName(u.cred.UID)
+		c.warn("refusing a console connection of a local user outside the admin group",
+			"uid", u.cred.UID, "user", name, "group", c.policy.Group)
+		u.refusal = refusedUser(c.policy, name, u.cred.UID)
+	}
+}
+
+// warn logs a warning that clients can provoke, dropping it while such
+// warnings come faster than about one a second.
+func (c *Console) warn(msg string, args ...any) {
+	if c.warnLimit.Allow() {
+		c.log.Warn(msg, args...)
+	}
+}
+
+// refusedUser explains why the local user name (uid) may not use the
+// console and how to admit it.
+func refusedUser(p peercred.Policy, name string, uid uint32) string {
+	msg := fmt.Sprintf("refused: this connection comes from the local user %s (uid %d), who is neither root, nor the user obied runs as, "+
+		"nor a member of the group %q. Only those may use the console, as for obiectl. ", name, uid, p.Group)
+	if p.GID < 0 {
+		return msg + fmt.Sprintf("The group %q does not exist, so only root and the user obied runs as are admitted; "+
+			"create it, or set admin.socket_group to an existing group, and restart obied.", p.Group)
+	}
+	return msg + fmt.Sprintf("To admit the user: sudo usermod -aG %s %s", p.Group, name)
 }
 
 // userName returns the name of the user uid, or the uid if it has none.
@@ -178,12 +209,13 @@ func crossSite(r *http.Request) string {
 		}
 		return "the request came from another web site or another port of this host"
 	case "":
-		// A browser without Fetch Metadata, or not a browser at all.
+		// A browser without Fetch Metadata, or not a browser at all: every
+		// browser sends Origin with a POST.
 		if safe {
 			return ""
 		}
-		if origin, ok := r.Header["Origin"]; ok && (len(origin) != 1 || origin[0] != "http://"+r.Host) {
-			return "the request came from another origin"
+		if origin := r.Header.Values("Origin"); len(origin) != 1 || origin[0] != "http://"+r.Host {
+			return "a state-changing request must come from a console page (same Origin)"
 		}
 		return ""
 	default:

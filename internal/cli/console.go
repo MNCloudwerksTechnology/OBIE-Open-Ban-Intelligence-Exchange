@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"text/tabwriter"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
@@ -60,6 +61,8 @@ func consoleState(c *admin.ConsoleResponse) string {
 	switch {
 	case !c.Enabled:
 		return "disabled (console.enabled is false)"
+	case c.URL != "" && c.Error != "":
+		return "serving at " + c.URL + ", not at " + c.Listen + ": " + c.Error
 	case c.URL != "":
 		return "serving at " + c.URL
 	case c.Error != "":
@@ -77,10 +80,12 @@ func consoleHint(c *admin.ConsoleResponse) string {
 	case c.URL == "":
 		return "obiectl: the console is switched on but not serving; fix the cause and reload obied (sudo systemctl reload obied)"
 	}
-	forward := c.Listen
-	if host, port, err := net.SplitHostPort(c.Listen); err == nil {
-		forward = port + ":" + net.JoinHostPort(host, port)
+	u, err := url.Parse(c.URL)
+	if err != nil || u.Port() == "" {
+		return "obiectl: open " + c.URL + " in a browser on this host and sign in with the token."
 	}
+	port := u.Port()
 	return fmt.Sprintf("obiectl: open %s in a browser on this host and sign in with the token. "+
-		"From another machine, forward the port first: ssh -L %s <this host>, then open the same address there.", c.URL, forward)
+		"From another machine, forward the port first: ssh -L %s:%s <this host>, then open http://127.0.0.1:%s/ there.",
+		c.URL, port, net.JoinHostPort(u.Hostname(), port), port)
 }

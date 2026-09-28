@@ -65,29 +65,28 @@ func (c *Console) signIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	page := signInPage{Next: safeNext(r.PostForm.Get("next"))}
-	uid, _ := connUID(r)
+	user := userAttrs(r)
 	if !c.signInLimit.Allow() {
-		c.log.Warn("console sign-in refused: too many attempts", "uid", uid)
+		c.warn("console sign-in refused: too many attempts", user...)
 		page.Error = "Too many sign-in attempts. Wait a few seconds, then try again."
 		c.render(w, http.StatusTooManyRequests, signInTemplate, page)
 		return
 	}
 	if !c.creds.matches(strings.TrimSpace(r.PostForm.Get("token"))) {
-		c.log.Warn("console sign-in with a wrong token", "uid", uid)
+		c.warn("console sign-in with a wrong token", user...)
 		page.Error = "This is not the console's current token. Get it with: sudo obiectl console"
 		c.render(w, http.StatusForbidden, signInTemplate, page)
 		return
 	}
 	c.setSession(w, r)
-	c.log.Info("console sign-in", "uid", uid)
+	c.log.Info("console sign-in", user...)
 	http.Redirect(w, r, page.Next, http.StatusSeeOther) // #nosec G710 -- safeNext allows only paths on the console.
 }
 
 // signOut ends the browser's session.
 func (c *Console) signOut(w http.ResponseWriter, r *http.Request) {
 	clearSession(w, r)
-	uid, _ := connUID(r)
-	c.log.Info("console sign-out", "uid", uid)
+	c.log.Info("console sign-out", userAttrs(r)...)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 

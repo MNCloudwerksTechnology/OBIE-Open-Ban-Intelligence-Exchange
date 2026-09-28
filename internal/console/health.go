@@ -56,7 +56,11 @@ func nodeHealth(statuses []lifecycle.Status) Health {
 				}
 				problems = append(problems, s.Name+": "+reason)
 			} else if rest, ok := strings.CutPrefix(s.Detail, degradedPrefix); ok {
-				problems = append(problems, s.Name+": "+strings.TrimLeft(rest, ": "))
+				reason := strings.TrimLeft(rest, ": ")
+				if reason == "" {
+					reason = degradedPrefix
+				}
+				problems = append(problems, s.Name+": "+reason)
 			}
 		}
 	}

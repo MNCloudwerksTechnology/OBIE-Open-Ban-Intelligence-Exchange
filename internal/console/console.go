@@ -11,6 +11,7 @@ package console
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -59,17 +60,21 @@ type Options struct {
 // lifecycle.DetailReporter. It is always ready: the node never depends on
 // it.
 type Console struct {
-	log     *slog.Logger
-	node    Node
-	policy  peercred.Policy
-	lookup  func(net.Conn) (peercred.Cred, error)
-	creds   *credentials
-	now     func() time.Time
-	handler http.Handler
+	log    *slog.Logger
+	node   Node
+	policy peercred.Policy
+	// policyErr is why the policy admits no group; logged once the console
+	// serves.
+	policyErr error
+	lookup    func(net.Conn) (peercred.Cred, error)
+	creds     *credentials
+	now       func() time.Time
+	handler   http.Handler
 	// pages are the views in navigation order.
 	pages []view
-	// signInLimit bounds sign-in attempts.
-	signInLimit *rate.Limiter
+	// signInLimit bounds sign-in attempts; warnLimit the warnings clients
+	// can provoke.
+	signInLimit, warnLimit *rate.Limiter
 
 	// applyMu serializes Start, Stop and Apply. It is held while a server
 	// starts or stops, which may wait for requests in flight; those only
@@ -89,12 +94,9 @@ var _ lifecycle.DetailReporter = (*Console)(nil)
 // Start.
 func New(cfg config.Console, opts Options, log *slog.Logger) *Console {
 	policy, err := peercred.NewPolicy(opts.Group)
-	if err != nil {
-		log.Warn("admin socket group not found; only root and obied's own user may use the console",
-			"group", opts.Group, "error", err)
-	}
-	c := &Console{log: log, node: opts.Node, policy: policy, lookup: peercred.LoopbackTCP, creds: newCredentials(),
-		now: time.Now, signInLimit: newSignInLimit(), cfg: cfg}
+	c := &Console{log: log, node: opts.Node, policy: policy, policyErr: err, lookup: peercred.LoopbackTCP,
+		creds: newCredentials(), now: time.Now, signInLimit: newSignInLimit(), warnLimit: rate.NewLimiter(1, 10), cfg: cfg}
+	c.pages = c.views()
 	c.handler = c.routes()
 	return c
 }
@@ -113,7 +115,7 @@ func (c *Console) Start(context.Context) error {
 	cfg := c.cfg
 	c.mu.Unlock()
 	if cfg.Enabled {
-		c.serve(cfg)
+		_ = c.serve(cfg) // a failure is logged and shown by Detail
 	}
 	return nil
 }
@@ -130,38 +132,60 @@ func (c *Console) Stop(ctx context.Context) error {
 
 // Apply switches the console to cfg — on, off or to another address —
 // without touching anything else; it is how a reload reaches the console.
-// An unchanged configuration only retries a console that failed to
-// listen. Before Start and after Stop it only records cfg.
+// A move starts the console at the new address before leaving the old
+// one, so a move to a taken port keeps it where it was. An unchanged
+// configuration retries a console that failed to listen or stopped
+// serving. Before Start and after Stop it only records cfg.
 func (c *Console) Apply(cfg config.Console) {
 	c.applyMu.Lock()
 	defer c.applyMu.Unlock()
 	c.mu.Lock()
-	prev, serving, running := c.cfg, c.server != nil, c.running
+	prev, old, running, failed := c.cfg, c.server, c.running, c.err != nil
 	c.cfg = cfg
 	if !cfg.Enabled {
 		c.err = nil
 	}
+	healthy := old != nil && old.Ready() == nil
+	if healthy && old.Addr().String() == cfg.Listen {
+		c.err = nil // already serving there, e.g. after a failed move is undone
+	}
 	c.mu.Unlock()
-	if !running || (cfg == prev && (serving || !cfg.Enabled)) {
+	switch {
+	case !running:
+		return
+	case !cfg.Enabled:
+		if old != nil {
+			c.retire(old)
+			c.log.Info("console stopped")
+		}
+		return
+	case healthy && (old.Addr().String() == cfg.Listen || (cfg == prev && !failed)):
 		return
 	}
-	if serving {
-		ctx, cancel := context.WithTimeout(context.Background(), stopTimeout)
-		err := c.stopServer(ctx)
-		cancel()
-		if err != nil {
-			c.log.Warn("stopping the console", "error", err)
-		}
-		c.log.Info("console stopped", "enabled", cfg.Enabled)
-	}
-	if cfg.Enabled {
-		c.serve(cfg)
+	if c.serve(cfg) && old != nil {
+		c.retire(old)
 	}
 }
 
-// serve starts a server for cfg; a failure is logged and kept for Detail.
-// The caller holds applyMu.
-func (c *Console) serve(cfg config.Console) {
+// retire stops a server that no longer serves the console. The caller
+// holds applyMu.
+func (c *Console) retire(srv *httpserver.Server) {
+	c.mu.Lock()
+	if c.server == srv {
+		c.server = nil
+	}
+	c.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), stopTimeout)
+	defer cancel()
+	if err := srv.Stop(ctx); err != nil {
+		c.log.Warn("stopping the console", "error", err)
+	}
+}
+
+// serve starts a server for cfg and reports whether it serves. A failure
+// is logged and kept for Detail; the current server, if any, keeps
+// serving. The caller holds applyMu.
+func (c *Console) serve(cfg config.Console) bool {
 	srv := httpserver.New(Name, loopbackListener(cfg.Listen), c.handler, c.log, httpserver.ConnContext(withConn))
 	ctx, cancel := context.WithTimeout(context.Background(), startTimeout)
 	err := srv.Start(ctx)
@@ -169,12 +193,23 @@ func (c *Console) serve(cfg config.Console) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if err != nil {
-		c.server, c.err = nil, err
-		c.log.Error("console not started; the node runs without it", "listen", cfg.Listen, "error", err)
-		return
+		c.err = err
+		if c.server != nil {
+			c.log.Error("console not moved; it keeps serving at its old address", "listen", cfg.Listen,
+				"url", consoleURL(c.server.Addr()), "error", err)
+		} else {
+			c.log.Error("console not started; the node runs without it", "listen", cfg.Listen, "error", err)
+		}
+		return false
 	}
 	c.server, c.err = srv, nil
 	c.log.Info("console serving", "url", consoleURL(srv.Addr()))
+	if c.policyErr != nil {
+		c.log.Warn("admin socket group not found; only root and obied's own user may use the console",
+			"group", c.policy.Group, "error", c.policyErr)
+		c.policyErr = nil // once
+	}
+	return true
 }
 
 // stopServer stops the current server, if any. The caller holds applyMu.
@@ -217,7 +252,8 @@ type State struct {
 	Listen string
 	// URL is where the console serves; empty while it does not.
 	URL string
-	// Err is why the enabled console is not serving.
+	// Err is why the enabled console does not serve at Listen; with a URL,
+	// it still serves at an earlier address.
 	Err error
 }
 
@@ -229,7 +265,7 @@ func (c *Console) State() State {
 	s := State{Enabled: cfg.Enabled, Listen: cfg.Listen, Err: err}
 	if srv != nil {
 		if serveErr := srv.Ready(); serveErr != nil {
-			s.Err = serveErr
+			s.Err = errors.Unwrap(serveErr) // Ready says "not serving: …" itself
 		} else {
 			s.URL = consoleURL(srv.Addr())
 		}
@@ -243,6 +279,8 @@ func (c *Console) Detail() string {
 	switch {
 	case !s.Enabled:
 		return "disabled"
+	case s.URL != "" && s.Err != nil:
+		return fmt.Sprintf("serving at %s, not at %s: %v", s.URL, s.Listen, s.Err)
 	case s.URL != "":
 		return "serving at " + s.URL
 	case s.Err != nil:

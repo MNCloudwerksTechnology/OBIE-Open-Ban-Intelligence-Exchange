@@ -227,3 +227,41 @@ func TestLoopbackListenerRefusesOtherAddresses(t *testing.T) {
 	}
 	_ = ln.Close()
 }
+
+func TestApplyKeepsServingWhenAMoveFails(t *testing.T) {
+	logs := &syncBuffer{}
+	a := freeAddr(t)
+	c := newConsole(t, config.Console{Enabled: true, Listen: a}, logs)
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := taken.Addr().String()
+
+	c.Apply(config.Console{Enabled: true, Listen: b})
+	want := "serving at http://" + a + "/, not at " + b + ": "
+	if c.Addr() == nil || c.Addr().String() != a || !strings.HasPrefix(c.Detail(), want) ||
+		!strings.Contains(c.Detail(), "address already in use") || refused(a) {
+		t.Fatalf("after a failed move: addr %v, detail %q; want still serving at %s", c.Addr(), c.Detail(), a)
+	}
+	if !strings.Contains(logs.String(), "console not moved; it keeps serving at its old address") {
+		t.Errorf("failed move not logged:\n%s", logs)
+	}
+
+	// Undoing the move keeps the console where it is, without an error.
+	c.Apply(config.Console{Enabled: true, Listen: a})
+	if c.Detail() != "serving at http://"+a+"/" {
+		t.Errorf("after undoing the move: detail %q", c.Detail())
+	}
+
+	// Once the port is free, the move succeeds and the old address closes.
+	c.Apply(config.Console{Enabled: true, Listen: b})
+	_ = taken.Close()
+	c.Apply(config.Console{Enabled: true, Listen: b})
+	if c.Addr() == nil || c.Addr().String() != b || c.Detail() != "serving at http://"+b+"/" || !refused(a) {
+		t.Errorf("after the port was freed: addr %v, detail %q, old refused %v", c.Addr(), c.Detail(), refused(a))
+	}
+}
