@@ -35,8 +35,10 @@ type lookupView struct {
 	// Answer says it in one line.
 	State, Answer string
 	Ruling        rulingView
-	// Others are the other allow-list entries that overlap it.
-	Others []allowRow
+	// Others are the other allow-list entries that overlap it, up to
+	// maxRuleRows; MoreOthers counts those not listed.
+	Others     []allowRow
+	MoreOthers int
 	// DecisionHref links to its decision; empty if the node cannot decide
 	// on it.
 	DecisionHref string
@@ -296,13 +298,18 @@ func newLookupView(pr *Protection) *lookupView {
 			"not even by an always-block override.", addr, protectingText(r))
 	case r.Rule == ruleAllowlist:
 		v.State, v.Answer = lookupAllowed, fmt.Sprintf("Yes: the allow-list entry %s (%s) covers %s, so it is never "+
-			"blocked, whatever the verdicts. Only an always-block override on it would overrule the entry.",
+			"blocked, whatever the verdicts. Only an always-block override on it, or on a network around it, would "+
+			"overrule the entry.",
 			r.Match, sourceText(r.Source), addr)
 	case r.Rule == ruleForceAllow:
 		v.State, v.Answer = lookupAllowed, fmt.Sprintf("Yes, by your always-allow override on %s: %s is not blocked, "+
 			"whatever the verdicts, %s.", matchText(r.Match), addr, untilText(r.ExpiresAt))
 	case r.Rule == ruleForceBlock:
-		v.State, v.Answer = lookupBlocked, fmt.Sprintf("No: your always-block override blocks %s, %s.", addr,
+		on := ""
+		if m := matchText(r.Match); m != addr {
+			on = " on " + m
+		}
+		v.State, v.Answer = lookupBlocked, fmt.Sprintf("No: your always-block override%s blocks %s, %s.", on, addr,
 			untilText(r.ExpiresAt))
 		if len(pr.Overlapping) > 0 {
 			v.Answer += " It overrules the allow-list entries that cover it."
@@ -314,6 +321,10 @@ func newLookupView(pr *Protection) *lookupView {
 	for _, e := range pr.Overlapping {
 		if r.Rule == ruleAllowlist && e.Range.String() == r.Match && e.Label == r.Label {
 			continue // the entry that decides
+		}
+		if len(v.Others) == maxRuleRows {
+			v.MoreOthers++
+			continue
 		}
 		label := sourceText(e.Source)
 		if l := entryLabel(e, ""); l != "" {

@@ -154,18 +154,26 @@ func TestBuildErrors(t *testing.T) {
 // rejects, so that the console can warn before a reload fails (ADR 0024).
 func TestCheckFile(t *testing.T) {
 	content := "185.0.1.0/24\n2a01:1::/48\n"
-	if got := CheckFile(writeFile(t, content)); got.Err != nil || got.Entries != 2 || got.RejectedLines != 0 ||
-		got.Digest != sha256.Sum256([]byte(content)) {
+	clean := writeFile(t, content)
+	if got := CheckFile(clean); got.Err != nil || got.Entries != 2 || got.RejectedLines != 0 ||
+		got.Digest != sha256.Sum256([]byte(content)) || got.LoadErr(clean) != nil {
 		t.Errorf("clean file: %+v", got)
 	}
 	missing := CheckFile(filepath.Join(t.TempDir(), "missing.txt"))
-	if missing.Err == nil || !errors.Is(missing.Err, os.ErrNotExist) || !strings.Contains(missing.Err.Error(), "missing.txt") {
+	if missing.Err == nil || !errors.Is(missing.Err, os.ErrNotExist) || !strings.Contains(missing.Err.Error(), "missing.txt") ||
+		!errors.Is(missing.LoadErr("missing.txt"), missing.Err) {
 		t.Errorf("missing file: %+v", missing)
 	}
 	bad := "185.0.1.0/24\n185.0.1.0/33 # typo\n" + strings.Repeat("nope\n", MaxRejected+3) + "185.0.2.7\n"
-	got := CheckFile(writeFile(t, bad))
+	badPath := writeFile(t, bad)
+	got := CheckFile(badPath)
 	if got.Err != nil || got.Entries != 2 || got.RejectedLines != MaxRejected+4 || len(got.Rejected) != MaxRejected {
 		t.Fatalf("file with bad lines: %+v", got)
+	}
+	// Loading the file fails with its first rejected line, as a reload does.
+	if _, err := ReadFiles([]string{badPath}); err == nil || got.LoadErr(badPath).Error() != err.Error() ||
+		!strings.HasPrefix(err.Error(), "allow-list file "+badPath+":2: invalid CIDR") {
+		t.Errorf("load error = %v, check says %v", err, got.LoadErr(badPath))
 	}
 	if r := got.Rejected[0]; r.Line != 2 || r.Text != "185.0.1.0/33" || !strings.Contains(r.Err.Error(), "invalid CIDR") {
 		t.Errorf("first rejected line = %+v", r)

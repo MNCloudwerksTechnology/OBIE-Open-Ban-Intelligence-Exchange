@@ -107,18 +107,41 @@ func allowFile(loaded sovereignty.FileLoad, now sovereignty.FileCheck) console.A
 // range, also one the node cannot decide on.
 func (r *consoleRules) Protection(p netip.Prefix) (console.Protection, error) {
 	now := r.now()
-	overrides, err := r.store.Overrides(now)
+	list, err := r.store.Overrides(now)
 	if err != nil {
 		return console.Protection{}, err
 	}
-	allow := r.engine.Allowlist()
-	ruling := sovereignty.Judge(rangeIndicator(p), allow, sovereignty.NewOverrides(overrides), now)
+	allow, overrides := r.engine.Allowlist(), sovereignty.NewOverrides(list)
+	ruling := sovereignty.Judge(rangeIndicator(p), allow, overrides, now)
+	if ruling.Rule == "" || (ruling.Rule == sovereignty.RuleAllowlist && !ruling.Source.Protected()) {
+		if block, ok := enclosingBlock(p, allow, overrides, now); ok {
+			ruling = block
+		}
+	}
 	_, err = indicatorOfRange(p)
 	pr := console.Protection{Range: p.Masked(), Ruling: consoleRuling(&ruling), Decidable: err == nil}
 	for _, e := range allow.Overlapping(p) {
 		pr.Overlapping = append(pr.Overlapping, consoleAllowEntry(e))
 	}
 	return pr, nil
+}
+
+// enclosingBlock returns the ruling of the first force-block on a network
+// around p that takes effect: the firewall blocks that network, p with it,
+// even if one of the operator's own allow-list entries covers p. Judge only
+// weighs a force-block on p itself.
+func enclosingBlock(p netip.Prefix, allow *sovereignty.Allowlist, ov *sovereignty.Overrides, now time.Time) (sovereignty.Ruling, bool) {
+	p = p.Masked()
+	for _, o := range ov.ForceBlocks() {
+		q, err := sovereignty.PrefixOf(o.Indicator)
+		if err != nil || q.Bits() >= p.Bits() || !q.Contains(p.Addr()) {
+			continue
+		}
+		if ruling := sovereignty.Judge(o.Indicator, allow, ov, now); ruling.Rule == sovereignty.RuleForceBlock {
+			return ruling, true
+		}
+	}
+	return sovereignty.Ruling{}, false
 }
 
 // Configuration reads the running configuration and the keys its file
@@ -138,6 +161,7 @@ func (r *consoleRules) Configuration() console.Configuration {
 			c.DiskErr = err.Error()
 		} else {
 			disk, changed = f.Config, config.Changed(running.Config, f.Config)
+			c.DiskErr = r.filesErr(f.Config.Allowlist.Files)
 		}
 	}
 	for _, s := range config.Settings() {
@@ -152,6 +176,18 @@ func (r *consoleRules) Configuration() console.Configuration {
 		c.Settings = append(c.Settings, setting)
 	}
 	return c
+}
+
+// filesErr says why one of the allow-list files at paths cannot be loaded
+// now, as a reload would reject it; empty if they all load.
+func (r *consoleRules) filesErr(paths []string) string {
+	for _, path := range paths {
+		check := r.checkFile(path)
+		if err := check.LoadErr(path); err != nil {
+			return "allow-list: " + err.Error()
+		}
+	}
+	return ""
 }
 
 // settingValue converts the value v of the setting s; a secret's value

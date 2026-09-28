@@ -106,8 +106,9 @@ type Configuration struct {
 	// Settings are every setting, in the order of the configuration
 	// reference.
 	Settings []Setting
-	// DiskErr says why the file on disk cannot be loaded now: a reload
-	// would be rejected. Empty if it loads, or without a file.
+	// DiskErr says why the file on disk, or an allow-list file it names,
+	// cannot be loaded now: a reload would be rejected. Empty if they load,
+	// or without a file.
 	DiskErr string
 }
 

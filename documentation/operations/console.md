@@ -448,14 +448,14 @@ your overrides:
 | Answer | Rule |
 |--------|------|
 | *Yes: … is protected by …* | A built-in range, this node's address or a bootstrap peer's address covers it. It is never blocked, not even by an always-block override. |
-| *Yes: the allow-list entry … covers …* | An entry of `allowlist.cidrs` or an allow-list file covers it. Only an always-block override on it would overrule the entry. |
+| *Yes: the allow-list entry … covers …* | An entry of `allowlist.cidrs` or an allow-list file covers it. Only an always-block override on it, or on a network around it, would overrule the entry. |
 | *Yes, by your always-allow override on …* | Your always-allow override covers it, until it ends. |
-| *No: your always-block override blocks …* | Your always-block override on it, which also overrules your own allow-list entries that cover it. |
+| *No: your always-block override … blocks …* | Your always-block override on it, or on a network around it, which also overrules your own allow-list entries that cover it. |
 | *No: no allow-list entry or override covers …* | Nothing protects it; the verdicts decide whether it is blocked. |
 
 The answer shows the matching entry or override with its label or note
 and when an override ends, lists the other entries that overlap the
-address, and links to the address's decision and
+address (up to 1,000), and links to the address's decision and
 [explanation](#why-an-address-is-or-is-not-blocked). A network that
 contains an allow-list entry is never blocked either: blocking it would
 block the entry too. The lookup is part of the address
@@ -485,10 +485,11 @@ with?". The first section says how it was loaded:
   opens, and compared with the running configuration setting by setting:
   it *matches*; or it *changed since it was loaded*, naming the settings
   that are **not active until a reload** and those **waiting for a
-  restart**; or it cannot be loaded now — missing, unreadable or invalid —
-  with the error: a reload would be rejected, and the running
-  configuration kept. A change only to comments or layout changes
-  nothing.
+  restart** (after a reload, only the latter remain); or it cannot be
+  loaded now — missing, unreadable or invalid, or an allow-list file it
+  names is missing, unreadable or holds a line the node rejects — with
+  the error: a reload would be rejected, and the running configuration
+  kept. A change only to comments or layout changes nothing.
 
 Then **every setting**, grouped by the section of the file it is in
 (`node`, `admin`, `mesh`, `store`, `trust`, `decision`, `allowlist`,

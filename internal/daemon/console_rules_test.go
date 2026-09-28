@@ -221,6 +221,11 @@ func TestConsoleRulesProtection(t *testing.T) {
 	f := newRulesFixture(t)
 	f.override(t, "85.10.20.0/24", store.ForceAllow, "partner", 0)
 	f.override(t, "185.0.3.9/32", store.ForceBlock, "", 0)
+	// A force-block on a network blocks every address in it, also one of
+	// the operator's own allow-list entries; one around a force-allow has no
+	// effect.
+	f.override(t, "185.0.2.0/24", store.ForceBlock, "", 0)
+	f.override(t, "85.10.0.0/16", store.ForceBlock, "", 0)
 	for _, tc := range []struct {
 		cidr, rule, source, match string
 		protected, decidable      bool
@@ -231,6 +236,8 @@ func TestConsoleRulesProtection(t *testing.T) {
 		{"185.0.1.9/32", "allowlist", "file", "185.0.1.0/24", false, true, 1},
 		{"185.0.3.9/32", "force_block", "override", "ipv4:185.0.3.9", false, true, 1},
 		{"85.10.20.7/32", "force_allow", "override", "cidr:85.10.20.0/24", false, true, 0},
+		{"185.0.2.7/32", "force_block", "override", "cidr:185.0.2.0/24", false, true, 1},
+		{"185.0.2.9/32", "force_block", "override", "cidr:185.0.2.0/24", false, true, 0},
 		{"85.10.30.1/32", "", "", "", false, true, 0},
 	} {
 		pr, err := f.rules.Protection(netip.MustParsePrefix(tc.cidr))
@@ -291,6 +298,29 @@ func TestConsoleRulesConfiguration(t *testing.T) {
 	}
 	if s := c.Settings[1]; s.Key != "node.mode" || s.Value.Text != "enforce" {
 		t.Errorf("the running value changed: %+v", s)
+	}
+
+	// An allow-list file the file on disk names cannot be loaded: a reload
+	// would be rejected.
+	added := filepath.Join(f.dir, "added.txt")
+	f.write(t, f.configPath, strings.Replace(f.config("enforce"), "files: [", "files: ["+added+", ", 1))
+	c = f.rules.Configuration()
+	if !strings.HasPrefix(c.DiskErr, "allow-list: allow-list file: open "+added) || !strings.Contains(c.DiskErr, "no such file") {
+		t.Errorf("missing allow-list file: %q", c.DiskErr)
+	}
+	for _, s := range c.Settings {
+		if (s.Disk != nil) != (s.Key == "allowlist.files") {
+			t.Errorf("%s on disk: %+v", s.Key, s.Disk)
+		}
+	}
+	f.write(t, added, "185.0.9.1\nnot-an-address\n")
+	if c = f.rules.Configuration(); c.DiskErr != "allow-list: allow-list file "+added+`:2: invalid address "not-an-address": `+
+		"want an IP address or CIDR range" {
+		t.Errorf("invalid allow-list file: %q", c.DiskErr)
+	}
+	f.write(t, added, "185.0.9.1\n")
+	if c = f.rules.Configuration(); c.DiskErr != "" {
+		t.Errorf("valid allow-list files: %q", c.DiskErr)
 	}
 
 	// A file that cannot be loaded: a reload would be rejected.

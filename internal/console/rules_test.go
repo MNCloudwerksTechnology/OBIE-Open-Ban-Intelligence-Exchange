@@ -337,7 +337,7 @@ func TestLookupNamesTheRule(t *testing.T) {
 		{"operator entry", Protection{Range: netip.MustParsePrefix("185.0.3.7/32"), Decidable: true, Ruling: Ruling{Effect: "allow",
 			Rule: ruleAllowlist, Source: "config", Match: "185.0.3.0/24"}, Overlapping: []AllowEntry{cfgEntry, fileEntry}},
 			lookupAllowed, "Yes: the allow-list entry 185.0.3.0/24 (allowlist.cidrs) covers 185.0.3.7, so it is never blocked, " +
-				"whatever the verdicts. Only an always-block override on it would overrule the entry.",
+				"whatever the verdicts. Only an always-block override on it, or on a network around it, would overrule the entry.",
 			[]allowRow{{Range: "185.0.3.7", Label: "allowlist.files: /etc/obie/allow.txt:3"}}},
 		{"force-allow", Protection{Range: netip.MustParsePrefix("198.51.100.4/32"), Decidable: true, Ruling: Ruling{Effect: "allow",
 			Rule: ruleForceAllow, Source: "override", Match: "cidr:198.51.100.0/24"}},
@@ -347,6 +347,10 @@ func TestLookupNamesTheRule(t *testing.T) {
 			Rule: ruleForceBlock, Source: "override", Match: "ipv4:185.0.3.7", ExpiresAt: ruleNow}, Overlapping: []AllowEntry{cfgEntry}},
 			lookupBlocked, "No: your always-block override blocks 185.0.3.7, until 2026-09-28 12:00:00 UTC. It overrules the " +
 				"allow-list entries that cover it.", []allowRow{{Range: "185.0.3.0/24", Label: "allowlist.cidrs"}}},
+		{"force-block around it", Protection{Range: netip.MustParsePrefix("185.0.3.7/32"), Decidable: true, Ruling: Ruling{Effect: "block",
+			Rule: ruleForceBlock, Source: "override", Match: "cidr:185.0.3.0/25"}, Overlapping: []AllowEntry{cfgEntry}},
+			lookupBlocked, "No: your always-block override on 185.0.3.0/25 blocks 185.0.3.7, until you remove the override. It " +
+				"overrules the allow-list entries that cover it.", []allowRow{{Range: "185.0.3.0/24", Label: "allowlist.cidrs"}}},
 		{"none", Protection{Range: netip.MustParsePrefix("203.0.113.7/32"), Decidable: true},
 			lookupNone, "No: no allow-list entry or override covers 203.0.113.7. The verdicts decide whether it is blocked.", nil},
 	} {
@@ -363,6 +367,20 @@ func TestLookupNamesTheRule(t *testing.T) {
 	p := buildAllowlist(allowlistInput{address: "10.0.0.0/8", protectionErr: errors.New("store closed")})
 	if p.AddressErr != "The lookup failed: store closed" || p.Lookup != nil {
 		t.Errorf("failed lookup: %+v", p)
+	}
+}
+
+// TestLookupCapsTheOthers: a lookup of a wide network lists at most
+// maxRuleRows of the entries that overlap it, and counts the rest.
+func TestLookupCapsTheOthers(t *testing.T) {
+	pr := Protection{Range: netip.MustParsePrefix("0.0.0.0/0")}
+	base := netip.MustParseAddr("100.0.0.0")
+	for range maxRuleRows + 3 {
+		pr.Overlapping = append(pr.Overlapping, AllowEntry{Range: netip.PrefixFrom(base, 32), Source: "file"})
+		base = base.Next()
+	}
+	if v := newLookupView(&pr); len(v.Others) != maxRuleRows || v.MoreOthers != 3 {
+		t.Errorf("%d others, %d more", len(v.Others), v.MoreOthers)
 	}
 }
 
@@ -448,6 +466,22 @@ func TestBuildConfigurationLoads(t *testing.T) {
 	if p.Disk != (statusLine{State: "warning", Text: "The file on disk cannot be loaded now: invalid configuration: decision.quorum: " +
 		"must be at least 1. A reload would be rejected, and the running configuration kept."}) {
 		t.Errorf("invalid file = %+v", p.Disk)
+	}
+	// One setting waits for a reload; or the file on disk only differs in
+	// one a restart applies, which a reload leaves waiting.
+	pending := []Setting{{Key: "node.mode", Section: "node", Applied: appliedReload, Value: SettingValue{Text: "observe"},
+		Disk: &SettingValue{Text: "enforce"}}}
+	if p := buildConfiguration(configurationInput{cfg: Configuration{Path: "/etc/obie/obie.yaml", Settings: pending}}); p.Disk !=
+		(statusLine{State: "changed", Text: "The file on disk changed since it was loaded: 1 setting differs from the running " +
+			"configuration and is not active yet."}) {
+		t.Errorf("one pending = %+v", p.Disk)
+	}
+	restart := []Setting{{Key: "log.level", Section: "log", Applied: appliedRestart, Value: SettingValue{Text: "info"},
+		Disk: &SettingValue{Text: "debug"}}}
+	if p := buildConfiguration(configurationInput{cfg: Configuration{Path: "/etc/obie/obie.yaml", Settings: restart,
+		Load: ConfigFacts{LoadedAt: loaded, Reloaded: true}}}); p.Disk != (statusLine{State: "changed",
+		Text: "The file on disk differs from the running configuration in 1 setting that only a restart of obied applies."}) {
+		t.Errorf("restart only = %+v", p.Disk)
 	}
 	if p := buildConfiguration(configurationInput{cfg: Configuration{Settings: unchanged}}); p.Disk.State != "none" {
 		t.Errorf("without a file: %+v", p.Disk)

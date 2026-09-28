@@ -114,9 +114,11 @@ decision:
 - When the page opens, the daemon reads and validates the file on disk and
   compares it with the running configuration key by key: a key whose value
   differs is *changed on disk*, *not active until a reload* or *waiting for a
-  restart*. A file that cannot be read or is invalid is shown with the error:
-  a reload would be rejected and the running configuration kept. A file that
-  changed only in comments or layout changes nothing.
+  restart*. A file that cannot be read or is invalid, or that names an
+  allow-list file that cannot be loaded (checked with `sovereignty.CheckFile`,
+  as a reload would load it), is shown with the error: a reload would be
+  rejected and the running configuration kept. A file that changed only in
+  comments or layout changes nothing.
 
 ### Allow-list files and warnings
 
@@ -138,11 +140,15 @@ decision:
 - The lookup accepts any address or network, also a private or
   special-purpose one, and judges it with `sovereignty.Judge` against the
   running allow-list and the overrides in the store, as the decision engine
-  does. It names the rule that decides — a protected entry (built-in, own or
-  bootstrap; not even a force-block beats it), a force-allow override, an
-  allow-list entry of the operator, a force-block that beats such an entry, or
-  none — with the matching entry or override, lists the other entries that
-  overlap it, and links to the decision's explanation.
+  does. `Judge` weighs only a force-block on the range itself; the firewall
+  also blocks every address in a network whose force-block takes effect, so
+  unless a protected entry or a force-allow decides, the lookup also looks
+  for such a force-block around the range. It names the rule that decides — a
+  protected entry (built-in, own or bootstrap; not even a force-block beats
+  it), a force-allow override, an allow-list entry of the operator, a
+  force-block on the range or around it that beats such an entry, or none —
+  with the matching entry or override, lists the other entries that overlap
+  it (at most 1,000), and links to the decision's explanation.
 
 ## Alternatives considered
 

@@ -117,12 +117,8 @@ func ReadFiles(paths []string) ([]Entry, error) {
 // error.
 func readFile(path string) ([]Entry, FileLoad, error) {
 	entries, check := scanFile(path)
-	switch {
-	case check.Err != nil:
-		return nil, FileLoad{}, check.Err
-	case len(check.Rejected) > 0:
-		r := check.Rejected[0]
-		return nil, FileLoad{}, fmt.Errorf("allow-list file %s:%d: %w", path, r.Line, r.Err)
+	if err := check.LoadErr(path); err != nil {
+		return nil, FileLoad{}, err
 	}
 	return entries, FileLoad{Path: path, Entries: len(entries), Digest: check.Digest}, nil
 }
@@ -151,6 +147,19 @@ type RejectedLine struct {
 	Line int
 	Text string
 	Err  error
+}
+
+// LoadErr is the error loading the checked file at path fails with: why it
+// cannot be read, or its first rejected line. Nil if it loads.
+func (c *FileCheck) LoadErr(path string) error {
+	switch {
+	case c.Err != nil:
+		return c.Err
+	case len(c.Rejected) > 0:
+		r := c.Rejected[0]
+		return fmt.Errorf("allow-list file %s:%d: %w", path, r.Line, r.Err)
+	}
+	return nil
 }
 
 // CheckFile reads the allow-list file at path without loading it, and

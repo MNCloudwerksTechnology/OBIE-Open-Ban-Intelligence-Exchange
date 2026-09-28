@@ -52,6 +52,9 @@
           <li><span class="mono">{{.Range}}</span> <span class="cell-note">{{.Label}}</span></li>
           {{- end}}
         </ul>
+        {{- with .MoreOthers}}
+        <p class="note">And {{.}} more; look up a narrower network to list them.</p>
+        {{- end}}
       </dd>
       {{- end}}
     </dl>

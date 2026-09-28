@@ -130,7 +130,7 @@ func buildConfiguration(in configurationInput) configurationPage {
 		}
 		p.Sections[len(p.Sections)-1].Rows = append(p.Sections[len(p.Sections)-1].Rows, row)
 	}
-	p.Disk = diskLine(c, len(p.Pending)+len(p.Restart))
+	p.Disk = diskLine(c, len(p.Pending), len(p.Restart))
 	return p
 }
 
@@ -148,17 +148,25 @@ func reloadLine(l *ConfigFacts) statusLine {
 }
 
 // diskLine says how the file on disk differs from the running
-// configuration in changed settings.
-func diskLine(c *Configuration, changed int) statusLine {
+// configuration: in pending settings a reload applies, and in restart
+// settings only a restart applies, which a reload leaves waiting.
+func diskLine(c *Configuration, pending, restart int) statusLine {
 	switch {
 	case c.Path == "":
 		return statusLine{State: "none", Text: "The node runs with a configuration it did not read from a file."}
 	case c.DiskErr != "":
 		return statusLine{State: "warning", Text: "The file on disk cannot be loaded now: " + c.DiskErr +
 			". A reload would be rejected, and the running configuration kept."}
-	case changed > 0:
-		return statusLine{State: "changed", Text: fmt.Sprintf("The file on disk changed since it was loaded: %s "+
-			"differ from the running configuration and are not active yet.", plural(changed, "setting", "settings"))}
+	case pending > 0:
+		differ := "differ from the running configuration and are"
+		if pending+restart == 1 {
+			differ = "differs from the running configuration and is"
+		}
+		return statusLine{State: "changed", Text: fmt.Sprintf("The file on disk changed since it was loaded: %s %s not "+
+			"active yet.", plural(pending+restart, "setting", "settings"), differ)}
+	case restart > 0:
+		return statusLine{State: "changed", Text: fmt.Sprintf("The file on disk differs from the running configuration "+
+			"in %s that only a restart of obied applies.", plural(restart, "setting", "settings"))}
 	default:
 		return statusLine{State: "ok", Text: "The file on disk matches the running configuration."}
 	}
