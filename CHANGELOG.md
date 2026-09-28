@@ -58,7 +58,12 @@ The first release, v0.1.0 "Stable Base".
   compose lab with a smoke test ([install](documentation/operations/install.md)).
 - **Testing.** An end-to-end test of report → block under quorum → revoke
   across several nodes, with an nftables variant in network namespaces.
-- **Documentation.** A [quick start](documentation/operations/quickstart.md)
+- **Documentation.** A plain-language introduction,
+  [What is OBIE?](documentation/introduction.md), with a diagram of one
+  attack from detection to firewall; an [FAQ](documentation/faq.md) on
+  the fears that stop adoption; a [glossary](documentation/glossary.md)
+  that every guide links on first use. A
+  [quick start](documentation/operations/quickstart.md)
   whose every command is mapped to a test, a
   [configuration reference](documentation/operations/configuration.md)
   tested against the code, [federation](documentation/operations/federation.md),

@@ -104,3 +104,29 @@ func TestIntroductionIsPlainLanguage(t *testing.T) {
 		t.Errorf("the introduction has %d words, want at most %d (about five minutes)", total, maxIntroductionWords)
 	}
 }
+
+// introductionLink is how README.md links the introduction.
+const introductionLink = "documentation/introduction.md"
+
+// TestReadmeOpensWithIntroduction checks that the repository's front page
+// sends newcomers to the introduction first: with its first link, before
+// any section, and in the first row of its documentation table.
+func TestReadmeOpensWithIntroduction(t *testing.T) {
+	doc := readRepoFile(t, "README.md")
+	if links := relativeLinks(doc); len(links) == 0 || links[0] != introductionLink {
+		t.Errorf("the README's first link is not %s", introductionLink)
+	}
+	table, ok := section(doc, "Documentation")
+	if !ok {
+		t.Fatal("the README has no section \"Documentation\"")
+	}
+	var rows []string
+	for _, line := range strings.Split(table, "\n") {
+		if strings.HasPrefix(line, "|") && !strings.HasPrefix(line, "|-") {
+			rows = append(rows, line)
+		}
+	}
+	if len(rows) < 2 || !strings.Contains(rows[1], "]("+introductionLink+")") {
+		t.Errorf("the first row of the README's documentation table does not link %s", introductionLink)
+	}
+}

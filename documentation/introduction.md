@@ -2,9 +2,9 @@
 
 OBIE, the Open Ban Intelligence Exchange, lets servers warn each other
 about attackers. Each server still decides for itself what it blocks. This
-page explains in about five minutes what that means, how it works and why
-it cannot lock you out of your own server. You need no technical
-background to follow it.
+page explains in about five minutes what that means, how it works and how
+you stay in control of your own server. You need no technical background
+to follow it.
 
 ## The problem: every server fights alone
 

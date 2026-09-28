@@ -288,6 +288,22 @@ make soak SOAKTIME=15m SOAKRATE=100
 Record the results of a full run in
 [`documentation/operations/performance.md`](documentation/operations/performance.md).
 
+## Documentation
+
+- Newcomers start at [What is OBIE?](documentation/introduction.md). Keep
+  it in plain language: no commands, no configuration keys, no protocol
+  details, short sentences and about five minutes of reading.
+  `TestIntroductionIsPlainLanguage` in `test/docs` checks it.
+- Every guide links a glossary term to the
+  [glossary](documentation/glossary.md) the first time it uses it. A new
+  term gets an entry of one or two sentences, in alphabetical order; a new
+  guide is added to `glossaryGuides` in `test/docs/glossary_test.go`.
+  `TestGlossaryDefinesEveryTerm` and `TestGuidesLinkGlossaryOnFirstUse`
+  enforce both.
+- Diagrams have a text alternative and do not rely on colour alone.
+- Relative links and their anchors must resolve
+  (`TestRelativeLinksResolve`).
+
 ## Commit messages
 
 We use [Conventional Commits](https://www.conventionalcommits.org/):

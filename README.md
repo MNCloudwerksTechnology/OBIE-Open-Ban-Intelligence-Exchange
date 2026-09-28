@@ -1,5 +1,12 @@
 # OBIE: Open Ban Intelligence Exchange
 
+**New to OBIE?** Start with
+[What is OBIE?](documentation/introduction.md): five minutes, no technical
+background needed. It explains what OBIE does, how your server decides
+what to block, and how you stay in control of it. The
+[FAQ](documentation/faq.md) and the [glossary](documentation/glossary.md)
+answer the rest.
+
 **Shared intelligence, sovereign enforcement.** OBIE lets servers you run
 tell each other which addresses attack them, and lets each server decide
 for itself whether to block them. There is no central service: every
@@ -85,6 +92,9 @@ try a three-node mesh on a laptop instead, run the
 
 | For | Read |
 |-----|------|
+| What OBIE is and how it works, in plain language | [What is OBIE?](documentation/introduction.md) |
+| Can a peer lock me out? What is shared? What if it crashes? | [FAQ](documentation/faq.md) |
+| Every OBIE term in one or two sentences | [Glossary](documentation/glossary.md) |
 | First node, step by step | [Quick start](documentation/operations/quickstart.md) |
 | Every configuration key | [Configuration reference](documentation/operations/configuration.md) |
 | Connecting to other nodes | [Federation](documentation/operations/federation.md) |
