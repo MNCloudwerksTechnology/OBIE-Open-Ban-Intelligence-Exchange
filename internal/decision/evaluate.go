@@ -91,11 +91,14 @@ type Contribution struct {
 	// Name is the publisher's name in trust.publishers; empty if unlisted.
 	Name string
 	// Local is set for this node's own verdicts.
-	Local      bool
-	EventID    string
-	Action     string
-	Weight     float64
-	Confidence float64
+	Local   bool
+	EventID string
+	Action  string
+	// Reason is the verdict's evidence reason, e.g. "password_bruteforce";
+	// Protocol names the attacked service, e.g. "ssh".
+	Reason, Protocol string
+	Weight           float64
+	Confidence       float64
 	// Score is Weight × Confidence if the verdict contributes, else 0.
 	Score     float64
 	IssuedAt  time.Time
@@ -224,10 +227,14 @@ func contribution(v *obieproto.Event, p *Policy) Contribution {
 		Local:      v.Publisher.PeerID == p.Self,
 		EventID:    v.ID,
 		Action:     v.Verdict.SuggestedAction,
+		Protocol:   v.Protocol,
 		Weight:     p.weight(v.Publisher.PeerID),
 		Confidence: v.Verdict.Confidence,
 		IssuedAt:   v.IssuedAt.UTC(),
 		ExpiresAt:  v.ExpiresAt().UTC(),
+	}
+	if v.Evidence != nil {
+		c.Reason = v.Evidence.Reason
 	}
 	c.Contributes = c.Action == obieproto.ActionBan && c.Weight > 0
 	if c.Contributes {

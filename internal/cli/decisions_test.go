@@ -25,8 +25,8 @@ var (
 		State:     admin.StateBlock, Score: 1.7999999999999998, Threshold: 1.8, Contributors: 2, Quorum: 2,
 		ExpiresAt: &explainUntil, Reason: "consensus: score 1.8 >= threshold 1.8, 2 >= quorum 2", EvaluatedAt: explainAt,
 		Publishers: []admin.ContributionResponse{
-			{PeerID: "12D3KooWAAA", Name: "alpha", Action: "ban", Weight: 1, Confidence: 0.8, Score: 0.8, Contributes: true,
-				IssuedAt: explainAt.Add(-time.Hour), ExpiresAt: explainUntil},
+			{PeerID: "12D3KooWAAA", Name: "alpha", Action: "ban", Reason: "password_bruteforce", Protocol: "ssh",
+				Weight: 1, Confidence: 0.8, Score: 0.8, Contributes: true, IssuedAt: explainAt.Add(-time.Hour), ExpiresAt: explainUntil},
 			{PeerID: "12D3KooWBBB", Action: "watch", Weight: 0.5, Confidence: 1, IssuedAt: explainAt.Add(-time.Hour), ExpiresAt: explainUntil},
 			{PeerID: "12D3KooWSSS", Local: true, Action: "ban", Weight: 1, Confidence: 1, Score: 1, Contributes: true,
 				IssuedAt: explainAt.Add(-time.Hour), ExpiresAt: explainUntil},
@@ -49,10 +49,10 @@ Local autoblock:       no
 Allow-list/overrides:  none apply
 Evaluated:             2026-09-28T12:00:00Z
 
-PUBLISHER    PEER ID      ACTION  WEIGHT  CONFIDENCE  SCORE  COUNTS  ISSUED                EXPIRES
-alpha        12D3KooWAAA  ban     1       0.8         0.8    yes     2026-09-28T11:00:00Z  2026-09-28T13:00:00Z
--            12D3KooWBBB  watch   0.5     1           0      no      2026-09-28T11:00:00Z  2026-09-28T13:00:00Z
-(this node)  12D3KooWSSS  ban     1       1           1      yes     2026-09-28T11:00:00Z  2026-09-28T13:00:00Z
+PUBLISHER    PEER ID      ACTION  WEIGHT  CONFIDENCE  SCORE  COUNTS  PROTOCOL  REASON               ISSUED                EXPIRES
+alpha        12D3KooWAAA  ban     1       0.8         0.8    yes     ssh       password_bruteforce  2026-09-28T11:00:00Z  2026-09-28T13:00:00Z
+-            12D3KooWBBB  watch   0.5     1           0      no      -         -                    2026-09-28T11:00:00Z  2026-09-28T13:00:00Z
+(this node)  12D3KooWSSS  ban     1       1           1      yes     -         -                    2026-09-28T11:00:00Z  2026-09-28T13:00:00Z
 `
 	if out.String() != want {
 		t.Errorf("explanation =\n%s\nwant\n%s", out.String(), want)

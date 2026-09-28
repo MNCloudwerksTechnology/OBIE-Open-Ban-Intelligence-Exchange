@@ -411,6 +411,18 @@ func TestSovereigntyResponse(t *testing.T) {
 	}
 }
 
+// TestExplanationResponse: every contribution keeps its reason and
+// protocol in the admin API's explanation (ADR 0022).
+func TestExplanationResponse(t *testing.T) {
+	d := decision.Decision{Publishers: []decision.Contribution{{PeerID: self, Action: "ban", Reason: "port_scan", Protocol: "tcp",
+		Weight: 1, Confidence: 0.5, Score: 0.5, Contributes: true}}}
+	r := explanationResponse(d)
+	if len(r.Publishers) != 1 || r.Publishers[0].Reason != "port_scan" || r.Publishers[0].Protocol != "tcp" ||
+		r.Publishers[0].Score != 0.5 || !r.Publishers[0].Contributes {
+		t.Errorf("publishers = %+v", r.Publishers)
+	}
+}
+
 func TestNewEnforcer(t *testing.T) {
 	log := slog.New(slog.DiscardHandler)
 	if enf, err := newEnforcer(config.Enforce{Backend: config.BackendDryRun}, 0, log); err != nil || enf == nil {

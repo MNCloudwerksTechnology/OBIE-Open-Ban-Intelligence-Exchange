@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unique"
 
@@ -117,9 +118,14 @@ type Engine struct {
 	mu        sync.RWMutex
 	decisions map[string]Decision
 	// held lists the active verdicts of every kept decision, by key, and
-	// publishers counts them by publisher (ADR 0021).
+	// publishers counts them by publisher (ADR 0021); categories counts the
+	// decisions holding a verdict of each category (ADR 0022).
 	held       map[string][]heldVerdict
 	publishers map[unique.Handle[string]]PublisherCount
+	categories map[unique.Handle[string]]int
+	// generation counts the evaluations that kept, replaced or dropped a
+	// decision.
+	generation atomic.Uint64
 
 	// dirty holds the indicators changed in the store since the worker last
 	// ran, or whose evaluation failed, with the latest cause; wake signals
@@ -165,6 +171,7 @@ func New(st store.Store, p Policy, log *slog.Logger, opts Options) *Engine {
 		decisions:  map[string]Decision{},
 		held:       map[string][]heldVerdict{},
 		publishers: map[unique.Handle[string]]PublisherCount{},
+		categories: map[unique.Handle[string]]int{},
 		dirty:      map[string]string{},
 		wake:       make(chan struct{}, 1),
 		subs:       map[int]func(Change){},
@@ -332,6 +339,29 @@ func (e *Engine) Reload(p Policy, allow *sovereignty.Allowlist) {
 func (e *Engine) Allowlist() *sovereignty.Allowlist {
 	_, r := e.current()
 	return r.Allowlist
+}
+
+// Policy returns the policy in effect, which Reload replaces. Its maps
+// are shared and must not be modified.
+func (e *Engine) Policy() Policy {
+	p, _ := e.current()
+	return p
+}
+
+// Decision returns the kept decision on the indicator with key, without
+// Publishers, and whether there is one.
+func (e *Engine) Decision(key string) (Decision, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	d, ok := e.decisions[key]
+	return d, ok
+}
+
+// Generation counts the evaluations that kept, replaced or dropped a
+// decision since the engine was created; a caller that read the
+// decisions knows they may have changed once it moved (ADR 0022).
+func (e *Engine) Generation() uint64 {
+	return e.generation.Load()
 }
 
 // current returns the policy and rules in effect.
@@ -651,6 +681,9 @@ func (e *Engine) apply(key string, d Decision, cause string) {
 		e.decisions[key], e.held[key] = d, held
 	}
 	e.count(held, 1)
+	if active || had {
+		e.generation.Add(1)
+	}
 	e.mu.Unlock()
 
 	from := StateNone

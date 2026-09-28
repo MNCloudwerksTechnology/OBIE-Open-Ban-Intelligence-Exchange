@@ -1,11 +1,15 @@
 package decision
 
-import "unique"
+import (
+	"strings"
+	"unique"
+)
 
-// heldVerdict is an active verdict of a kept decision: its publisher,
-// interned, and whether it counts in the decision.
+// heldVerdict is an active verdict of a kept decision: its publisher and
+// its category, interned, and whether it counts in the decision.
 type heldVerdict struct {
 	publisher unique.Handle[string]
+	category  unique.Handle[string]
 	counts    bool
 }
 
@@ -16,9 +20,27 @@ func heldOf(contributions []Contribution) []heldVerdict {
 	}
 	out := make([]heldVerdict, len(contributions))
 	for i, c := range contributions {
-		out[i] = heldVerdict{publisher: unique.Make(c.PeerID), counts: c.Contributes}
+		out[i] = heldVerdict{publisher: unique.Make(c.PeerID), category: unique.Make(Category(c.Reason, c.Protocol)),
+			counts: c.Contributes}
 	}
 	return out
+}
+
+// Category names what a verdict is about: its evidence reason and the
+// attacked protocol, e.g. "password_bruteforce/ssh" (ADR 0022). Neither
+// may contain a slash, so the name is unambiguous.
+func Category(reason, protocol string) string {
+	if protocol == "" {
+		return reason
+	}
+	return reason + "/" + protocol
+}
+
+// SplitCategory returns the evidence reason and the protocol of a
+// category.
+func SplitCategory(category string) (reason, protocol string) {
+	reason, protocol, _ = strings.Cut(category, "/")
+	return reason, protocol
 }
 
 // PublisherCount counts the active verdicts of one publisher in the kept
@@ -43,10 +65,22 @@ func (e *Engine) PublisherCounts() map[string]PublisherCount {
 	return out
 }
 
-// count adds the verdicts held, times sign, to the counts by publisher.
-// Callers hold e.mu.
+// Categories returns how many kept decisions hold an active verdict of
+// each category (see Category). Reading them costs O(categories).
+func (e *Engine) Categories() map[string]int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	out := make(map[string]int, len(e.categories))
+	for c, n := range e.categories {
+		out[c.Value()] = n
+	}
+	return out
+}
+
+// count adds the verdicts held by one decision, times sign, to the counts
+// by publisher and by category. Callers hold e.mu.
 func (e *Engine) count(held []heldVerdict, sign int) {
-	for _, h := range held {
+	for i, h := range held {
 		c := e.publishers[h.publisher]
 		c.Verdicts += sign
 		if h.counts {
@@ -57,5 +91,23 @@ func (e *Engine) count(held []heldVerdict, sign int) {
 		} else {
 			e.publishers[h.publisher] = c
 		}
+		if firstOfCategory(held, i) {
+			if n := e.categories[h.category] + sign; n == 0 {
+				delete(e.categories, h.category)
+			} else {
+				e.categories[h.category] = n
+			}
+		}
 	}
+}
+
+// firstOfCategory reports whether held[i] is the first verdict of its
+// category in held, so a decision counts once per category.
+func firstOfCategory(held []heldVerdict, i int) bool {
+	for _, h := range held[:i] {
+		if h.category == held[i].category {
+			return false
+		}
+	}
+	return true
 }

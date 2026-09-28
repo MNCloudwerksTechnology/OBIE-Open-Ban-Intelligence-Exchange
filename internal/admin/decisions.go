@@ -58,9 +58,13 @@ type ContributionResponse struct {
 	// Name is the publisher's name in trust.publishers; empty if unlisted.
 	Name string `json:"name,omitempty"`
 	// Local is set for this node's own verdicts.
-	Local      bool    `json:"local"`
-	EventID    string  `json:"event_id"`
-	Action     string  `json:"action"`
+	Local   bool   `json:"local"`
+	EventID string `json:"event_id"`
+	Action  string `json:"action"`
+	// Reason is the verdict's evidence reason, e.g. "password_bruteforce";
+	// Protocol names the attacked service, e.g. "ssh".
+	Reason     string  `json:"reason,omitempty"`
+	Protocol   string  `json:"protocol,omitempty"`
 	Weight     float64 `json:"weight"`
 	Confidence float64 `json:"confidence"`
 	// Score is weight × confidence if the verdict contributes, else 0.

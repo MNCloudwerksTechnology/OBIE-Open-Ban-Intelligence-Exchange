@@ -424,6 +424,8 @@ func explanationResponse(d decision.Decision) admin.DecisionResponse {
 			Local:       c.Local,
 			EventID:     c.EventID,
 			Action:      c.Action,
+			Reason:      c.Reason,
+			Protocol:    c.Protocol,
 			Weight:      c.Weight,
 			Confidence:  c.Confidence,
 			Score:       c.Score,

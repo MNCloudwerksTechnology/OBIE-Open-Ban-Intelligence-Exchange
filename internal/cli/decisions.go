@@ -112,15 +112,15 @@ func writeExplanation(w io.Writer, d *admin.DecisionResponse) error {
 		_, err := fmt.Fprintln(w, "\nNo active verdicts.")
 		return err
 	}
-	_, _ = fmt.Fprintf(tw, "\nPUBLISHER\tPEER ID\tACTION\tWEIGHT\tCONFIDENCE\tSCORE\tCOUNTS\tISSUED\tEXPIRES\n")
+	_, _ = fmt.Fprintf(tw, "\nPUBLISHER\tPEER ID\tACTION\tWEIGHT\tCONFIDENCE\tSCORE\tCOUNTS\tPROTOCOL\tREASON\tISSUED\tEXPIRES\n")
 	for _, p := range d.Publishers {
 		name := p.Name
 		if p.Local {
 			name = "(this node)"
 		}
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", orDash(name), p.PeerID, p.Action,
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", orDash(name), p.PeerID, p.Action,
 			formatScore(p.Weight), formatScore(p.Confidence), formatScore(p.Score), yesNo(p.Contributes),
-			p.IssuedAt.UTC().Format(time.RFC3339), p.ExpiresAt.UTC().Format(time.RFC3339))
+			orDash(p.Protocol), orDash(p.Reason), p.IssuedAt.UTC().Format(time.RFC3339), p.ExpiresAt.UTC().Format(time.RFC3339))
 	}
 	return tw.Flush()
 }
