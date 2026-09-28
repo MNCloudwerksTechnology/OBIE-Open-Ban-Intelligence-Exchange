@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"reflect"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/audit"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
@@ -29,12 +30,16 @@ type reloader struct {
 	engine  *decision.Engine
 	gate    *enforce.Gate
 	mesh    trustSetter
-	log     *slog.Logger
+	// audit is reopened on every reload; nil without audit log.
+	audit *audit.Log
+	log   *slog.Logger
 }
 
-// reload reads the configuration and applies it. If the configuration or
-// an allow-list file is invalid, it logs why and changes nothing.
+// reload reopens the audit log, then reads the configuration and applies
+// it. If the configuration or an allow-list file is invalid, it logs why
+// and changes nothing.
 func (r *reloader) reload(ctx context.Context) error {
+	_ = r.audit.Reopen() // a failure is logged and keeps the open file
 	r.log.Info("reloading the configuration")
 	next, err := r.load()
 	if err != nil {
