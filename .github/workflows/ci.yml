@@ -113,6 +113,24 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  fuzz:
+    name: fuzz
+    # Every fuzz target mutates inputs for 30 s; `make ci` only replays the
+    # seed corpus. Crashes land in testdata/fuzz/ (see CONTRIBUTING.md).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make fuzz
+        run: make fuzz FUZZTIME=30s
+
   package:
     name: release build, image and lab
     # Everything the release workflow publishes, built and checked but never

@@ -39,6 +39,13 @@ var ErrNotLocal = errors.New("event was not published by this node")
 // neighbor crowd out the events of honest ones before the limits see it.
 const validateQueueBursts = 4
 
+// MaxRPCSize bounds a GossipSub RPC, which bundles messages and control
+// data, in both directions: a peer sending a larger one has its stream
+// reset before anything in it is parsed, and outgoing RPCs are split to
+// fit. It holds 16 events of obieproto.MaxEventSize, against GossipSub's
+// default of 1 MiB (ADR 0017).
+const MaxRPCSize = 16 * obieproto.MaxEventSize
+
 // Options configures a Gossip.
 type Options struct {
 	// Store receives every accepted event and answers the duplicate check.
@@ -138,6 +145,8 @@ func join(ctx context.Context, h host.Host, v *validator, queueSize int) (*pubsu
 		pubsub.WithMessageIdFn(messageID),
 		pubsub.WithPeerScore(peerScoreParams(), peerScoreThresholds()),
 		pubsub.WithValidateQueueSize(queueSize),
+		pubsub.WithMaxMessageSize(MaxRPCSize),
+		pubsub.WithMaxControlMessageSize(MaxRPCSize),
 		// The node's own events go to every topic peer above the publish
 		// threshold, not only to its mesh peers (GossipSub v1.1 flood
 		// publishing): one peer dropping them does not lose them.

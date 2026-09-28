@@ -2,7 +2,6 @@ package admin
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -114,7 +113,11 @@ func handleOverrides(mux *http.ServeMux, info Info, log *slog.Logger) {
 		if !available(w) {
 			return
 		}
-		req, ind, err := decodeOverrideRequest(w, r)
+		var req OverrideRequest
+		if !decodeLimited(w, r, &req, maxOverrideBody) {
+			return
+		}
+		ind, err := req.check()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -160,22 +163,15 @@ func handleOverrides(mux *http.ServeMux, info Info, log *slog.Logger) {
 	})
 }
 
-// decodeOverrideRequest reads and checks the body of POST /v1/overrides.
-func decodeOverrideRequest(w http.ResponseWriter, r *http.Request) (OverrideRequest, obieproto.Indicator, error) {
-	var req OverrideRequest
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxOverrideBody))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil {
-		return req, obieproto.Indicator{}, fmt.Errorf("invalid request body: %w", err)
-	}
+// check checks the body of POST /v1/overrides and returns its indicator.
+func (req *OverrideRequest) check() (obieproto.Indicator, error) {
 	if req.Action != ActionForceAllow && req.Action != ActionForceBlock {
-		return req, obieproto.Indicator{}, fmt.Errorf("invalid action %q: want %s or %s", req.Action, ActionForceAllow, ActionForceBlock)
+		return obieproto.Indicator{}, fmt.Errorf("invalid action %q: want %s or %s", req.Action, ActionForceAllow, ActionForceBlock)
 	}
 	if req.TTLSeconds < 0 || req.TTLSeconds > MaxTTLSeconds {
-		return req, obieproto.Indicator{}, fmt.Errorf("invalid ttl_seconds %d: must be between 0 and %d", req.TTLSeconds, MaxTTLSeconds)
+		return obieproto.Indicator{}, fmt.Errorf("invalid ttl_seconds %d: must be between 0 and %d", req.TTLSeconds, MaxTTLSeconds)
 	}
-	ind, err := ParseIndicator(req.Indicator)
-	return req, ind, err
+	return ParseIndicator(req.Indicator)
 }
 
 // explainAfter returns the decision on ind after an override change, or

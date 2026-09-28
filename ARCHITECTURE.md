@@ -29,8 +29,11 @@ enforcement reconciliation in
 Prometheus metrics and the decision audit log in
 [ADR 0015](documentation/adr/0015-metrics-and-audit-log.md); the
 end-to-end test and its test hooks in
-[ADR 0016](documentation/adr/0016-end-to-end-test.md); release packaging
-(tarballs, systemd unit, container image, compose lab) and the state
+[ADR 0016](documentation/adr/0016-end-to-end-test.md); the release
+hardening — resource limits, store integrity checks, fuzzing, static
+analysis and the soak test — in
+[ADR 0017](documentation/adr/0017-hardening-and-resource-limits.md); release
+packaging (tarballs, systemd unit, container image, compose lab) and the state
 directory format in
 [ADR 0017](documentation/adr/0017-packaging-and-state-format.md); the website
 stack and build in
@@ -57,7 +60,7 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins (built-in ranges, own and bootstrap addresses, `allowlist.cidrs`, `allowlist.files`); operator force-allow / force-block overrides; mode `observe` (default) or `enforce`; SIGHUP reloads (ADR 0013).
 - **Enforcement:** pluggable enforcer (`Setup`/`List`/`Apply`/`Teardown`, entries with timeouts); `dryrun` (default) and `nftables` (netlink via google/nftables, own table `inet obie` with interval+timeout sets `obie_v4`/`obie_v6` and a priority -10 input chain, optional forward chain, CAP_NET_ADMIN only, `obied teardown-firewall`; ADR 0015) backends; reconcile loop with `enforce.max_entries` cap and allow-list re-check (ADR 0014).
 - **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015).
-- **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests, above all the four-node end-to-end test in `test/e2e` (ADR 0016); privileged tests behind the `privileged` build tag, run in a fresh network namespace (see [Privileged tests](CONTRIBUTING.md#privileged-tests)).
+- **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests, above all the four-node end-to-end test in `test/e2e` (ADR 0016); goleak in every package's `TestMain`; the soak test behind the `soak` build tag (`make soak`, ADR 0017); privileged tests behind the `privileged` build tag, run in a fresh network namespace (see [Privileged tests](CONTRIBUTING.md#privileged-tests)).
 
 ## Repository layout
 
@@ -275,6 +278,11 @@ Only the packages that exist today are listed in detail; the remaining
   namespace per node — is in `daemon.Options.Testing`, which production
   leaves zero and the configuration cannot reach. Timing is asserted by
   polling with deadlines, never by sleeping (ADR 0016).
+- **Resource limits.** Every input a peer or client controls is bounded:
+  GossipSub RPCs (64 KiB), events per publisher and per peer (token
+  buckets), stored verdicts (`store.max_indicators`, the verdict expiring
+  first is evicted, never this node's own), admin request bodies (413) and
+  HTTP headers, and the time of every HTTP request (ADR 0017).
 - **Quality gate.** `make ci` (gofmt check, `go vet`, golangci-lint,
   race-enabled tests, govulncheck, actionlint on the CI workflows) must pass
   before every commit. Tool versions are pinned in the `Makefile`. The CI

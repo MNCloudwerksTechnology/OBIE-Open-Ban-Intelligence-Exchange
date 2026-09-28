@@ -29,6 +29,8 @@ first — it is the binding technical baseline.
 | `make lint-workflows`  | actionlint on the CI workflows; checks both copies are identical |
 | `make lint-md`         | markdownlint-cli2 on every Markdown file (`.markdownlint-cli2.yaml`) |
 | `make test-privileged` | Tests including the `privileged` build tag (needs root)          |
+| `make fuzz`            | Every fuzz target for `FUZZTIME` each (default `30s`)            |
+| `make soak`            | The soak test: 3 nodes, 50 events/s for 30 min (not in CI)       |
 | `make ci`              | fmt-check + vet + lint + lint-workflows + lint-md + test + vuln  |
 | `make clean`           | Removes `./bin/` including installed tools                       |
 
@@ -49,6 +51,8 @@ is a byte-identical copy for the public GitHub mirror — change both together;
   from `go.mod`.
 - **build linux/amd64, linux/arm64** — static `obied` and `obiectl` binaries,
   uploaded as build artifacts.
+- **fuzz** — `make fuzz FUZZTIME=30s`: every fuzz target mutates inputs
+  for 30 s (see [Fuzz testing](#fuzz-testing)).
 - **release build, image and lab** — `make release` twice (the
   `SHA256SUMS` must match: the build is reproducible), `make check-unit`
   (`systemd-analyze verify` and an exposure of at most 3.0 for the systemd
@@ -243,10 +247,46 @@ go test -run='^$' -fuzz='^FuzzVerify$' -fuzztime=30s -parallel=2 ./pkg/obieproto
 Every plain `go test` — and therefore `make test` and `make ci` — runs each
 fuzz function once per seed-corpus input, like an ordinary table-driven test,
 without generating new inputs. That keeps the gate fast and turns every
-committed crash file into a permanent check. Long fuzz runs that mutate
-inputs are opt-in: run them manually as shown above when you change a
-decoder or parser. A `make fuzz` target for them follows with the hardening
-work package (WP-1667).
+committed crash file into a permanent check. Runs that mutate inputs are a
+separate target:
+
+```sh
+make fuzz                 # every target for 30 s, like the CI job "fuzz"
+make fuzz FUZZTIME=10m    # before a release, or after changing a parser
+```
+
+`make fuzz` finds every `func Fuzz…` in a `_test.go` file, so a new target
+is picked up without further wiring. The targets cover all input a node
+takes from outside: event decoding and validation (`FuzzDecode`),
+canonicalization (`FuzzTransform`), signature verification (`FuzzVerify`),
+the configuration file (`FuzzParse`), admin API requests (`FuzzRequests`)
+and the allow-list (`FuzzParseEntry`, `FuzzParseFile`). Before a release
+each runs for at least 10 minutes; see
+[`documentation/operations/performance.md`](documentation/operations/performance.md).
+
+## Soak test
+
+`make soak` runs `TestSoak` in `test/e2e` (build tag `soak`, so never part
+of `make test`): three nodes that trust each other receive 50 unique
+reports per second, spread evenly, for 30 minutes. The verdicts live 2
+minutes, so each node settles at a steady working set, and
+`mesh.rate_limit` is raised above its defaults (10 events/s per
+publisher), which a node publishing 50/3 events per second would exceed.
+It fails if an event does not reach every other node, if the 99th
+percentile of the propagation time is 2 s or more, if the live heap —
+without Badger's block and index caches, which fill up to their configured
+size — grows by more than 20 % from the window after warm-up (the first
+sixth of the run) to the last window, if the goroutines grow, or if a
+goroutine outlives the nodes (goleak in `TestMain`). Shorter or heavier
+runs (below about 15 minutes the working set is still filling, and the
+memory check fails):
+
+```sh
+make soak SOAKTIME=15m SOAKRATE=100
+```
+
+Record the results of a full run in
+[`documentation/operations/performance.md`](documentation/operations/performance.md).
 
 ## Commit messages
 

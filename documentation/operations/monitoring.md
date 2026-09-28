@@ -36,7 +36,9 @@ No label ever carries an IP address or a peer ID.
 | `obie_enforcer_skipped_total` | counter | `reason` (`allowlist`, `max_entries`) | Decided blocks newly left out of the backend. |
 | `obie_propagation_delay_seconds` | histogram | | Receipt time minus `issued_at` of accepted events. `issued_at` has whole seconds, and the clocks of both nodes count in. |
 | `obie_admin_requests_total` | counter | `endpoint`, `code` | Admin API requests by endpoint pattern (e.g. `POST /v1/reports`; `unmatched` for none) and HTTP status. |
-| `obie_store_events_total` | counter | `result` | Events passed to the store, by outcome. |
+| `obie_store_events_total` | counter | `result` | Events passed to the store, by outcome; `full` counts verdicts refused because the store was full and they would have expired first. |
+| `obie_store_verdict_records` | gauge | | Verdicts the store holds (active, revoked or expired but not yet swept), bounded by `store.max_indicators`. |
+| `obie_store_evictions_total` | counter | | Stored verdicts evicted, the one expiring first each, to keep the store within `store.max_indicators`. |
 
 Useful queries:
 
@@ -45,6 +47,7 @@ obie_peers_connected == 0                                    # isolated node
 rate(obie_events_received_total{outcome=~"invalid_.*"}[5m])  # peers sending garbage
 rate(obie_enforcer_apply_total{result="error"}[5m]) > 0      # enforcement failing
 histogram_quantile(0.95, sum by (le) (rate(obie_propagation_delay_seconds_bucket[15m])))
+rate(obie_store_evictions_total[15m]) > 0                    # store full: a flood, or max_indicators too low
 ```
 
 ### Grafana dashboard
@@ -84,7 +87,7 @@ Records follow the Elastic Common Schema (nested objects):
 - `obie.score`, `obie.threshold` and `obie.publishers` (contributing
   publishers) are set for decisions; `obie.mode` is the `node.mode` at the
   time; `obie.cause` says what triggered a decision change (`verdict`,
-  `revoke`, `expiry`, `override`, `refresh`, `reload`).
+  `revoke`, `expiry`, `evict`, `override`, `refresh`, `reload`).
 - Blocks that exist when `obied` starts are not recorded again; use
   `obiectl decisions` for the current state.
 

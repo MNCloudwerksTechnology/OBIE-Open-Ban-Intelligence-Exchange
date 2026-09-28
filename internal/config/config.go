@@ -37,6 +37,7 @@ type Config struct {
 	Node      Node      `yaml:"node"`
 	Admin     Admin     `yaml:"admin"`
 	Mesh      Mesh      `yaml:"mesh"`
+	Store     Store     `yaml:"store"`
 	Trust     Trust     `yaml:"trust"`
 	Decision  Decision  `yaml:"decision"`
 	Allowlist Allowlist `yaml:"allowlist"`
@@ -87,6 +88,14 @@ type RateLimit struct {
 type TokenBucket struct {
 	EventsPerSecond float64 `yaml:"events_per_second"`
 	Burst           int     `yaml:"burst"`
+}
+
+// Store bounds the local event store.
+type Store struct {
+	// MaxIndicators caps the verdicts held: one per publisher and
+	// indicator. Beyond it the verdict expiring first is evicted; this
+	// node's own verdicts never are.
+	MaxIndicators int `yaml:"max_indicators"`
 }
 
 // Trust assigns trust weights to verdict publishers.
@@ -177,6 +186,7 @@ func Default() Config {
 				Peer: TokenBucket{EventsPerSecond: 50, Burst: 250},
 			},
 		},
+		Store:     Store{MaxIndicators: 1_000_000},
 		Trust:     Trust{Publishers: []Publisher{}, DefaultWeight: 0, LocalWeight: 1.0},
 		Decision:  Decision{Threshold: 1.8, Quorum: 2, MaxTTL: Duration(30 * day), DefaultTTL: Duration(7 * day), LocalAutoblock: true},
 		Allowlist: Allowlist{CIDRs: []string{}, Files: []string{}},

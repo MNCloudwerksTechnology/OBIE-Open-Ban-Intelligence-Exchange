@@ -251,11 +251,17 @@ func handleVerdicts(mux *http.ServeMux, info Info, log *slog.Logger) {
 	})
 }
 
-// decodeRequest decodes a JSON request body into v, answering 400 for a
-// malformed one. Error messages never quote the body, which may carry
-// evidence lines.
+// decodeRequest decodes a JSON request body of at most maxRequestBody
+// bytes into v; see decodeLimited.
 func decodeRequest(w http.ResponseWriter, r *http.Request, v any) bool {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBody))
+	return decodeLimited(w, r, v, maxRequestBody)
+}
+
+// decodeLimited decodes a JSON request body of at most limit bytes into v,
+// answering 413 for a larger and 400 for a malformed one. Error messages
+// never quote the body, which may carry evidence lines.
+func decodeLimited(w http.ResponseWriter, r *http.Request, v any, limit int64) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	err := dec.Decode(v)
 	if err == nil && dec.More() {
@@ -266,7 +272,7 @@ func decodeRequest(w http.ResponseWriter, r *http.Request, v any) bool {
 	}
 	var tooLarge *http.MaxBytesError
 	if errors.As(err, &tooLarge) {
-		http.Error(w, fmt.Sprintf("request body exceeds %d bytes", maxRequestBody), http.StatusRequestEntityTooLarge)
+		http.Error(w, fmt.Sprintf("request body exceeds %d bytes", limit), http.StatusRequestEntityTooLarge)
 		return false
 	}
 	http.Error(w, "invalid JSON body: "+jsonProblem(err), http.StatusBadRequest)

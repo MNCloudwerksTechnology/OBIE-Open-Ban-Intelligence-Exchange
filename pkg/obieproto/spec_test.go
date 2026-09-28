@@ -98,7 +98,7 @@ func repoTests(t *testing.T) map[string]bool {
 		if d.IsDir() || !strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		data, err := os.ReadFile(path) //nolint:gosec // walking the repository's own sources
+		data, err := os.ReadFile(path) // #nosec G122 G304 -- walking the repository's own sources
 		if err != nil {
 			return err
 		}

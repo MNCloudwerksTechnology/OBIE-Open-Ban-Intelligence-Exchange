@@ -113,6 +113,8 @@ func TestValidateRules(t *testing.T) {
 		{"backend nftables", func(c *Config) { c.Enforce.Backend = BackendNFTables }, "", ""},
 		{"backend unknown", func(c *Config) { c.Enforce.Backend = "iptables" }, "enforce.backend", `must be one of ["dryrun" "nftables"], got "iptables"`},
 		{"max_entries 1", func(c *Config) { c.Enforce.MaxEntries = 1 }, "", ""},
+		{"max_indicators 1", func(c *Config) { c.Store.MaxIndicators = 1 }, "", ""},
+		{"max_indicators 0", func(c *Config) { c.Store.MaxIndicators = 0 }, "store.max_indicators", "at least 1"},
 		{"max_entries 0", func(c *Config) { c.Enforce.MaxEntries = 0 }, "enforce.max_entries", "at least 1"},
 		{"reconcile_interval zero", func(c *Config) { c.Enforce.ReconcileInterval = 0 }, "enforce.reconcile_interval", "greater than 0"},
 

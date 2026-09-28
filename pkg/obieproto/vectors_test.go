@@ -302,12 +302,12 @@ func TestVectors(t *testing.T) {
 		want[filepath.Base(file)] = true
 		data := buildVector(t, spec)
 		if *updateVectors {
-			if err := os.WriteFile(file, data, 0o644); err != nil { //nolint:gosec // documentation, world-readable by design
+			if err := os.WriteFile(file, data, 0o644); err != nil { // #nosec G306 -- documentation, world-readable by design
 				t.Fatal(err)
 			}
 			continue
 		}
-		onDisk, err := os.ReadFile(file) //nolint:gosec // fixed path below the repository
+		onDisk, err := os.ReadFile(file) // #nosec G304 -- fixed path below the repository
 		if err != nil {
 			t.Fatalf("%v (run `go generate ./pkg/obieproto` to create the vectors)", err)
 		}
@@ -351,7 +351,7 @@ func TestVectorFiles(t *testing.T) {
 
 func readVector(t *testing.T, file string) testVector {
 	t.Helper()
-	data, err := os.ReadFile(file) //nolint:gosec // fixed path below the repository
+	data, err := os.ReadFile(file) // #nosec G304 -- fixed path below the repository
 	if err != nil {
 		t.Fatal(err)
 	}

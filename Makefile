@@ -104,6 +104,28 @@ lab-smoke: ## Start the 3-node compose lab, check the nodes see each other and b
 check-unit: build ## Check the systemd unit with systemd-analyze (verify, exposure <= 3.0)
 	packaging/systemd/check-unit.sh $(BIN_DIR)
 
+# FUZZTIME is how long `make fuzz` runs each fuzz target.
+FUZZTIME ?= 30s
+
+.PHONY: fuzz
+fuzz: ## Run every fuzz target (func Fuzz* in *_test.go) for FUZZTIME each (default 30s)
+	@set -e; \
+	for file in $$(grep -rl --include='*_test.go' --exclude-dir=website '^func Fuzz' . | sort); do \
+		for target in $$(sed -n 's/^func \(Fuzz[A-Za-z0-9_]*\)(.*/\1/p' "$$file"); do \
+			echo "fuzz $$target in $$(dirname "$$file") for $(FUZZTIME)"; \
+			$(GO) test -run='^$$' -fuzz="^$$target\$$" -fuzztime=$(FUZZTIME) "$$(dirname "$$file")"; \
+		done; \
+	done
+
+# SOAKTIME is how long `make soak` sends events; SOAKRATE how many per second.
+SOAKTIME ?= 30m
+SOAKRATE ?= 50
+
+.PHONY: soak
+soak: ## Run the soak test (3 nodes, SOAKRATE events/s for SOAKTIME, default 50/s for 30m); not part of `make ci`
+	$(GO) test -tags soak -run '^TestSoak$$' -count=1 -v -timeout 0 ./test/e2e \
+		-soak.duration=$(SOAKTIME) -soak.rate=$(SOAKRATE)
+
 .PHONY: ci
 ci: fmt-check vet lint lint-workflows lint-md test vuln ## Run every check the CI gate runs
 

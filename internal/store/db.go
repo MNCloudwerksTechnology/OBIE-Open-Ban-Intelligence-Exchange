@@ -8,9 +8,12 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/dgraph-io/badger/v4"
+	"github.com/dgraph-io/badger/v4/options"
+	"github.com/dgraph-io/ristretto/v2"
 )
 
 // Default intervals of the background loops.
@@ -18,6 +21,10 @@ const (
 	DefaultSweepInterval = time.Minute
 	DefaultGCInterval    = 10 * time.Minute
 )
+
+// DefaultMaxIndicators is the default of Options.MaxIndicators
+// (store.max_indicators).
+const DefaultMaxIndicators = 1_000_000
 
 // gcDiscardRatio is the share of stale data in a value-log file above which
 // the GC rewrites it.
@@ -32,6 +39,12 @@ type Options struct {
 	GCInterval time.Duration
 	// Now is the clock; time.Now when nil.
 	Now func() time.Time
+	// MaxIndicators caps the verdict records, one per publisher and
+	// indicator; beyond it the record expiring first is evicted.
+	MaxIndicators int
+	// Self is this node's peer ID: its verdicts are never evicted. Empty
+	// protects none.
+	Self string
 }
 
 func (o Options) withDefaults() Options {
@@ -43,6 +56,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.Now == nil {
 		o.Now = time.Now
+	}
+	if o.MaxIndicators <= 0 {
+		o.MaxIndicators = DefaultMaxIndicators
 	}
 	return o
 }
@@ -67,6 +83,14 @@ type DB struct {
 	nextSub int
 
 	counters counters
+	// verdicts is the number of verdict records: of expiry index entries
+	// pointing at one. Changed only with writeMu held.
+	verdicts atomic.Int64
+	// full is set once the store reached MaxIndicators; see warnFull.
+	full atomic.Bool
+	// evictFrom is a lower bound of the expiry index keys of the records
+	// that may be evicted; see evictionCandidate. Guarded by writeMu.
+	evictFrom []byte
 
 	loopMu  sync.Mutex
 	loopErr error
@@ -102,16 +126,28 @@ func (s *DB) Start(context.Context) error {
 		if err := os.MkdirAll(s.dir, 0o700); err != nil {
 			return fmt.Errorf("create database directory: %w", err)
 		}
+		if err := checkFiles(s.dir, s.badgerOptions()); err != nil {
+			return openError(s.dir, err)
+		}
 	}
 	db, err := badger.Open(s.badgerOptions())
 	if err != nil {
-		return fmt.Errorf("open database %s: %w", s.dir, err)
+		return openError(s.dir, err)
 	}
 	s.db = db
+	var n int64
+	if err := db.View(func(txn *badger.Txn) error { n = countVerdicts(txn); return nil }); err != nil {
+		_ = db.Close()
+		s.db = nil
+		return fmt.Errorf("count verdicts in %s: %w", s.dir, err)
+	}
+	s.verdicts.Store(0)
+	s.addVerdicts(int(n))
+	s.evictFrom = nil
 	s.setLoopErr(nil)
 	s.stop, s.done = make(chan struct{}), make(chan struct{})
 	go s.loop(s.stop, s.done)
-	s.log.Info("database opened", "dir", s.dir)
+	s.log.Info("database opened", "dir", s.dir, "verdicts", n, "max_indicators", s.opts.MaxIndicators)
 	return nil
 }
 
@@ -157,6 +193,23 @@ func (s *DB) Ready() error {
 	s.loopMu.Lock()
 	defer s.loopMu.Unlock()
 	return s.loopErr
+}
+
+// CacheBytes returns the bytes held in Badger's block and index caches,
+// which fill up to their configured sizes; 0 while the database is closed.
+func (s *DB) CacheBytes() int64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.db == nil {
+		return 0
+	}
+	var n int64
+	for _, m := range []*ristretto.Metrics{s.db.BlockCacheMetrics(), s.db.IndexCacheMetrics()} {
+		if m != nil {
+			n += int64(m.CostAdded()) - int64(m.CostEvicted()) // #nosec G115 -- bounded by the cache sizes.
+		}
+	}
+	return n
 }
 
 // Stats returns the Put outcomes counted so far.
@@ -272,9 +325,13 @@ func (s *DB) runValueLogGC() error {
 	}
 }
 
-// badgerOptions sizes Badger for a small VPS (ADR 0008).
+// badgerOptions sizes Badger for a small VPS (ADR 0008). Every block's
+// checksum is verified when it is read, so damage on disk is reported
+// instead of read as data; checkFiles verifies all tables before the
+// database opens (ADR 0017).
 func (s *DB) badgerOptions() badger.Options {
 	opts := badger.DefaultOptions(s.dir).
+		WithChecksumVerificationMode(options.OnBlockRead).
 		WithLogger(badgerLogger{s.log}).
 		WithMetricsEnabled(false).
 		WithMemTableSize(16 << 20).

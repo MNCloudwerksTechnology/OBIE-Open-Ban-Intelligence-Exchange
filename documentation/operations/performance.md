@@ -1,0 +1,128 @@
+# Performance and hardening results
+
+This page records the evidence that an OBIE node is safe to run exposed to
+the internet and to misbehaving peers: the fuzzing campaign, static
+analysis, the resource limits and the soak test. The design is recorded in
+[ADR 0017](../adr/0017-hardening-and-resource-limits.md). Refresh the
+numbers before every release.
+
+## Test machine
+
+| | |
+|---|---|
+| Date | 2026-09-28 |
+| Version | `factory/agent/planner-1667` (WP-1667) |
+| CPU | AMD Ryzen 9 7950X3D, 16 cores / 32 threads |
+| Memory | 124 GiB |
+| OS | Linux 7.0 (x86_64) |
+| Go | 1.26.7 |
+
+## Fuzzing
+
+Every target ran for 10 min 30 s (`-fuzztime=10m30s -parallel=4`), all
+seven at once. None failed, so no regression corpus entry was needed; the
+CI job `fuzz` runs each for 30 s on every pull request (`make fuzz
+FUZZTIME=30s`).
+
+| Target | Package | Input | Executions | Result |
+|---|---|---|---:|---|
+| `FuzzDecode` | `pkg/obieproto` | event decoding and validation | 20.6 M | pass |
+| `FuzzVerify` | `pkg/obieproto` | signature verification | 18.2 M | pass |
+| `FuzzTransform` | `pkg/obieproto/internal/jcs` | JSON canonicalization | 32.6 M | pass |
+| `FuzzParse` | `internal/config` | configuration file | 7.3 M | pass |
+| `FuzzRequests` | `internal/admin` | admin API bodies, paths and queries | 2.4 M | pass |
+| `FuzzParseEntry` | `internal/sovereignty` | allow-list entry (IP or CIDR) | 6.6 M | pass |
+| `FuzzParseFile` | `internal/sovereignty` | allow-list file | 6.5 M | pass |
+
+Reproduce with `make fuzz FUZZTIME=10m`.
+
+## Static analysis
+
+| Tool | Result |
+|---|---|
+| gosec (in golangci-lint, `make lint`) | 0 issues |
+| gosec standalone, `-tests -tags soak` | 0 issues; every suppression is a `#nosec G… -- reason` on its line |
+| govulncheck (`make vuln`) | no vulnerability reachable or in an imported package |
+
+Found and resolved: `go.opentelemetry.io/otel` (pulled in by Badger) was
+raised from v1.37.0 to v1.46.0 for GO-2026-5506 and GO-2026-5158. Open:
+GO-2026-5932 (`golang.org/x/crypto/openpgp` is unmaintained) has no fix;
+the package is not imported, so it only shows at module level.
+
+## Resource limits
+
+Each limit is verified by a test that runs in `make ci`.
+
+| Limit | Value | Test |
+|---|---|---|
+| GossipSub RPC size | 64 KiB (16 × `MaxEventSize`) | `internal/gossip` integration tests |
+| Events per publisher / per peer | `mesh.rate_limit`, default 10/s (burst 50) / 50/s (burst 250) | `internal/gossip` validate and integration tests |
+| Stored verdicts | `store.max_indicators`, default 1,000,000; the verdict expiring first is evicted, never this node's own; `obie_store_evictions_total` | `TestCapBoundsFloodFromTrustedPeer` and the other `TestCap…` in `internal/store` |
+| Admin request bodies | 1 MiB (reports, revocations), 16 KiB (overrides); 413 beyond | `internal/admin` |
+| HTTP timeouts and headers | read header 5 s, read 10 s, write 30 s, idle 60 s, headers 16 KiB, on every server | `internal/httpserver` |
+
+## Graceful degradation
+
+- A damaged store stops `obied` at start with `event store is corrupt`,
+  the damaged file and the remedy (restore a backup, or move the directory
+  aside). Tested for damaged, truncated and missing MANIFEST, key registry,
+  value log and tables (`TestStartDetectsCorruption`, `TestRunRefusesCorruptStore`),
+  and against random damage of every file (`TestStartNeverCrashesOnDamage`);
+  a store copied while open, as a crash leaves it, still opens
+  (`TestStartOpensStoreAfterCrash`).
+- With every peer gone a node stays ready, reports locally and blocks what
+  it reports itself (local autoblock), and unblocks on revocation
+  (`TestMeshDownKeepsLocalProtection` in `test/e2e`).
+
+## Soak test
+
+`make soak`: three complete nodes in one process that trust each other,
+50 unique reports per second (10 % bans, the rest watches) spread evenly,
+verdicts living 2 minutes, for 30 minutes. `mesh.rate_limit` is raised to
+50 events/s per publisher (burst 250) and 100 per peer (burst 500), because
+each node publishes 50/3 per second, above the default of 10. See
+[CONTRIBUTING.md](../../CONTRIBUTING.md#soak-test).
+
+| Criterion | Bound | Result |
+|---|---|---|
+| Reports sent | 90,000 | 90,000, 0 failed |
+| Deliveries (each event to the 2 other nodes) | all | 180,000, 0 missing, 0 rate-limited |
+| Propagation, report to stored on another node | p99 < 2 s | p50 1 ms, p99 1 ms, max 25 ms |
+| Live heap without Badger caches, median 5–10 min → last 5 min | ≤ +20 % | 98.0 → 107.2 MiB, **+9.4 %** |
+| Goroutines after warm-up | no growth | 327 throughout |
+| Goroutine leaks after the nodes stopped | none (goleak) | none |
+
+Memory of the whole test process (three nodes and the test), sampled
+every 30 s after a garbage collection:
+
+| Time | Live heap without caches | Badger caches | Largest reading |
+|---:|---:|---:|---:|
+| 5 min | 94.0 MiB | 16.1 MiB | 110.6 MiB |
+| 10 min | 99.0 MiB | 41.6 MiB | 320.7 MiB (flush) |
+| 16 min 30 s | 107.6 MiB | 79.4 MiB | 187.1 MiB |
+| 17 min | 97.5 MiB | 3.2 MiB | 100.7 MiB |
+| 25 min | 103.2 MiB | 56.3 MiB | 159.9 MiB |
+| 30 min | 107.9 MiB | 87.9 MiB | 197.3 MiB |
+
+How to read it:
+
+- **Badger's block and index caches** (32 + 16 MiB per node) fill as the
+  nodes read their tables and empty when compaction deletes tables (17
+  min): a sawtooth bounded by their configured sizes. The test measures
+  the heap without them (`store.DB.CacheBytes`).
+- **Memtable flushes** briefly hold the table they build, about 60 MiB per
+  node; the three nodes flush together because they get the same load, so
+  single readings reach 275–345 MiB. The test takes the smallest of three
+  readings 2 s apart; the table keeps the largest. At this load a node
+  needs about 85 MiB of Go heap with full caches (a third of the process
+  above), plus up to 60 MiB while it flushes; its RSS is higher than
+  its heap.
+- **The remaining drift** (about 10 MiB over 20 minutes for three nodes)
+  comes from the caches' own bookkeeping (ristretto's per-entry maps,
+  which their cost does not count) and follows their sawtooth; the
+  decision engine, the gossip caches and the store hold a steady working
+  set of about 9,000 verdicts per node.
+
+While these tests were written, goleak found two goroutine leaks,
+both fixed (ADR 0017): Badger's goroutines after a failed open of a
+damaged store, and libp2p's swarm when no listen address could be bound.
