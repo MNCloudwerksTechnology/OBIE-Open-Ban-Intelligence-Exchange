@@ -62,6 +62,20 @@ type Change struct {
 	Cause string
 }
 
+// Transition is an entry of the state transition stream: the decision on
+// an indicator changed its state.
+type Transition struct {
+	// Key is the indicator's obieproto.Indicator.Key.
+	Key string
+	// From is the previous state; StateNone for an indicator that had no
+	// kept decision.
+	From State
+	// Decision is the new decision, without Publishers.
+	Decision Decision
+	// Cause is what triggered the evaluation, as in Change.
+	Cause string
+}
+
 // Options configures an Engine. Zero fields take their defaults.
 type Options struct {
 	// RefreshInterval is how often expired blocks are re-evaluated.
@@ -101,6 +115,8 @@ type Engine struct {
 	// verdicts, by key, without Publishers.
 	mu        sync.RWMutex
 	decisions map[string]Decision
+	// verdicts counts the active verdicts of every kept decision, by key.
+	verdicts map[string]int
 
 	// dirty holds the indicators changed in the store since the worker last
 	// ran, or whose evaluation failed, with the latest cause; wake signals
@@ -118,6 +134,7 @@ type Engine struct {
 
 	subsMu  sync.Mutex
 	subs    map[int]func(Change)
+	tsubs   map[int]func(Transition)
 	nextSub int
 
 	errMu   sync.Mutex
@@ -139,9 +156,11 @@ func New(st store.Store, p Policy, log *slog.Logger, opts Options) *Engine {
 		log:       log,
 		opts:      opts.withDefaults(),
 		decisions: map[string]Decision{},
+		verdicts:  map[string]int{},
 		dirty:     map[string]string{},
 		wake:      make(chan struct{}, 1),
 		subs:      map[int]func(Change){},
+		tsubs:     map[int]func(Transition){},
 	}
 }
 
@@ -238,6 +257,25 @@ func (e *Engine) Subscribe(fn func(Change)) (unsubscribe func()) {
 		e.subsMu.Lock()
 		defer e.subsMu.Unlock()
 		delete(e.subs, id)
+	}
+}
+
+// SubscribeTransitions registers fn for the state transition stream: every
+// change of an indicator's decision state (block, none, allowed) from the
+// moment of the call, including those while Start builds the initial
+// decisions (with CauseStartup). Callbacks run like those of Subscribe,
+// after the block change of the same evaluation. It returns a function
+// that removes the subscription.
+func (e *Engine) SubscribeTransitions(fn func(Transition)) (unsubscribe func()) {
+	e.subsMu.Lock()
+	defer e.subsMu.Unlock()
+	id := e.nextSub
+	e.nextSub++
+	e.tsubs[id] = fn
+	return func() {
+		e.subsMu.Lock()
+		defer e.subsMu.Unlock()
+		delete(e.tsubs, id)
 	}
 }
 
@@ -418,6 +456,7 @@ func (e *Engine) load(ctx context.Context) error {
 			e.apply(key, e.decide(o.Indicator, nil, now), CauseStartup)
 		}
 	}
+	e.publishMetrics()
 	return nil
 }
 
@@ -531,8 +570,8 @@ func (e *Engine) refreshExpired() {
 
 // reevaluateAll re-evaluates the indicators with keys. Those that fail are
 // marked dirty again, without waking the worker, so they are retried on the
-// next refresh tick, and the first failure is reported by Ready. Callers
-// hold workMu.
+// next refresh tick, and the first failure is reported by Ready. Then it
+// publishes the metrics. Callers hold workMu.
 func (e *Engine) reevaluateAll(keys []string, cause func(key string) string) {
 	var firstErr error
 	for _, key := range keys {
@@ -547,6 +586,7 @@ func (e *Engine) reevaluateAll(keys []string, cause func(key string) string) {
 		e.remark(map[string]string{key: cause(key)})
 	}
 	e.setErr(firstErr)
+	e.publishMetrics()
 }
 
 // reevaluate decides on the indicator with key from the store's current
@@ -586,18 +626,24 @@ func (e *Engine) indicatorOf(key string, verdicts []*obieproto.Event) (obieproto
 // block changed. Decisions without active verdicts are kept only while
 // they block (force-block). Callers hold workMu.
 func (e *Engine) apply(key string, d Decision, cause string) {
-	active := len(d.Publishers) > 0 || d.State == StateBlock
+	verdicts := len(d.Publishers)
+	active := verdicts > 0 || d.State == StateBlock
 	d.Publishers = nil
 	e.mu.Lock()
 	prev, had := e.decisions[key]
 	if active {
-		e.decisions[key] = d
+		e.decisions[key], e.verdicts[key] = d, verdicts
 	} else {
 		delete(e.decisions, key)
+		delete(e.verdicts, key)
 	}
 	e.mu.Unlock()
 
-	wasBlock := had && prev.State == StateBlock
+	from := StateNone
+	if had {
+		from = prev.State
+	}
+	wasBlock := from == StateBlock
 	isBlock := d.State == StateBlock
 	var typ ChangeType
 	switch {
@@ -607,11 +653,14 @@ func (e *Engine) apply(key string, d Decision, cause string) {
 		typ = ChangeRemoved
 	case wasBlock && blockChanged(&prev, &d):
 		typ = ChangeUpdated
-	default:
-		return
 	}
-	e.log.Debug("block decision changed", "indicator", key, "change", typ, "cause", cause, "reason", d.Reason)
-	e.notify(Change{Type: typ, Key: key, Decision: d, Cause: cause})
+	if typ != "" {
+		e.log.Debug("block decision changed", "indicator", key, "change", typ, "cause", cause, "reason", d.Reason)
+		e.notify(Change{Type: typ, Key: key, Decision: d, Cause: cause})
+	}
+	if from != d.State {
+		e.notifyTransition(Transition{Key: key, From: from, Decision: d, Cause: cause})
+	}
 }
 
 // blockChanged reports whether a block differs in what an enforcer or an
@@ -635,6 +684,23 @@ func (e *Engine) notify(c Change) {
 	e.subsMu.Unlock()
 	for _, fn := range subs {
 		fn(c)
+	}
+}
+
+func (e *Engine) notifyTransition(t Transition) {
+	e.subsMu.Lock()
+	ids := make([]int, 0, len(e.tsubs))
+	for id := range e.tsubs {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	subs := make([]func(Transition), len(ids))
+	for i, id := range ids {
+		subs[i] = e.tsubs[id]
+	}
+	e.subsMu.Unlock()
+	for _, fn := range subs {
+		fn(t)
 	}
 }
 

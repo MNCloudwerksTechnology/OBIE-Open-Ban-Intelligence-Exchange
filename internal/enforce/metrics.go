@@ -1,54 +1,97 @@
 package enforce
 
 import (
+	"time"
+
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 )
 
+// Address families as the family label of obie_enforcer_entries.
+const (
+	familyIPv4 = "ipv4"
+	familyIPv6 = "ipv6"
+)
+
+// Results as the result label of obie_enforcer_apply_total.
+const (
+	resultSuccess = "success"
+	resultError   = "error"
+)
+
 var (
-	entriesGauge = prometheus.NewGauge(prometheus.GaugeOpts{
+	nodeMode = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: "obie",
-		Subsystem: "enforce",
-		Name:      "entries",
-		Help:      "Entries applied by the enforcement backend after the last successful reconciliation.",
+		Name:      "node_mode",
+		Help:      "1 for the current node.mode (observe or enforce), 0 for the other.",
+	}, []string{"mode"})
+	entriesGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "obie",
+		Name:      "enforcer_entries",
+		Help:      "Entries the enforcement backend applies after the last successful reconciliation, by address family.",
+	}, []string{"family"})
+	applyTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "obie",
+		Name:      "enforcer_apply_total",
+		Help:      "Reconciliations of the enforcement backend, by result (success, error).",
+	}, []string{"result"})
+	applyDuration = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "obie",
+		Name:      "enforcer_apply_duration_seconds",
+		Help:      "Duration of the backend calls that apply a change (additions and removals).",
+		Buckets:   []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
 	})
-	skippedGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	skippedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "obie",
-		Subsystem: "enforce",
-		Name:      "skipped_entries",
-		Help:      "Decided blocks not applied in the last reconciliation, by reason (allowlist, max_entries).",
+		Name:      "enforcer_skipped_total",
+		Help:      "Decided blocks newly left out of the enforcement backend, by reason (allowlist, max_entries).",
 	}, []string{"reason"})
-	enforcingGauge = prometheus.NewGauge(prometheus.GaugeOpts{
-		Namespace: "obie",
-		Subsystem: "enforce",
-		Name:      "enforcing",
-		Help:      "1 while the node is in enforce mode, 0 in observe mode.",
-	})
-	applyFailuresTotal = prometheus.NewCounter(prometheus.CounterOpts{
-		Namespace: "obie",
-		Subsystem: "enforce",
-		Name:      "failures_total",
-		Help:      "Failed reconciliations of the enforcement backend.",
-	})
 )
 
 func init() {
-	for _, reason := range []string{SkipAllowlist, SkipMaxEntries} {
-		skippedGauge.WithLabelValues(reason)
+	for _, mode := range []config.Mode{config.ModeObserve, config.ModeEnforce} {
+		nodeMode.WithLabelValues(string(mode))
 	}
-	prometheus.MustRegister(entriesGauge, skippedGauge, enforcingGauge, applyFailuresTotal)
+	for _, family := range []string{familyIPv4, familyIPv6} {
+		entriesGauge.WithLabelValues(family)
+	}
+	for _, result := range []string{resultSuccess, resultError} {
+		applyTotal.WithLabelValues(result)
+	}
+	for _, reason := range []string{SkipAllowlist, SkipMaxEntries} {
+		skippedTotal.WithLabelValues(reason)
+	}
+	prometheus.MustRegister(nodeMode, entriesGauge, applyTotal, applyDuration, skippedTotal)
 }
 
-// setMetrics publishes the outcome of a successful reconciliation.
-func setMetrics(mode config.Mode, applied int, skipped map[string]int) {
-	enforcing := 0.0
-	if mode == config.ModeEnforce {
-		enforcing = 1
+// setModeMetric publishes the current node.mode.
+func setModeMetric(mode config.Mode) {
+	for _, m := range []config.Mode{config.ModeObserve, config.ModeEnforce} {
+		v := 0.0
+		if m == mode {
+			v = 1
+		}
+		nodeMode.WithLabelValues(string(m)).Set(v)
 	}
-	enforcingGauge.Set(enforcing)
-	entriesGauge.Set(float64(applied))
-	for _, reason := range []string{SkipAllowlist, SkipMaxEntries} {
-		skippedGauge.WithLabelValues(reason).Set(float64(skipped[reason]))
+}
+
+// setEntriesMetric publishes the applied entries by address family.
+func setEntriesMetric(entries []Entry) {
+	var v4, v6 int
+	for _, e := range entries {
+		if e.Prefix.Addr().Is4() {
+			v4++
+		} else {
+			v6++
+		}
 	}
+	entriesGauge.WithLabelValues(familyIPv4).Set(float64(v4))
+	entriesGauge.WithLabelValues(familyIPv6).Set(float64(v6))
+}
+
+// observeApply records the duration of a backend call that applied a
+// change, started at start.
+func observeApply(start time.Time) {
+	applyDuration.Observe(time.Since(start).Seconds())
 }

@@ -129,13 +129,14 @@ type Info struct {
 // owned by group if that group exists (see ListenUnix). Beyond the socket's
 // file mode, every request is checked against the connecting process's
 // credentials (SO_PEERCRED): only root, the user obied runs as and members
-// of group are served; others get 403.
+// of group are served; others get 403. Every request is counted in
+// obie_admin_requests_total.
 func New(path, group string, info Info, log *slog.Logger) *httpserver.Server {
 	return newServer(path, group, newAccessPolicy(group, log), info, log)
 }
 
 func newServer(path, group string, policy accessPolicy, info Info, log *slog.Logger) *httpserver.Server {
-	return httpserver.New(Name, ListenUnix(path, group, log), authorize(policy, Handler(info, log), log), log,
+	return httpserver.New(Name, ListenUnix(path, group, log), countRequests(authorize(policy, Handler(info, log), log)), log,
 		httpserver.ConnContext(withPeerCred))
 }
 
