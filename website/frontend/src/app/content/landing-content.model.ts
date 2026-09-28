@@ -4,7 +4,12 @@
  * object of the same type (ADR 0012).
  */
 export interface LandingContent {
-  readonly meta: { readonly title: string; readonly description: string };
+  readonly meta: {
+    readonly title: string;
+    readonly description: string;
+    /** BCP 47 tag used to format numbers and dates, e.g. `en-GB`. */
+    readonly locale: string;
+  };
   readonly a11y: A11yContent;
   readonly header: HeaderContent;
   readonly hero: HeroContent;
@@ -133,6 +138,25 @@ export interface GetStartedContent extends SectionBase {
   readonly steps: readonly GetStartedStep[];
   readonly note: string;
   readonly quickStart: Link;
+  readonly project: ProjectContent;
+}
+
+/**
+ * Links for contributors and the live stats strip in "Get started". The stats
+ * come from the back end (`GET /api/project`); the strip is left out while
+ * they are unavailable, the links are always shown.
+ */
+export interface ProjectContent {
+  readonly linksLabel: string;
+  /** Repository, quick start, protocol specification and good first issues. */
+  readonly links: readonly Link[];
+  /** Caption above the stats. */
+  readonly statsCaption: string;
+  readonly stars: string;
+  readonly latestRelease: string;
+  /** Shown instead of a release while there is none. */
+  readonly noRelease: string;
+  readonly lastActivity: string;
 }
 
 /** The founder profile. Every fact comes from the operator; nothing is invented. */
@@ -227,6 +251,8 @@ export interface FaqContent extends SectionBase {
 
 export interface FooterContent {
   readonly tagline: string;
+  /** "View on GitHub" button. */
+  readonly github: Link;
   readonly links: readonly Link[];
   readonly attribution: { readonly text: string; readonly href: string };
   readonly licence: string;

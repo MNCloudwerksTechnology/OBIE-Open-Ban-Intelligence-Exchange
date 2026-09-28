@@ -69,6 +69,26 @@ describe('Home page', () => {
     expect(buttons[0].classList).toContain('button--primary');
   });
 
+  it('offers "View on GitHub" in the navigation bar, the hero and the footer', () => {
+    const buttons = Array.from(page.querySelectorAll('a.button')).filter(
+      (button) => button.textContent?.trim() === 'View on GitHub',
+    );
+    expect(buttons.map((button) => button.closest('header, main, footer')?.tagName)).toEqual([
+      'HEADER',
+      'MAIN',
+      'FOOTER',
+    ]);
+    for (const button of buttons) {
+      expect(button.getAttribute('href')).toBe(REPOSITORY_URL);
+    }
+  });
+
+  it('hides the stats strip in Get started while no stats have arrived', () => {
+    const start = page.querySelector('#get-started');
+    expect(start?.querySelector('app-github-strip ul.links')).not.toBeNull();
+    expect(start?.querySelector('app-github-strip .stats')).toBeNull();
+  });
+
   it('ends every section with a next step to GitHub', () => {
     for (const section of Array.from(page.querySelectorAll('main section[id]'))) {
       const links = section.querySelectorAll(':scope > .container > a.next-step');
