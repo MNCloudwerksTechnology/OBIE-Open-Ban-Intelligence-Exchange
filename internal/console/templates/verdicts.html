@@ -121,11 +121,11 @@
   <div class="table-scroll">
   <table class="list verdicts verdict-list">
     <thead>
-      <tr><th scope="col">Address</th><th scope="col">Publisher</th><th scope="col">Verdict</th><th scope="col">Reason</th><th scope="col">Evidence</th><th scope="col">Issued</th><th scope="col">Expires</th><th scope="col">State</th><th scope="col">Decision</th></tr>
+      <tr><th scope="col">Address</th><th scope="col">Publisher</th><th scope="col">Verdict</th><th scope="col">Reason</th><th scope="col">Expires</th><th scope="col">State</th><th scope="col">Decision</th></tr>
     </thead>
     <tbody>
       {{- range .Rows}}
-      <tr data-state="{{.State}}">
+      <tr class="verdict-main" data-state="{{.State}}">
         <th scope="row"><a class="mono address" href="{{.Href}}" data-copy>{{.Address}}</a></th>
         <td>
           <span class="cell-label">Publisher</span>
@@ -139,20 +139,9 @@
           <span class="badge">No weight</span>
           {{- end}}
         </td>
-        <td><span class="cell-label">Verdict</span> {{.Action}}<span class="cell-note">confidence {{.Confidence}}</span></td>
+        <td><span class="cell-label">Verdict</span> {{.Action}}<span class="cell-note">confidence {{.Confidence}}</span><span class="cell-note">{{.Events}}</span></td>
         <td><span class="cell-label">Reason</span> {{.Reason}}</td>
-        <td>
-          <span class="cell-label">Evidence</span>
-          {{.Events}}
-          {{- if .LogHash}}
-          <span class="cell-note">log hash <code class="hash" data-copy>{{.LogHash}}</code></span>
-          {{- else}}
-          <span class="cell-note">no log lines given</span>
-          {{- end}}
-          <span class="cell-note">event <code class="hash">{{.EventID}}</code></span>
-        </td>
-        <td><span class="cell-label">Issued</span> <time datetime="{{.Issued.ISO}}"><span class="day">{{day .Issued}}</span> {{clock .Issued}}</time></td>
-        <td><span class="cell-label">Expires</span> <time datetime="{{.Expires.ISO}}"><span class="day">{{day .Expires}}</span> {{clock .Expires}}</time></td>
+        <td><span class="cell-label">Expires</span> <time datetime="{{.Expires.ISO}}"><span class="day">{{day .Expires}}</span> {{clock .Expires}}</time><span class="cell-note">issued <time datetime="{{.Issued.ISO}}"><span class="day">{{day .Issued}}</span> {{clock .Issued}}</time></span></td>
         <td>
           <span class="cell-label">State</span>
           <span class="verdict-state" data-state="{{.State}}">{{.StateLabel}}</span>
@@ -162,7 +151,6 @@
           {{- if .RevokeReason}}
           <span class="cell-note">why: {{.RevokeReason}}</span>
           <span class="cell-note">at <time datetime="{{.Ended.ISO}}">{{.Ended.Text}}</time></span>
-          <span class="cell-note">revocation <code class="hash">{{.RevokedByID}}</code></span>
           {{- else}}
           <span class="cell-note">why: not known; the revocation arrived before this version kept it</span>
           {{- end}}
@@ -171,6 +159,19 @@
           {{- end}}
         </td>
         <td><span class="cell-label">Decision</span> <a href="{{.DecisionHref}}"><span class="decision-state" data-state="{{.DecisionState}}">{{.DecisionLabel}}</span></a></td>
+      </tr>
+      <tr class="verdict-detail" data-state="{{.State}}">
+        <td colspan="7">
+          {{- if .LogHash}}
+          <span>log hash <code class="hash" data-copy>{{.LogHash}}</code></span>
+          {{- else}}
+          <span>no log lines given</span>
+          {{- end}}
+          <span>event <code class="hash">{{.EventID}}</code></span>
+          {{- with .RevokedByID}}
+          <span>revocation <code class="hash">{{.}}</code></span>
+          {{- end}}
+        </td>
       </tr>
       {{- end}}
     </tbody>

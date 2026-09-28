@@ -79,7 +79,7 @@ func TestConsoleVerdictsEndToEnd(t *testing.T) {
 		`<th scope="row"><a class="mono address" href="/verdicts?address=85.10.20.1" data-copy>85.10.20.1</a></th>`,
 		`<span class="peer-name">This node</span>`,
 		`<td><span class="cell-label">Reason</span> password_bruteforce (ssh)</td>`,
-		`5 events`,
+		`<span class="cell-note">5 events</span>`,
 		`<code class="hash" data-copy>`+logHash+`</code>`,
 		`<span class="cell-note">counts: Yes</span>`,
 		`<a href="/decisions/85.10.20.1"><span class="decision-state" data-state="block">Block</span></a>`,
@@ -102,7 +102,7 @@ func TestConsoleVerdictsEndToEnd(t *testing.T) {
 		`<h2 id="list-heading">Active verdicts of every publisher on 85.10.20.1</h2>`,
 		`<code>sudo obiectl show 85.10.20.1</code>`,
 		`<code class="hash" data-copy>`+logHash+`</code>`)
-	if page := get("/verdicts?address=85.10.20.2"); strings.Contains(page, `<tr data-state=`) {
+	if page := get("/verdicts?address=85.10.20.2"); strings.Contains(page, `<tr class="verdict-main"`) {
 		t.Errorf("the revoked verdict is listed as active:\n%s", page)
 	}
 

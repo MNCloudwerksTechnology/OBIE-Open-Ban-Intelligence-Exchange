@@ -1167,6 +1167,32 @@ main:has(.verdict-list) {
   color: var(--text-muted);
 }
 
+/* A verdict is two rows: its columns, then its log hash and event IDs. */
+.verdict-list th,
+.verdict-list td {
+  padding-right: 0.625rem;
+  padding-left: 0.625rem;
+}
+
+.verdict-list .verdict-main > * {
+  padding-bottom: 0.25rem;
+  border-bottom: 0;
+}
+
+.verdict-main td:nth-child(3) .cell-note {
+  white-space: nowrap;
+}
+
+.verdict-detail td {
+  padding-top: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.verdict-detail span + span::before {
+  content: " · " / "";
+}
+
 .totals-mine > *,
 .totals-sum > * {
   background: var(--surface-alt);
@@ -1301,7 +1327,8 @@ main:has(.verdict-list) {
     display: none;
   }
 
-  .list tbody tr:last-child {
+  .list tbody tr:last-child,
+  .verdict-list .verdict-main {
     border-bottom: 0;
   }
 
@@ -1317,6 +1344,18 @@ main:has(.verdict-list) {
     color: var(--text-muted);
     font-size: 0.75rem;
     font-weight: 600;
+  }
+
+  /* A publisher's totals: its name and weight, then the three counts side
+     by side. */
+  .list.totals tr {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  }
+
+  .list.totals tbody th,
+  .list.totals td:nth-child(2) {
+    grid-column: 1 / -1;
   }
 }
 
