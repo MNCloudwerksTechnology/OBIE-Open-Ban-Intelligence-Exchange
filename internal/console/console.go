@@ -315,6 +315,14 @@ func (c *Console) Detail() string {
 	}
 }
 
+// actionsOn reports whether console.actions lets the console carry out
+// operator actions; a reload switches it through Apply (ADR 0026).
+func (c *Console) actionsOn() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.cfg.Actions
+}
+
 // Addr returns the address the console listens on; nil while it does not
 // serve.
 func (c *Console) Addr() net.Addr {

@@ -80,6 +80,7 @@ var settings = []Setting{
 
 	{"console.enabled", "Serves this web console.", OnReload, false},
 	{"console.listen", "Loopback address this web console listens on.", OnReload, false},
+	{"console.actions", "Lets this web console allow, block, report and revoke after a confirmation; off, it is read-only.", OnReload, false},
 
 	{"audit.path", "File of the JSON audit log of decisions, peers, reloads and modes, which the timeline reads; empty switches it off.", OnRestart, false},
 
