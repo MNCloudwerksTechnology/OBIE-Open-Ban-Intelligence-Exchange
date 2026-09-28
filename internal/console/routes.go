@@ -25,9 +25,9 @@ func (c *Console) routes() http.Handler {
 			mux.Handle("GET "+v.Fragment, c.requireAPI(c.serveFragment(v)))
 		}
 		if v.item != nil {
-			mux.Handle("GET "+v.Path+"/{id}", c.requirePage(c.serveItem(v)))
+			mux.Handle("GET "+v.item.pattern(v.Path), c.requirePage(c.serveItem(v)))
 			if v.Fragment != "" {
-				mux.Handle("GET "+v.Fragment+"/{id}", c.requireAPI(c.serveItemFragment(v)))
+				mux.Handle("GET "+v.item.pattern(v.Fragment), c.requireAPI(c.serveItemFragment(v)))
 			}
 		}
 	}

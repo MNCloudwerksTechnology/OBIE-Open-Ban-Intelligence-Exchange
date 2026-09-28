@@ -59,6 +59,9 @@ type Node struct {
 	// from the publisher with peer ID id, after the indicator key after
 	// ("" for the first page); nil reads none.
 	PeerVerdicts func(id, after string, limit int) (VerdictPage, error)
+	// Decisions reads the decisions, explanations and the firewall for
+	// the decisions and firewall views; nil reads none (ADR 0022).
+	Decisions DecisionSource
 }
 
 // Options configures a Console.

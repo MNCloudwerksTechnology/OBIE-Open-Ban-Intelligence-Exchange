@@ -24,6 +24,10 @@ type view struct {
 	template *template.Template
 	// content returns what the template shows.
 	content func(*http.Request) any
+	// region, if set, returns what the refreshing region shows, when that
+	// is cheaper to read than content (ADR 0022); else the region gets
+	// content.
+	region func(*http.Request) any
 	// item, if set, serves the pages of the view's items (e.g. one peer)
 	// at Path + "/{id}", marked as the view in the navigation, and their
 	// refreshing regions at Fragment + "/{id}" (ADR 0021).
@@ -43,6 +47,17 @@ type item struct {
 	content func(r *http.Request, region bool) (title string, data any, ok bool)
 	// missing explains that the console knows no such item.
 	missing string
+	// rest makes the ID the rest of the path, so it may hold a slash, as
+	// a network does (ADR 0022).
+	rest bool
+}
+
+// pattern returns the route pattern of the items below path.
+func (it *item) pattern(path string) string {
+	if it.rest {
+		return path + "/{id...}"
+	}
+	return path + "/{id}"
 }
 
 // views returns the console's views in navigation order. The navigation
@@ -54,15 +69,18 @@ func (c *Console) views() []view {
 		{Path: "/peers", Title: "Peers", Fragment: "/api/peers", template: peersTemplate, content: c.peersContent,
 			item: &item{template: peerTemplate, content: c.peerContent,
 				missing: "This node knows no such peer: it is neither configured nor connected, and the node holds no verdict of it."}},
+		{Path: "/decisions", Title: "Decisions", Fragment: "/api/decisions", template: decisionsTemplate,
+			content: c.decisionsContent, region: c.decisionsStatusContent},
 	}
 }
 
 // Page templates: each is the shared layout with the page's content.
 var (
-	overviewTemplate = pageTemplate("overview.html")
-	peersTemplate    = pageTemplate("peers.html")
-	peerTemplate     = pageTemplate("peer.html")
-	notFoundTemplate = pageTemplate("notfound.html")
+	overviewTemplate  = pageTemplate("overview.html")
+	peersTemplate     = pageTemplate("peers.html")
+	peerTemplate      = pageTemplate("peer.html")
+	decisionsTemplate = pageTemplate("decisions.html")
+	notFoundTemplate  = pageTemplate("notfound.html")
 )
 
 func pageTemplate(file string) *template.Template {
@@ -153,8 +171,12 @@ func (c *Console) serveFragment(v view) http.Handler {
 	if region == nil {
 		panic("console view " + v.Path + " declares a fragment but has no region template")
 	}
+	content := v.content
+	if v.region != nil {
+		content = v.region
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c.render(w, http.StatusOK, region, v.content(r))
+		c.render(w, http.StatusOK, region, content(r))
 	})
 }
 

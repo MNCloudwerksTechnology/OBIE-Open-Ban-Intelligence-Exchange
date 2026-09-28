@@ -189,7 +189,10 @@ func TestOverviewFragment(t *testing.T) {
 		t.Errorf("fragment is more than the region:\n%s", fragment)
 	}
 	for _, v := range c.pages {
-		if _, page := b.get(v.Path); v.Fragment != "" && !strings.Contains(page, `data-refresh="`+v.Fragment+`"`) {
+		// The decisions list's region carries when the list was read in its
+		// query (ADR 0022).
+		if _, page := b.get(v.Path); v.Fragment != "" && !strings.Contains(page, `data-refresh="`+v.Fragment+`"`) &&
+			!strings.Contains(page, `data-refresh="`+v.Fragment+`?`) {
 			t.Errorf("view %s does not mark its region with its fragment %s", v.Path, v.Fragment)
 		}
 	}
@@ -207,36 +210,30 @@ func TestOverviewLinksOnlyToBuiltViews(t *testing.T) {
 	c, b := signedInBrowser(t)
 	overviewNode(c)
 	_, page := b.get("/")
-	for _, path := range []string{"/decisions", "/verdicts", "/enforcement", "/overrides"} {
+	for _, path := range []string{"/verdicts", "/enforcement", "/overrides"} {
 		if strings.Contains(page, `href="`+path) {
 			t.Errorf("the overview links to %s, which the console does not serve", path)
 		}
 	}
-	for _, cmd := range []string{"obiectl indicators", "obiectl decisions --state block",
-		"obiectl decisions --state none", "obiectl decisions --state allowed", "obiectl enforced", "obiectl overrides"} {
+	for _, cmd := range []string{"obiectl indicators", "obiectl enforced", "obiectl overrides"} {
 		if !strings.Contains(page, "Details: <code>"+cmd+"</code>") {
 			t.Errorf("the overview does not name %q", cmd)
 		}
 	}
-	// The peers view exists (ADR 0021).
-	if !strings.Contains(page, `<a class="number-main" href="/peers"><span class="number-label">Peers connected</span>`) ||
-		strings.Contains(page, "Details: <code>obiectl peers</code>") {
-		t.Error("the overview does not link its peers number to the peers view")
-	}
-
-	c.pages = append(c.pages, view{Path: "/decisions", Title: "Decisions"})
-	_, page = b.get("/")
+	// The peers view (ADR 0021) and the decisions view (ADR 0022) exist.
 	for _, want := range []string{
+		`<a class="number-main" href="/peers"><span class="number-label">Peers connected</span>`,
 		`<a class="number-main" href="/decisions?state=block">`,
 		`<a class="number-main" href="/decisions?state=allowed">`,
-		"Details: <code>obiectl overrides</code>",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("overview with a decisions view lacks %q", want)
+			t.Errorf("the overview lacks %q", want)
 		}
 	}
-	if strings.Contains(page, "Details: <code>obiectl decisions --state block</code>") {
-		t.Error("the overview names the command of a view it links to")
+	for _, cmd := range []string{"obiectl peers", "obiectl decisions --state block"} {
+		if strings.Contains(page, "Details: <code>"+cmd+"</code>") {
+			t.Errorf("the overview names %q of a view it links to", cmd)
+		}
 	}
 }
 
