@@ -66,6 +66,8 @@ type Console struct {
 	creds   *credentials
 	now     func() time.Time
 	handler http.Handler
+	// pages are the views in navigation order.
+	pages []view
 	// signInLimit bounds sign-in attempts.
 	signInLimit *rate.Limiter
 

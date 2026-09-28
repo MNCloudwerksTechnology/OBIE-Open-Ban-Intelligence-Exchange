@@ -1,0 +1,12 @@
+{{define "content" -}}
+<h1>This node</h1>
+<p class="lead">A read-only window onto this node. Change it with <code>obiectl</code> and its configuration file.</p>
+<dl class="facts">
+  <dt>Peer ID</dt>
+  <dd><code class="id">{{.PeerID}}</code></dd>
+  <dt>Version</dt>
+  <dd>{{.Version}}</dd>
+  <dt>Mode</dt>
+  <dd>{{.ModeText}}</dd>
+</dl>
+{{- end}}
