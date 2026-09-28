@@ -80,6 +80,8 @@ func TestDecisionExplanation(t *testing.T) {
 		`<td><span class="cell-label">Reason</span> password_bruteforce (ssh)</td>`,
 		`<td><span class="cell-label">Reason</span> port_scan (tcp)</td>`,
 		`<span class="cell-note">No: a watch verdict</span>`,
+		// AC3: every verdict on it in the verdicts view (ADR 0023).
+		`<a href="/verdicts?address=203.0.113.7">Every verdict on it, with its evidence hash, and the revoked and expired ones</a>`,
 		`<td><span class="cell-label">Expires</span> <time datetime="2026-09-28T15:00:00Z">2026-09-28 15:00:00 UTC</time><span class="cell-note">issued <time datetime="2026-09-28T11:00:00Z">2026-09-28 11:00:00 UTC</time></span></td>`,
 		// How they add up.
 		`<dd><strong>2.4</strong> of threshold 1.8: <span class="check" data-met="yes">reached</span></dd>`,
@@ -174,7 +176,7 @@ func TestDecisionUnknownAddress(t *testing.T) {
 	wantAll(t, "an unknown address", page,
 		`<strong class="summary-title">No verdicts, not blocked</strong> The node holds no active verdict on it.`,
 		`<p class="note">The node holds no decision on it: no active verdict and no force-block. It is evaluated here as it would be.</p>`,
-		`<p class="empty">No verdicts: no publisher, this node included, holds an active verdict on it.</p>`,
+		`<p class="empty">No verdicts: no publisher, this node included, holds an active verdict on it. <a href="/verdicts?address=198.51.100.200">Revoked and expired verdicts on it</a></p>`,
 		`<dd>Not protected: no allow-list entry or override covers it.</dd>`,
 		`<span class="peer-state" data-state="idle">Not applied</span> It is not a block, and no firewall entry covers it.`)
 	_, page = b.get("/decisions/192.0.2.1")

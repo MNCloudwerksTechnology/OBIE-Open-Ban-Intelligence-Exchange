@@ -3,6 +3,7 @@ package console
 import (
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -169,11 +170,10 @@ func TestPeerPage(t *testing.T) {
 		`<li>57 accepted</li>`,
 		`<li><span class="rejected">3 rejected</span>: 2 invalid signature, 1 expired or dated in the future</li>`,
 		`<li>4 already known (duplicates are normal in gossip)</li>`,
-		// AC4: its verdicts, and the commands while the verdict view does not exist.
+		// AC4: its verdicts, linking into the verdicts view (ADR 0023).
 		`<h2 id="verdicts-heading">Verdicts held from this peer</h2>`,
-		`Every verdict on one address: <code>obiectl show &lt;address&gt;</code>.`,
-		`All of them, page by page: <code>obiectl indicators --publisher `+idAlpha+`</code>`,
-		`<th scope="row"><span class="mono">203.0.113.7</span></th>`,
+		`<a href="/verdicts?publisher=`+idAlpha+`">All its verdicts in the verdict view</a>`,
+		`<th scope="row"><a class="mono" href="/verdicts?address=203.0.113.7">203.0.113.7</a></th>`,
 		`<td><span class="cell-label">Reason</span> password_bruteforce (ssh)</td>`,
 		`<td><span class="cell-label">Expires</span> <time datetime="2026-09-29T11:00:00Z">2026-09-29 11:00:00 UTC</time></td>`,
 		`<td><span class="cell-label">Counts in decisions</span> <span>Yes</span></td>`,
@@ -198,12 +198,13 @@ func TestPeerPage(t *testing.T) {
 		t.Errorf("the fragment read the verdicts: %d reads, want 1", n)
 	}
 
-	// Once the verdict view exists, the verdicts link into it.
-	c.pages = append(c.pages, view{Path: "/verdicts", Title: "Verdicts"})
+	// Without the verdict view, the page names the commands instead.
+	c.pages = slices.DeleteFunc(c.pages, func(v view) bool { return v.Path == "/verdicts" })
 	_, page = b.get("/peers/" + idAlpha + "?after=ipv4%3A1.2.3.4")
-	wantAll(t, "alpha's page with a verdict view", page,
-		`<th scope="row"><a class="mono" href="/verdicts?address=203.0.113.7">203.0.113.7</a></th>`,
-		`<a href="/verdicts?publisher=`+idAlpha+`">All its verdicts in the verdict view</a>`,
+	wantAll(t, "alpha's page without a verdict view", page,
+		`Every verdict on one address: <code>obiectl show &lt;address&gt;</code>.`,
+		`All of them, page by page: <code>obiectl indicators --publisher `+idAlpha+`</code>`,
+		`<th scope="row"><span class="mono">203.0.113.7</span></th>`,
 		`<a href="/peers/`+idAlpha+`">First page</a>`)
 }
 

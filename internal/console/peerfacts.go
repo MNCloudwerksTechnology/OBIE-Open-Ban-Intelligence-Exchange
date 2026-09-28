@@ -8,8 +8,9 @@ type PeerSet struct {
 	// Peers are the configured and the connected peers, without this node.
 	Peers []Peer
 	// DefaultWeight is trust.default_weight, the weight of publishers not
-	// listed in trust.publishers.
-	DefaultWeight float64
+	// listed in trust.publishers; LocalWeight is trust.local_weight, the
+	// weight of this node's own verdicts.
+	DefaultWeight, LocalWeight float64
 	// Verdicts counts the active verdicts the node holds, by publisher peer
 	// ID; this node's own are under its peer ID.
 	Verdicts map[string]VerdictCount

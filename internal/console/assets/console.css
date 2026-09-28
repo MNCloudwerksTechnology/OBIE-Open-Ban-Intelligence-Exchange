@@ -964,8 +964,10 @@ a.number-main .number-label {
   overflow-x: auto;
 }
 
-/* The decisions list has eight columns: it may use a wide window. */
-main:has(.list.decisions) {
+/* The decisions and verdicts lists have eight columns or more: they may
+   use a wide window. */
+main:has(.list.decisions),
+main:has(.verdict-list) {
   max-width: 84rem;
 }
 
@@ -1104,6 +1106,98 @@ main:has(.list.decisions) {
   margin-top: 1rem;
 }
 
+/* Verdicts (ADR 0023) */
+
+.scopes {
+  margin: 0 0 1rem;
+}
+
+.whose {
+  margin: 0 0 1rem;
+}
+
+.whose .id {
+  overflow-wrap: anywhere;
+}
+
+.verdict-list {
+  font-size: 0.875rem;
+}
+
+.verdict-list time {
+  white-space: normal;
+}
+
+.verdict-list .day {
+  white-space: nowrap;
+}
+
+.hash {
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.verdict-state {
+  display: inline-block;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.verdict-state[data-state="active"] {
+  border-color: var(--ok);
+}
+
+.verdict-state[data-state="revoked"] {
+  border-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+/* An expired verdict counts nowhere: dashed and muted, never mistaken
+   for an active one. */
+.verdict-state[data-state="expired"] {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+
+.verdict-list tr[data-state="expired"] > * {
+  color: var(--text-muted);
+}
+
+/* A verdict is two rows: its columns, then its log hash and event IDs. */
+.verdict-list th,
+.verdict-list td {
+  padding-right: 0.625rem;
+  padding-left: 0.625rem;
+}
+
+.verdict-list .verdict-main > * {
+  padding-bottom: 0.25rem;
+  border-bottom: 0;
+}
+
+.verdict-main td:nth-child(3) .cell-note {
+  white-space: nowrap;
+}
+
+.verdict-detail td {
+  padding-top: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.verdict-detail span + span::before {
+  content: " · " / "";
+}
+
+.totals-mine > *,
+.totals-sum > * {
+  background: var(--surface-alt);
+}
+
 .footer {
   padding: 0.75rem 1.5rem;
   border-top: 1px solid var(--border);
@@ -1233,7 +1327,8 @@ main:has(.list.decisions) {
     display: none;
   }
 
-  .list tbody tr:last-child {
+  .list tbody tr:last-child,
+  .verdict-list .verdict-main {
     border-bottom: 0;
   }
 
@@ -1249,6 +1344,18 @@ main:has(.list.decisions) {
     color: var(--text-muted);
     font-size: 0.75rem;
     font-weight: 600;
+  }
+
+  /* A publisher's totals: its name and weight, then the three counts side
+     by side. */
+  .list.totals tr {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) repeat(2, minmax(0, 1fr));
+  }
+
+  .list.totals tbody th,
+  .list.totals td:nth-child(2) {
+    grid-column: 1 / -1;
   }
 }
 

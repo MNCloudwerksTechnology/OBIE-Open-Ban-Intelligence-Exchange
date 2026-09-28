@@ -99,3 +99,52 @@ func BenchmarkPublisherVerdicts100k(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkEnded100k reads an on-disk store that keeps 100k expired
+// verdicts, the default cap (ADR 0023): the first page of a rare category,
+// whose walk passes every ended verdict's key, the sweep's recount, and the
+// counts by publisher the totals read.
+func BenchmarkEnded100k(b *testing.B) {
+	const n = 100_000
+	clk := newClock()
+	db := startDB(b, New(filepath.Join(b.TempDir(), "db"), discardLogger(), Options{Now: clk.Now}))
+	for i := range n {
+		ev := verdict(pubA, ipv4(ipv4Value(i)), clk.Now(), time.Hour)
+		if i%10_000 == 0 {
+			ev.Evidence.Reason = "port_scan"
+		}
+		if ok, err := db.Put(ev); err != nil || !ok {
+			b.Fatalf("Put = %v, %v", ok, err)
+		}
+	}
+	clk.Advance(time.Hour)
+	if err := db.Sweep(clk.Now()); err != nil {
+		b.Fatal(err)
+	}
+	b.Run("page", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			res, err := db.EndedVerdicts(EndedFilter{State: EndedExpired, Category: "port_scan/ssh"}, Page{Limit: 50})
+			if err != nil || len(res.Verdicts) != 10 || res.Total != 10 {
+				b.Fatalf("EndedVerdicts = %d verdicts of %d, %v", len(res.Verdicts), res.Total, err)
+			}
+		}
+	})
+	b.Run("recount", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			if err := db.recountEnded(); err != nil {
+				b.Fatal(err)
+			}
+		}
+	})
+	b.Run("counts", func(b *testing.B) {
+		b.ReportAllocs()
+		for range b.N {
+			counts, err := db.EndedCounts()
+			if err != nil || counts.ByPublisher[pubA].Expired != n {
+				b.Fatalf("EndedCounts = %v, %v", counts, err)
+			}
+		}
+	})
+}

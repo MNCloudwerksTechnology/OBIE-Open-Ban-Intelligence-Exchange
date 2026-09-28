@@ -453,8 +453,23 @@ func TestConsolePeersEndToEnd(t *testing.T) {
 			t.Errorf("A's page (%d) lacks %q:\n%s", code, want, page)
 		}
 	}
-	if !regexp.MustCompile(`<th scope="row"><span class="mono">85\.10\.20\.[0-9]+</span></th>`).MatchString(page) {
+	if !regexp.MustCompile(`<th scope="row"><a class="mono" href="/verdicts\?address=85\.10\.20\.[0-9]+">85\.10\.20\.[0-9]+</a></th>`).MatchString(page) {
 		t.Errorf("A's page lists none of its verdicts:\n%s", page)
+	}
+	// The verdicts A published arrive in B's verdicts view as received
+	// verdicts of a named, trusted publisher (ADR 0023).
+	code, page = browser.do(http.MethodGet, "/verdicts?from=peers", nil)
+	for _, want := range []string{
+		`<h2 id="list-heading">Active verdicts received from other publishers</h2>`,
+		`<a href="/peers/` + keyA.PeerID() + `">alpha</a>`,
+		`<span class="cell-note">weight 0.6</span>`,
+		`<td><span class="cell-label">Reason</span> password_bruteforce (ssh)</td>`,
+		`<span class="cell-note">counts: Yes</span>`,
+		`<a class="weight" href="/verdicts?publisher=` + keyA.PeerID() + `">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("B's received verdicts (%d) lack %q:\n%s", code, want, page)
+		}
 	}
 	if code, _ := browser.do(http.MethodGet, "/peers/12D3KooWNoSuchPeer", nil); code != http.StatusNotFound {
 		t.Errorf("GET /peers/<unknown> = %d, want 404", code)

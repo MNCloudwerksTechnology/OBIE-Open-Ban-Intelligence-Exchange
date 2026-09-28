@@ -51,11 +51,21 @@ var verdictsGauge = prometheus.NewGauge(prometheus.GaugeOpts{
 	Help:      "Verdicts held by the store (one per publisher and indicator; active, revoked or expired but not yet swept), bounded by store.max_indicators.",
 })
 
+var endedGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Namespace: "obie",
+	Subsystem: "store",
+	Name:      "ended_verdicts",
+	Help:      "Verdicts the store keeps for a day after they ended, by how they ended; of other publishers at most a tenth of store.max_indicators each.",
+}, []string{"state"})
+
 func init() {
 	for _, name := range resultNames {
 		eventsTotal.WithLabelValues(name)
 	}
-	prometheus.MustRegister(eventsTotal, evictionsTotal, verdictsGauge)
+	for _, state := range EndedStates {
+		endedGauge.WithLabelValues(string(state))
+	}
+	prometheus.MustRegister(eventsTotal, evictionsTotal, verdictsGauge, endedGauge)
 }
 
 // counters holds the per-database Put outcomes behind Stats.

@@ -6,7 +6,9 @@
 // the publisher's current one and revocations by anyone but the verdict's
 // publisher are ignored. Subscribers are notified whenever the set of active
 // verdicts or the override of an indicator changes, including by expiry. See
-// ADR 0008 for the key layout and the rules.
+// ADR 0008 for the key layout and the rules. Verdicts that were revoked or
+// expired are kept for a day after their expiry, for the operator to see
+// (ADR 0023).
 package store
 
 import (

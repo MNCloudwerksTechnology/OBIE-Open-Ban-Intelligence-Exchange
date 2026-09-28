@@ -40,9 +40,12 @@ type decisionPage struct {
 	// Kept says whether and how the node holds a decision on it.
 	Kept string
 	// Verdicts are the active verdicts, one per publisher; Sum shows how
-	// they add up.
-	Verdicts []verdictView
-	Sum      decisionSum
+	// they add up. AllVerdicts links to every verdict on it in the verdicts
+	// view, also the revoked and expired ones (ADR 0023); empty without
+	// that view.
+	Verdicts    []verdictView
+	Sum         decisionSum
+	AllVerdicts string
 	// Ruling says what the allow-list and the overrides do to it, and
 	// Protection whether it is protected.
 	Ruling     rulingView
@@ -128,6 +131,9 @@ type decisionInput struct {
 	self   string
 	// names are the names of the configured peers, by peer ID.
 	names map[string]string
+	// allVerdicts links to every verdict on the range; empty without the
+	// verdicts view.
+	allVerdicts string
 }
 
 // buildDecision builds the explanation of ex.
@@ -148,9 +154,10 @@ func buildDecision(in decisionInput) decisionPage {
 			Contributors: count(ex.Contributors), Quorum: count(ex.Quorum), QuorumMet: ex.Contributors >= ex.Quorum,
 			Autoblock: autoblockText(ex),
 		},
-		Ruling:     newRulingView(&ex.Ruling),
-		Protection: protection(&ex.Ruling),
-		Firewall:   newFirewallView(ex, &in.firewall, in.mode, in.now),
+		Ruling:      newRulingView(&ex.Ruling),
+		Protection:  protection(&ex.Ruling),
+		Firewall:    newFirewallView(ex, &in.firewall, in.mode, in.now),
+		AllVerdicts: in.allVerdicts,
 	}
 	if p.Network {
 		p.Inside = decisionsQuery{search: addr, sort: sortAddress}.href("/decisions")
@@ -382,8 +389,9 @@ func (c *Console) decisionContent(r *http.Request, _ bool) (string, any, bool) {
 	for _, peer := range set.Peers {
 		names[peer.ID] = peer.Name
 	}
+	all, _ := c.detailLink(verdictsHref(verdictsQuery{address: rangeText(p)}), "")
 	return title, buildDecision(decisionInput{now: c.now(), ex: ex, firewall: src.Firewall(), mode: c.node.Mode(),
-		notice: decisionNotice(c.node.Status()), self: c.node.PeerID, names: names}), true
+		notice: decisionNotice(c.node.Status()), self: c.node.PeerID, names: names, allVerdicts: all}), true
 }
 
 // isNetwork reports whether p is a network rather than one address.

@@ -134,6 +134,7 @@ func (p *consolePeers) read() console.PeerSet {
 	set := console.PeerSet{
 		Peers:         make([]console.Peer, len(known)),
 		DefaultWeight: p.mesh.DefaultWeight(),
+		LocalWeight:   p.engine.Policy().LocalWeight,
 		Verdicts:      make(map[string]console.VerdictCount, len(counts)),
 		EventWindow:   gossip.TallyWindow,
 	}
@@ -395,4 +396,145 @@ func consoleCoverage(c enforce.Coverage) console.Coverage {
 func consoleRuling(r *sovereignty.Ruling) console.Ruling {
 	return console.Ruling{Effect: string(r.Effect), Rule: string(r.Rule), Source: string(r.Source), Protected: r.Source.Protected(),
 		Match: r.Match, Label: r.Label, Note: r.Note, ExpiresAt: r.ExpiresAt, Reason: r.Reason}
+}
+
+// consoleVerdicts reads the verdicts for the console's verdicts view: a
+// page of the engine's active verdicts, with their events from the store
+// one indicator at a time, or a page of the verdicts the store kept once
+// they ended, and the totals by publisher (ADR 0023). Every read works
+// while its subsystem is stopped. The engine is set before anything
+// starts.
+type consoleVerdicts struct {
+	engine *decision.Engine
+	store  *store.DB
+	now    func() time.Time
+}
+
+var _ console.VerdictSource = (*consoleVerdicts)(nil)
+
+// Verdicts reads the page of the verdicts q selects, and counts those
+// that match in every state.
+func (v *consoleVerdicts) Verdicts(q console.VerdictQuery) (console.VerdictList, error) {
+	var key string
+	if q.Range.IsValid() {
+		ind, err := indicatorOfRange(q.Range)
+		if err != nil {
+			return console.VerdictList{}, fmt.Errorf("%w: %w", console.ErrNoIndicator, err)
+		}
+		key = ind.Key()
+	}
+	// Both sources count their matches; only the one of q's state reads a
+	// page.
+	active := q.State == console.VerdictActive
+	aq := decision.VerdictQuery{Publisher: q.Publisher, Except: q.Except, Category: q.Category, Key: key, Limit: 1}
+	eq := store.EndedFilter{Key: key, Publisher: q.Publisher, Except: q.Except, Category: q.Category}
+	ep := store.Page{Limit: q.Limit}
+	if active {
+		aq.After, aq.Limit = q.After, q.Limit
+	} else {
+		eq.State, ep.After = store.EndedState(q.State), q.After
+	}
+	page := v.engine.Verdicts(aq)
+	ended, err := v.store.EndedVerdicts(eq, ep)
+	if err != nil {
+		return console.VerdictList{}, err
+	}
+	list := console.VerdictList{States: map[string]int{console.VerdictActive: page.Total,
+		console.VerdictRevoked: ended.States[store.EndedRevoked], console.VerdictExpired: ended.States[store.EndedExpired]}}
+	policy := v.engine.Policy()
+	if !active {
+		list.Total, list.Offset, list.Next = ended.Total, ended.Offset, ended.Next
+		for _, e := range ended.Verdicts {
+			it := consoleVerdictItem(e.Event, &policy)
+			it.State, it.Cursor = q.State, e.Cursor
+			if r := e.Revocation; r != nil {
+				it.Revocation = &console.VerdictRevocation{ID: r.ID, Reason: r.Reason, At: r.At}
+			}
+			list.Items = append(list.Items, it)
+		}
+		v.decisionStates(list.Items)
+		return list, nil
+	}
+	list.Total, list.Offset = page.Total, page.Offset
+	if n := len(page.Verdicts); n > 0 && page.Offset+n < page.Total {
+		list.Next = page.Verdicts[n-1].Cursor
+	}
+	items, err := v.activeItems(page.Verdicts, &policy)
+	list.Items = items
+	return list, err
+}
+
+// activeItems reads the events of the engine's active verdicts from the
+// store, one indicator at a time. A verdict that ended since the engine
+// was read is left out.
+func (v *consoleVerdicts) activeItems(verdicts []decision.ActiveVerdict, policy *decision.Policy) ([]console.VerdictItem, error) {
+	now := v.now()
+	var items []console.VerdictItem
+	var events []*obieproto.Event
+	for i, a := range verdicts {
+		if i == 0 || verdicts[i-1].Key != a.Key {
+			var err error
+			if events, err = v.store.ActiveVerdicts(a.Key, now); err != nil {
+				return nil, err
+			}
+		}
+		j := slices.IndexFunc(events, func(ev *obieproto.Event) bool { return ev.Publisher.PeerID == a.Publisher })
+		if j < 0 {
+			continue
+		}
+		it := consoleVerdictItem(events[j], policy)
+		it.State, it.Counts, it.Decision, it.Cursor = console.VerdictActive, a.Counts, string(a.State), a.Cursor
+		items = append(items, it)
+	}
+	return items, nil
+}
+
+// decisionStates sets the state of the decision the engine keeps on the
+// range of every item, under one engine lock.
+func (v *consoleVerdicts) decisionStates(items []console.VerdictItem) {
+	keys := make([]string, len(items))
+	for i := range items {
+		keys[i] = keyOfRange(items[i].Range)
+	}
+	v.engine.Lookup(keys, func(i int, d *decision.Decision) { items[i].Decision = string(d.State) })
+}
+
+// Totals counts the active verdicts by publisher, which the engine keeps,
+// and the ended ones, which the store counts as it keeps them.
+func (v *consoleVerdicts) Totals() (console.VerdictTotals, error) {
+	ended, err := v.store.EndedCounts()
+	if err != nil {
+		return console.VerdictTotals{}, err
+	}
+	t := console.VerdictTotals{ByPublisher: make(map[string]console.VerdictCounts, len(ended.ByPublisher)),
+		Retention: store.EndedRetention, EndedMax: ended.Max, EndedFull: map[string]bool{
+			console.VerdictRevoked: ended.Full[store.EndedRevoked], console.VerdictExpired: ended.Full[store.EndedExpired]}}
+	for id, c := range v.engine.PublisherCounts() {
+		t.ByPublisher[id] = console.VerdictCounts{Active: c.Verdicts, Counting: c.Counting}
+	}
+	for id, c := range ended.ByPublisher {
+		counts := t.ByPublisher[id]
+		counts.Revoked, counts.Expired = c.Revoked, c.Expired
+		t.ByPublisher[id] = counts
+	}
+	return t, nil
+}
+
+// Categories counts the kept decisions by the categories of their
+// verdicts.
+func (v *consoleVerdicts) Categories() map[string]int { return v.engine.Categories() }
+
+// consoleVerdictItem converts a verdict event for the verdicts view, with
+// its publisher's trust weight under policy.
+func consoleVerdictItem(ev *obieproto.Event, policy *decision.Policy) console.VerdictItem {
+	p, _ := sovereignty.PrefixOf(ev.Indicator)
+	it := console.VerdictItem{Range: p, EventID: ev.ID, Publisher: ev.Publisher.PeerID, Local: ev.Publisher.PeerID == policy.Self,
+		Weight: policy.Weight(ev.Publisher.PeerID), Protocol: ev.Protocol, IssuedAt: ev.IssuedAt.Time, ExpiresAt: ev.ExpiresAt()}
+	if ev.Verdict != nil {
+		it.Action, it.Confidence = ev.Verdict.SuggestedAction, ev.Verdict.Confidence
+	}
+	if ev.Evidence != nil {
+		it.Reason, it.Events, it.LogHash = ev.Evidence.Reason, ev.Evidence.Events, ev.Evidence.LogHash
+	}
+	return it
 }

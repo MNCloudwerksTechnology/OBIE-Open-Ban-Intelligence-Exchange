@@ -261,7 +261,7 @@ func buildDecisions(in decisionsInput) decisionsPage {
 		Search:       q.search,
 		State:        q.state,
 		Sort:         q.sort,
-		Reasons:      reasonOptions(in.categories, q.reason),
+		Reasons:      reasonOptions(in.categories, q.reason, true),
 		Publishers:   publisherOptions(in.peers, in.self, q.publisher),
 	}
 	status := url.Values{"gen": {strconv.FormatUint(in.page.Generation, 10)}, "seq": {strconv.FormatUint(in.seq, 10)},
@@ -369,9 +369,9 @@ func emptyDecisions(q decisionsQuery, all int) string {
 }
 
 // reasonOptions offers the categories of the held verdicts, the most
-// frequent first; the selected one stays offered when no decision holds
-// it any more.
-func reasonOptions(categories map[string]int, selected string) []option {
+// frequent first, with how many decisions hold one if counted; the
+// selected one stays offered when no decision holds it any more.
+func reasonOptions(categories map[string]int, selected string, counted bool) []option {
 	type category struct {
 		name string
 		n    int
@@ -383,13 +383,18 @@ func reasonOptions(categories map[string]int, selected string) []option {
 	slices.SortFunc(cs, func(a, b category) int { return cmp.Or(cmp.Compare(b.n, a.n), strings.Compare(a.name, b.name)) })
 	out := []option{{Value: "", Label: "Every reason", Selected: selected == ""}}
 	found := selected == ""
+	label := func(name string, n int) string {
+		if !counted {
+			return categoryText(name)
+		}
+		return fmt.Sprintf("%s (%s)", categoryText(name), count(n))
+	}
 	for _, c := range cs {
-		out = append(out, option{Value: c.name, Label: fmt.Sprintf("%s (%s)", categoryText(c.name), count(c.n)),
-			Selected: c.name == selected})
+		out = append(out, option{Value: c.name, Label: label(c.name, c.n), Selected: c.name == selected})
 		found = found || c.name == selected
 	}
 	if !found {
-		out = append(out, option{Value: selected, Label: categoryText(selected) + " (0)", Selected: true})
+		out = append(out, option{Value: selected, Label: label(selected, 0), Selected: true})
 	}
 	return out
 }

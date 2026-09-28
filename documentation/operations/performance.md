@@ -58,6 +58,7 @@ Each limit is verified by a test that runs in `make ci`.
 | GossipSub RPC size | 64 KiB (16 × `MaxEventSize`) | `internal/gossip` integration tests |
 | Events per publisher / per peer | `mesh.rate_limit`, default 10/s (burst 50) / 50/s (burst 250) | `internal/gossip` validate and integration tests |
 | Stored verdicts | `store.max_indicators`, default 1,000,000; the verdict expiring first is evicted, never this node's own; `obie_store_evictions_total` | `TestCapBoundsFloodFromTrustedPeer` and the other `TestCap…` in `internal/store` |
+| Verdicts kept after they ended | of other publishers a tenth of `store.max_indicators` (at least 1,000) revoked and as many expired ones, for a day after their expiry; beyond it only this node's own are kept; `obie_store_ended_verdicts` | `TestEndedVerdictsAreCapped` in `internal/store` |
 | Admin request bodies | 1 MiB (reports, revocations), 16 KiB (overrides); 413 beyond | `internal/admin` |
 | HTTP timeouts and headers | read header 5 s, read 10 s, write 30 s, idle 60 s, headers 16 KiB, on every server | `internal/httpserver` |
 
@@ -160,4 +161,33 @@ own. Reproduce with:
 ```sh
 go test ./internal/decision -run '^$' -bench 'BenchmarkBrowse|BenchmarkPublishMetrics' -benchtime 30x
 go test ./internal/enforce -run '^$' -bench BenchmarkSnapshotApplies
+```
+
+The verdicts view pages the active verdicts the same way, in one pass over
+the engine's decisions and their verdicts
+([ADR 0023](../adr/0023-console-verdicts.md)). Measured on the same machine
+on 2026-09-28 (WP-1686), with the 1,000,000 decisions above holding
+2,000,000 active verdicts, for a page of 50:
+
+| Page | Time | Allocated |
+|---|---:|---:|
+| First page, by address and publisher | 22 ms | 13 KiB |
+| A deep page (cursor half way) | 20 ms | 13 KiB |
+| One publisher | 23 ms | 13 KiB |
+| Received: every publisher but this node | 22 ms | 13 KiB |
+| One reason category | 22 ms | 13 KiB |
+| The verdicts on one address | 1 µs | 4 KiB |
+
+The verdicts that were revoked or expired are read from the store, which
+keeps them for 24 hours after their expiry. A walk over the keys of
+100,000 of them — about what 700,000 indicators with the default 7-day
+lifetime leave in a day, and the default cap — takes 41–43 ms, with the
+page's 50 decoded, and grows linearly with the ended verdicts. The totals
+are counted as the store keeps the verdicts (reading them takes under a
+microsecond), and recounted by the sweep every minute with one such walk. Opening the verdicts view costs one
+engine pass and one walk. Reproduce with:
+
+```sh
+go test ./internal/decision -run '^$' -bench BenchmarkVerdicts -benchtime 30x
+go test ./internal/store -run '^$' -bench BenchmarkEnded100k -benchtime 30x
 ```

@@ -283,7 +283,7 @@ func TestNewPolicy(t *testing.T) {
 	cfg.Trust.LocalWeight = 0.9
 	p := NewPolicy(self, cfg.Trust, cfg.Decision)
 	for id, want := range map[string]float64{self: 0.9, pubA: 0.7, unlisted: 0.1} {
-		if got := p.weight(id); got != want {
+		if got := p.Weight(id); got != want {
 			t.Errorf("weight(%s) = %v, want %v", id, got, want)
 		}
 	}

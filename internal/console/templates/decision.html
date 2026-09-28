@@ -25,7 +25,7 @@
 <section class="section" aria-labelledby="verdicts-heading">
   <h2 id="verdicts-heading">Verdicts and score</h2>
   {{- if .Verdicts}}
-  <p>Every active verdict on it, one per publisher. A ban verdict of a publisher with a trust weight above 0 counts: it adds its weight × its confidence to the score.</p>
+  <p>Every active verdict on it, one per publisher. A ban verdict of a publisher with a trust weight above 0 counts: it adds its weight × its confidence to the score.{{with .AllVerdicts}} <a href="{{.}}">Every verdict on it, with its evidence hash, and the revoked and expired ones</a>{{end}}</p>
   <div class="table-scroll">
   <table class="list verdicts">
     <thead>
@@ -48,7 +48,7 @@
   </table>
   </div>
   {{- else}}
-  <p class="empty">No verdicts: no publisher, this node included, holds an active verdict on it.</p>
+  <p class="empty">No verdicts: no publisher, this node included, holds an active verdict on it.{{with .AllVerdicts}} <a href="{{.}}">Revoked and expired verdicts on it</a>{{end}}</p>
   {{- end}}
   <dl class="facts">
     <dt>Score</dt>
