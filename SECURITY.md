@@ -155,9 +155,12 @@ at most `enforce.max_entries` (100,000) blocks, and when full, drops the
 lowest scores first; nftables sets are kernel hash sets with per-element
 timeouts. The admin API is a Unix socket, reachable only locally.
 
-**Remaining risk.** The store has no size cap: its growth is bounded only
-by the rate limits and the TTL, and new keys bypass the per-publisher
-limit, so a patient attacker with many connections can fill the disk.
+**Remaining risk.** The store holds at most `store.max_indicators`
+verdicts; when it is full, the verdict that expires first makes room,
+whoever published it (never this node's own). New keys bypass the
+per-publisher limit, so a patient attacker with many connections can fill
+the store and push out verdicts of trusted publishers that expire sooner,
+lifting the blocks they caused.
 Keep the mesh port open only to your peers. A flood of well-formed events
 from a trusted publisher can fill `enforce.max_entries` with its blocks;
 alert on `obie_enforcer_skipped_total`.

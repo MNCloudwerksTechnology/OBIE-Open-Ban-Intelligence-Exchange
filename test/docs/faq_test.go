@@ -36,9 +36,14 @@ func TestFAQAnswersAdoptionFears(t *testing.T) {
 			t.Errorf("%q has no answer", q)
 			continue
 		}
-		if lead := sentences(blocks[0])[0]; len(words(lead)) > maxLeadWords {
+		lead := sentences(blocks[0])
+		if len(lead) == 0 {
+			t.Errorf("%q does not start with a sentence", q)
+			continue
+		}
+		if len(words(lead[0])) > maxLeadWords {
 			t.Errorf("%q: the answer starts with %d words, want a direct answer of at most %d: %q",
-				q, len(words(lead)), maxLeadWords, lead)
+				q, len(words(lead[0])), maxLeadWords, lead[0])
 		}
 	}
 }

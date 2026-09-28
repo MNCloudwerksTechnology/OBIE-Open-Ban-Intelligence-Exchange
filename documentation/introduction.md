@@ -19,24 +19,25 @@ the failed logins and shuts the attacker out, but only on that one server.
 The next server starts from nothing.
 
 The usual shortcut is a blocklist: a list of bad addresses from one
-provider. You have to trust that provider completely, without seeing why an
-address is on the list. When the provider makes a mistake, everyone who
+provider. You have to trust that provider completely, often without seeing
+why an address is on the list. When the provider makes a mistake, everyone who
 uses the list is affected at once.
 
 ## The idea: servers warn each other
 
 Each server runs a small OBIE program, called a [node](glossary.md#node).
 When a server is attacked, its node writes a short warning, for example:
-"this address attacked me, block it for a week". OBIE calls this warning a
+"this address attacked me, block it for a while". OBIE calls this warning a
 [verdict](glossary.md#verdict).
 
-Every verdict carries a digital [signature](glossary.md#signature), a kind
-of seal. It proves which node wrote the verdict and that nobody changed it
-on the way. A forged or altered verdict is thrown away.
+Every verdict carries a digital [signature](glossary.md#signature): a seal
+that proves which node wrote it and that nobody changed it on the way. A
+forged or altered verdict is thrown away.
 
-A node sends its verdicts only to its [peers](glossary.md#peer): other
-nodes whose operators know each other and chose to connect. A peer can be
-a friend's server, a partner organisation or another server of your own.
+A node shares its verdicts with its [peers](glossary.md#peer), the other
+nodes it is connected to, and they pass them on. You choose the nodes your
+node connects to, such as a friend's server, a partner organisation or
+another server of your own.
 There is no central service, no account and no company in the middle that
 decides for you. Nobody can switch OBIE off for everyone, and you can
 switch off your own node at any time.
@@ -49,7 +50,7 @@ with it.
 For each peer, you set a [trust weight](glossary.md#trust-weight): a
 number from 0 to 1 that says how much you trust its judgement. A friend
 you know well might get 0.8. By default, nodes you have not listed count
-for nothing, so strangers cannot vote.
+for nothing, even if they connect, so strangers cannot vote.
 
 For every reported address, your node adds up what the verdicts are worth.
 Each verdict counts with the trust you gave its sender. Your node blocks
@@ -67,7 +68,7 @@ Your server's own detections are different. When your own Fail2Ban bans an
 address, your node decides to block it at once, because you trust your own
 server fully.
 
-Every block lasts a limited time and then ends on its own, so a mistake
+A block based on verdicts ends on its own when they run out, so a mistake
 does not last forever. You can ask your node at any time why an address is
 or is not blocked. And you can overrule your peers for any address: always
 allow it, or always block it. OBIE calls this an
@@ -85,14 +86,14 @@ principle [sovereignty](glossary.md#sovereignty).
   and internal addresses that the internet cannot reach. Nothing blocks
   them, not even you by hand. The addresses you work from, such as your
   office's internet address, go on your [allow-list](glossary.md#allow-list).
-  Then no report gets them blocked, from a peer or from your own server.
+  Then OBIE never blocks them, whoever reports them.
 - **Nothing is enforced until you switch it on.** A new node starts in
   [observe mode](glossary.md#observe-mode). It decides, including on your
-  own server's detections, but only lists what it would block, for your
-  administrator to review. It does not touch your
-  [firewall](glossary.md#firewall), the part of your server that lets
-  connections in or keeps them out. It only blocks once you switch it to
-  [enforce mode](glossary.md#enforce-mode) yourself. Even then it only
+  own server's detections, and shares its verdicts with your peers, but only
+  lists what it would block, for your administrator to review. It does not
+  touch your [firewall](glossary.md#firewall), the part of your server that
+  lets connections in or keeps them out. It only blocks once you switch it
+  to [enforce mode](glossary.md#enforce-mode) yourself. Even then it only
   changes its own part of the firewall, never the settings your
   administrators made.
 - **Raw logs never leave your server.** A verdict carries the number of
@@ -100,13 +101,13 @@ principle [sovereignty](glossary.md#sovereignty).
   cannot be turned back into the lines. User names, passwords and the
   contents of your logs are never shared.
 
-What your peers do learn: which address attacked your server, on which
+What other nodes do learn: which address attacked your server, on which
 service (such as the website or remote login) and when. That is a small
-privacy cost: it tells them a little about which services you run, and
-they see your server's internet address. Attacker addresses can count as
-personal data under data protection law such as the GDPR, so check with
-your data protection officer. The [FAQ](faq.md#what-does-obie-share-about-me)
-lists exactly what is shared.
+privacy cost: it hints at which services you run, and they see your server's
+internet address. Attacker addresses can count as personal data under data
+protection law such as the GDPR, so check with your data protection officer.
+The [FAQ](faq.md#what-does-obie-share-about-me) lists exactly what is
+shared.
 
 ## One attack, start to finish
 
@@ -117,7 +118,7 @@ The same journey in words:
 1. **Detection.** An attacker tries to guess passwords on server A, and
    Fail2Ban there bans it.
 2. **Signed verdict.** Server A's node writes and signs a verdict: "block
-   this address for a week". The log lines stay on server A.
+   this address for as long as I ban it". The log lines stay on server A.
 3. **Peers.** The verdict goes to server A's peers, your server among them.
    Servers B and C, also your peers, saw the same attacker and send their
    own verdicts.
@@ -156,8 +157,7 @@ and runs next to your existing tools.
 - [Frequently asked questions](faq.md): lockouts, privacy, crashes, and
   how OBIE differs from blocklists.
 - [Glossary](glossary.md): every OBIE term, briefly explained.
-- [What version 0.1 does](../README.md#what-v01-does), and what it does
-  not do yet.
+- [What version 0.1 does, and does not do yet](../README.md#what-v01-does).
 - [Try it on a laptop](../packaging/compose/README.md): three nodes that
   block nothing real.
 - [Quick start](operations/quickstart.md): a first node, safely in observe

@@ -113,8 +113,9 @@ const introductionLink = "documentation/introduction.md"
 // any section, and in the first row of its documentation table.
 func TestReadmeOpensWithIntroduction(t *testing.T) {
 	doc := readRepoFile(t, "README.md")
-	if links := relativeLinks(doc); len(links) == 0 || links[0] != introductionLink {
-		t.Errorf("the README's first link is not %s", introductionLink)
+	top, _, _ := strings.Cut(doc, "\n## ")
+	if links := relativeLinks(top); len(links) == 0 || links[0] != introductionLink {
+		t.Errorf("the README's first link, before its first section, is not %s", introductionLink)
 	}
 	table, ok := section(doc, "Documentation")
 	if !ok {

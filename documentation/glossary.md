@@ -28,7 +28,7 @@ another value. Your node multiplies it by the publisher's
 
 ## Enforce mode
 
-The mode in which your node applies its decisions: it puts every address
+The mode in which your node applies its decisions: it puts the addresses
 it decided to block into its own [firewall](#firewall) table. You switch
 it on yourself (`node.mode: enforce` with `enforce.backend: nftables`); a
 new node starts in [observe mode](#observe-mode).
@@ -97,9 +97,10 @@ You control it with the command `obiectl`.
 
 ## Observe mode
 
-The mode every node starts in: it receives verdicts, decides and shows you
-what it would block, but blocks nothing. It lets you check OBIE's judgement
-before you let it touch your [firewall](#firewall).
+The mode every node starts in: it decides and shows you what it would
+block, but blocks nothing, while its own verdicts are still shared with its
+peers. It lets you check OBIE's judgement before you let it touch your
+[firewall](#firewall).
 
 ## Operator
 
@@ -116,12 +117,13 @@ an always-allow and the [protected addresses](#protected-addresses).
 
 ## Peer
 
-Another OBIE [node](#node) that your node is connected to. You choose your
-peers yourself, and how much to trust each of them.
+Another OBIE [node](#node) that your node is connected to. You choose which
+nodes it connects to and how much it trusts each; nodes that connect on
+their own count for nothing unless you trust them.
 
 ## Peer ID
 
-The unique name of a node, derived from its secret key, for example
+The unique name of a node, derived from its public key, for example
 `12D3KooWKrKn…`. The node signs its verdicts with the same key, so the
 peer ID tells you who wrote a verdict.
 

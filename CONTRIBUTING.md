@@ -298,8 +298,9 @@ Record the results of a full run in
   [glossary](documentation/glossary.md) the first time it uses it. A new
   term gets an entry of one or two sentences, in alphabetical order; a new
   guide is added to `glossaryGuides` in `test/docs/glossary_test.go`.
-  `TestGlossaryDefinesEveryTerm` and `TestGuidesLinkGlossaryOnFirstUse`
-  enforce both.
+  `TestGlossaryDefinesEveryTerm` checks the glossary, and
+  `TestGuidesLinkGlossaryOnFirstUse` the first use of every term in
+  `requiredTerms`.
 - Diagrams have a text alternative and do not rely on colour alone.
 - Relative links and their anchors must resolve
   (`TestRelativeLinksResolve`).

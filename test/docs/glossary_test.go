@@ -81,8 +81,21 @@ var glossaryGuides = []string{
 	"packaging/compose/README.md",
 }
 
-// glossaryLink is the target of a link into the glossary.
-var glossaryLink = regexp.MustCompile(`(^|/)glossary\.md(#|$)`)
+// glossaryLink is the target of a link into the glossary, with the anchor
+// of the entry.
+var glossaryLink = regexp.MustCompile(`(^|/)glossary\.md#([a-z0-9-]+)$`)
+
+// linksEntry reports whether a link target is the glossary entry of a term,
+// or of a compound term that contains it: "peer" may link to "peer-id" or
+// "bootstrap-peer". TestRelativeLinksResolve checks that the entry exists.
+func linksEntry(target, term string) bool {
+	m := glossaryLink.FindStringSubmatch(target)
+	if m == nil {
+		return false
+	}
+	anchor := strings.ReplaceAll(strings.ToLower(term), " ", "-")
+	return strings.Contains("-"+m[2]+"-", "-"+anchor+"-")
+}
 
 // TestGuidesLinkGlossaryOnFirstUse checks that every guide links each
 // required term to the glossary the first time its running text uses it.
@@ -91,9 +104,9 @@ func TestGuidesLinkGlossaryOnFirstUse(t *testing.T) {
 		blocks := prose(readRepoFile(t, guide))
 		for _, term := range requiredTerms {
 			run, ok := firstUse(blocks, term.use)
-			if ok && !glossaryLink.MatchString(run.link) {
-				t.Errorf("%s: the first use of %q is not a link to the glossary: %q",
-					guide, term.heading, strings.TrimSpace(run.text))
+			if ok && !linksEntry(run.link, term.heading) {
+				t.Errorf("%s: the first use of %q is not a link to its glossary entry: %q -> %q",
+					guide, term.heading, strings.TrimSpace(run.text), run.link)
 			}
 		}
 	}

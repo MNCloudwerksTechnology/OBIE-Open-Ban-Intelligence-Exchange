@@ -1,178 +1,58 @@
 package docs
 
 import (
-	"regexp"
+	"slices"
 	"strings"
+	"testing"
 )
 
-var (
-	// inlineToken matches what running text holds besides words: an inline
-	// code span, or an image or link with its text and target.
-	inlineToken = regexp.MustCompile("`[^`]*`|(!?)\\[([^\\]]*)\\]\\(([^)\\s]+)\\)")
-	// inlineCode is an inline code span.
-	inlineCode = regexp.MustCompile("`[^`]*`")
-	// blockStart begins a new paragraph-like block: a list item or a table row.
-	blockStart = regexp.MustCompile(`^\s*([-*] |\d+\. |\|)`)
-	// sentenceEnd ends a sentence: a full stop, question or exclamation mark,
-	// possibly inside emphasis or quotes, followed by a space.
-	sentenceEnd = regexp.MustCompile(`[.!?]["'”’*_)]* `)
-	// abbreviation would otherwise end a sentence.
-	abbreviation = regexp.MustCompile(`\b(e\.g|i\.e|etc)\.`)
-)
-
-// proseRun is a piece of running text; link is the target of the link the
-// text belongs to, empty outside links.
-type proseRun struct {
-	text string
-	link string
-}
-
-// prose returns the running text of a Markdown document, block by block:
-// paragraphs, list items and table rows outside code blocks, without
-// headings, inline code and images, with links reduced to their text. The
-// lines of a block are joined, so a link or a term may span lines.
-func prose(doc string) [][]proseRun {
-	var blocks [][]proseRun
-	var lines []string
-	flush := func() {
-		if len(lines) > 0 {
-			blocks = append(blocks, inlineRuns(strings.Join(lines, " ")))
-			lines = nil
+// TestSentences checks how the documentation tests split running text into
+// sentences: numbers, file names, inline code, link targets and common
+// abbreviations do not end a sentence.
+func TestSentences(t *testing.T) {
+	tests := []struct {
+		markdown string
+		want     []string
+	}{
+		{"One. Two!", []string{"One.", "Two!"}},
+		{"A threshold of 1.8 (`decision.threshold`) is the default.", []string{"A threshold of 1.8 ( ) is the default."}},
+		{"See [the guide](guides/fail2ban.md). Then go on.", []string{"See the guide.", "Then go on."}},
+		{"**Never blocked.** Your node, e.g. this one, is safe.", []string{"**Never blocked.**", "Your node, e.g this one, is safe."}},
+		{"Is it free? \"Yes.\" No list", []string{"Is it free?", "\"Yes.\"", "No list"}},
+	}
+	for _, tt := range tests {
+		blocks := prose(tt.markdown)
+		if len(blocks) != 1 {
+			t.Fatalf("prose(%q) has %d blocks, want 1", tt.markdown, len(blocks))
+		}
+		if got := sentences(blocks[0]); !slices.Equal(got, tt.want) {
+			t.Errorf("sentences(%q) = %q, want %q", tt.markdown, got, tt.want)
 		}
 	}
-	inCode := false
-	for _, line := range strings.Split(doc, "\n") {
-		if fence.MatchString(line) {
-			flush()
-			inCode = !inCode
-			continue
-		}
-		if inCode || heading.MatchString(line) || strings.TrimSpace(line) == "" {
-			flush()
-			continue
-		}
-		if blockStart.MatchString(line) {
-			flush()
-		}
-		lines = append(lines, strings.TrimSpace(line))
-	}
-	flush()
-	return blocks
 }
 
-// inlineRuns splits a block of Markdown into runs of text.
-func inlineRuns(block string) []proseRun {
-	var runs []proseRun
-	rest := block
-	for {
-		m := inlineToken.FindStringSubmatchIndex(rest)
-		if m == nil {
-			break
-		}
-		runs = append(runs, proseRun{text: rest[:m[0]]})
-		switch {
-		case rest[m[0]] == '`':
-			runs = append(runs, proseRun{text: " "})
-		case m[3] > m[2]:
-			// An image: its alt text is not running text.
-		default:
-			text := inlineCode.ReplaceAllString(rest[m[4]:m[5]], " ")
-			runs = append(runs, proseRun{text: text, link: rest[m[6]:m[7]]})
-		}
-		rest = rest[m[1]:]
-	}
-	return append(runs, proseRun{text: rest})
-}
-
-// plain joins the text of runs.
-func plain(runs []proseRun) string {
-	var b strings.Builder
-	for _, r := range runs {
-		b.WriteString(r.text)
-	}
-	return b.String()
-}
-
-// sentences splits a block of running text into sentences.
-func sentences(block []proseRun) []string {
-	text := abbreviation.ReplaceAllString(plain(block), "$1")
-	text = strings.Join(strings.Fields(text), " ") + " "
-	var out []string
-	start := 0
-	for _, loc := range sentenceEnd.FindAllStringIndex(text, -1) {
-		if s := strings.TrimSpace(text[start:loc[1]]); s != "" {
-			out = append(out, s)
-		}
-		start = loc[1]
-	}
-	if s := strings.TrimSpace(text[start:]); s != "" {
-		out = append(out, s)
-	}
-	return out
-}
-
-// words returns the words of a sentence: its space-separated tokens that
-// hold a letter or digit.
-func words(sentence string) []string {
-	var out []string
-	for _, f := range strings.Fields(sentence) {
-		if strings.IndexFunc(f, isWordRune) >= 0 {
-			out = append(out, f)
-		}
-	}
-	return out
-}
-
-func isWordRune(r rune) bool {
-	return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9'
-}
-
-// section returns the part of a Markdown document below the heading with
-// the given text, up to the next heading of the same or a higher level; ok
-// is false if there is no such heading.
-func section(doc, title string) (body string, ok bool) {
-	lines := strings.Split(doc, "\n")
-	level := 0
-	var out []string
-	inCode := false
-	for _, line := range lines {
-		if fence.MatchString(line) {
-			inCode = !inCode
-		}
-		m := heading.FindStringSubmatch(line)
-		if inCode || m == nil {
-			if level > 0 {
-				out = append(out, line)
+// TestProse checks which parts of a Markdown document count as running
+// text, that a paragraph's lines are joined, that list markers are dropped,
+// and that link text keeps its target, also across a line break.
+func TestProse(t *testing.T) {
+	doc := "# Title\n\nA [node](glossary.md#node) and ![alt text](x.svg) `code` in\nenforce mode.\n\n```sh\nnode\n```\n\n- item one\n- item [two\n  lines](x.md)\n\n1. Step.\n"
+	blocks := prose(doc)
+	var texts []string
+	var links []proseRun
+	for _, b := range blocks {
+		texts = append(texts, strings.Join(strings.Fields(plain(b)), " "))
+		for _, r := range b {
+			if r.link != "" {
+				links = append(links, r)
 			}
-			continue
-		}
-		depth := strings.Index(line, " ")
-		switch {
-		case level == 0 && m[1] == title:
-			level = depth
-		case level > 0 && depth <= level:
-			return strings.Join(out, "\n"), true
-		case level > 0:
-			out = append(out, line)
 		}
 	}
-	return strings.Join(out, "\n"), level > 0
-}
-
-// headings returns the texts of a document's headings of the given level,
-// outside code blocks, in order.
-func headings(doc string, level int) []string {
-	prefix := strings.Repeat("#", level) + " "
-	var out []string
-	inCode := false
-	for _, line := range strings.Split(doc, "\n") {
-		if fence.MatchString(line) {
-			inCode = !inCode
-			continue
-		}
-		if !inCode && strings.HasPrefix(line, prefix) {
-			out = append(out, strings.TrimPrefix(line, prefix))
-		}
+	want := []string{"A node and in enforce mode.", "item one", "item two lines", "Step."}
+	if !slices.Equal(texts, want) {
+		t.Errorf("prose texts = %q, want %q", texts, want)
 	}
-	return out
+	want2 := []proseRun{{text: "node", link: "glossary.md#node"}, {text: "two lines", link: "x.md"}}
+	if !slices.Equal(links, want2) {
+		t.Errorf("links = %+v, want %+v", links, want2)
+	}
 }
