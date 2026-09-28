@@ -118,9 +118,8 @@ func TestOverviewPage(t *testing.T) {
 		`<span class="condition-level">Warning:</span> 1 decided block is not applied: the firewall holds at most 10 entries (enforce.max_entries), and the lowest-score blocks are left out.`,
 		`<p class="condition-next"><strong>Next step:</strong> Raise enforce.max_entries and restart obied, if the host can hold more entries.</p>`,
 		// AC3: key numbers with their detail.
-		`<p class="number-main"><span class="number-label">Peers connected</span> <span class="number-value">2</span></p>`,
+		`<a class="number-main" href="/peers"><span class="number-label">Peers connected</span> <span class="number-value">2</span></a>`,
 		`<p class="number-note">2 of 3 configured connected</p>`,
-		`<p class="number-detail">Details: <code>obiectl peers</code></p>`,
 		`<span class="number-label">Indicators held</span> <span class="number-value">1,203</span>`,
 		`<span class="number-label">Decisions: block</span> <span class="number-value">11</span>`,
 		`<span class="number-label">Decisions: none</span> <span class="number-value">1,190</span>`,
@@ -186,7 +185,7 @@ func TestOverviewFragment(t *testing.T) {
 		t.Errorf("fragment is more than the region:\n%s", fragment)
 	}
 	for _, v := range c.pages {
-		if v.Fragment != "" && !strings.Contains(page, `data-refresh="`+v.Fragment+`"`) {
+		if _, page := b.get(v.Path); v.Fragment != "" && !strings.Contains(page, `data-refresh="`+v.Fragment+`"`) {
 			t.Errorf("view %s does not mark its region with its fragment %s", v.Path, v.Fragment)
 		}
 	}
@@ -204,31 +203,35 @@ func TestOverviewLinksOnlyToBuiltViews(t *testing.T) {
 	c, b := signedInBrowser(t)
 	overviewNode(c)
 	_, page := b.get("/")
-	for _, path := range []string{"/peers", "/decisions", "/verdicts", "/enforcement", "/overrides"} {
+	for _, path := range []string{"/decisions", "/verdicts", "/enforcement", "/overrides"} {
 		if strings.Contains(page, `href="`+path) {
 			t.Errorf("the overview links to %s, which the console does not serve", path)
 		}
 	}
-	for _, cmd := range []string{"obiectl peers", "obiectl indicators", "obiectl decisions --state block",
+	for _, cmd := range []string{"obiectl indicators", "obiectl decisions --state block",
 		"obiectl decisions --state none", "obiectl decisions --state allowed", "obiectl enforced", "obiectl overrides"} {
 		if !strings.Contains(page, "Details: <code>"+cmd+"</code>") {
 			t.Errorf("the overview does not name %q", cmd)
 		}
 	}
+	// The peers view exists (ADR 0021).
+	if !strings.Contains(page, `<a class="number-main" href="/peers"><span class="number-label">Peers connected</span>`) ||
+		strings.Contains(page, "Details: <code>obiectl peers</code>") {
+		t.Error("the overview does not link its peers number to the peers view")
+	}
 
-	c.pages = append(c.pages, view{Path: "/peers", Title: "Peers"}, view{Path: "/decisions", Title: "Decisions"})
+	c.pages = append(c.pages, view{Path: "/decisions", Title: "Decisions"})
 	_, page = b.get("/")
 	for _, want := range []string{
-		`<a class="number-main" href="/peers"><span class="number-label">Peers connected</span> <span class="number-value">2</span></a>`,
 		`<a class="number-main" href="/decisions?state=block">`,
 		`<a class="number-main" href="/decisions?state=allowed">`,
 		"Details: <code>obiectl overrides</code>",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("overview with peers and decisions views lacks %q", want)
+			t.Errorf("overview with a decisions view lacks %q", want)
 		}
 	}
-	if strings.Contains(page, "Details: <code>obiectl peers</code>") {
+	if strings.Contains(page, "Details: <code>obiectl decisions --state block</code>") {
 		t.Error("the overview names the command of a view it links to")
 	}
 }

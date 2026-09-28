@@ -3,6 +3,7 @@ package console
 import (
 	"cmp"
 	"fmt"
+	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
@@ -342,11 +343,13 @@ type peerView struct {
 	// Title is the peer's name, or "Unnamed peer" without one.
 	Title string
 	Named bool
-	// Roles say how the peer is configured.
-	Roles []string
+	// Roles say how the peer is configured; Configured is set if it is.
+	Roles      []string
+	Configured bool
 	// State is stateReady for a connected peer, stateWarning for a
 	// bootstrap peer that is not connected and stateIdle for another one;
 	// StateLabel names it.
+	Connected         bool
 	State, StateLabel string
 	// SinceLabel says what Since is: when the peer connected or was last
 	// seen. Without a time, SinceLabel says it was not seen.
@@ -360,10 +363,10 @@ type peerView struct {
 	Addrs        []string
 	// AddrsFrom says where the addresses come from.
 	AddrsFrom string
-	// Weight is the peer's trust weight and WeightFrom the setting it comes
-	// from; NoInfluence is set for a weight of 0.
-	Weight, WeightFrom string
-	NoInfluence        bool
+	// Weight is the peer's trust weight; Default is set if it is
+	// trust.default_weight, and NoInfluence if it is 0.
+	Weight               string
+	Default, NoInfluence bool
 	// Held counts the verdicts held from the peer; HeldNote says how many
 	// count in decisions.
 	Held, HeldNote string
@@ -384,21 +387,22 @@ type rejection struct {
 // newPeerView describes the peer e, whose events count over window.
 func newPeerView(e *peerEntry, window time.Duration) peerView {
 	v := peerView{
-		Href:     "/peers/" + url.PathEscape(e.ID),
-		ID:       e.ID,
-		ShortID:  shortPeerID(e.ID),
-		Title:    e.Name,
-		Named:    e.Name != "",
-		Addrs:    e.Addrs,
-		Weight:   weight(e.Weight),
-		Accepted: e.Events.Accepted, Duplicates: e.Events.Duplicates, Rejected: e.rejected(),
+		Href:      "/peers/" + url.PathEscape(e.ID),
+		ID:        e.ID,
+		ShortID:   shortPeerID(e.ID),
+		Title:     e.Name,
+		Named:     e.Name != "",
+		Addrs:     e.Addrs,
+		Connected: e.Connected,
+		Weight:    weight(e.Weight),
+		Accepted:  e.Events.Accepted, Duplicates: e.Events.Duplicates, Rejected: e.rejected(),
 		Reasons: rejections(e.Events.Rejected),
 		Window:  windowName(window),
 	}
 	if !v.Named {
 		v.Title = "Unnamed peer"
 	}
-	v.Roles = roles(&e.Peer)
+	v.Roles, v.Configured = roles(&e.Peer), e.Bootstrap || e.Publisher
 	v.State, v.StateLabel, v.SinceLabel, v.Since = connection(&e.Peer)
 	if e.Latency > 0 {
 		v.Latency = e.Latency.Round(100 * time.Microsecond).String()
@@ -407,11 +411,7 @@ func newPeerView(e *peerEntry, window time.Duration) peerView {
 		v.DialError, v.DialFailedAt = e.DialError, stamp(e.DialFailedAt)
 	}
 	v.AddrsFrom = addrsFrom(&e.Peer)
-	v.WeightFrom = "trust.default_weight"
-	if e.Publisher {
-		v.WeightFrom = "trust.publishers"
-	}
-	v.NoInfluence = e.untrusted()
+	v.Default, v.NoInfluence = !e.Publisher, e.untrusted()
 	v.Held, v.HeldNote = heldText(e.verdicts)
 	return v
 }
@@ -532,6 +532,13 @@ func meshNotice(statuses []lifecycle.Status) string {
 		}
 	}
 	return ""
+}
+
+// peersContent reads the node's peers and returns the data of the peers
+// view under the request's filter, order and page.
+func (c *Console) peersContent(r *http.Request) any {
+	return buildPeers(peersInput{now: c.now(), self: c.node.PeerID, set: c.peerSet(),
+		query: parsePeersQuery(r.URL.Query()), notice: meshNotice(c.node.Status())})
 }
 
 // peerSet reads the node's peers; none if the node passes no function.

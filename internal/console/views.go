@@ -51,17 +51,29 @@ type item struct {
 func (c *Console) views() []view {
 	return []view{
 		{Path: "/", Title: "Overview", Fragment: "/api/overview", template: overviewTemplate, content: c.overviewContent},
+		{Path: "/peers", Title: "Peers", Fragment: "/api/peers", template: peersTemplate, content: c.peersContent,
+			item: &item{template: peerTemplate, content: c.peerContent,
+				missing: "This node knows no such peer: it is neither configured nor connected, and the node holds no verdict of it."}},
 	}
 }
 
 // Page templates: each is the shared layout with the page's content.
 var (
 	overviewTemplate = pageTemplate("overview.html")
+	peersTemplate    = pageTemplate("peers.html")
+	peerTemplate     = pageTemplate("peer.html")
 	notFoundTemplate = pageTemplate("notfound.html")
 )
 
 func pageTemplate(file string) *template.Template {
-	return template.Must(template.New(file).ParseFS(templateFiles, "templates/layout.html", "templates/"+file)).Lookup("layout")
+	return template.Must(template.New(file).Funcs(templateFuncs).ParseFS(templateFiles, "templates/layout.html", "templates/"+file)).
+		Lookup("layout")
+}
+
+// templateFuncs are the functions page templates may call.
+var templateFuncs = template.FuncMap{
+	// count formats a number with thousands separators.
+	"count": count,
 }
 
 // layoutPage is the data of the shared layout.

@@ -106,14 +106,13 @@ func TestBuildPeersListsEveryKnownPeer(t *testing.T) {
 	}{
 		{"alpha href", alpha.Href, "/peers/" + idAlpha},
 		{"alpha title", alpha.Title + "|" + alpha.ShortID, "alpha|12D3KooW…rAa1ph"},
-		{"alpha roles", strings.Join(alpha.Roles, ", "), "Bootstrap peer, Trusted publisher"},
+		{"alpha roles", strings.Join(alpha.Roles, ", ") + "|" + fmt.Sprint(alpha.Configured), "Bootstrap peer, Trusted publisher|true"},
 		{"alpha connection", alpha.State + "|" + alpha.StateLabel + "|" + alpha.SinceLabel + "|" + alpha.Since.Text,
 			"ready|Connected|since|2026-09-28 10:00:00 UTC"},
 		{"alpha latency", alpha.Latency, "12.3ms"},
 		{"alpha addresses", strings.Join(alpha.Addrs, " ") + "|" + alpha.AddrsFrom,
 			"/ip4/192.0.2.1/tcp/4001 /ip4/192.0.2.1/udp/4001/quic-v1|of the open connections"},
-		{"alpha trust", alpha.Weight + "|" + alpha.WeightFrom, "0.7|trust.publishers"},
-		{"alpha influence", alpha.NoInfluence, false},
+		{"alpha trust", alpha.Weight + "|" + fmt.Sprint(alpha.Default, alpha.NoInfluence), "0.7|false false"},
 		{"alpha verdicts", alpha.Held + "|" + alpha.HeldNote, "120|118 count in decisions"},
 		{"alpha events", fmt.Sprint(alpha.Accepted, alpha.Rejected, alpha.Duplicates, alpha.Reasons),
 			"57 3 4 [{invalid signature 2} {expired or dated in the future 1}]"},
@@ -125,7 +124,7 @@ func TestBuildPeersListsEveryKnownPeer(t *testing.T) {
 			"warning|Disconnected|last seen|2026-09-28 11:30:00 UTC"},
 		{"bravo dial", bravo.DialError + "|" + bravo.DialFailedAt.Text, "failed to dial: connection refused|2026-09-28 11:59:00 UTC"},
 		{"bravo addresses", strings.Join(bravo.Addrs, " ") + "|" + bravo.AddrsFrom, "/dns4/bravo.example.org/tcp/4001|from mesh.bootstrap"},
-		{"bravo trust", bravo.Weight + "|" + bravo.WeightFrom + "|" + fmt.Sprint(bravo.NoInfluence), "0|trust.default_weight|true"},
+		{"bravo trust", bravo.Weight + "|" + fmt.Sprint(bravo.Default, bravo.NoInfluence), "0|true true"},
 		{"bravo verdicts", bravo.Held + "|" + bravo.HeldNote, "None|"},
 		{"bravo events", fmt.Sprint(bravo.Accepted, bravo.Rejected, bravo.Reasons), "0 0 []"},
 
@@ -134,11 +133,12 @@ func TestBuildPeersListsEveryKnownPeer(t *testing.T) {
 			"idle|not connected since obied started|"},
 		{"charlie addresses", charlie.AddrsFrom, "none known: the peer is not in mesh.bootstrap, so this node does not dial it"},
 		{"charlie verdicts", charlie.Held + "|" + charlie.HeldNote, "1|counts in decisions"},
+		{"charlie trust", charlie.Weight + "|" + fmt.Sprint(charlie.Default, charlie.NoInfluence), "0.5|false false"},
 
 		// A connected peer nobody configured: no influence on decisions.
 		{"stray title", stray.Title + "|" + fmt.Sprint(stray.Named), "Unnamed peer|false"},
-		{"stray roles", strings.Join(stray.Roles, ", "), "Not configured"},
-		{"stray trust", stray.Weight + "|" + stray.WeightFrom + "|" + fmt.Sprint(stray.NoInfluence), "0|trust.default_weight|true"},
+		{"stray roles", strings.Join(stray.Roles, ", ") + "|" + fmt.Sprint(stray.Configured), "Not configured|false"},
+		{"stray trust", stray.Weight + "|" + fmt.Sprint(stray.Default, stray.NoInfluence), "0|true true"},
 		{"stray verdicts", stray.Held + "|" + stray.HeldNote, "2|none counts in decisions"},
 	} {
 		if fmt.Sprint(c.got) != fmt.Sprint(c.want) {

@@ -1,0 +1,99 @@
+{{define "content" -}}
+<h1>Peers</h1>
+<p class="lead">Every peer this node knows — configured in <code>mesh.bootstrap</code> or <code>trust.publishers</code>, or connected — and the weight it carries in decisions. Trust is set in the configuration file. <span data-live hidden>This page updates itself every 5 seconds.</span></p>
+<div class="refresh" data-refresh="{{.Fragment}}">
+{{template "region" .}}
+</div>
+{{- end}}
+
+{{define "region" -}}
+{{- with .Notice}}
+<p class="callout">{{.}}</p>
+{{- end}}
+<div class="list-head">
+  <nav class="filters" aria-label="Show peers">
+    <ul>
+      {{- range .Filters}}
+      <li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}} <span class="filter-count">{{count .Count}}</span></a></li>
+      {{- end}}
+    </ul>
+  </nav>
+  <p class="updated" data-tick>Updated <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time></p>
+</div>
+{{- if .Rows}}
+<table class="list peers">
+  <thead>
+    <tr>
+      {{- range .Columns}}
+      <th scope="col"{{with .Sort}} aria-sort="{{.}}"{{end}}><a href="{{.Href}}">{{.Label}}</a></th>
+      {{- end}}
+    </tr>
+  </thead>
+  <tbody>
+    {{- range .Rows}}
+    <tr>
+      <th scope="row">
+        <a class="peer-name" href="{{.Href}}">{{.Title}}</a>
+        <span class="peer-id mono" title="{{.ID}}">{{.ShortID}}</span>
+        <span class="roles">{{range .Roles}}<span class="role">{{.}}</span>{{end}}</span>
+        {{- with .Addrs}}
+        <ul class="addrs">{{range .}}<li>{{.}}</li>{{end}}</ul>
+        {{- end}}
+      </th>
+      <td>
+        <span class="cell-label">Connection</span>
+        <span class="peer-state" data-state="{{.State}}">{{.StateLabel}}</span>
+        <span class="cell-note">{{.SinceLabel}}{{if .Since.Text}} <time datetime="{{.Since.ISO}}">{{.Since.Text}}</time>{{end}}</span>
+        {{- if .DialError}}
+        <span class="cell-note">last dial failed <time datetime="{{.DialFailedAt.ISO}}">{{.DialFailedAt.Text}}</time></span>
+        {{- end}}
+      </td>
+      <td>
+        <span class="cell-label">Trust weight</span>
+        <span class="weight">{{.Weight}}</span>
+        <span class="cell-note">{{if .Default}}default weight{{else}}trust.publishers{{end}}</span>
+        {{- if .NoInfluence}}
+        <span class="badge">No influence on decisions</span>
+        {{- end}}
+      </td>
+      <td>
+        <span class="cell-label">Verdicts held</span>
+        <span class="weight">{{.Held}}</span>
+        {{- with .HeldNote}}
+        <span class="cell-note">{{.}}</span>
+        {{- end}}
+      </td>
+      <td>
+        <span class="cell-label">Events, {{.Window}}</span>
+        {{- if or .Accepted .Rejected}}
+        <span>{{count .Accepted}} accepted</span>
+        {{- if .Rejected}}
+        <span class="rejected">{{count .Rejected}} rejected</span>
+        <span class="cell-note">{{range $i, $r := .Reasons}}{{if $i}}, {{end}}{{count $r.Count}} {{$r.Reason}}{{end}}</span>
+        {{- end}}
+        {{- else}}
+        <span class="cell-note">None</span>
+        {{- end}}
+      </td>
+    </tr>
+    {{- end}}
+  </tbody>
+</table>
+<p class="pager-text">{{.Pager.Text}}</p>
+{{- if or .Pager.Prev .Pager.Next}}
+<nav class="pager" aria-label="Pages of peers">
+  {{- with .Pager.Prev}}
+  <a href="{{.}}" rel="prev">Previous page</a>
+  {{- end}}
+  {{- with .Pager.Next}}
+  <a href="{{.}}" rel="next">Next page</a>
+  {{- end}}
+</nav>
+{{- end}}
+{{- else}}
+<p class="empty">{{.Empty}}</p>
+{{- end}}
+{{- with .Others}}
+<p class="note">{{.}}</p>
+{{- end}}
+{{- end}}
