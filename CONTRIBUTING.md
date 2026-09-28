@@ -26,6 +26,8 @@ first — it is the binding technical baseline.
 | `make vuln`            | govulncheck against the Go vulnerability database                |
 | `make lint-workflows`  | actionlint on the CI workflows; checks both copies are identical |
 | `make test-privileged` | Tests including the `privileged` build tag (needs root)          |
+| `make fuzz`            | Every fuzz target for `FUZZTIME` each (default `30s`)            |
+| `make soak`            | The soak test: 3 nodes, 50 events/s for 30 min (not in CI)       |
 | `make ci`              | fmt-check + vet + lint + lint-workflows + test + vuln            |
 | `make clean`           | Removes `./bin/` including installed tools                       |
 
@@ -46,6 +48,8 @@ is a byte-identical copy for the public GitHub mirror — change both together;
   from `go.mod`.
 - **build linux/amd64, linux/arm64** — static `obied` and `obiectl` binaries,
   uploaded as build artifacts.
+- **fuzz** — `make fuzz FUZZTIME=30s`: every fuzz target mutates inputs
+  for 30 s (see [Fuzz testing](#fuzz-testing)).
 - **website** — `make -C website ci` for the website in `website/` (see
   [`website/README.md`](website/README.md)); its steps are skipped when
   nothing under `website/` changed.
@@ -218,10 +222,39 @@ go test -run='^$' -fuzz='^FuzzVerify$' -fuzztime=30s -parallel=2 ./pkg/obieproto
 Every plain `go test` — and therefore `make test` and `make ci` — runs each
 fuzz function once per seed-corpus input, like an ordinary table-driven test,
 without generating new inputs. That keeps the gate fast and turns every
-committed crash file into a permanent check. Long fuzz runs that mutate
-inputs are opt-in: run them manually as shown above when you change a
-decoder or parser. A `make fuzz` target for them follows with the hardening
-work package (WP-1667).
+committed crash file into a permanent check. Runs that mutate inputs are a
+separate target:
+
+```sh
+make fuzz                 # every target for 30 s, like the CI job "fuzz"
+make fuzz FUZZTIME=10m    # before a release, or after changing a parser
+```
+
+`make fuzz` finds every `func Fuzz…` in a `_test.go` file, so a new target
+is picked up without further wiring. The targets cover all input a node
+takes from outside: event decoding and validation (`FuzzDecode`),
+canonicalization (`FuzzTransform`), signature verification (`FuzzVerify`),
+the configuration file (`FuzzParse`), admin API requests (`FuzzRequests`)
+and the allow-list (`FuzzParseEntry`, `FuzzParseFile`). Before a release
+each runs for at least 10 minutes; see
+[`documentation/operations/performance.md`](documentation/operations/performance.md).
+
+## Soak test
+
+`make soak` runs `TestSoak` in `test/e2e` (build tag `soak`, so never part
+of `make test`): three nodes that trust each other receive 50 unique
+reports per second, spread evenly, for 30 minutes. It fails if an event
+does not reach every other node, if the 99th percentile of the propagation
+time is 2 s or more, if the live heap grows by more than 20 % after the
+warm-up (the first sixth of the run), or if a goroutine outlives the nodes
+(goleak in `TestMain`). Shorter or heavier runs:
+
+```sh
+make soak SOAKTIME=5m SOAKRATE=100
+```
+
+Record the results of a full run in
+[`documentation/operations/performance.md`](documentation/operations/performance.md).
 
 ## Commit messages
 

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -110,8 +111,14 @@ func readFile(path string) ([]Entry, error) {
 		return nil, fmt.Errorf("allow-list file: %w", err)
 	}
 	defer func() { _ = f.Close() }()
+	return parseFile(f, path)
+}
+
+// parseFile parses the allow-list file at path from r: one IP address or
+// CIDR range per line, blank lines and "#" comments ignored.
+func parseFile(r io.Reader, path string) ([]Entry, error) {
 	var out []Entry
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 256), maxFileLine)
 	for n := 1; sc.Scan(); n++ {
 		line, _, _ := strings.Cut(sc.Text(), "#")
