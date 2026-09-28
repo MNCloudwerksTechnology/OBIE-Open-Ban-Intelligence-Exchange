@@ -60,8 +60,12 @@ type Options struct {
 	// Reload receives a value whenever the configuration is to be reloaded
 	// (SIGHUP); nil never reloads.
 	Reload <-chan struct{}
+	// File is the configuration file cfg was read from (its Config is
+	// cfg), with the keys it sets; without one, the console marks every
+	// key as a default and reads no file.
+	File *config.File
 	// LoadConfig reads the configuration file again; required with Reload.
-	LoadConfig func() (*config.Config, error)
+	LoadConfig func() (*config.File, error)
 	// Env is how the allow-list learns the host's addresses; the zero
 	// value uses the real host.
 	Env sovereignty.Env
@@ -120,7 +124,11 @@ type Endpoints struct {
 func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Options) error {
 	log := logs.Logger(Component)
 	startedAt := time.Now()
-	loads := newConfigLoads(startedAt, time.Now)
+	running := opts.File
+	if running == nil || running.Config != cfg {
+		running = &config.File{Config: cfg}
+	}
+	loads := newConfigLoads(running, startedAt, time.Now)
 
 	if err := prepareStateDir(cfg.Node.StateDir, log); err != nil {
 		return err
@@ -289,7 +297,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		opts.Testing.Started(Endpoints{Mesh: multiaddrStrings(m.ListenAddrs()), Metrics: opsServer.Addr().String()})
 	}
 
-	rl := &reloader{running: cfg, self: id.PeerID(), load: opts.LoadConfig, env: env,
+	rl := &reloader{running: running, self: id.PeerID(), load: opts.LoadConfig, env: env,
 		engine: engine, gate: gate, mesh: m, audit: auditLog, loads: loads, log: logs.Logger(reloadComponent),
 		console: func(c config.Console) { con.Apply(consoleConfig(c, opts.Testing)) }}
 	waitForShutdown(ctx, opts.Reload, rl)

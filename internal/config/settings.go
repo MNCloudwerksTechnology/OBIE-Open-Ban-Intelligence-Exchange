@@ -92,6 +92,36 @@ func Settings() []Setting {
 	return slices.Clone(settings)
 }
 
+// Lookup returns the setting key; ok is false if key names no setting.
+func Lookup(key string) (s Setting, ok bool) {
+	i := slices.IndexFunc(settings, func(s Setting) bool { return s.Key == key })
+	if i < 0 {
+		return Setting{}, false
+	}
+	return settings[i], true
+}
+
+// Reload returns the file a successful reload from f to next leaves
+// running: the values of next, and whether it sets them, for the settings
+// a reload applies; those of f for the others. Neither f nor next changes.
+func (f *File) Reload(next *File) *File {
+	cfg := *f.Config
+	out := &File{Path: next.Path, Config: &cfg, set: lineMap{}}
+	for _, s := range settings {
+		from := f
+		if s.Applied == OnReload {
+			from = next
+			to, _ := cfg.field(s.Key)
+			value, _ := next.Config.field(s.Key)
+			to.Set(value)
+		}
+		if line, ok := from.set[s.Key]; ok {
+			out.set[s.Key] = line
+		}
+	}
+	return out
+}
+
 // Value is the value of a key as the configuration file spells it.
 type Value struct {
 	// List is set for a list, whose Items are its entries; Text is any
@@ -176,8 +206,21 @@ func spell(v reflect.Value) string {
 // Changed returns the keys whose values differ between a and b, in the
 // order of Settings. An empty list and a missing one are the same.
 func Changed(a, b *Config) []string {
+	return changed(a, b, func(Setting) bool { return true })
+}
+
+// ChangedOnRestart returns the keys that only a restart applies whose
+// values differ between a and b, in the order of Settings.
+func ChangedOnRestart(a, b *Config) []string {
+	return changed(a, b, func(s Setting) bool { return s.Applied == OnRestart })
+}
+
+func changed(a, b *Config, among func(Setting) bool) []string {
 	var keys []string
 	for _, s := range settings {
+		if !among(s) {
+			continue
+		}
 		va, _ := a.Value(s.Key)
 		vb, _ := b.Value(s.Key)
 		if va.Text != vb.Text || !slices.Equal(va.Items, vb.Items) {

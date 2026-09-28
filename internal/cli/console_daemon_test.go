@@ -298,7 +298,7 @@ func TestConsoleOverviewEndToEnd(t *testing.T) {
 	eventually(t, "the overview shows the reload", func() bool {
 		f := fragment()
 		return strings.Contains(f, ", by a reload</dd>") && !strings.Contains(f, "was rejected") &&
-			strings.Contains(f, "<span class=\"condition-level\">Note:</span> Changes to log wait for a restart")
+			strings.Contains(f, "<span class=\"condition-level\">Note:</span> Changes to log.level wait for a restart")
 	})
 
 	cancel()

@@ -216,10 +216,11 @@ func (c *cluster) writeConfig(t *testing.T, n *node, bootstrap []*node) {
 // returning once every subsystem runs.
 func (n *node) start(t *testing.T) {
 	t.Helper()
-	cfg, err := config.Load(n.config)
+	file, err := config.LoadFile(n.config)
 	if err != nil {
 		t.Fatalf("node %s: %v", n.name, err)
 	}
+	cfg := file.Config
 	n.logFile, err = os.OpenFile(n.logs, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		t.Fatal(err)
@@ -240,7 +241,8 @@ func (n *node) start(t *testing.T) {
 	logs := logging.New(n.logFile, level)
 	go func() {
 		done <- daemon.Run(ctx, cfg, logs, daemon.Options{
-			LoadConfig: func() (*config.Config, error) { return config.Load(n.config) },
+			File:       file,
+			LoadConfig: func() (*config.File, error) { return config.LoadFile(n.config) },
 			Testing:    hooks,
 		})
 	}()

@@ -128,6 +128,68 @@ func TestChangedNamesTheKeysThatDiffer(t *testing.T) {
 	}
 }
 
+func TestChangedOnRestart(t *testing.T) {
+	a, b := Default(), Default()
+	b.Node.Mode = ModeEnforce
+	b.Decision.DefaultTTL = Duration(time.Hour)
+	b.Decision.MaxTTL = Duration(2 * time.Hour)
+	b.Log.Level = "debug"
+	if got, want := ChangedOnRestart(&a, &b), []string{"decision.default_ttl", "log.level"}; !slices.Equal(got, want) {
+		t.Errorf("ChangedOnRestart = %v, want %v", got, want)
+	}
+}
+
+func TestLookup(t *testing.T) {
+	if s, ok := Lookup("decision.default_ttl"); !ok || s.Applied != OnRestart || s.Section() != "decision" {
+		t.Errorf("Lookup(decision.default_ttl) = %+v, %v", s, ok)
+	}
+	if s, ok := Lookup("decision"); ok {
+		t.Errorf("Lookup(decision) = %+v, want no setting", s)
+	}
+}
+
+// TestFileReload: a reload takes the values and the set marks of exactly
+// the settings it applies from the new file; the others keep running as
+// they were loaded (ADR 0024).
+func TestFileReload(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, data string) *File {
+		t.Helper()
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		f, err := LoadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return f
+	}
+	running := write("old.yaml", "node:\n  mode: enforce\nlog:\n  level: debug\ntrust:\n  local_weight: 0.5\n")
+	next := write("new.yaml", "decision:\n  quorum: 3\n  default_ttl: 1d\nlog:\n  level: warn\nallowlist:\n  cidrs: [198.51.100.0/24]\n")
+	got := running.Reload(next)
+
+	c := got.Config
+	if c.Node.Mode != ModeObserve || c.Decision.Quorum != 3 || c.Trust.LocalWeight != 1 || !slices.Equal(c.Allowlist.CIDRs, []string{"198.51.100.0/24"}) {
+		t.Errorf("reloaded settings: mode %s, quorum %d, local weight %v, cidrs %v", c.Node.Mode, c.Decision.Quorum, c.Trust.LocalWeight, c.Allowlist.CIDRs)
+	}
+	if c.Log.Level != "debug" || c.Decision.DefaultTTL != Default().Decision.DefaultTTL {
+		t.Errorf("restart settings changed: log %s, default_ttl %s", c.Log.Level, c.Decision.DefaultTTL)
+	}
+	for key, want := range map[string]bool{"node.mode": false, "decision.quorum": true, "trust.local_weight": false,
+		"allowlist.cidrs": true, "log.level": true, "decision.default_ttl": false} {
+		if got.Sets(key) != want {
+			t.Errorf("Sets(%s) = %v, want %v", key, !want, want)
+		}
+	}
+	if got.Path != next.Path {
+		t.Errorf("Path = %s, want %s", got.Path, next.Path)
+	}
+	if running.Config.Node.Mode != ModeEnforce || !running.Sets("node.mode") || next.Config.Log.Level != "warn" {
+		t.Error("Reload changed its files")
+	}
+}
+
 func TestLoadFileRecordsTheKeysItSets(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "obie.yaml")
 	data := "node:\n  mode: enforce\nmesh:\n  rate_limit:\n    peer:\n      burst: 300\ntrust:\n  publishers: []\n"

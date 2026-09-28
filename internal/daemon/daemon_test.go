@@ -101,13 +101,13 @@ func newReloadFixture(t *testing.T) *reloadFixture {
 	t.Cleanup(func() { _ = f.engine.Stop(context.Background()) })
 	next := config.Default()
 	f.next = &next
-	f.rl = &reloader{running: &running, self: self, env: noHost, engine: f.engine, gate: f.gate, mesh: f.mesh, log: log,
-		load: func() (*config.Config, error) {
+	f.rl = &reloader{running: &config.File{Config: &running}, self: self, env: noHost, engine: f.engine, gate: f.gate, mesh: f.mesh,
+		log: log, load: func() (*config.File, error) {
 			if f.err != nil {
 				return nil, f.err
 			}
 			c := *f.next
-			return &c, nil
+			return &config.File{Config: &c}, nil
 		}}
 	return f
 }
@@ -159,10 +159,13 @@ func TestReloadApplies(t *testing.T) {
 	if d.State != decision.StateAllowed || d.Sovereignty.Source != sovereignty.SourceFile || d.Publishers[0].Weight != 0.5 {
 		t.Errorf("after reload: %+v", d)
 	}
-	if f.gate.Mode() != config.ModeEnforce || f.rl.running.Node.Mode != config.ModeEnforce || len(f.mesh.trust.Publishers) != 1 {
-		t.Errorf("mode %s / running %s / mesh trust %+v", f.gate.Mode(), f.rl.running.Node.Mode, f.mesh.trust)
+	if f.gate.Mode() != config.ModeEnforce || f.rl.running.Config.Node.Mode != config.ModeEnforce || len(f.mesh.trust.Publishers) != 1 {
+		t.Errorf("mode %s / running %s / mesh trust %+v", f.gate.Mode(), f.rl.running.Config.Node.Mode, f.mesh.trust)
 	}
-	if !strings.Contains(f.logs.String(), `"msg":"configuration changes that need a restart were not applied","keys":["log"]`) {
+	if f.rl.running.Config.Log.Level != "info" {
+		t.Errorf("running log level %s after a reload", f.rl.running.Config.Log.Level)
+	}
+	if !strings.Contains(f.logs.String(), `"msg":"configuration changes that need a restart were not applied","keys":["log.level"]`) {
 		t.Errorf("no restart warning:\n%s", f.logs)
 	}
 	if got := f.engine.Decisions(decision.StateBlock); len(got) != 0 {
@@ -174,7 +177,7 @@ func TestReloadApplies(t *testing.T) {
 // restart, so a reload keeps protecting them rather than the new ones.
 func TestReloadKeepsMeshAddresses(t *testing.T) {
 	f := newReloadFixture(t)
-	f.rl.running.Mesh.Bootstrap = []string{"/ip4/198.18.0.21/tcp/4001/p2p/" + self}
+	f.rl.running.Config.Mesh.Bootstrap = []string{"/ip4/198.18.0.21/tcp/4001/p2p/" + self}
 	f.put(t, "198.18.0.21", self)
 	f.put(t, "198.18.0.22", self)
 	f.next.Mesh.Bootstrap = []string{"/ip4/198.18.0.22/tcp/4001/p2p/" + self}
@@ -200,8 +203,8 @@ func TestReloadAppliesConsole(t *testing.T) {
 	if err := f.rl.reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(applied) != 1 || applied[0] != f.next.Console || f.rl.running.Console != f.next.Console {
-		t.Errorf("console applied %+v, running %+v; want %+v once", applied, f.rl.running.Console, f.next.Console)
+	if len(applied) != 1 || applied[0] != f.next.Console || f.rl.running.Config.Console != f.next.Console {
+		t.Errorf("console applied %+v, running %+v; want %+v once", applied, f.rl.running.Config.Console, f.next.Console)
 	}
 	if strings.Contains(f.logs.String(), "need a restart") {
 		t.Errorf("console changes reported as needing a restart:\n%s", f.logs)
@@ -231,11 +234,12 @@ func TestReloadRejects(t *testing.T) {
 			if err := f.rl.reload(context.Background()); err == nil {
 				t.Fatal("reload succeeded")
 			}
-			if consoleApplied || f.rl.running.Console.Enabled {
+			if consoleApplied || f.rl.running.Config.Console.Enabled {
 				t.Error("a rejected reload switched the console")
 			}
-			if f.gate.Mode() != config.ModeObserve || f.rl.running.Node.Mode != config.ModeObserve || len(f.rl.running.Allowlist.CIDRs) != 0 {
-				t.Errorf("running configuration changed: mode %s, %+v", f.gate.Mode(), f.rl.running.Allowlist)
+			running := f.rl.running.Config
+			if f.gate.Mode() != config.ModeObserve || running.Node.Mode != config.ModeObserve || len(running.Allowlist.CIDRs) != 0 {
+				t.Errorf("running configuration changed: mode %s, %+v", f.gate.Mode(), running.Allowlist)
 			}
 			if d := f.explain(t, "198.18.0.12"); d.State != decision.StateBlock {
 				t.Errorf("decision changed: %+v", d)
@@ -255,11 +259,13 @@ func TestReloadRecordsLoads(t *testing.T) {
 	if got := f.rl.loads.record(); !got.LoadedAt.IsZero() {
 		t.Errorf("record of no configLoads = %+v", got)
 	}
-	f.rl.loads.reloaded(nil) // a nil configLoads records nothing
+	f.rl.loads.reloaded(f.rl.running, nil) // a nil configLoads records nothing
 	started := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
 	clock := started
-	f.rl.loads = newConfigLoads(started, func() time.Time { return clock })
-	if got := f.rl.loads.record(); !got.LoadedAt.Equal(started) || got.Reloaded || got.Rejected != nil || got.RestartKeys != nil {
+	atStart := f.rl.running
+	f.rl.loads = newConfigLoads(atStart, started, func() time.Time { return clock })
+	if got := f.rl.loads.record(); !got.LoadedAt.Equal(started) || got.Reloaded || got.Rejected != nil || got.RestartKeys != nil ||
+		got.File != atStart {
 		t.Errorf("at start: %+v", got)
 	}
 
@@ -269,7 +275,8 @@ func TestReloadRecordsLoads(t *testing.T) {
 		t.Fatal("reload succeeded")
 	}
 	got := f.rl.loads.record()
-	if !got.LoadedAt.Equal(started) || got.Reloaded || !got.RejectedAt.Equal(clock) || !errors.Is(got.Rejected, f.err) {
+	if !got.LoadedAt.Equal(started) || got.Reloaded || !got.RejectedAt.Equal(clock) || !errors.Is(got.Rejected, f.err) ||
+		got.File != atStart {
 		t.Errorf("after a rejected reload: %+v", got)
 	}
 
@@ -277,16 +284,21 @@ func TestReloadRecordsLoads(t *testing.T) {
 	f.err = nil
 	f.next.Log.Level = "debug"
 	f.next.Metrics.Listen = "127.0.0.1:9999"
+	f.next.Decision.Quorum = 3
 	if err := f.rl.reload(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	got = f.rl.loads.record()
 	if !got.LoadedAt.Equal(clock) || !got.Reloaded || !got.RejectedAt.IsZero() || got.Rejected != nil ||
-		strings.Join(got.RestartKeys, ",") != "metrics,log" {
+		strings.Join(got.RestartKeys, ",") != "metrics.listen,log.level" {
 		t.Errorf("after a reload with restart keys: %+v", got)
 	}
+	if got.File != f.rl.running || got.File.Config.Decision.Quorum != 3 || got.File.Config.Log.Level != "info" ||
+		atStart.Config.Decision.Quorum != 2 {
+		t.Errorf("running configuration after the reload: %+v", got.File.Config)
+	}
 	got.RestartKeys[0] = "changed"
-	if f.rl.loads.record().RestartKeys[0] != "metrics" {
+	if f.rl.loads.record().RestartKeys[0] != "metrics.listen" {
 		t.Error("record shares its restart keys")
 	}
 
@@ -336,24 +348,21 @@ func TestConsoleFactsConversion(t *testing.T) {
 	}
 }
 
-func TestRestartKeys(t *testing.T) {
-	a, b := config.Default(), config.Default()
-	if keys := restartKeys(&a, &b); len(keys) != 0 {
-		t.Errorf("unchanged: %v", keys)
+// TestReloadKeepsDefaultTTL: decision.default_ttl only takes effect on a
+// restart, so a reload keeps it running and reports it (ADR 0024).
+func TestReloadKeepsDefaultTTL(t *testing.T) {
+	f := newReloadFixture(t)
+	f.next.Decision.DefaultTTL = config.Duration(time.Hour)
+	f.next.Decision.Threshold = 1
+	if err := f.rl.reload(context.Background()); err != nil {
+		t.Fatal(err)
 	}
-	b.Node.Mode = config.ModeEnforce
-	b.Trust.DefaultWeight = 0.5
-	b.Decision.Quorum = 3
-	b.Allowlist.CIDRs = []string{"198.18.0.0/24"}
-	if keys := restartKeys(&a, &b); len(keys) != 0 {
-		t.Errorf("reloadable changes: %v", keys)
+	running := f.rl.running.Config.Decision
+	if running.DefaultTTL != config.Default().Decision.DefaultTTL || running.Threshold != 1 {
+		t.Errorf("running decision settings = %+v", running)
 	}
-	b.Node.StateDir = "/srv/obie"
-	b.Mesh.Bootstrap = []string{"/ip4/198.18.0.1/tcp/4001/p2p/" + self}
-	b.Admin.Socket = "/run/x.sock"
-	b.Metrics.Listen = "127.0.0.1:1"
-	if got := strings.Join(restartKeys(&a, &b), ","); got != "node.state_dir,admin,mesh.bootstrap,metrics" {
-		t.Errorf("restart keys = %s", got)
+	if !strings.Contains(f.logs.String(), `"keys":["decision.default_ttl"]`) {
+		t.Errorf("no restart warning:\n%s", f.logs)
 	}
 }
 
