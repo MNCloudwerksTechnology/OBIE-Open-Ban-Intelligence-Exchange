@@ -92,7 +92,26 @@ type fixture struct {
 	pub   *publisher
 	clock *clock
 	key   *identity.Key
-	logs  *bytes.Buffer
+	logs  *syncBuffer
+}
+
+// syncBuffer is a bytes.Buffer the store's goroutines can log into while
+// the test reads it.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 func newFixture(t *testing.T, allowlist ...string) *fixture {
@@ -103,7 +122,7 @@ func newFixture(t *testing.T, allowlist ...string) *fixture {
 		t.Fatal(err)
 	}
 	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
-	var logs bytes.Buffer
+	var logs syncBuffer
 	log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	dbDir := filepath.Join(dir, "db")
 	db := store.New(dbDir, log, store.Options{Now: c.Now})
