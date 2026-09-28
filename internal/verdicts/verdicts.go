@@ -164,16 +164,78 @@ func (s *Service) Report(ctx context.Context, r Report) (Result, error) {
 	logHash := hashEvidence(r.EvidenceLines)
 	r.EvidenceLines = nil
 
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := s.opts.Now()
+	plan, err := s.plan(r, logHash, now)
+	if err != nil {
+		return Result{}, err
+	}
+	ev, prev := plan.Verdict, plan.Current
+	if plan.Coalesced {
+		s.coalesce(prev, r.Events)
+		s.log.Info("report coalesced into the current verdict", "event", prev.ID, "indicator", ev.Key(),
+			"events", r.Events)
+		return Result{Event: prev, Coalesced: true}, nil
+	}
+
+	var supersedes string
+	if prev != nil {
+		supersedes = prev.ID
+		ev.Evidence.Events = addEvents(ev.Evidence.Events, prev.Evidence.Events, s.takePending(ev.Key(), prev.ID))
+		if ev.Evidence.LogHash == "" {
+			ev.Evidence.LogHash = prev.Evidence.LogHash
+		}
+	}
+	if err := s.publish(ctx, ev); err != nil {
+		return Result{}, err
+	}
+	delete(s.pending, ev.Key())
+	s.log.Info("verdict issued", "event", ev.ID, "indicator", ev.Key(), "action", ev.Verdict.SuggestedAction,
+		"events", ev.Evidence.Events, "ttl", (time.Duration(ev.Verdict.TTLSeconds) * time.Second).String(),
+		"supersedes", supersedes, "log_hash", ev.Evidence.LogHash)
+	return Result{Event: ev, Supersedes: supersedes}, nil
+}
+
+// Plan is what a report would do, as Check tells it.
+type Plan struct {
+	// Verdict is the verdict the report would issue, unsigned: its
+	// indicator normalized, its lifetime, confidence and action resolved.
+	// A refresh would add Current's events to it.
+	Verdict *obieproto.Event
+	// Current is this node's active verdict on the indicator, which the
+	// report would refresh or be coalesced into; nil if there is none.
+	Current *obieproto.Event
+	// Coalesced is set if the report would be coalesced into Current,
+	// issued less than CoalesceWindow ago, rather than issue a verdict.
+	Coalesced bool
+}
+
+// Check applies every rule Report applies to r and tells what the report
+// would do, without issuing or publishing anything; its errors are those
+// Report would return. The console checks a report with it before asking
+// to confirm it (ADR 0026).
+func (s *Service) Check(r Report) (Plan, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.plan(r, hashEvidence(r.EvidenceLines), s.opts.Now())
+}
+
+// plan builds and checks the verdict r asks for at now and finds this
+// node's active verdict it would refresh or be coalesced into. The caller
+// holds mu, so the active verdict is still the current one when it is
+// refreshed.
+func (s *Service) plan(r Report, logHash string, now time.Time) (Plan, error) {
 	ind := r.Indicator
 	if err := ind.Normalize(); err != nil {
-		return Result{}, fmt.Errorf("%w: %w", ErrInvalid, err)
+		return Plan{}, fmt.Errorf("%w: %w", ErrInvalid, err)
 	}
 	if err := s.checkAllowlist(ind); err != nil {
-		return Result{}, err
+		return Plan{}, err
 	}
 	ttl, err := s.ttl(r.TTL)
 	if err != nil {
-		return Result{}, err
+		return Plan{}, err
 	}
 	confidence := DefaultConfidence
 	if r.Confidence != nil {
@@ -183,13 +245,10 @@ func (s *Service) Report(ctx context.Context, r Report) (Result, error) {
 	if action == "" {
 		action = obieproto.ActionBan
 	}
-	if len(r.MITRE) == 0 {
-		r.MITRE = nil
+	mitre := r.MITRE
+	if len(mitre) == 0 {
+		mitre = nil
 	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	now := s.opts.Now()
 	ev := &obieproto.Event{
 		ID:        obieproto.NewID(now),
 		Spec:      obieproto.Spec,
@@ -199,44 +258,24 @@ func (s *Service) Report(ctx context.Context, r Report) (Result, error) {
 		Protocol:  r.Protocol,
 		Evidence:  &obieproto.Evidence{Events: r.Events, Reason: r.Reason, LogHash: logHash},
 		Verdict:   &obieproto.Verdict{SuggestedAction: action, Confidence: confidence, TTLSeconds: int64(ttl / time.Second)},
-		MITRE:     r.MITRE,
+		MITRE:     mitre,
 		Publisher: obieproto.Publisher{PeerID: s.PeerID()},
 	}
 	// The report is validated on its own before counts are merged, so an
 	// invalid report never touches the active verdict.
 	if err := s.validate(ev, now); err != nil {
-		return Result{}, err
+		return Plan{}, err
 	}
 
 	s.prunePending(now)
 	prev, err := s.activeVerdict(ind.Key(), now)
 	if err != nil {
-		return Result{}, err
+		return Plan{}, err
 	}
 	// issued_at is truncated to whole seconds, so the window is extended by
 	// one second to never let two verdicts be less than CoalesceWindow apart.
-	if prev != nil && now.Before(prev.IssuedAt.Add(CoalesceWindow+time.Second)) {
-		s.coalesce(prev, r.Events)
-		s.log.Info("report coalesced into the current verdict", "event", prev.ID, "indicator", ind.Key(),
-			"events", r.Events)
-		return Result{Event: prev, Coalesced: true}, nil
-	}
-
-	var supersedes string
-	if prev != nil {
-		supersedes = prev.ID
-		ev.Evidence.Events = addEvents(ev.Evidence.Events, prev.Evidence.Events, s.takePending(ind.Key(), prev.ID))
-		if ev.Evidence.LogHash == "" {
-			ev.Evidence.LogHash = prev.Evidence.LogHash
-		}
-	}
-	if err := s.publish(ctx, ev); err != nil {
-		return Result{}, err
-	}
-	delete(s.pending, ind.Key())
-	s.log.Info("verdict issued", "event", ev.ID, "indicator", ind.Key(), "action", action,
-		"events", ev.Evidence.Events, "ttl", ttl.String(), "supersedes", supersedes, "log_hash", ev.Evidence.LogHash)
-	return Result{Event: ev, Supersedes: supersedes}, nil
+	coalesced := prev != nil && now.Before(prev.IssuedAt.Add(CoalesceWindow+time.Second))
+	return Plan{Verdict: ev, Current: prev, Coalesced: coalesced}, nil
 }
 
 // Revoke withdraws this node's active verdict named by r and returns the

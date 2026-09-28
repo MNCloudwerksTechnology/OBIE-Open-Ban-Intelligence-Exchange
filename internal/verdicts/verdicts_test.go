@@ -382,6 +382,9 @@ func TestReportRefused(t *testing.T) {
 			if _, err := f.svc.Report(context.Background(), r); !errors.Is(err, ErrRefused) {
 				t.Errorf("Report(%v) error = %v, want ErrRefused", ind, err)
 			}
+			if _, err := f.svc.Check(r); !errors.Is(err, ErrRefused) {
+				t.Errorf("Check(%v) error = %v, want ErrRefused", ind, err)
+			}
 		})
 	}
 	if f.pub.count() != 0 {
@@ -413,10 +416,41 @@ func TestReportInvalid(t *testing.T) {
 			if _, err := f.svc.Report(context.Background(), r); !errors.Is(err, ErrInvalid) {
 				t.Errorf("Report() error = %v, want ErrInvalid", err)
 			}
+			if _, err := f.svc.Check(r); !errors.Is(err, ErrInvalid) {
+				t.Errorf("Check() error = %v, want ErrInvalid", err)
+			}
 		})
 	}
 	if f.pub.count() != 0 {
 		t.Errorf("published %d events for invalid reports", f.pub.count())
+	}
+}
+
+// TestCheckPlansAReport: Check tells what a report would do — the
+// verdict with its lifetime resolved, a first one, a refresh or a report
+// coalesced into the current verdict — and issues nothing (ADR 0026).
+func TestCheckPlansAReport(t *testing.T) {
+	f := newFixture(t, "85.20.0.0/16")
+	long := sshReport(attacker, 3)
+	long.TTL = 365 * day
+	plan, err := f.svc.Check(long)
+	if err != nil || plan.Current != nil || plan.Coalesced || plan.Verdict.Verdict.TTLSeconds != int64(30*day/time.Second) ||
+		plan.Verdict.Verdict.Confidence != DefaultConfidence || plan.Verdict.Indicator.Scope != "/32" {
+		t.Fatalf("Check(first) = %+v, %v", plan, err)
+	}
+	if f.pub.count() != 0 {
+		t.Fatalf("Check published %d events", f.pub.count())
+	}
+	current := f.report(t, sshReport(attacker, 5)).Event
+	if plan, err := f.svc.Check(sshReport(attacker, 1)); err != nil || !plan.Coalesced || plan.Current.ID != current.ID {
+		t.Errorf("Check(within the window) = %+v, %v; want coalesced into %s", plan, err, current.ID)
+	}
+	f.clock.Advance(CoalesceWindow + 2*time.Second)
+	if plan, err := f.svc.Check(sshReport(attacker, 1)); err != nil || plan.Coalesced || plan.Current.ID != current.ID {
+		t.Errorf("Check(after the window) = %+v, %v; want a refresh of %s", plan, err, current.ID)
+	}
+	if f.pub.count() != 1 {
+		t.Errorf("published %d events, want only the report's", f.pub.count())
 	}
 }
 

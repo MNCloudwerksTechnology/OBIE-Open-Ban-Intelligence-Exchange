@@ -127,10 +127,21 @@ func TestSetOverrideRejectsInvalid(t *testing.T) {
 	}
 	for name, o := range tests {
 		t.Run(name, func(t *testing.T) {
-			if err := db.SetOverride(o); !errors.Is(err, ErrInvalid) {
-				t.Errorf("SetOverride = %v, want ErrInvalid", err)
+			// CheckOverride refuses what SetOverride refuses, with the same
+			// error, and stores nothing.
+			checked := CheckOverride(o, clk.Now())
+			err := db.SetOverride(o)
+			if !errors.Is(err, ErrInvalid) || !errors.Is(checked, ErrInvalid) || !strings.Contains(err.Error(), checked.Error()) {
+				t.Errorf("SetOverride = %v, CheckOverride = %v, want the same ErrInvalid", err, checked)
 			}
 		})
+	}
+	valid := Override{Indicator: ind, Action: ForceAllow, Note: "partner", ExpiresAt: clk.Now().Add(time.Hour)}
+	if err := CheckOverride(valid, clk.Now()); err != nil {
+		t.Errorf("CheckOverride(valid) = %v", err)
+	}
+	if list, err := db.Overrides(clk.Now()); err != nil || len(list) != 0 {
+		t.Errorf("Overrides after the checks = %v, %v; want none", list, err)
 	}
 }
 

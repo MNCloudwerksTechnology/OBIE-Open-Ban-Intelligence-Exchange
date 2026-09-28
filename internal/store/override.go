@@ -66,6 +66,15 @@ func (s *DB) SetOverride(o Override) error {
 	return nil
 }
 
+// CheckOverride returns the error SetOverride would return at now for an
+// override it cannot hold — an unknown action, an invalid indicator, a
+// note that is too long, an expiry that has passed — without storing
+// anything; the console checks an override with it before asking to
+// confirm it (ADR 0026).
+func CheckOverride(o Override, now time.Time) error {
+	return normalizeOverride(&o, now)
+}
+
 func normalizeOverride(o *Override, now time.Time) error {
 	if o.Action != ForceAllow && o.Action != ForceBlock {
 		return fmt.Errorf("%w override: action %q", ErrInvalid, o.Action)
