@@ -98,7 +98,7 @@ func TestOverridesPage(t *testing.T) {
 		`<td><span class="cell-label">Rule</span> <span class="override-kind" data-kind="block">Always block</span></td>`,
 		`<td><span class="cell-label">Set</span> <time datetime="2026-09-28T10:00:00Z"><span class="day">2026-09-28</span> 10:00:00 UTC</time></td>`,
 		`<td><span class="cell-label">Ends</span> <time datetime="2026-09-29T10:00:00Z"><span class="day">2026-09-29</span> 10:00:00 UTC</time></td>`,
-		`<span class="no-effect">No effect: it is a protected address (built in: special-purpose addresses, 192.168.0.0/16), which not even an override blocks.</span>`,
+		`<span class="no-effect">No effect: it is protected by the built-in range 192.168.0.0/16 (Private), which not even an override blocks.</span>`,
 		`<td><span class="cell-label">Note</span> <span class="cell-note">No note</span></td>`,
 		`<a href="/allowlist">Is an address protected?</a>`)
 	if strings.Contains(page, "data-refresh") {
@@ -196,7 +196,7 @@ func TestAllowlistLookup(t *testing.T) {
 	wantAll(t, "the lookup of a protected address", page,
 		`<input id="lookup-address" name="address" type="search" value="192.168.1.10"`,
 		`<div class="lookup-answer" data-state="protected">`,
-		`<p class="lookup-title">Yes: 192.168.1.10 is protected by built in: special-purpose addresses 192.168.0.0/16. It is never blocked, not even by an always-block override.</p>`,
+		`<p class="lookup-title">Yes: 192.168.1.10 is protected by the built-in range 192.168.0.0/16 (Private). It is never blocked, not even by an always-block override.</p>`,
 		`<dd><strong>Protected address</strong>: A protected allow-list entry (built in: special-purpose addresses) covers it.`,
 		`<dt>Matching</dt>`,
 		`<dd><code>192.168.0.0/16</code></dd>`,

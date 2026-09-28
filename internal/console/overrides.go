@@ -225,8 +225,7 @@ func noEffectText(r *Ruling) string {
 	case r.Rule == ruleForceAllow:
 		return "No effect: the always-allow override on " + matchText(r.Match) + " covers it and wins."
 	case r.Rule == ruleAllowlist && r.Protected:
-		return "No effect: it is a protected address (" + sourceText(r.Source) + ", " + r.Match +
-			"), which not even an override blocks."
+		return "No effect: it is protected by " + protectingText(r) + ", which not even an override blocks."
 	default:
 		return "No effect: " + r.Reason + "."
 	}

@@ -292,8 +292,8 @@ func newLookupView(pr *Protection) *lookupView {
 	}
 	switch {
 	case r.Rule == ruleAllowlist && r.Protected:
-		v.State, v.Answer = lookupProtected, fmt.Sprintf("Yes: %s is protected by %s %s. It is never blocked, "+
-			"not even by an always-block override.", addr, sourceText(r.Source), r.Match)
+		v.State, v.Answer = lookupProtected, fmt.Sprintf("Yes: %s is protected by %s. It is never blocked, "+
+			"not even by an always-block override.", addr, protectingText(r))
 	case r.Rule == ruleAllowlist:
 		v.State, v.Answer = lookupAllowed, fmt.Sprintf("Yes: the allow-list entry %s (%s) covers %s, so it is never "+
 			"blocked, whatever the verdicts. Only an always-block override on it would overrule the entry.",
@@ -322,6 +322,20 @@ func newLookupView(pr *Protection) *lookupView {
 		v.Others = append(v.Others, allowRow{Range: rangeText(e.Range), Label: label})
 	}
 	return v
+}
+
+// protectingText names the protected allow-list entry of the ruling r, e.g.
+// "the built-in range 10.0.0.0/8 (Private)", with the class the allow-list
+// view lists a built-in range under.
+func protectingText(r *Ruling) string {
+	if r.Source != "builtin" {
+		return sourceText(r.Source) + " " + r.Match
+	}
+	s := "the built-in range " + r.Match
+	if class, _ := classOf(r.Label); class != "" {
+		s += " (" + class + ")"
+	}
+	return s
 }
 
 // untilText says until when an override lasts.

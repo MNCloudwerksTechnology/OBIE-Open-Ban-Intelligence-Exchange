@@ -66,7 +66,7 @@ func TestBuildOverrides(t *testing.T) {
 		block.NoEffect != "" {
 		t.Errorf("force-block row = %+v", block)
 	}
-	if beaten.NoEffect != "No effect: it is a protected address (built in: special-purpose addresses, 192.168.0.0/16), "+
+	if beaten.NoEffect != "No effect: it is protected by the built-in range 192.168.0.0/16 (Private), "+
 		"which not even an override blocks." {
 		t.Errorf("overruled force-block: %q", beaten.NoEffect)
 	}
@@ -155,7 +155,7 @@ func TestNoEffectText(t *testing.T) {
 	}{
 		{Ruling{Rule: ruleForceAllow, Match: "cidr:198.51.100.0/24"}, "No effect: the always-allow override on 198.51.100.0/24 covers it and wins."},
 		{Ruling{Rule: ruleAllowlist, Protected: true, Source: "bootstrap", Match: "192.0.2.4/32"},
-			"No effect: it is a protected address (a bootstrap peer's address, 192.0.2.4/32), which not even an override blocks."},
+			"No effect: it is protected by a bootstrap peer's address 192.0.2.4/32, which not even an override blocks."},
 		{Ruling{Rule: "other", Reason: "something else"}, "No effect: something else."},
 	} {
 		if got := noEffectText(&tc.r); got != tc.want {
@@ -332,7 +332,7 @@ func TestLookupNamesTheRule(t *testing.T) {
 		{"protected", Protection{Range: netip.MustParsePrefix("192.168.1.10/32"), Ruling: Ruling{Effect: "allow", Rule: ruleAllowlist,
 			Source: "builtin", Protected: true, Match: "192.168.0.0/16", Label: "private (RFC 1918)"},
 			Overlapping: []AllowEntry{{Range: netip.MustParsePrefix("192.168.0.0/16"), Source: "builtin", Label: "private (RFC 1918)"}}},
-			lookupProtected, "Yes: 192.168.1.10 is protected by built in: special-purpose addresses 192.168.0.0/16. It is never blocked, " +
+			lookupProtected, "Yes: 192.168.1.10 is protected by the built-in range 192.168.0.0/16 (Private). It is never blocked, " +
 				"not even by an always-block override.", nil},
 		{"operator entry", Protection{Range: netip.MustParsePrefix("185.0.3.7/32"), Decidable: true, Ruling: Ruling{Effect: "allow",
 			Rule: ruleAllowlist, Source: "config", Match: "185.0.3.0/24"}, Overlapping: []AllowEntry{cfgEntry, fileEntry}},

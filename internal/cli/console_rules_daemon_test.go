@@ -69,7 +69,7 @@ func TestConsoleRulesEndToEnd(t *testing.T) {
 	wantIn("the overrides view", get("/overrides"),
 		`<li><a href="/overrides" aria-current="page">In effect <span class="filter-count">3</span></a></li>`,
 		`<a class="mono address" href="/decisions/10.0.0.5" data-copy>10.0.0.5</a>`,
-		`<span class="no-effect">No effect: it is a protected address (built in: special-purpose addresses, 10.0.0.0/8), which not even an override blocks.</span>`,
+		`<span class="no-effect">No effect: it is protected by the built-in range 10.0.0.0/8 (Private), which not even an override blocks.</span>`,
 		`<td><span class="cell-label">Note</span> oops</td>`,
 		`<span class="override-kind" data-kind="allow">Always allow</span>`,
 		`<td><span class="cell-label">Note</span> partner</td>`,
@@ -88,7 +88,7 @@ func TestConsoleRulesEndToEnd(t *testing.T) {
 		`<span class="mono">line 3</span>`)
 	wantIn("the lookup of a protected address", get("/allowlist?address=10.0.0.5"),
 		`<div class="lookup-answer" data-state="protected">`,
-		`Yes: 10.0.0.5 is protected by built in: special-purpose addresses 10.0.0.0/8.`)
+		`Yes: 10.0.0.5 is protected by the built-in range 10.0.0.0/8 (Private).`)
 	wantIn("the lookup of a force-blocked address", get("/allowlist?address=185.0.3.9"),
 		`<div class="lookup-answer" data-state="blocked">`,
 		`No: your always-block override blocks 185.0.3.9, until `,
