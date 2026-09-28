@@ -105,6 +105,9 @@ func TestValidateRules(t *testing.T) {
 		{"cidr bad mask", func(c *Config) { c.Allowlist.CIDRs = []string{"10.0.0.0/33"} }, "allowlist.cidrs[0]", "invalid CIDR"},
 		{"cidr bad address", func(c *Config) { c.Allowlist.CIDRs = []string{"10.0.0.0/8", "300.0.0.0/8"} }, "allowlist.cidrs[1]", "invalid CIDR"},
 		{"cidr host bits", func(c *Config) { c.Allowlist.CIDRs = []string{"10.1.2.3/8"} }, "allowlist.cidrs[0]", "did you mean 10.0.0.0/8?"},
+		{"files valid", func(c *Config) { c.Allowlist.Files = []string{"/etc/obie/allow.txt"} }, "", ""},
+		{"files relative", func(c *Config) { c.Allowlist.Files = []string{"/etc/obie/a.txt", "allow.txt"} }, "allowlist.files[1]", "absolute path"},
+		{"files empty", func(c *Config) { c.Allowlist.Files = []string{""} }, "allowlist.files[0]", "must not be empty"},
 
 		// enforce
 		{"backend nftables", func(c *Config) { c.Enforce.Backend = BackendNFTables }, "", ""},

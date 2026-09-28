@@ -40,14 +40,11 @@ func (m *Mesh) Peers() []Peer {
 			continue // disconnected meanwhile
 		}
 		p := Peer{
-			ID:          id.String(),
-			Latency:     h.Peerstore().LatencyEWMA(id),
-			TrustWeight: m.opts.Trust.DefaultWeight,
-			Bootstrap:   m.isBootstrap(id),
+			ID:        id.String(),
+			Latency:   h.Peerstore().LatencyEWMA(id),
+			Bootstrap: m.isBootstrap(id),
 		}
-		if pub, ok := m.publishers[id]; ok {
-			p.Name, p.TrustWeight = pub.Name, pub.Weight
-		}
+		p.Name, p.TrustWeight = m.trustOf(id)
 		for _, c := range conns {
 			p.Addrs = append(p.Addrs, c.RemoteMultiaddr().String())
 			if opened := c.Stat().Opened; p.ConnectedSince.IsZero() || opened.Before(p.ConnectedSince) {

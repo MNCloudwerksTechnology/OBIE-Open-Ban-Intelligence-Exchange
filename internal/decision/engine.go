@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/netip"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -43,6 +45,8 @@ const (
 	CauseRefresh = "refresh"
 	// CauseSnapshot: the block existed when the subscriber subscribed.
 	CauseSnapshot = "snapshot"
+	// CauseReload: the configuration was reloaded.
+	CauseReload = "reload"
 )
 
 // Change is an entry of the block change stream.
@@ -54,7 +58,8 @@ type Change struct {
 	// its State is StateNone and Reason says why.
 	Decision Decision
 	// Cause is what triggered the evaluation: a store.Reason, CauseStartup,
-	// CauseRefresh or CauseSnapshot.
+	// CauseRefresh, CauseSnapshot or CauseReload (and enforce.CauseMode for
+	// the changes the mode gate sends).
 	Cause string
 }
 
@@ -64,6 +69,9 @@ type Options struct {
 	RefreshInterval time.Duration
 	// Now is the clock; time.Now when nil.
 	Now func() time.Time
+	// Allowlist is the effective allow-list. Nil allows nothing beyond the
+	// overrides; obied always passes one with the built-in ranges.
+	Allowlist *sovereignty.Allowlist
 }
 
 func (o Options) withDefaults() Options {
@@ -80,10 +88,15 @@ func (o Options) withDefaults() Options {
 // indicator with active verdicts in the store, re-evaluates indicators the
 // store reports as changed, and streams block changes to subscribers.
 type Engine struct {
-	store  store.Store
-	policy Policy
-	log    *slog.Logger
-	opts   Options
+	store store.Store
+	log   *slog.Logger
+	opts  Options
+
+	// rulesMu guards policy and rules, which Reload replaces and the
+	// worker updates with the overrides in the store.
+	rulesMu sync.RWMutex
+	policy  Policy
+	rules   Rules
 
 	// mu guards decisions: the decision of every indicator with active
 	// verdicts, by key, without Publishers.
@@ -95,7 +108,10 @@ type Engine struct {
 	// the worker.
 	dirtyMu sync.Mutex
 	dirty   map[string]string
-	wake    chan struct{}
+	// overridesDirty is set when an override may have changed; unlike a
+	// cause in dirty, a later verdict on the same key cannot hide it.
+	overridesDirty bool
+	wake           chan struct{}
 
 	// workMu serializes evaluations, so decisions are applied in the order
 	// the store state was read.
@@ -114,11 +130,13 @@ type Engine struct {
 	done        chan struct{}
 }
 
-// New returns the decision engine over st under policy p.
+// New returns the decision engine over st under policy p and the allow-list
+// in opts.
 func New(st store.Store, p Policy, log *slog.Logger, opts Options) *Engine {
 	return &Engine{
 		store:     st,
 		policy:    p,
+		rules:     Rules{Allowlist: opts.Allowlist},
 		log:       log,
 		opts:      opts.withDefaults(),
 		decisions: map[string]Decision{},
@@ -224,17 +242,114 @@ func (e *Engine) Subscribe(fn func(Change)) (unsubscribe func()) {
 	}
 }
 
-// Explain evaluates the normalized indicator ind now, with the
-// contribution of every publisher. An indicator without active verdicts
-// yields StateNone. Only verdicts on ind itself count: an address inside a
-// CIDR range with verdicts is explained on its own.
+// Explain decides on the normalized indicator ind now, with the
+// contribution of every publisher and the overrides as stored at this
+// moment. An indicator without active verdicts and rules yields
+// StateNone. Only verdicts on ind itself count: an address inside a CIDR
+// range with verdicts is explained on its own.
 func (e *Engine) Explain(ind obieproto.Indicator) (Decision, error) {
 	now := e.opts.Now()
 	verdicts, err := e.store.ActiveVerdicts(ind.Key(), now)
 	if err != nil {
 		return Decision{}, fmt.Errorf("read verdicts of %s: %w", ind.Key(), err)
 	}
-	return Evaluate(ind, verdicts, e.policy, now), nil
+	overrides, err := e.store.Overrides(now)
+	if err != nil {
+		return Decision{}, fmt.Errorf("read overrides: %w", err)
+	}
+	p, r := e.current()
+	r.Overrides = sovereignty.NewOverrides(overrides)
+	return Decide(ind, verdicts, p, r, now), nil
+}
+
+// Reload replaces the policy and the allow-list and re-decides every kept
+// indicator and every force-block, notifying block changes with
+// CauseReload.
+func (e *Engine) Reload(p Policy, allow *sovereignty.Allowlist) {
+	e.workMu.Lock()
+	defer e.workMu.Unlock()
+	e.rulesMu.Lock()
+	e.policy, e.rules.Allowlist = p, allow
+	e.rulesMu.Unlock()
+	if _, err := e.refreshOverrides(e.opts.Now()); err != nil {
+		e.log.Error("reading overrides failed; using the previous ones", "error", err)
+	}
+	keys := e.keptKeys()
+	_, r := e.current()
+	for _, o := range r.Overrides.ForceBlocks() {
+		keys = append(keys, o.Indicator.Key())
+	}
+	slices.Sort(keys)
+	e.reevaluateAll(slices.Compact(keys), func(string) string { return CauseReload })
+}
+
+// current returns the policy and rules in effect.
+func (e *Engine) current() (Policy, Rules) {
+	e.rulesMu.RLock()
+	defer e.rulesMu.RUnlock()
+	return e.policy, e.rules
+}
+
+// decide decides on ind under the current policy and rules.
+func (e *Engine) decide(ind obieproto.Indicator, verdicts []*obieproto.Event, now time.Time) Decision {
+	p, r := e.current()
+	return Decide(ind, verdicts, p, r, now)
+}
+
+// refreshOverrides reads the overrides in effect from the store and returns
+// the ranges of the force-allow overrides that changed. Callers hold
+// workMu.
+func (e *Engine) refreshOverrides(now time.Time) ([]netip.Prefix, error) {
+	list, err := e.store.Overrides(now)
+	if err != nil {
+		return nil, err
+	}
+	next := sovereignty.NewOverrides(list)
+	e.rulesMu.Lock()
+	defer e.rulesMu.Unlock()
+	changed := e.rules.Overrides.Changed(next)
+	e.rules.Overrides = next
+	return changed, nil
+}
+
+// keptKeys returns the keys of the kept decisions.
+func (e *Engine) keptKeys() []string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	keys := make([]string, 0, len(e.decisions))
+	for key := range e.decisions {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// overlapping returns the keys of the kept decisions and of the
+// force-blocks whose indicator overlaps any of ranges. A force-block that a
+// force-allow overruled is not kept, but must be re-decided when the
+// force-allow goes.
+func (e *Engine) overlapping(ranges []netip.Prefix) []string {
+	if len(ranges) == 0 {
+		return nil
+	}
+	overlaps := func(ind obieproto.Indicator) bool {
+		p, err := sovereignty.PrefixOf(ind)
+		return err == nil && slices.ContainsFunc(ranges, p.Overlaps)
+	}
+	var keys []string
+	_, r := e.current()
+	for _, o := range r.Overrides.ForceBlocks() {
+		if overlaps(o.Indicator) {
+			keys = append(keys, o.Indicator.Key())
+		}
+	}
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	for key, d := range e.decisions {
+		if overlaps(d.Indicator) {
+			keys = append(keys, key)
+		}
+	}
+	return keys
 }
 
 // Decisions returns the kept decisions in state, or all for "", ordered by
@@ -261,11 +376,19 @@ func (e *Engine) list(state State, hideExpired bool) []Decision {
 	return out
 }
 
-// load decides on every indicator with active verdicts.
+// load reads the overrides and decides on every indicator with active
+// verdicts or a force-block.
 func (e *Engine) load(ctx context.Context) error {
 	e.workMu.Lock()
 	defer e.workMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	now := e.opts.Now()
+	if _, err := e.refreshOverrides(now); err != nil {
+		return fmt.Errorf("load overrides: %w", err)
+	}
+	loaded := map[string]bool{}
 	page := store.Page{Limit: store.MaxPageLimit}
 	for {
 		if err := ctx.Err(); err != nil {
@@ -276,13 +399,21 @@ func (e *Engine) load(ctx context.Context) error {
 			return fmt.Errorf("load indicators: %w", err)
 		}
 		for _, it := range items.Items {
-			e.apply(it.Key, Evaluate(it.Indicator, it.Verdicts, e.policy, now), CauseStartup)
+			loaded[it.Key] = true
+			e.apply(it.Key, e.decide(it.Indicator, it.Verdicts, now), CauseStartup)
 		}
 		if items.Next == "" {
-			return nil
+			break
 		}
 		page.After = items.Next
 	}
+	_, r := e.current()
+	for _, o := range r.Overrides.ForceBlocks() {
+		if key := o.Indicator.Key(); !loaded[key] {
+			e.apply(key, e.decide(o.Indicator, nil, now), CauseStartup)
+		}
+	}
+	return nil
 }
 
 // markDirty is the store subscription: it only queues the indicator, so the
@@ -290,6 +421,9 @@ func (e *Engine) load(ctx context.Context) error {
 func (e *Engine) markDirty(c store.Change) {
 	e.dirtyMu.Lock()
 	e.dirty[c.Key] = string(c.Reason)
+	if c.Reason == store.ReasonOverride || c.Reason == store.ReasonExpiry {
+		e.overridesDirty = true
+	}
 	e.dirtyMu.Unlock()
 	select {
 	case e.wake <- struct{}{}:
@@ -325,18 +459,53 @@ func (e *Engine) processDirty() {
 	e.dirtyMu.Lock()
 	dirty := e.dirty
 	e.dirty = make(map[string]string, len(dirty))
+	overridesChanged := e.overridesDirty
+	e.overridesDirty = false
 	e.dirtyMu.Unlock()
 
 	keys := make([]string, 0, len(dirty))
 	for key := range dirty {
 		keys = append(keys, key)
 	}
+	if overridesChanged {
+		ranges, err := e.refreshOverrides(e.opts.Now())
+		if err != nil {
+			e.log.Error("reading overrides failed; keeping the previous decisions and retrying", "error", err)
+			e.remark(dirty)
+			e.dirtyMu.Lock()
+			e.overridesDirty = true
+			e.dirtyMu.Unlock()
+			e.setErr(fmt.Errorf("read overrides: %w", err))
+			return
+		}
+		// A force-allow covers every indicator it overlaps.
+		for _, key := range e.overlapping(ranges) {
+			if _, ok := dirty[key]; !ok {
+				dirty[key] = string(store.ReasonOverride)
+				keys = append(keys, key)
+			}
+		}
+	}
 	slices.Sort(keys)
 	e.reevaluateAll(keys, func(key string) string { return dirty[key] })
 }
 
+// remark marks keys dirty again, without waking the worker, unless a newer
+// change was marked meanwhile.
+func (e *Engine) remark(keys map[string]string) {
+	e.dirtyMu.Lock()
+	defer e.dirtyMu.Unlock()
+	for key, cause := range keys {
+		if _, newer := e.dirty[key]; !newer {
+			e.dirty[key] = cause
+		}
+	}
+}
+
 // refreshExpired re-evaluates the blocks that reached their expiry, e.g.
-// because it was capped by decision.max_ttl while their verdicts live on.
+// because it was capped by decision.max_ttl while their verdicts live on,
+// and the decisions whose override ended, so an expired force-allow does
+// not wait for the store's sweep.
 func (e *Engine) refreshExpired() {
 	e.workMu.Lock()
 	defer e.workMu.Unlock()
@@ -344,7 +513,9 @@ func (e *Engine) refreshExpired() {
 	var due []string
 	e.mu.RLock()
 	for key, d := range e.decisions {
-		if d.State == StateBlock && !now.Before(d.ExpiresAt) {
+		blockEnded := d.State == StateBlock && !now.Before(d.ExpiresAt)
+		overrideEnded := !d.Sovereignty.ExpiresAt.IsZero() && !now.Before(d.Sovereignty.ExpiresAt)
+		if blockEnded || overrideEnded {
 			due = append(due, key)
 		}
 	}
@@ -368,11 +539,7 @@ func (e *Engine) reevaluateAll(keys []string, cause func(key string) string) {
 		if firstErr == nil {
 			firstErr = err
 		}
-		e.dirtyMu.Lock()
-		if _, newer := e.dirty[key]; !newer {
-			e.dirty[key] = cause(key)
-		}
-		e.dirtyMu.Unlock()
+		e.remark(map[string]string{key: cause(key)})
 	}
 	e.setErr(firstErr)
 }
@@ -387,28 +554,34 @@ func (e *Engine) reevaluate(key, cause string) error {
 	}
 	ind, ok := e.indicatorOf(key, verdicts)
 	if !ok {
-		return nil // no verdicts before or now, e.g. an override was set: nothing to decide
+		return nil // no verdicts or override before or now: nothing to decide
 	}
-	e.apply(key, Evaluate(ind, verdicts, e.policy, now), cause)
+	e.apply(key, e.decide(ind, verdicts, now), cause)
 	return nil
 }
 
-// indicatorOf returns the indicator with key, from its verdicts or else
-// from the kept decision.
+// indicatorOf returns the indicator with key, from its verdicts, the kept
+// decision or its override.
 func (e *Engine) indicatorOf(key string, verdicts []*obieproto.Event) (obieproto.Indicator, bool) {
 	if len(verdicts) > 0 {
 		return verdicts[0].Indicator, true
 	}
 	e.mu.RLock()
-	defer e.mu.RUnlock()
 	d, ok := e.decisions[key]
-	return d.Indicator, ok
+	e.mu.RUnlock()
+	if ok {
+		return d.Indicator, true
+	}
+	_, r := e.current()
+	o, ok := r.Overrides.Get(key)
+	return o.Indicator, ok
 }
 
 // apply keeps d as the decision of key and notifies subscribers if the
-// block changed. Callers hold workMu.
+// block changed. Decisions without active verdicts are kept only while
+// they block (force-block). Callers hold workMu.
 func (e *Engine) apply(key string, d Decision, cause string) {
-	active := len(d.Publishers) > 0
+	active := len(d.Publishers) > 0 || d.State == StateBlock
 	d.Publishers = nil
 	e.mu.Lock()
 	prev, had := e.decisions[key]
@@ -439,7 +612,8 @@ func (e *Engine) apply(key string, d Decision, cause string) {
 // blockChanged reports whether a block differs in what an enforcer or an
 // operator would notice.
 func blockChanged(a, b *Decision) bool {
-	return !a.ExpiresAt.Equal(b.ExpiresAt) || a.Score != b.Score || a.Contributors != b.Contributors || a.Autoblock != b.Autoblock
+	return !a.ExpiresAt.Equal(b.ExpiresAt) || a.Score != b.Score || a.Contributors != b.Contributors ||
+		a.Autoblock != b.Autoblock || a.Sovereignty.Rule != b.Sovereignty.Rule
 }
 
 func (e *Engine) notify(c Change) {

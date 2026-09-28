@@ -15,6 +15,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/daemon"
 	"github.com/MNCloudwerksTechnology/obie/internal/logging"
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
 
@@ -30,10 +31,11 @@ const (
 
 // RunDaemon runs obied with args and returns the process exit code. If the
 // first argument names an offline command (keygen, identity), it runs that
-// command. Otherwise it loads and validates the configuration file; with
-// --check-config it stops there. Otherwise it runs the node until SIGTERM or
-// SIGINT and then shuts down gracefully; a second signal terminates the
-// process immediately.
+// command. Otherwise it loads and validates the configuration file and the
+// allow-list files; with --check-config it stops there. Otherwise it runs
+// the node until SIGTERM or SIGINT and then shuts down gracefully; a second
+// signal terminates the process immediately. SIGHUP reloads the
+// configuration.
 func RunDaemon(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
@@ -41,11 +43,41 @@ func RunDaemon(args []string, stdout, stderr io.Writer) int {
 		<-ctx.Done()
 		stop() // Restore default signal handling for a second signal.
 	}()
-	return runDaemon(ctx, args, stdout, stderr)
+	return runDaemonWith(ctx, reloadSignals(ctx), args, stdout, stderr)
 }
 
-// runDaemon is RunDaemon with the shutdown signal delivered as ctx.
+// reloadSignals delivers SIGHUP until ctx is done; signals arriving while
+// a reload is pending are coalesced.
+func reloadSignals(ctx context.Context) <-chan struct{} {
+	hup := make(chan os.Signal, 1)
+	signal.Notify(hup, syscall.SIGHUP)
+	reload := make(chan struct{}, 1)
+	go func() {
+		defer signal.Stop(hup)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-hup:
+				select {
+				case reload <- struct{}{}:
+				default: // a reload is already pending
+				}
+			}
+		}
+	}()
+	return reload
+}
+
+// runDaemon is RunDaemon with the shutdown signal delivered as ctx and
+// without reloads.
 func runDaemon(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	return runDaemonWith(ctx, nil, args, stdout, stderr)
+}
+
+// runDaemonWith is RunDaemon with the shutdown signal delivered as ctx and
+// the reload signal as reload.
+func runDaemonWith(ctx context.Context, reload <-chan struct{}, args []string, stdout, stderr io.Writer) int {
 	const program = "obied"
 	if len(args) > 0 {
 		if cmd, ok := daemonCommands[args[0]]; ok {
@@ -61,6 +93,9 @@ func runDaemon(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	}
 
 	cfg, err := config.Load(*configPath)
+	if err == nil {
+		_, err = sovereignty.ReadFiles(cfg.Allowlist.Files)
+	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", program, *configPath, err)
 		return ExitInvalidConfig
@@ -78,7 +113,8 @@ func runDaemon(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	logs := logging.New(stderr, level)
 	log := logs.Logger(daemon.Component)
 	log.Info("configuration loaded", "path", *configPath, "mode", cfg.Node.Mode)
-	if err := daemon.Run(ctx, cfg, logs); err != nil {
+	opts := daemon.Options{Reload: reload, LoadConfig: func() (*config.Config, error) { return config.Load(*configPath) }}
+	if err := daemon.Run(ctx, cfg, logs, opts); err != nil {
 		log.Error("obied failed", "error", err)
 		return ExitFailure
 	}

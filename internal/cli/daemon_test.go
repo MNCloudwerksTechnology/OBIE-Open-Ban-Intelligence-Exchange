@@ -22,6 +22,12 @@ func TestRunDaemonCheckConfig(t *testing.T) {
 	invalid := writeConfig(t, "node:\n  mode: block\ndecision:\n  quorum: 0\n")
 	unknownKey := writeConfig(t, "lgo:\n  level: debug\n")
 	missing := filepath.Join(t.TempDir(), "missing.yaml")
+	badAllowFile := filepath.Join(t.TempDir(), "allow.txt")
+	if err := os.WriteFile(badAllowFile, []byte("198.18.0.0/24\nnot-a-cidr\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	badAllowlist := writeConfig(t, "allowlist:\n  files: ["+badAllowFile+"]\n")
+	missingAllowlist := writeConfig(t, "allowlist:\n  files: ["+missing+"]\n")
 
 	tests := []struct {
 		name       string
@@ -38,6 +44,10 @@ func TestRunDaemonCheckConfig(t *testing.T) {
 			wantStderr: []string{"lgo (line 1): unknown key"}},
 		{name: "missing file", args: []string{"--config", missing, "--check-config"}, wantCode: ExitInvalidConfig,
 			wantStderr: []string{"read config", "no such file"}},
+		{name: "invalid allow-list file", args: []string{"--config", badAllowlist, "--check-config"}, wantCode: ExitInvalidConfig,
+			wantStderr: []string{badAllowFile + ":2: invalid address \"not-a-cidr\""}},
+		{name: "missing allow-list file", args: []string{"--config", missingAllowlist, "--check-config"}, wantCode: ExitInvalidConfig,
+			wantStderr: []string{"allow-list file", "no such file"}},
 		{name: "help lists flags", args: []string{"--help"}, wantCode: ExitOK,
 			wantStderr: []string{"-check-config", "-config file", "/etc/obie/obie.yaml", "-version"}},
 		{name: "version needs no config", args: []string{"--version", "--config", missing}, wantCode: ExitOK,

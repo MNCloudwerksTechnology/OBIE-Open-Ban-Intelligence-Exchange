@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -30,7 +31,11 @@ var commands = map[string]command{
 	"identity":   {summary: "show the node's peer ID and key fingerprint", run: runCtlIdentity},
 	"peers":      {summary: "list the connected mesh peers", run: runPeers},
 	"explain":    {summary: "explain the decision on an address or CIDR range", run: runExplain},
-	"decisions":  {summary: "list the decisions (--state block for the blocked indicators)", run: runDecisions},
+	"decisions":  {summary: "list the decisions (--state block|none|allowed)", run: runDecisions},
+	"allow":      {summary: "force-allow an address or range: never block it", run: runAllow},
+	"block":      {summary: "force-block an address or range, whatever its score", run: runBlock},
+	"overrides":  {summary: "list the operator overrides", run: runOverrides},
+	"unoverride": {summary: "remove the override of an address or range", run: runUnoverride},
 	"report":     {summary: "publish a signed verdict on an attacking address or CIDR range", run: runReport},
 	"revoke":     {summary: "revoke this node's verdict by event ID, address or CIDR range", run: runRevoke},
 	"indicators": {summary: "list the indicators with active verdicts", run: runIndicators},
@@ -77,7 +82,7 @@ func ctlUsage(fs *flag.FlagSet) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		_, _ = fmt.Fprintf(out, "  %-10s %s\n", name, commands[name].summary)
+		_, _ = fmt.Fprintf(out, "  %-11s %s\n", name, commands[name].summary)
 	}
 	_, _ = fmt.Fprintf(out, "\nFlags:\n")
 	fs.PrintDefaults()
@@ -141,12 +146,22 @@ func writeJSON(w io.Writer, v any) error {
 	return err
 }
 
-// writeStatusTable prints the node summary followed by one row per
-// subsystem, sorted by name.
+// modeText describes the node mode prominently.
+var modeText = map[string]string{
+	string(config.ModeObserve): "OBSERVE (decisions are logged, nothing is blocked)",
+	string(config.ModeEnforce): "ENFORCE (blocks are sent to the enforcer)",
+}
+
+// writeStatusTable prints the node summary, the mode first, followed by
+// one row per subsystem, sorted by name.
 func writeStatusTable(w io.Writer, s *admin.StatusResponse) error {
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	mode, ok := modeText[s.Mode]
+	if !ok {
+		mode = strings.ToUpper(s.Mode)
+	}
+	_, _ = fmt.Fprintf(tw, "Mode:\t%s\n", mode)
 	_, _ = fmt.Fprintf(tw, "Version:\t%s\n", s.Version)
-	_, _ = fmt.Fprintf(tw, "Mode:\t%s\n", s.Mode)
 	_, _ = fmt.Fprintf(tw, "Uptime:\t%s\n", s.Uptime().Truncate(time.Second))
 	_, _ = fmt.Fprintf(tw, "Ready:\t%s\n", yesNo(s.Ready))
 	if err := tw.Flush(); err != nil {

@@ -2,9 +2,14 @@
 #
 # Every key is optional: an omitted key takes the default shown here, so this
 # file configures exactly the same node as an empty one. Validate changes
-# before restarting the node:
+# before restarting or reloading the node:
 #
 #   obied --config /etc/obie/obie.yaml --check-config
+#
+# SIGHUP makes obied re-read this file: node.mode, trust, decision and
+# allowlist (including the allowlist.files) take effect at once; changes to
+# other keys need a restart and are logged as such. An invalid file is
+# rejected and the running configuration kept.
 #
 # Unknown keys, values of the wrong type and invalid values are errors that
 # name the offending key path (e.g. "trust.publishers[1].weight"); obied
@@ -17,8 +22,9 @@ node:
   # Directory for persistent node state (identity key; the event store lives
   # in <state_dir>/db, created with mode 0700).
   state_dir: /var/lib/obie
-  # observe: decide and record verdicts, but never block anything.
+  # observe: decide, log and show decisions, but never block anything.
   # enforce: additionally push blocks to the enforcement backend.
+  # The mode changes only here: edit it and send obied SIGHUP (or restart).
   mode: observe
   # Longest time a graceful shutdown (SIGTERM/SIGINT) may take before obied
   # gives up waiting for its subsystems and exits non-zero (> 0).
@@ -96,10 +102,25 @@ decision:
   default_ttl: 7d
 
 allowlist:
-  # Networks that are never blocked, in CIDR notation without host bits,
-  # e.g. [192.0.2.0/24, 2001:db8::/32]. Add your own management networks.
-  # `obiectl report` refuses to publish verdicts on them.
+  # Addresses that are never blocked, whatever the mesh reports. Built in,
+  # always: loopback, private (RFC 1918), CGNAT (100.64.0.0/10), link-local,
+  # ULA (fc00::/7), multicast, unspecified and the documentation ranges;
+  # also this node's own listen/interface addresses and the IPs of the
+  # mesh.bootstrap peers. An indicator overlapping an allow-listed range is
+  # "allowed" regardless of its score. An operator force-block override
+  # (`obiectl block`) beats the entries below, but never the built-in,
+  # own or bootstrap addresses. `obiectl allow` beats everything. `obiectl
+  # report` refuses to publish verdicts on allow-listed indicators.
+  #
+  # Networks in CIDR notation without host bits, e.g. [192.0.2.0/24,
+  # 2001:db8::/32]. Add your own management networks, and this node's
+  # public address if it is not on an interface (e.g. behind NAT).
   cidrs: []
+  # Absolute paths of files with one IP address or CIDR range per line
+  # (blank lines and # comments allowed), e.g. [/etc/obie/allowlist.txt].
+  # They are re-read on SIGHUP; a missing file or an invalid line keeps
+  # obied from starting, and a reload with one is rejected.
+  files: []
 
 enforce:
   # dryrun: log what would be blocked. nftables: manage an nftables set.

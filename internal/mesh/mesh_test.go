@@ -276,6 +276,19 @@ func TestBootstrapMesh(t *testing.T) {
 	if d := b.Detail(); d != "1 peers connected (1/1 bootstrap peers)" {
 		t.Errorf("B Detail() = %q", d)
 	}
+	// A reload replaces names and weights.
+	if err := b.SetTrust(config.Trust{Publishers: []config.Publisher{{PeerID: idA.PeerID(), Name: "alpha2", Weight: 0.2}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := peerIDs(b)[idA.PeerID()]; got.Name != "alpha2" || got.TrustWeight != 0.2 {
+		t.Errorf("B's view of A after SetTrust = %+v", got)
+	}
+	if err := b.SetTrust(config.Trust{Publishers: []config.Publisher{{PeerID: "nope"}}}); err == nil {
+		t.Error("SetTrust with an invalid peer ID succeeded")
+	}
+	if got := peerIDs(b)[idA.PeerID()]; got.Name != "alpha2" {
+		t.Errorf("a failed SetTrust changed the trust: %+v", got)
+	}
 
 	if err := a.Stop(context.Background()); err != nil {
 		t.Fatal(err)

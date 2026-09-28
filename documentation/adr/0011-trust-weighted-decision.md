@@ -62,7 +62,8 @@ an address is or is not blocked.
   interval, and the subsystem reports not ready until a pass succeeds.
 - **Sovereignty placeholder:** the allow-list and operator overrides are not
   applied yet (WP #1660). Explanations carry a `sovereignty` section that
-  states this, so the API shape does not change when they are.
+  states this, so the API shape does not change when they are. *Applied
+  since [ADR 0013](0013-local-sovereignty.md).*
 - **Admin API:** `GET /v1/decisions/{indicator}` explains one indicator
   (an IPv4/IPv6 address, a CIDR range or an indicator key such as
   `ipv4:203.0.113.7`; an indicator without verdicts yields decision `none`);
@@ -81,7 +82,8 @@ an address is or is not blocked.
 
 - One peer never blocks under the defaults (quorum 2, default weight 0).
 - Changing trust or decision settings needs a restart, which rebuilds every
-  decision at startup.
+  decision at startup. *Superseded by [ADR 0013](0013-local-sovereignty.md):
+  SIGHUP applies them.*
 - An explanation is computed at request time and may, for at most one store
   sweep interval, differ from the kept summary; both converge on the next
   notification.

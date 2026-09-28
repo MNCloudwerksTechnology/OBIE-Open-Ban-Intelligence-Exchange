@@ -75,6 +75,9 @@ func (c *Config) validate(lines lineMap, decodeProblems problems) error {
 	for i, cidr := range c.Allowlist.CIDRs {
 		v.cidr(fmt.Sprintf("allowlist.cidrs[%d]", i), cidr)
 	}
+	for i, file := range c.Allowlist.Files {
+		v.absPath(fmt.Sprintf("allowlist.files[%d]", i), file, false)
+	}
 
 	v.oneOf("enforce.backend", string(c.Enforce.Backend), string(BackendDryRun), string(BackendNFTables))
 	if c.Enforce.MaxEntries < 1 {

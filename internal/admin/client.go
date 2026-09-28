@@ -85,22 +85,22 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 }
 
 func (c *Client) post(ctx context.Context, path string, in, out any) error {
-	body, err := json.Marshal(in)
-	if err != nil {
-		return fmt.Errorf("POST %s: encode request: %w", path, err)
-	}
-	return c.do(ctx, http.MethodPost, path, body, out)
+	return c.do(ctx, http.MethodPost, path, in, out)
 }
 
-// do sends a request with an optional JSON body and decodes a 2xx JSON
-// response into out; other responses yield an *APIError.
-func (c *Client) do(ctx context.Context, method, path string, body []byte, out any) error {
-	var reader io.Reader
+// do sends a request with an optional JSON body (marshaled if not nil) and
+// decodes a 2xx JSON response into out; other responses yield an *APIError.
+func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	var reqBody io.Reader
 	if body != nil {
-		reader = bytes.NewReader(body)
+		data, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		reqBody = bytes.NewReader(data)
 	}
 	// The host is ignored: the transport always dials the socket.
-	req, err := http.NewRequestWithContext(ctx, method, "http://obied"+path, reader)
+	req, err := http.NewRequestWithContext(ctx, method, "http://obied"+path, reqBody)
 	if err != nil {
 		return err
 	}

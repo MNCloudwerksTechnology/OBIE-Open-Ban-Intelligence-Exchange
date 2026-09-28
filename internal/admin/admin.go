@@ -96,8 +96,9 @@ func (p *PeerResponse) Latency() time.Duration {
 
 // Info is what the admin API reports about the node.
 type Info struct {
-	Version   string
-	Mode      string
+	Version string
+	// Mode returns the current node.mode, which a reload may change.
+	Mode      func() string
 	StartedAt time.Time
 	Identity  IdentityResponse
 	// Status reports the current status of every subsystem.
@@ -110,6 +111,9 @@ type Info struct {
 	// Decisions lists the decisions in a state, or all for ""; none when
 	// nil.
 	Decisions func(state string) []DecisionResponse
+	// Overrides manages the operator overrides; the override endpoints
+	// answer 503 when nil.
+	Overrides Overrides
 	// Verdicts reports, revokes and lists verdicts; those endpoints answer
 	// 503 when nil.
 	Verdicts VerdictService
@@ -142,7 +146,7 @@ func Handler(info Info, log *slog.Logger) http.Handler {
 		statuses := info.Status()
 		resp := StatusResponse{
 			Version:       info.Version,
-			Mode:          info.Mode,
+			Mode:          info.Mode(),
 			StartedAt:     info.StartedAt.UTC(),
 			UptimeSeconds: now().Sub(info.StartedAt).Seconds(),
 			Ready:         len(lifecycle.NotReady(statuses)) == 0,
@@ -164,6 +168,7 @@ func Handler(info Info, log *slog.Logger) http.Handler {
 		writeJSON(w, resp, log)
 	})
 	handleDecisions(mux, info, log)
+	handleOverrides(mux, info, log)
 	handleVerdicts(mux, info, log)
 	return mux
 }

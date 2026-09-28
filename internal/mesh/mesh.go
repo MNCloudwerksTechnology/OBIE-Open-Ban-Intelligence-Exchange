@@ -92,12 +92,16 @@ type Options struct {
 // lifecycle.Subsystem, lifecycle.ReadinessChecker and
 // lifecycle.DetailReporter.
 type Mesh struct {
-	id         identity.Identity
-	opts       Options
-	log        *slog.Logger
-	listen     []ma.Multiaddr
-	bootstrap  []peer.AddrInfo
-	publishers map[peer.ID]config.Publisher
+	id        identity.Identity
+	opts      Options
+	log       *slog.Logger
+	listen    []ma.Multiaddr
+	bootstrap []peer.AddrInfo
+
+	// trustMu guards the trust settings, which SetTrust replaces.
+	trustMu       sync.RWMutex
+	publishers    map[peer.ID]config.Publisher
+	defaultWeight float64
 
 	mu     sync.Mutex
 	host   host.Host
@@ -114,7 +118,7 @@ func New(id identity.Identity, opts Options, log *slog.Logger) (*Mesh, error) {
 		return nil, errors.New("no store")
 	}
 	opts = withDefaults(opts)
-	m := &Mesh{id: id, opts: opts, log: log, publishers: make(map[peer.ID]config.Publisher)}
+	m := &Mesh{id: id, opts: opts, log: log}
 
 	for _, s := range opts.Listen {
 		addr, err := ma.NewMultiaddr(s)
@@ -136,14 +140,38 @@ func New(id identity.Identity, opts Options, log *slog.Logger) (*Mesh, error) {
 		m.bootstrap = append(m.bootstrap, pi)
 	}
 
-	for _, p := range opts.Trust.Publishers {
-		pid, err := peer.Decode(p.PeerID)
-		if err != nil {
-			return nil, fmt.Errorf("trusted publisher %q: %w", p.PeerID, err)
-		}
-		m.publishers[pid] = p
+	if err := m.SetTrust(opts.Trust); err != nil {
+		return nil, err
 	}
 	return m, nil
+}
+
+// SetTrust replaces the publisher names and trust weights that Peers
+// reports, e.g. after a configuration reload. It fails, changing nothing,
+// when a peer ID is invalid.
+func (m *Mesh) SetTrust(trust config.Trust) error {
+	publishers := make(map[peer.ID]config.Publisher, len(trust.Publishers))
+	for _, p := range trust.Publishers {
+		pid, err := peer.Decode(p.PeerID)
+		if err != nil {
+			return fmt.Errorf("trusted publisher %q: %w", p.PeerID, err)
+		}
+		publishers[pid] = p
+	}
+	m.trustMu.Lock()
+	defer m.trustMu.Unlock()
+	m.publishers, m.defaultWeight = publishers, trust.DefaultWeight
+	return nil
+}
+
+// trustOf returns the name and trust weight of peer id.
+func (m *Mesh) trustOf(id peer.ID) (name string, weight float64) {
+	m.trustMu.RLock()
+	defer m.trustMu.RUnlock()
+	if pub, ok := m.publishers[id]; ok {
+		return pub.Name, pub.Weight
+	}
+	return "", m.defaultWeight
 }
 
 func withDefaults(opts Options) Options {
