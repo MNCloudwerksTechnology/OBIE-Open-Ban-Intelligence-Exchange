@@ -24,6 +24,25 @@ type view struct {
 	template *template.Template
 	// content returns what the template shows.
 	content func(*http.Request) any
+	// item, if set, serves the pages of the view's items (e.g. one peer)
+	// at Path + "/{id}", marked as the view in the navigation, and their
+	// refreshing regions at Fragment + "/{id}" (ADR 0021).
+	item *item
+}
+
+// item is the page of one item of a view.
+type item struct {
+	// template renders the page's content inside the layout; its template
+	// "region" renders the refreshing region.
+	template *template.Template
+	// content returns the page's title and data for the item r names
+	// ({id}), and whether the console knows the item. With region set,
+	// only the data of the refreshing region is needed; it is rendered
+	// also for an item the console no longer knows, so an open page can
+	// say so.
+	content func(r *http.Request, region bool) (title string, data any, ok bool)
+	// missing explains that the console knows no such item.
+	missing string
 }
 
 // views returns the console's views in navigation order. The navigation
@@ -118,9 +137,44 @@ func (c *Console) serveFragment(v view) http.Handler {
 	})
 }
 
+// serveItem renders the page of the item of view v that the request
+// names.
+func (c *Console) serveItem(v view) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		title, data, ok := v.item.content(r, false)
+		if !ok {
+			c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", v.Path,
+				notFoundPage{Path: r.URL.Path, Message: v.item.missing}))
+			return
+		}
+		c.render(w, http.StatusOK, v.item.template, c.layout(title, v.Path, data))
+	})
+}
+
+// serveItemFragment renders the refreshing region of an item's page
+// alone.
+func (c *Console) serveItemFragment(v view) http.Handler {
+	region := v.item.template.Lookup("region")
+	if region == nil {
+		panic("console view " + v.Path + " declares items with a fragment but their pages have no region template")
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, data, _ := v.item.content(r, true)
+		c.render(w, http.StatusOK, region, data)
+	})
+}
+
+// notFoundPage is the data of the page for a path the console does not
+// serve.
+type notFoundPage struct {
+	Path string
+	// Message says more about what is missing; empty for an unknown path.
+	Message string
+}
+
 // notFound renders the page for a path the console does not serve.
 func (c *Console) notFound(w http.ResponseWriter, r *http.Request) {
-	c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", "", struct{ Path string }{r.URL.Path}))
+	c.render(w, http.StatusNotFound, notFoundTemplate, c.layout("Page not found", "", notFoundPage{Path: r.URL.Path}))
 }
 
 // overviewContent reads the node and returns the data of the overview.

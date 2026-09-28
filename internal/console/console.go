@@ -52,6 +52,13 @@ type Node struct {
 	Status func() []lifecycle.Status
 	// Facts reads the node's numbers for the overview; nil reads none.
 	Facts func() Facts
+	// Peers reads the peers the node knows for the peers view; nil reads
+	// none (ADR 0021).
+	Peers func() PeerSet
+	// PeerVerdicts reads up to limit of the active verdicts the node holds
+	// from the publisher with peer ID id, after the indicator key after
+	// ("" for the first page); nil reads none.
+	PeerVerdicts func(id, after string, limit int) (VerdictPage, error)
 }
 
 // Options configures a Console.
