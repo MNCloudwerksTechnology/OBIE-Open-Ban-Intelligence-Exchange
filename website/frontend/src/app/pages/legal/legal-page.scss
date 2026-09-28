@@ -1,0 +1,109 @@
+.legal {
+  display: grid;
+  gap: var(--space-4);
+}
+
+// Long legal text reads best in a narrower column than the landing page.
+.legal > * {
+  max-width: 52rem;
+}
+
+.review-notice {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-accent);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+
+.review-notice__heading {
+  font-weight: 700;
+}
+
+h1 {
+  font-size: var(--text-2xl);
+}
+
+h2 {
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-2);
+  font-size: var(--text-xl);
+}
+
+.legal-term {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+h1 .legal-term {
+  margin: 0 0 var(--space-2);
+  color: var(--color-accent-text);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.updated {
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+}
+
+.lead {
+  margin-top: 0;
+}
+
+section p + p,
+section ul + p,
+section p + ul,
+section dl + p {
+  margin-top: var(--space-3);
+}
+
+ul {
+  margin: 0;
+  padding-left: var(--space-5);
+}
+
+li + li {
+  margin-top: var(--space-2);
+}
+
+dl {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.fact {
+  display: grid;
+  gap: var(--space-1);
+}
+
+@media (min-width: 40rem) {
+  .fact {
+    grid-template-columns: 12rem 1fr;
+    gap: var(--space-4);
+  }
+}
+
+dt {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}
+
+dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.line {
+  display: block;
+}

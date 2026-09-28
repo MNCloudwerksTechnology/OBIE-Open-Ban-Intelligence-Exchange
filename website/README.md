@@ -126,6 +126,54 @@ placeholders are in place. Search for `TODO(operator)` to find them.
 The inquiry recipient is not content: it is `OBIE_INQUIRY_RECIPIENT` (see
 [Configuration](#configuration)).
 
+## Legal pages: what the operator fills in and reviews
+
+`/impressum` (§ 5 DDG, § 18 MStV) and `/privacy` (Art. 13 GDPR) take all
+their text from `frontend/src/app/content/legal.content.ts`; the footer links
+to both, and the inquiry form's consent checkbox links to `/privacy`. The
+pages are in English and show the German legal terms ("Impressum",
+"Datenschutzerklärung", and each section's German heading) alongside. A
+German version is a second `LegalContent` object provided through the
+`LEGAL_CONTENT` token.
+
+**Review banner.** While `reviewPending` is `true`, both pages open with a
+notice that they must be reviewed by the operator before the site goes live.
+After the review, set `reviewPending: false` in `legal.content.ts`; that one
+flag removes the notice from both pages.
+
+The company data was supplied by the operator (WP #1677) and is in the file
+already. Nothing is invented: every gap is marked `TODO(operator)` and shows
+on the page as it is. Search for `TODO(operator)` to find them.
+
+| Field | State | What to do |
+|-------|-------|------------|
+| Impressum: provider, address, representative, phone, e-mail | Supplied by the operator: Cloudwerks Technology GmbH, Pottenort 15, 45891 Gelsenkirchen; Markus Niewerth. | Change only if they change. |
+| Impressum: register entry, VAT ID | Supplied: Amtsgericht Gelsenkirchen, HRB 17839; DE363640900. | Change only if they change. |
+| Impressum: responsible under § 18 Abs. 2 MStV | Supplied: Markus Niewerth. | Change only if it changes. |
+| `privacy.hosting` | **TODO(operator): hosting provider.** | Name and address of the provider whose servers run the site and its database. |
+| `privacy.inquiries` | **TODO(operator): e-mail (SMTP) provider** (the server behind `OBIE_SMTP_HOST`) and **how long answered inquiries stay in the mailbox**. | Name and address of the provider; your mailbox retention. |
+| `privacy.third-countries` | **TODO(operator): transfers outside the EU/EEA.** | Confirm that the hosting and the e-mail provider process data only within the EU/EEA, or name the transfer and its safeguard. |
+
+Keep the privacy policy true to the deployment and the code:
+
+- **Inquiry retention.** The policy states `INQUIRY_RETENTION` (12 months),
+  the default of `OBIE_INQUIRY_RETENTION`. A test checks it against the
+  default; if the deployment sets another value, change `INQUIRY_RETENTION`.
+- **Server logs.** The policy promises that access logs are kept for at most
+  `SERVER_LOG_RETENTION` (7 days, the operator's setting). The application
+  writes no access log; set the reverse proxy or web server in front of it,
+  and the collection of the application's own log (stdout), to delete logs
+  after 7 days.
+- **Client IP.** Rate limit and IP hash use the visitor's address only if
+  `SERVER_FORWARD_HEADERS_STRATEGY=native` is set behind a reverse proxy (see
+  [Configuration](#configuration)); otherwise they see the proxy's address.
+- **No cookies, no tracking, no third-party requests.** That is why the site
+  has no cookie banner. Adding any of them (analytics, embedded videos,
+  externally hosted fonts or scripts, anything stored in the browser) needs
+  a new privacy assessment, likely a consent banner, and an updated policy.
+- **New features that process personal data** (for example a new form
+  field) need a matching change in the policy.
+
 ## Inquiry API
 
 The inquiry form talks to two endpoints. Errors are
@@ -219,6 +267,10 @@ the stats strip out. Failures are logged as warnings.
   copy there. A German version is a second `LandingContent` object provided
   through the `LANDING_CONTENT` token. Describe only what the code does;
   label everything else "in progress" or "planned".
+- **Legal pages.** `pages/legal/legal-page.ts` renders `/impressum` and
+  `/privacy` from `src/app/content/legal.content.ts`; the route's
+  `data.legalPage` picks the page (see
+  [Legal pages](#legal-pages-what-the-operator-fills-in-and-reviews)).
 - **Back end.** Maven copies `frontend/dist/frontend/browser` into the jar as
   `classpath:/static/`. `StaticSiteConfig` serves files and prerendered
   routes; `NotFoundPageResolver` renders the 404 page. API endpoints live
