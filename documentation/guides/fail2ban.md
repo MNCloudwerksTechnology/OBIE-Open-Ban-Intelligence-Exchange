@@ -32,10 +32,16 @@ obiectl --socket /run/obie/obie.sock --timeout 5s report --ip <ip> \
   lifts the ban.
 - **Restarts do not re-report.** Bans that Fail2Ban restores after a restart
   were already reported (`norestored`).
-- **Repeated bans refresh the verdict.** If an address is banned again while
-  its verdict is active, `obied` refreshes that verdict and adds up the
-  failure counts. It never publishes a second verdict (see
+- **One verdict per address, shared by all jails.** If an address is banned
+  again while its verdict is active, `obied` refreshes that verdict (new TTL,
+  failure counts added up) instead of publishing a second one. A ban within
+  60 s after the verdict was issued or last refreshed is only counted: its events go
+  into the next refresh, but its TTL, reason and evidence are dropped. So a
+  `recidive` ban seconds after an `sshd` ban does not extend the verdict (see
   [ADR 0012](../adr/0012-local-verdict-reporting.md)).
+- **Evidence is limited to 512 KiB.** Larger matched lines make `obiectl`
+  refuse the report, which is then only logged. Fail2Ban keeps at most
+  `maxmatches` lines (default `maxretry`), far below that limit.
 
 ## Requirements
 
@@ -84,11 +90,11 @@ Parameters are passed in brackets after the action name, for example
 
 | Parameter         | Default          | Meaning |
 |-------------------|------------------|---------|
-| `protocol`        | from jail name   | Attacked service, e.g. `ssh`, `http`, `smtp`. If empty, it is derived from the jail name: `*ssh*`/`dropbear` → `ssh`; `postfix*`/`exim*`/`sendmail*`/`*smtp*` → `smtp`; `dovecot*`/`courier*`/`*imap*` → `imap`; `*ftp*` → `ftp`; `nginx*`/`apache*`/`lighttpd*`/`*http*` → `http`; otherwise the jail name in lower case, with every character outside `a-z0-9_-` replaced by `_` and cut to 32 characters. |
+| `protocol`        | from jail name   | Attacked service, e.g. `ssh`, `http`, `smtp`. If empty, it is derived from the jail name: `*ssh*`/`*dropbear*` → `ssh`; `*postfix*`/`*exim*`/`*sendmail*`/`*smtp*` → `smtp`; `*dovecot*`/`*courier*`/`*imap*` → `imap`; `*ftp*` → `ftp`; `*nginx*`/`*apache*`/`*lighttpd*`/`*http*` → `http`; otherwise the jail name in lower case, with every character outside `a-z0-9_-` replaced by `_` and cut to 32 characters. |
 | `reason`          | `bruteforce`     | Behavior class of the attack, `[a-z0-9_]+`, e.g. `password_bruteforce` or `web_scan`. |
 | `confidence`      | `0.8` (obiectl)  | Your confidence in the verdict, in `[0, 1]`. Peers weight it with the trust they give your node. |
 | `mitre`           | `T1110`          | Comma-separated MITRE ATT&CK technique IDs. `T1110` (Brute Force) fits authentication jails. For other jails, set it to something else, or to empty (`mitre=`) to send none. |
-| `revoke_on_unban` | `false`          | `true`: revoke the verdict when Fail2Ban unbans the address. |
+| `revoke_on_unban` | `false`          | `true`: revoke the verdict when Fail2Ban unbans the address. The verdict is shared by all jails, so this also withdraws it while another jail (e.g. `recidive`) still bans the address; enable it only where that is acceptable. |
 | `revoke_reason`   | `unbanned`       | Reason given for those revocations. |
 | `obiectl`         | `obiectl`        | The `obiectl` binary, as a name on `PATH` or an absolute path. |
 | `socket`          | `/run/obie/obie.sock` | `obied`'s admin socket (`admin.socket` in `obie.yaml`). |
