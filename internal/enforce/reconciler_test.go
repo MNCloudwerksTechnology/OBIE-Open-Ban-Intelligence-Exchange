@@ -259,6 +259,12 @@ func TestDeferNearExpiry(t *testing.T) {
 		t.Error("the /25 is not reported deferred")
 	}
 
+	// Renewing the dying 192.0.2.1 re-adds it at once, without a removal.
+	f.add("192.0.2.1", 3*time.Hour, 1)
+	f.reconcile(t)
+	wantState(t, f.enf, "192.0.2.1/32@3h0m0s 198.51.100.0/24@1h0m0s")
+	f.gate.Handle(block("192.0.2.1", decision.ChangeRemoved, time.Time{}))
+
 	f.now = t0.Add(time.Hour)
 	f.reconcile(t)
 	wantState(t, f.enf, "198.51.100.0/25@2h0m0s")
@@ -274,7 +280,7 @@ func TestSettle(t *testing.T) {
 	have := []Entry{e("192.0.2.1/32", time.Second), e("198.51.100.0/24", 3*time.Second), e("203.0.113.0/24", time.Hour),
 		e("2001:db8::/32", time.Hour)}
 	add := []Entry{
-		e("192.0.2.1/32", time.Hour),      // replaces a dying entry: deferred
+		e("192.0.2.1/32", time.Hour),      // renews a dying entry: added, not removed
 		e("198.51.100.128/25", time.Hour), // inside a dying entry: deferred
 		e("203.0.113.0/25", time.Hour),    // inside a replaced entry: added
 		e("2001:db8:1::/48", time.Hour),   // inside a staying entry: deferred
@@ -283,14 +289,14 @@ func TestSettle(t *testing.T) {
 	}
 	remove := []Entry{have[0], have[1], have[2]}
 	gotAdd, gotRemove, deferred := settle(add, remove, have, t0)
-	if got := entriesString(gotAdd); got != "203.0.113.0/25@1h0m0s 198.51.101.0/24@1h0m0s" {
+	if got := entriesString(gotAdd); got != "192.0.2.1/32@1h0m0s 203.0.113.0/25@1h0m0s 198.51.101.0/24@1h0m0s" {
 		t.Errorf("add = %s", got)
 	}
 	if got := entriesString(gotRemove); got != "203.0.113.0/24@1h0m0s" {
 		t.Errorf("remove = %s", got)
 	}
-	if deferred != 4 {
-		t.Errorf("deferred = %d, want 4", deferred)
+	if deferred != 3 {
+		t.Errorf("deferred = %d, want 3", deferred)
 	}
 }
 

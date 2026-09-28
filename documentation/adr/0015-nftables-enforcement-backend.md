@@ -52,9 +52,14 @@ CAP_NET_ADMIN.
 - **Near expiry.** The reconciler never removes an applied entry with less
   than `ExpiryTolerance` (5 s) left: it may expire before the removal
   reaches the kernel, and deleting a missing element (ENOENT) fails the
-  whole transaction. An addition overlapping an entry that stays applied
-  (e.g. a /25 under a /24 about to expire) is deferred, and the next pass
-  runs after `ExpiryTolerance` + 1 s instead of a full interval.
+  whole transaction. Renewing such an entry is a plain re-add, which
+  updates the element's timeout (checked on Linux 7.0; a kernel that does
+  not lets it expire and the next pass adds it again). An addition
+  overlapping another entry that stays applied (e.g. a /25 under a /24
+  about to expire) is deferred, and the next pass runs after
+  `ExpiryTolerance` + 1 s instead of a full interval. A block withdrawn in
+  its last 5 s (revoked, or refused by a changed allow-list) thus stays in
+  the kernel until it expires.
 - **Apply** deletes, then adds, in one netlink transaction made of
   messages of at most 1000 elements (and 56 KiB, below the 64 KiB
   attribute limit). The kernel acks every message, so the socket's send

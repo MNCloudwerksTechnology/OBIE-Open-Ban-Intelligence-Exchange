@@ -495,10 +495,10 @@ func mergeCovered(cands []candidate) []candidate {
 // settle adjusts the difference to what the backend holds at now. An
 // applied entry with less than ExpiryTolerance left is never removed: it
 // may expire before the removal reaches the backend, which then fails the
-// whole change. An addition overlapping an entry that stays applied, e.g.
-// a /24 about to expire over a /25 that outlives it, is deferred: interval
-// sets reject overlapping ranges. It returns the number of deferred
-// additions.
+// whole change. Renewing such an entry is a plain addition, which updates
+// its expiry. An addition overlapping another entry that stays applied,
+// e.g. a /25 under a /24 about to expire, is deferred: interval sets
+// reject overlapping ranges. It returns the number of deferred additions.
 func settle(add, remove, have []Entry, now time.Time) (keptAdd, keptRemove []Entry, deferred int) {
 	removed := make(map[netip.Prefix]bool, len(remove))
 	for _, e := range remove {
@@ -517,7 +517,9 @@ func settle(add, remove, have []Entry, now time.Time) (keptAdd, keptRemove []Ent
 	}
 	slices.SortFunc(stay, comparePrefix)
 	for _, e := range add {
-		if overlaps(e.Prefix, stay, staying) {
+		// Applied prefixes are disjoint: one staying under e's own prefix
+		// overlaps no other.
+		if !staying[e.Prefix] && overlaps(e.Prefix, stay, staying) {
 			deferred++
 			continue
 		}

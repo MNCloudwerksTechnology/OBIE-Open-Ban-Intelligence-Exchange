@@ -350,6 +350,24 @@ func TestKernelExpiresEntries(t *testing.T) {
 	assertEntries(t, list(t, b), []enforce.Entry{wide, entry("2001:db8::/64", time.Hour)})
 }
 
+// TestReAddUpdatesTheTimeout: adding an applied entry again renews it
+// without a removal, which the reconciler relies on for entries about to
+// expire.
+func TestReAddUpdatesTheTimeout(t *testing.T) {
+	b := newBackend(t, false)
+	ctx := context.Background()
+	if err := b.Setup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, ttl := range []time.Duration{1500 * time.Millisecond, time.Hour} {
+		if err := b.Apply(ctx, []enforce.Entry{entry("192.0.2.1/32", ttl), entry("198.51.100.0/24", ttl)}, nil); err != nil {
+			t.Fatalf("Apply with %v: %v", ttl, err)
+		}
+	}
+	time.Sleep(2 * time.Second)
+	assertEntries(t, list(t, b), []enforce.Entry{entry("192.0.2.1/32", time.Hour-2*time.Second), entry("198.51.100.0/24", time.Hour-2*time.Second)})
+}
+
 // TestBlocksTraffic sends UDP over the loopback from a blocked source and
 // checks that it is dropped and counted.
 func TestBlocksTraffic(t *testing.T) {
