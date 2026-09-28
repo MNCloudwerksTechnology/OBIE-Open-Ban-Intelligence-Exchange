@@ -16,11 +16,14 @@ GOLANGCI_LINT_VERSION   := v2.14.0
 GOVULNCHECK_VERSION     := v1.8.0
 ACTIONLINT_VERSION      := v1.7.12
 CYCLONEDX_GOMOD_VERSION := v1.12.0
+# markdownlint-cli2 is an npm package; it needs Node.js and npm.
+MARKDOWNLINT_VERSION    := 0.23.3
 
 GOLANGCI_LINT   := $(TOOLS_DIR)/golangci-lint-$(GOLANGCI_LINT_VERSION)/golangci-lint
 GOVULNCHECK     := $(TOOLS_DIR)/govulncheck-$(GOVULNCHECK_VERSION)/govulncheck
 ACTIONLINT      := $(TOOLS_DIR)/actionlint-$(ACTIONLINT_VERSION)/actionlint
 CYCLONEDX_GOMOD := $(TOOLS_DIR)/cyclonedx-gomod-$(CYCLONEDX_GOMOD_VERSION)/cyclonedx-gomod
+MARKDOWNLINT    := $(TOOLS_DIR)/markdownlint-cli2-$(MARKDOWNLINT_VERSION)/node_modules/.bin/markdownlint-cli2
 
 # Release artefacts (make release VERSION=x.y.z).
 RELEASE_DIR := $(CURDIR)/dist/release
@@ -81,6 +84,10 @@ lint-workflows: $(ACTIONLINT) ## Validate the CI workflows with actionlint and c
 		}; \
 	done
 
+.PHONY: lint-md
+lint-md: $(MARKDOWNLINT) ## Lint the Markdown files with markdownlint-cli2 (.markdownlint-cli2.yaml)
+	$(MARKDOWNLINT) '**/*.md'
+
 .PHONY: release
 release: $(CYCLONEDX_GOMOD) ## Build reproducible release tarballs, SBOMs and SHA256SUMS (VERSION=x.y.z)
 	VERSION='$(VERSION)' GO='$(GO)' CYCLONEDX_GOMOD='$(CYCLONEDX_GOMOD)' packaging/release.sh $(RELEASE_DIR)
@@ -98,7 +105,7 @@ check-unit: build ## Check the systemd unit with systemd-analyze (verify, exposu
 	packaging/systemd/check-unit.sh $(BIN_DIR)
 
 .PHONY: ci
-ci: fmt-check vet lint lint-workflows test vuln ## Run every check the CI gate runs
+ci: fmt-check vet lint lint-workflows lint-md test vuln ## Run every check the CI gate runs
 
 .PHONY: clean
 clean: ## Remove build output, release artefacts and installed tools
@@ -112,6 +119,10 @@ $(GOVULNCHECK):
 
 $(ACTIONLINT):
 	GOBIN=$(dir $@) $(GO) install github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+
+$(MARKDOWNLINT):
+	npm install --prefix $(TOOLS_DIR)/markdownlint-cli2-$(MARKDOWNLINT_VERSION) --no-audit --no-fund \
+		markdownlint-cli2@$(MARKDOWNLINT_VERSION)
 
 $(CYCLONEDX_GOMOD):
 	GOBIN=$(dir $@) $(GO) install github.com/CycloneDX/cyclonedx-gomod/cmd/cyclonedx-gomod@$(CYCLONEDX_GOMOD_VERSION)
