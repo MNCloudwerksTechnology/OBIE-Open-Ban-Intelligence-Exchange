@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -18,7 +19,8 @@ import (
 // maxActionBody bounds the form of an action.
 const maxActionBody = 16 << 10
 
-// Outcomes of actions are kept for the page the browser returns to.
+// Outcomes of actions are kept for the page the browser returns to, and
+// actions whose session ended for their confirmation after signing in.
 const (
 	maxOutcomes     = 64
 	outcomeLifetime = 15 * time.Minute
@@ -364,6 +366,21 @@ func crossSiteNavigation(r *http.Request) bool {
 	return site == "cross-site" || site == "same-site"
 }
 
+// refuseCrossSite refuses action pages opened from another site or another
+// port of this host. It runs before the session check: such a navigation
+// carries no SameSite=Strict cookie, and would otherwise be sent to sign
+// in and on to the page.
+func refuseCrossSite(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if crossSiteNavigation(r) {
+			refuse(w, http.StatusForbidden, "refused: an action page opens only from the console's own pages. "+
+				"Open the console directly in the address bar and choose the action there.")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // serveAction shows an action's form or, once its details are entered,
 // what it would do and a button that carries it out. It changes nothing.
 func (c *Console) serveAction(w http.ResponseWriter, r *http.Request) {
@@ -373,16 +390,26 @@ func (c *Console) serveAction(w http.ResponseWriter, r *http.Request) {
 		c.notFound(w, r)
 		return
 	}
-	if crossSiteNavigation(r) {
-		refuse(w, http.StatusForbidden, "refused: an action page opens only from the console's own pages. "+
-			"Open the console directly in the address bar and choose the action there.")
-		return
-	}
 	q := r.URL.Query()
+	lost := false
+	if id := q.Get("pending"); id != "" {
+		// The action whose session ended, kept for its confirmation.
+		v, ok := c.pending.get(id, c.now())
+		if ok {
+			q = maps.Clone(v) // the kept values are shared with every request for them
+			q.Set("review", "1")
+		}
+		lost = !ok
+	}
 	form := readActionForm(q, kind)
 	p := newActionPage(kind, form, q.Get("return"))
 	if off := c.actionsOff(); off != "" {
 		c.renderAction(w, r, http.StatusForbidden, p.off(off))
+		return
+	}
+	if lost {
+		p.Err = "The action that waited for you to sign in is no longer kept: it is kept for 15 minutes, and not across a restart of obied. Enter it again."
+		c.renderAction(w, r, http.StatusOK, &p)
 		return
 	}
 	if form.Address == "" || q.Get("edit") != "" || (k.details && q.Get("review") == "") {
@@ -424,13 +451,14 @@ func (c *Console) carryOutAction(w http.ResponseWriter, r *http.Request) {
 		// The session ended (expired, signed out, rotated, restarted):
 		// nothing is carried out, and the confirmation opens again after
 		// signing in, with the state of then.
+		// The action waits on the node, not in the URL, so neither a long
+		// note nor a link carries it through sign-in.
 		c.log.Info("console action not carried out: the session ended", append([]any{"action", kind}, userAttrs(r)...)...)
 		v := form.values(kind)
 		if ret != "" {
 			v.Set("return", ret)
 		}
-		v.Set("review", "1")
-		next := "/actions/" + kind + "?" + v.Encode()
+		next := "/actions/" + kind + "?pending=" + c.pending.put(v, c.now())
 		http.Redirect(w, r, "/login?reason=action&next="+url.QueryEscape(next), http.StatusSeeOther)
 		return
 	}

@@ -639,7 +639,9 @@ it at once.
   of now and asks you to confirm once more.
 - **Your session ended** (after 12 hours, a restart of `obied` or
   `obiectl console --rotate`): nothing is carried out; sign in again and
-  the confirmation opens again, to confirm with the state of then.
+  the confirmation opens again, to confirm with the state of then. The
+  node keeps the action for 15 minutes (not across a restart); after that,
+  enter it again.
 - **The audit log records who acted, and through which door.** Every
   action is recorded like `obiectl`'s, with `obie.origin: console` (or
   `admin-api` for `obiectl`) and your local user in `user.id` and

@@ -67,50 +67,56 @@ func outcomeNotice(kind string, out *ActionOutcome) actionNotice {
 	return n
 }
 
-// outcomes keeps the outcomes of actions for the pages the browsers
-// return to, under random IDs, so a URL carries no words (ADR 0026).
-type outcomes struct {
+// memo keeps what the browser returns to after a redirect — the outcome
+// of an action, an action waiting for its operator to sign in — on the
+// node under random IDs, so that a URL carries neither words nor details
+// (ADR 0026). It keeps the last max values, each for life.
+type memo[T any] struct {
+	max  int
+	life time.Duration
+
 	mu   sync.Mutex
-	byID map[string]storedOutcome
+	byID map[string]memoEntry[T]
 	// order holds the IDs, oldest first.
 	order []string
 }
 
-type storedOutcome struct {
-	notice actionNotice
-	at     time.Time
+type memoEntry[T any] struct {
+	value T
+	at    time.Time
 }
 
-func newOutcomes() *outcomes { return &outcomes{byID: make(map[string]storedOutcome)} }
+func newMemo[T any](maxValues int, life time.Duration) *memo[T] {
+	return &memo[T]{max: maxValues, life: life, byID: make(map[string]memoEntry[T])}
+}
 
-// put keeps n and returns its ID, forgetting the oldest outcome over
-// maxOutcomes.
-func (o *outcomes) put(n actionNotice, now time.Time) string {
+// put keeps v and returns its ID, forgetting the oldest value over max.
+func (m *memo[T]) put(v T, now time.Time) string {
 	b := make([]byte, 16)
 	_, _ = rand.Read(b) // crypto/rand.Read never fails; it crashes the program instead.
 	id := base64.RawURLEncoding.EncodeToString(b)
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	for len(o.order) >= maxOutcomes {
-		delete(o.byID, o.order[0])
-		o.order = o.order[1:]
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for len(m.order) >= m.max {
+		delete(m.byID, m.order[0])
+		m.order = m.order[1:]
 	}
-	o.byID[id] = storedOutcome{notice: n, at: now}
-	o.order = append(o.order, id)
+	m.byID[id] = memoEntry[T]{value: v, at: now}
+	m.order = append(m.order, id)
 	return id
 }
 
-// get returns the outcome with the ID id, unless it is older than
-// outcomeLifetime.
-func (o *outcomes) get(id string, now time.Time) (actionNotice, bool) {
+// get returns the value with the ID id, unless it is older than life.
+func (m *memo[T]) get(id string, now time.Time) (T, bool) {
+	var zero T
 	if id == "" {
-		return actionNotice{}, false
+		return zero, false
 	}
-	o.mu.Lock()
-	defer o.mu.Unlock()
-	s, ok := o.byID[id]
-	if !ok || now.Sub(s.at) > outcomeLifetime {
-		return actionNotice{}, false
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	e, ok := m.byID[id]
+	if !ok || now.Sub(e.at) > m.life {
+		return zero, false
 	}
-	return s.notice, true
+	return e.value, true
 }

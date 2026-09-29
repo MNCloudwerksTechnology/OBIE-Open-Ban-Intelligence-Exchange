@@ -53,11 +53,20 @@ func (c *Console) render(w http.ResponseWriter, code int, t *template.Template, 
 // on to where it was going.
 func (c *Console) showSignIn(w http.ResponseWriter, r *http.Request) {
 	next := safeNext(r.URL.Query().Get("next"))
+	action := r.URL.Query().Get("reason") == "action"
+	if crossSiteNavigation(r) {
+		// A link on another site or port may not lead through sign-in to
+		// an action's page, nor say that an action waits (ADR 0026).
+		if strings.HasPrefix(next, "/actions/") {
+			next = "/"
+		}
+		action = false
+	}
 	if c.signedIn(r) {
 		http.Redirect(w, r, next, http.StatusSeeOther) // #nosec G710 -- safeNext allows only paths on the console.
 		return
 	}
-	c.render(w, http.StatusOK, signInTemplate, signInPage{Next: next, Action: r.URL.Query().Get("reason") == "action"})
+	c.render(w, http.StatusOK, signInTemplate, signInPage{Next: next, Action: action})
 }
 
 // signIn exchanges the token for a session.

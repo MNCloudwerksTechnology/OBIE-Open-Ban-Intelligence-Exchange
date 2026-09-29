@@ -18,6 +18,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -107,9 +108,11 @@ type Console struct {
 	signInLimit, warnLimit *rate.Limiter
 	// actionMu makes checking the state an action acts on and carrying it
 	// out one step among all browser tabs; outcomes keeps what actions
-	// did for the pages the browsers return to (ADR 0026).
+	// did for the pages the browsers return to, pending the actions whose
+	// session ended, for their confirmation after signing in (ADR 0026).
 	actionMu sync.Mutex
-	outcomes *outcomes
+	outcomes *memo[actionNotice]
+	pending  *memo[url.Values]
 
 	// applyMu serializes Start, Stop and Apply. It is held while a server
 	// starts or stops, which may wait for requests in flight; those only
@@ -131,7 +134,7 @@ func New(cfg config.Console, opts Options, log *slog.Logger) *Console {
 	policy, err := peercred.NewPolicy(opts.Group)
 	c := &Console{log: log, node: opts.Node, policy: policy, policyErr: err, lookup: peercred.LoopbackTCP,
 		creds: newCredentials(), now: time.Now, signInLimit: newSignInLimit(), warnLimit: rate.NewLimiter(1, 10), cfg: cfg,
-		outcomes: newOutcomes()}
+		outcomes: newMemo[actionNotice](maxOutcomes, outcomeLifetime), pending: newMemo[url.Values](maxOutcomes, outcomeLifetime)}
 	c.pages = c.views()
 	c.handler = c.routes()
 	return c

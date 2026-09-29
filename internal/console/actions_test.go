@@ -136,6 +136,14 @@ func actionConsole(t *testing.T, src ActionSource, on bool) (*Console, *browser)
 
 var hiddenInput = regexp.MustCompile(`<input type="hidden" name="([^"]+)" value="([^"]*)">`)
 
+// postForm posts form from a console page and returns the status, where
+// it leads and the body.
+func postForm(b *browser, path string, form url.Values) (int, string, string) {
+	b.t.Helper()
+	resp, body := b.do(http.MethodPost, path, form, nil)
+	return resp.StatusCode, resp.Header.Get("Location"), body
+}
+
 // confirmForm returns the fields the confirmation on page posts.
 func confirmForm(t *testing.T, page string) url.Values {
 	t.Helper()
@@ -292,8 +300,9 @@ func TestActionAfterTheSessionEnded(t *testing.T) {
 	}
 	u, _ := url.Parse(loc)
 	next := u.Query().Get("next")
-	if !strings.HasPrefix(next, "/actions/report?") || !strings.Contains(next, "review=1") ||
-		!strings.Contains(next, "events=12") || strings.Contains(next, "state=") {
+	// The action waits on the node: the URL names it, and carries none of
+	// its details.
+	if !strings.HasPrefix(next, "/actions/report?pending=") || strings.Contains(next, "events") || strings.Contains(next, "198.51") {
 		t.Errorf("next = %q", next)
 	}
 	if _, page := b.get(loc); !strings.Contains(page, "Your session ended before the action was carried out, so nothing was changed.") {
@@ -303,8 +312,27 @@ func TestActionAfterTheSessionEnded(t *testing.T) {
 	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != next {
 		t.Fatalf("sign-in = %d, Location %q; want %q", resp.StatusCode, resp.Header.Get("Location"), next)
 	}
-	if resp, page := b.get(next); resp.StatusCode != http.StatusOK || !strings.Contains(page, "confirm-form") {
+	if resp, page := b.get(next); resp.StatusCode != http.StatusOK || !strings.Contains(page, "confirm-form") ||
+		confirmForm(t, page).Get("events") != "12" || confirmForm(t, page).Get("address") != "198.51.100.7" {
 		t.Errorf("back at the confirmation = %d:\n%s", resp.StatusCode, page)
+	}
+	// A pending action no longer kept asks to enter it again.
+	if resp, page := b.get("/actions/report?pending=gone"); resp.StatusCode != http.StatusOK ||
+		!strings.Contains(page, "The action that waited for you to sign in is no longer kept") || strings.Contains(page, "confirm-form") {
+		t.Errorf("a lost pending action = %d:\n%s", resp.StatusCode, page)
+	}
+	// A long note in another script survives signing in (it waits on the
+	// node, not in the sign-in form).
+	note := strings.Repeat("ü", 500)
+	_, page = b.get("/actions/block?review=1&address=198.51.100.9&note=" + url.QueryEscape(note))
+	c.RotateToken()
+	_, loc2, _ := postForm(b, "/actions/block", confirmForm(t, page))
+	u2, _ := url.Parse(loc2)
+	if resp, _ := b.signIn(c.Token(), u2.Query().Get("next")); resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("sign-in with a long note pending = %d", resp.StatusCode)
+	}
+	if _, page := b.get(u2.Query().Get("next")); confirmForm(t, page).Get("note") != note {
+		t.Error("the pending note did not survive signing in")
 	}
 	// And an expired session is refused alike.
 	now := time.Now()
@@ -422,6 +450,26 @@ func TestActionPagesRefuseOtherSites(t *testing.T) {
 			t.Errorf("%s POST = %d", site, resp.StatusCode)
 		}
 	}
+	// Without a session (a cross-site navigation carries no SameSite=Strict
+	// cookie), it is refused before the sign-in, which would lead on to it.
+	stranger := newBrowser(t, b.base)
+	resp, _ := stranger.do(http.MethodGet, "/actions/block?review=1&address=203.0.113.7&note=trust+me", nil,
+		map[string]string{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"})
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("cross-site navigation without session = %d, Location %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	// The sign-in page reached from another site forgets an action page as
+	// its next and says no action waits.
+	_, page := stranger.do(http.MethodGet, "/login?reason=action&next="+url.QueryEscape("/actions/block?review=1&address=203.0.113.7"), nil,
+		map[string]string{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"})
+	if !strings.Contains(page, `name="next" value="/"`) || strings.Contains(page, "Your session ended") {
+		t.Errorf("sign-in page reached cross-site:\n%s", page)
+	}
+	_, page = stranger.do(http.MethodGet, "/login?reason=action&next="+url.QueryEscape("/actions/block?pending=x"), nil,
+		map[string]string{"Sec-Fetch-Site": "same-origin"})
+	if !strings.Contains(page, `name="next" value="/actions/block?pending=x"`) || !strings.Contains(page, "Your session ended") {
+		t.Errorf("sign-in page reached from the console:\n%s", page)
+	}
 	// Typed into the address bar, it opens.
 	if resp, _ := b.do(http.MethodGet, "/actions/allow?address=203.0.113.7", nil, map[string]string{"Sec-Fetch-Site": "none"}); resp.StatusCode != http.StatusOK {
 		t.Errorf("address bar = %d", resp.StatusCode)
@@ -538,24 +586,28 @@ func TestStateToken(t *testing.T) {
 	}
 }
 
-// TestOutcomesAreBounded: the node keeps the last outcomes for a while.
-func TestOutcomesAreBounded(t *testing.T) {
-	o, now := newOutcomes(), time.Now()
+// TestMemoIsBounded: the node keeps the last outcomes and pending actions
+// for a while.
+func TestMemoIsBounded(t *testing.T) {
+	o, now := newMemo[actionNotice](maxOutcomes, outcomeLifetime), time.Now()
 	first := o.put(actionNotice{Title: "first"}, now)
 	var last string
 	for i := range maxOutcomes {
 		last = o.put(actionNotice{Title: fmt.Sprint(i)}, now)
 	}
 	if _, ok := o.get(first, now); ok {
-		t.Error("the oldest outcome is kept over the limit")
+		t.Error("the oldest value is kept over the limit")
 	}
 	if n, ok := o.get(last, now); !ok || n.Title != fmt.Sprint(maxOutcomes-1) {
-		t.Errorf("last outcome = %+v, %v", n, ok)
+		t.Errorf("last value = %+v, %v", n, ok)
 	}
 	if _, ok := o.get(last, now.Add(outcomeLifetime+time.Second)); ok {
-		t.Error("an outcome is kept past its lifetime")
+		t.Error("a value is kept past its lifetime")
+	}
+	if _, ok := o.get("", now); ok {
+		t.Error("the empty ID names a value")
 	}
 	if len(o.byID) != maxOutcomes || len(o.order) != maxOutcomes {
-		t.Errorf("kept %d/%d outcomes, want %d", len(o.byID), len(o.order), maxOutcomes)
+		t.Errorf("kept %d/%d values, want %d", len(o.byID), len(o.order), maxOutcomes)
 	}
 }

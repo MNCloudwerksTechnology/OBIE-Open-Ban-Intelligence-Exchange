@@ -105,12 +105,20 @@ things need a decision:
 - **A session that ended changes nothing.** A `POST` without a valid session
   (expired, signed out, token rotated, obied restarted) is not carried out:
   the browser goes to the sign-in page, which says so, and returns to the
-  confirmation afterwards to confirm again with the state of then.
+  confirmation afterwards to confirm again with the state of then. The
+  action waits on the node under a random ID, kept like the outcomes (15
+  minutes, at most 64, not across a restart), so neither a long note nor a
+  link carries it through the sign-in; an ID no longer kept asks to enter
+  the action again.
 - **Cross-site requests** are refused as before (ADR 0019): a `POST` needs
   `Sec-Fetch-Site: same-origin` or a matching `Origin`, and the cookie is
   `SameSite=Strict`. In addition, an action page opened by a navigation from
-  another site (`Sec-Fetch-Site: cross-site` or `same-site`) is refused, so a
-  link elsewhere cannot present a prefilled confirmation.
+  another site (`Sec-Fetch-Site: cross-site` or `same-site`) is refused —
+  before the session check, since such a navigation carries no
+  `SameSite=Strict` cookie and would otherwise be sent to sign in and on
+  to the page — and the sign-in page reached that way forgets an action
+  page as the page to return to, and does not say that an action waits.
+  So a link elsewhere cannot present a prefilled confirmation.
 
 ### Switching them off
 
@@ -155,7 +163,7 @@ things need a decision:
 | Threat | Defence | Remaining risk |
 |--------|---------|----------------|
 | A web page in the operator's browser triggers an action (CSRF) | `POST` only; Fetch Metadata and `Origin` checks; `SameSite=Strict` cookie; the confirmation's fingerprint | Browsers without Fetch Metadata rely on `Origin` and `SameSite` |
-| A link elsewhere opens a prefilled confirmation for the operator to click | Action pages refuse cross-site and same-site navigations; the confirmation states the consequence | A browser without Fetch Metadata shows the page; the operator still reads what it does |
+| A link elsewhere opens a prefilled confirmation for the operator to click, directly or through the sign-in page | Action pages refuse cross-site and same-site navigations before the session check; the sign-in page reached so drops an action page as its next; a pending action is named by a random ID only; the confirmation states the consequence | A browser without Fetch Metadata shows the page; the operator still reads what it does |
 | Framing the confirmation to trick a click (clickjacking) | `frame-ancestors 'none'`, `X-Frame-Options: DENY` | — |
 | Words injected into a console page through a URL | Outcomes are kept on the node under a random ID; notes and input are escaped by `html/template` | — |
 | A second tab or `obiectl` overwrites a change unseen | Fingerprint check under the console's action lock; 409 with the current state | An `obiectl` command between check and change |
