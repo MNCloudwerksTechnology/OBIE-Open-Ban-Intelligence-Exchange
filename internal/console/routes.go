@@ -16,6 +16,11 @@ func (c *Console) routes() http.Handler {
 	mux.HandleFunc("POST /logout", c.signOut)
 	mux.Handle("GET /api/health", c.requireAPI(http.HandlerFunc(c.serveHealth)))
 	mux.Handle("GET /api/activity", c.requireAPI(http.HandlerFunc(c.serveActivityLive)))
+	// Actions (ADR 0026): the page asks to confirm; the POST checks the
+	// session itself, so an action whose session ended is not carried out
+	// and returns to its confirmation after signing in.
+	mux.Handle("GET /actions/{kind}", refuseCrossSite(c.requirePage(http.HandlerFunc(c.serveAction))))
+	mux.HandleFunc("POST /actions/{kind}", c.carryOutAction)
 	for _, v := range c.pages {
 		pattern := "GET " + v.Path
 		if strings.HasSuffix(v.Path, "/") {

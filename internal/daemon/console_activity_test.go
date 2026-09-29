@@ -86,8 +86,10 @@ func TestConsoleActivityTimeline(t *testing.T) {
 	expires := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	log.Write(audit.OverrideSet(&store.Override{Indicator: ipv4Indicator("198.18.0.1"), Action: store.ForceBlock,
 		Note: "scanner", ExpiresAt: expires}))
-	log.Write(audit.OverrideRemoved(obieproto.Indicator{Kind: obieproto.KindCIDR, Value: "198.18.4.0/24", Scope: "/24"},
-		store.ForceAllow))
+	removal := audit.OverrideRemoved(obieproto.Indicator{Kind: obieproto.KindCIDR, Value: "198.18.4.0/24", Scope: "/24"},
+		store.ForceAllow)
+	removal.Origin = audit.Origin{Via: audit.OriginConsole, UserID: "1000", UserName: "alice"}
+	log.Write(removal)
 	log.Write(audit.PeerConnection(audit.Peer{ID: "12D3KooWB", Name: "beta"}, true))
 
 	p, err := activity.Timeline(console.ActivityFilter{}, "", 2)
@@ -104,7 +106,8 @@ func TestConsoleActivityTimeline(t *testing.T) {
 	if peer.PeerID != "12D3KooWB" || peer.PeerName != "beta" || peer.Range.IsValid() || peer.Time.IsZero() {
 		t.Errorf("peer entry = %+v", peer)
 	}
-	if removed.Range != netip.MustParsePrefix("198.18.4.0/24") || removed.Rule != "force_allow" {
+	if removed.Range != netip.MustParsePrefix("198.18.4.0/24") || removed.Rule != "force_allow" ||
+		removed.Origin != "console" || removed.UserID != "1000" || removed.UserName != "alice" {
 		t.Errorf("removed override = %+v", removed)
 	}
 	older, err := activity.Timeline(console.ActivityFilter{}, p.Older, 2)

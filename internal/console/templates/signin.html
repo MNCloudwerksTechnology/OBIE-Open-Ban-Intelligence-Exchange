@@ -13,6 +13,9 @@
   <h1>Sign in</h1>
   <p>Sign in with this node's console token. On the node, run:</p>
   <pre><code>sudo obiectl console</code></pre>
+  {{- if .Action}}
+  <p class="alert" role="alert">Your session ended before the action was carried out, so nothing was changed. Sign in again: the confirmation opens again, with the state of now, for you to confirm once more.</p>
+  {{- end}}
   {{- if .Error}}
   <p class="alert alert-error" role="alert">{{.Error}}</p>
   {{- end}}

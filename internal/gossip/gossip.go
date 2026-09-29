@@ -39,6 +39,23 @@ var ErrNotLocal = errors.New("event was not published by this node")
 // neighbor crowd out the events of honest ones before the limits see it.
 const validateQueueBursts = 4
 
+// maxHeld bounds the events held while no peer is on the topic; beyond
+// it the oldest is dropped (ADR 0026).
+const maxHeld = 10000
+
+// heldMargin is how long a held event must still live to be sent when a
+// peer joins; one about to expire is not worth a peer's validation.
+const heldMargin = time.Minute
+
+// Held events go out in batches of heldBatch every heldInterval, 8 a
+// second: GossipSub drops what exceeds its per-peer queue of 32 messages,
+// and a peer ignores this node's events beyond its mesh.rate_limit
+// publisher bucket (10 a second, burst 50 by default), both unseen.
+const (
+	heldBatch    = 16
+	heldInterval = 2 * time.Second
+)
+
 // MaxRPCSize bounds a GossipSub RPC, which bundles messages and control
 // data, in both directions: a peer sending a larger one has its stream
 // reset before anything in it is parsed, and outgoing RPCs are split to
@@ -71,10 +88,36 @@ type Gossip struct {
 	self  peer.ID
 	store store.Store
 	now   func() time.Time
+	log   *slog.Logger
 	// receive are the obieproto.Receive options besides the clock.
 	receive []obieproto.Option
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
+
+	// pubMu serializes the node's publications, so that held events go
+	// out before any later one, and guards the fields below.
+	pubMu sync.Mutex
+	// held are the node's events published while no peer was on the
+	// topic, and those published after them while they wait, oldest
+	// first; they are sent in batches once a peer is on the topic
+	// (ADR 0026). heldLimit bounds them; heldBatch and heldInterval pace
+	// them, and lastBatch is when the last batch went out. sent, expired
+	// and dropped count what happened to them since they were last all
+	// sent.
+	held                   []heldEvent
+	heldLimit, heldBatch   int
+	heldInterval           time.Duration
+	lastBatch              time.Time
+	sent, expired, dropped int
+	// wake starts sending held events at once, rather than on the next
+	// tick.
+	wake chan struct{}
+}
+
+// heldEvent is an event waiting for a peer, with its encoding.
+type heldEvent struct {
+	event *obieproto.Event
+	data  []byte
 }
 
 // New joins the topic on h, which must be listening, and starts relaying.
@@ -113,7 +156,13 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 		cancel()
 		return nil, err
 	}
-	g := &Gossip{topic: topic, self: h.ID(), store: opts.Store, now: opts.Now, receive: receive, cancel: cancel}
+	peers, err := topic.EventHandler()
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("watch the peers of %s: %w", obieproto.Topic, err)
+	}
+	g := &Gossip{topic: topic, self: h.ID(), store: opts.Store, now: opts.Now, log: log, receive: receive, cancel: cancel,
+		heldLimit: maxHeld, heldBatch: heldBatch, heldInterval: heldInterval, wake: make(chan struct{}, 1)}
 	// Subscribing makes the node a member of the topic's mesh. Accepted
 	// events are stored by the validator, so deliveries are discarded.
 	g.wg.Go(func() {
@@ -123,6 +172,22 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 			}
 		}
 	})
+	// A peer joining the topic starts sending what was held for want of
+	// one; a tick continues, and retries a batch that failed or a join the
+	// watcher missed.
+	g.wg.Go(func() {
+		defer peers.Cancel()
+		for {
+			ev, err := peers.NextPeerEvent(ctx)
+			if err != nil {
+				return
+			}
+			if ev.Type == pubsub.PeerJoin {
+				g.wakeUp()
+			}
+		}
+	})
+	g.wg.Go(func() { g.sendHeld(ctx) })
 	return g, nil
 }
 
@@ -187,7 +252,9 @@ func messageID(msg *pb.Message) string {
 
 // Publish sends ev, an event signed by this node, to the mesh. The event is
 // checked like a received one and stored locally first, so it takes effect
-// on this node even without peers. If sending fails after the event was
+// on this node even without peers. While no peer is on the topic, the
+// event is held and sent once one joins, and while events are held, later
+// ones wait behind them (ADR 0026). If sending fails after the event was
 // stored, calling Publish again sends it.
 func (g *Gossip) Publish(ctx context.Context, ev *obieproto.Event) error {
 	if ev.Publisher.PeerID != g.self.String() {
@@ -204,12 +271,138 @@ func (g *Gossip) Publish(ctx context.Context, ev *obieproto.Event) error {
 	if _, err := g.store.Put(checked); err != nil {
 		return fmt.Errorf("publish event %s: %w", ev.ID, err)
 	}
+	g.pubMu.Lock()
+	defer g.pubMu.Unlock()
+	if alone := len(g.topic.ListPeers()) == 0; alone || len(g.held) > 0 {
+		g.hold(checked, data, alone)
+		return nil
+	}
 	if err := g.topic.Publish(ctx, data); err != nil {
 		return fmt.Errorf("publish event %s: %w", ev.ID, err)
 	}
 	publishedTotal.WithLabelValues(typeLabel(ev.Type)).Inc()
 	return nil
 }
+
+// hold keeps ev, encoded as data, until it can be sent — alone, no peer
+// is on the topic; else it waits behind the events held already —
+// dropping the oldest held event over the limit. The caller holds pubMu.
+func (g *Gossip) hold(ev *obieproto.Event, data []byte, alone bool) {
+	if len(g.held) >= g.heldLimit {
+		if g.dropped == 0 {
+			g.log.Warn("too many events wait for a peer; dropping the oldest, which still count on this node",
+				"held", len(g.held))
+		}
+		g.held = slices.Delete(g.held, 0, 1)
+		g.dropped++
+	}
+	g.held = append(g.held, heldEvent{event: ev, data: data})
+	if alone {
+		g.log.Info("no peer is on the topic; the event is held and sent when one joins", "event", ev.ID,
+			"indicator", ev.Key(), "held", len(g.held))
+	} else {
+		g.log.Debug("the event waits behind the held events", "event", ev.ID, "held", len(g.held))
+	}
+	g.wakeUp()
+}
+
+// wakeUp starts sending held events at once.
+func (g *Gossip) wakeUp() {
+	select {
+	case g.wake <- struct{}{}:
+	default: // a wake-up is pending
+	}
+}
+
+// sendHeld sends a batch of the held events whenever it is woken and,
+// while events are held, every heldInterval, until ctx ends. With nothing
+// held it only waits to be woken.
+func (g *Gossip) sendHeld(ctx context.Context) {
+	for {
+		g.pubMu.Lock()
+		waiting, interval := len(g.held) > 0, g.heldInterval
+		g.pubMu.Unlock()
+		var tick <-chan time.Time
+		var timer *time.Timer
+		if waiting {
+			timer = time.NewTimer(interval)
+			tick = timer.C
+		}
+		select {
+		case <-ctx.Done():
+		case <-g.wake:
+		case <-tick:
+		}
+		if timer != nil {
+			timer.Stop()
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		g.flush(ctx)
+	}
+}
+
+// flush sends the next batch of held events, oldest first, if a peer is on
+// the topic and the last batch went out at least heldInterval ago; events
+// about to expire are dropped. What it could not send waits for the next
+// batch.
+func (g *Gossip) flush(ctx context.Context) {
+	g.pubMu.Lock()
+	defer g.pubMu.Unlock()
+	if len(g.held) == 0 || time.Since(g.lastBatch) < g.heldInterval || len(g.topic.ListPeers()) == 0 {
+		return
+	}
+	g.lastBatch = time.Now()
+	now := g.now()
+	for batch := 0; len(g.held) > 0 && batch < g.heldBatch; {
+		h := g.held[0]
+		if h.event.Expired(now.Add(heldMargin)) {
+			g.held, g.expired = g.held[1:], g.expired+1
+			continue
+		}
+		if err := g.topic.Publish(ctx, h.data); err != nil {
+			g.log.Warn("sending the held events failed; they are tried again", "held", len(g.held), "error", err)
+			return
+		}
+		publishedTotal.WithLabelValues(typeLabel(h.event.Type)).Inc()
+		g.held, g.sent, batch = g.held[1:], g.sent+1, batch+1
+	}
+	if len(g.held) > 0 {
+		g.log.Debug("held events sent", "sent", g.sent, "held", len(g.held))
+		return
+	}
+	g.log.Info("a peer is on the topic; the held events were sent", "sent", g.sent, "expired", g.expired,
+		"dropped", g.dropped)
+	g.held, g.sent, g.expired, g.dropped = nil, 0, 0, 0
+}
+
+// Held reports whether the event with the ID id waits to be sent: for a
+// peer to join the topic, or behind the events that did.
+func (g *Gossip) Held(id string) bool {
+	g.pubMu.Lock()
+	defer g.pubMu.Unlock()
+	for _, h := range g.held {
+		if h.event.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// Backlog counts the held events and estimates how long sending them all
+// takes once a peer is on the topic, batch by batch.
+func (g *Gossip) Backlog() (events int, wait time.Duration) {
+	g.pubMu.Lock()
+	defer g.pubMu.Unlock()
+	events = len(g.held)
+	batches := (events + g.heldBatch - 1) / g.heldBatch
+	return events, time.Duration(max(batches-1, 0)) * g.heldInterval
+}
+
+// TopicPeers counts the peers on the topic: those the node's events are
+// sent to.
+func (g *Gossip) TopicPeers() int { return len(g.topic.ListPeers()) }
 
 // Close stops GossipSub and waits for the subscription reader. Validations
 // already running finish on their own; stop the store after the host.

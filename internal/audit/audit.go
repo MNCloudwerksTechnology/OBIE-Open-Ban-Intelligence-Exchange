@@ -112,6 +112,9 @@ type Record struct {
 	// Settings are the keys a reload changed and applied; RestartSettings
 	// the keys that wait for a restart.
 	Settings, RestartSettings []string
+	// Origin is who carried out an operator action, and through which
+	// door; zero for changes no operator made (ADR 0026).
+	Origin Origin
 }
 
 // Log appends Records to the audit log file and keeps the last
@@ -309,6 +312,7 @@ type Entry struct {
 	Event     EventFields   `json:"event"`
 	Source    *SourceFields `json:"source,omitempty"`
 	Rule      *RuleFields   `json:"rule,omitempty"`
+	User      *UserFields   `json:"user,omitempty"`
 	Obie      ObieFields    `json:"obie"`
 }
 
@@ -332,6 +336,13 @@ type RuleFields struct {
 	Name string `json:"name"`
 }
 
+// UserFields are the ECS user.* fields: the local user who carried out an
+// operator action.
+type UserFields struct {
+	ID   string `json:"id"`
+	Name string `json:"name,omitempty"`
+}
+
 // ObieFields are OBIE's own fields.
 type ObieFields struct {
 	Indicator       string   `json:"indicator,omitempty"`
@@ -350,6 +361,8 @@ type ObieFields struct {
 	PeerName        string   `json:"peer_name,omitempty"`
 	Settings        []string `json:"settings,omitempty"`
 	RestartSettings []string `json:"restart_settings,omitempty"`
+	// Origin is the door of an operator action: console or admin-api.
+	Origin string `json:"origin,omitempty"`
 }
 
 // Time returns @timestamp as a time; zero if it is not one.
@@ -368,7 +381,10 @@ func (l *Log) entry(r Record) Entry {
 			Reason: r.Reason},
 		Obie: ObieFields{Indicator: indicatorKey(r.Indicator), Mode: l.mode(), State: r.State, Cause: r.Cause,
 			EventID: r.EventID, Revokes: r.Revokes, Note: r.Note, PreviousMode: r.PreviousMode, PeerID: r.PeerID,
-			PeerName: r.PeerName, Settings: r.Settings, RestartSettings: r.RestartSettings},
+			PeerName: r.PeerName, Settings: r.Settings, RestartSettings: r.RestartSettings, Origin: r.Origin.Via},
+	}
+	if r.Origin.UserID != "" {
+		e.User = &UserFields{ID: r.Origin.UserID, Name: r.Origin.UserName}
 	}
 	if ip, ok := singleAddress(r.Indicator); ok {
 		e.Source = &SourceFields{IP: ip.String()}

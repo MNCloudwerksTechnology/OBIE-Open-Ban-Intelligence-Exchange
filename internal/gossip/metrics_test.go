@@ -77,6 +77,8 @@ func TestObserveDelayClampsClockSkew(t *testing.T) {
 	}
 }
 
+// TestPublishCountsPublishedEvents: an event counts once it is sent to
+// the mesh; one held for want of a peer counts when a peer joins.
 func TestPublishCountsPublishedEvents(t *testing.T) {
 	n := newNode(t)
 	before := testutil.ToFloat64(publishedTotal.WithLabelValues("verdict"))
@@ -86,7 +88,12 @@ func TestPublishCountsPublishedEvents(t *testing.T) {
 	unsigned := n.verdict(t, time.Now(), 3600)
 	unsigned.Publisher.Signature = ""
 	_ = n.gossip.Publish(context.Background(), unsigned)
-	if got := testutil.ToFloat64(publishedTotal.WithLabelValues("verdict")) - before; got != 1 {
-		t.Errorf("obie_events_published_total{type=\"verdict\"} rose by %v, want 1", got)
+	if got := testutil.ToFloat64(publishedTotal.WithLabelValues("verdict")) - before; got != 0 {
+		t.Errorf("obie_events_published_total{type=\"verdict\"} rose by %v without a peer, want 0", got)
 	}
+	peer := newNode(t)
+	connect(t, n.host, peer.host, n.gossip.topic, peer.gossip.topic)
+	waitFor(t, propagationDeadline, "the held verdict to count", func() bool {
+		return testutil.ToFloat64(publishedTotal.WithLabelValues("verdict"))-before == 1
+	})
 }

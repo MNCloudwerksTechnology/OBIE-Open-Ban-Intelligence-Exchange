@@ -1726,3 +1726,90 @@ main:has(.verdict-list) {
     animation: none;
   }
 }
+
+/* Operator actions (ADR 0026) */
+
+a.button {
+  display: inline-block;
+  text-decoration: none;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+}
+
+.row-action {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+}
+
+.confirm {
+  margin: 0 0 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.confirm h2 {
+  margin-top: 0;
+}
+
+.consequences {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+}
+
+.consequences li {
+  margin: 0 0 0.5rem;
+}
+
+.consequences li[data-level="warning"] {
+  margin-left: -1.25rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 4px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  list-style: none;
+}
+
+.confirm-form {
+  margin: 1rem 0 0;
+}
+
+.outcome {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--ok);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.outcome[data-level="warning"] {
+  border-left-color: var(--warn);
+  background: var(--warn-bg);
+}
+
+.outcome p {
+  margin: 0 0 0.25rem;
+}
+
+.outcome .outcome-links {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+}

@@ -372,27 +372,27 @@ func TestStoreOverrides(t *testing.T) {
 	s := storeOverrides{store: st, now: func() time.Time { return now }}
 	ind := obieproto.Indicator{Kind: obieproto.KindIPv4, Value: "198.18.0.1", Scope: "/32"}
 
-	o, err := s.Set(ind, admin.ActionForceBlock, 90*time.Minute, "scanner")
+	o, err := s.Set(context.Background(), ind, admin.ActionForceBlock, 90*time.Minute, "scanner")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if o.Action != admin.ActionForceBlock || o.Note != "scanner" || o.ExpiresAt == nil || !o.ExpiresAt.Equal(now.Add(90*time.Minute)) || !o.CreatedAt.Equal(now) {
 		t.Errorf("Set = %+v", o)
 	}
-	if o, err := s.Set(ind, admin.ActionForceAllow, 0, ""); err != nil || o.ExpiresAt != nil || o.Action != admin.ActionForceAllow {
+	if o, err := s.Set(context.Background(), ind, admin.ActionForceAllow, 0, ""); err != nil || o.ExpiresAt != nil || o.Action != admin.ActionForceAllow {
 		t.Errorf("replace = %+v, %v", o, err)
 	}
-	if _, err := s.Set(ind, admin.ActionForceAllow, 0, strings.Repeat("x", store.MaxNoteLength+1)); !errors.Is(err, admin.ErrInvalid) {
+	if _, err := s.Set(context.Background(), ind, admin.ActionForceAllow, 0, strings.Repeat("x", store.MaxNoteLength+1)); !errors.Is(err, admin.ErrInvalid) {
 		t.Errorf("long note = %v", err)
 	}
 	list, err := s.List()
 	if err != nil || len(list) != 1 || list[0].Indicator != ind {
 		t.Errorf("List = %+v, %v", list, err)
 	}
-	if ok, err := s.Delete(ind); !ok || err != nil {
+	if ok, err := s.Delete(context.Background(), ind); !ok || err != nil {
 		t.Errorf("Delete = %v, %v", ok, err)
 	}
-	if ok, err := s.Delete(ind); ok || err != nil {
+	if ok, err := s.Delete(context.Background(), ind); ok || err != nil {
 		t.Errorf("second Delete = %v, %v", ok, err)
 	}
 	if err := st.Stop(context.Background()); err != nil {
@@ -401,7 +401,7 @@ func TestStoreOverrides(t *testing.T) {
 	if _, err := s.List(); err == nil {
 		t.Error("List on a closed store succeeded")
 	}
-	if _, err := s.Set(ind, admin.ActionForceAllow, 0, ""); err == nil || errors.Is(err, admin.ErrInvalid) {
+	if _, err := s.Set(context.Background(), ind, admin.ActionForceAllow, 0, ""); err == nil || errors.Is(err, admin.ErrInvalid) {
 		t.Errorf("Set on a closed store = %v", err)
 	}
 }

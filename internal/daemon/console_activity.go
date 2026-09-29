@@ -92,6 +92,10 @@ func activityEntries(entries []audit.Entry) []console.ActivityEntry {
 		if e.Rule != nil {
 			out[i].Rule = e.Rule.Name
 		}
+		out[i].Origin = e.Obie.Origin
+		if e.User != nil {
+			out[i].UserID, out[i].UserName = e.User.ID, e.User.Name
+		}
 		if t, err := time.Parse(time.RFC3339Nano, e.Obie.ExpiresAt); err == nil {
 			out[i].ExpiresAt = t
 		}

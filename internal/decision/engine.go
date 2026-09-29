@@ -296,6 +296,21 @@ func (e *Engine) SubscribeTransitions(fn func(Transition)) (unsubscribe func()) 
 // StateNone. Only verdicts on ind itself count: an address inside a CIDR
 // range with verdicts is explained on its own.
 func (e *Engine) Explain(ind obieproto.Indicator) (Decision, error) {
+	return e.ExplainWith(ind, func(*Inputs) {})
+}
+
+// Inputs are what the decision on an indicator is made from: its active
+// verdicts and the overrides in effect.
+type Inputs struct {
+	Verdicts  []*obieproto.Event
+	Overrides []store.Override
+}
+
+// ExplainWith explains the decision on ind like Explain, but from the
+// inputs edit leaves of the stored ones: with an override set or removed,
+// or a verdict of this node issued or withdrawn. It tells before a change
+// what the change would decide, and changes nothing (ADR 0026).
+func (e *Engine) ExplainWith(ind obieproto.Indicator, edit func(*Inputs)) (Decision, error) {
 	now := e.opts.Now()
 	verdicts, err := e.store.ActiveVerdicts(ind.Key(), now)
 	if err != nil {
@@ -305,9 +320,23 @@ func (e *Engine) Explain(ind obieproto.Indicator) (Decision, error) {
 	if err != nil {
 		return Decision{}, fmt.Errorf("read overrides: %w", err)
 	}
+	in := Inputs{Verdicts: verdicts, Overrides: overrides}
+	edit(&in)
 	p, r := e.current()
-	r.Overrides = sovereignty.NewOverrides(overrides)
-	return Decide(ind, verdicts, p, r, now), nil
+	r.Overrides = sovereignty.NewOverrides(in.Overrides)
+	return Decide(ind, in.Verdicts, p, r, now), nil
+}
+
+// Flush evaluates the indicators changed so far right away, rather than
+// on the worker, so that reads that follow — Decision, Browse, Verdicts —
+// see the change: the console calls it after an operator action
+// (ADR 0026). It does nothing while the engine is not running.
+func (e *Engine) Flush() {
+	e.runMu.Lock()
+	defer e.runMu.Unlock()
+	if e.stop != nil {
+		e.processDirty()
+	}
 }
 
 // Reload replaces the policy and the allow-list and re-decides every kept

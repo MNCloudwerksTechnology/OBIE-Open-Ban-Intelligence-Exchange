@@ -113,7 +113,10 @@ in. Three constraints shape it:
    test checks that no template or asset refers to another origin.
 8. **Read-only.** The console changes nothing on the node; the only
    requests with an effect are sign-in and sign-out. Operator actions
-   (#1689) will need their own confirmation and audit design.
+   (#1689) will need their own confirmation and audit design. *Amended
+   by [ADR 0026](0026-console-operator-actions.md): the console carries
+   out the operator's actions after a confirmation, unless
+   `console.actions` is `false`.*
 
 ### Lifecycle and health
 

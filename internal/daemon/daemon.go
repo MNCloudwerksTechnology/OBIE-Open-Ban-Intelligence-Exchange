@@ -185,6 +185,9 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	decisions := &consoleDecisions{enforce: cfg.Enforce}
 	verdictSource := &consoleVerdicts{store: db, now: time.Now}
 	rules := &consoleRules{store: db, loads: loads, now: time.Now, loadFile: config.LoadFile, checkFile: sovereignty.CheckFile}
+	// The console's actions go through the admin API's services, set
+	// below with the reporter (ADR 0026).
+	actions := &consoleActions{store: db, self: id.PeerID(), now: time.Now, mode: func() string { return string(gate.Mode()) }}
 	con := console.New(consoleConfig(cfg.Console, opts.Testing), console.Options{
 		Group: cfg.Admin.SocketGroup,
 		Node: console.Node{Version: version.Version, PeerID: id.PeerID(), Fingerprint: identity.Fingerprint(id.PublicKey()),
@@ -194,7 +197,8 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 			PeerVerdicts: func(id, after string, limit int) (console.VerdictPage, error) {
 				return peers.verdicts(id, after, limit)
 			},
-			Decisions: decisions, Verdicts: verdictSource, Rules: rules, Activity: consoleActivity{log: auditLog}},
+			Decisions: decisions, Verdicts: verdictSource, Rules: rules, Activity: consoleActivity{log: auditLog},
+			Actions: actions},
 	}, logs.Logger(console.Name))
 	if opts.Testing.Console != nil {
 		opts.Testing.Console(con)
@@ -254,6 +258,11 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 
 		AllowDocumentationRanges: opts.Testing.AllowDocumentationRanges,
 	}, logs.Logger(verdicts.Name))
+	// The admin API and the console act through the same services, which
+	// record every change in the audit trail with its origin (ADR 0026).
+	overrides := storeOverrides{store: db, now: time.Now, audit: auditLog}
+	audited := auditedVerdicts{VerdictService: reporter, audit: auditLog}
+	actions.overrides, actions.verdicts, actions.checker, actions.engine, actions.mesh = overrides, audited, reporter, engine, m
 	mgr.Register(admin.New(cfg.Admin.Socket, cfg.Admin.SocketGroup, admin.Info{
 		Version:   version.Version,
 		Mode:      func() string { return string(gate.Mode()) },
@@ -276,11 +285,11 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 			}
 			return out
 		},
-		Overrides: storeOverrides{store: db, now: time.Now, audit: auditLog},
+		Overrides: overrides,
 		Enforced: func(ctx context.Context) ([]admin.EnforcedEntry, error) {
 			return enforcedEntries(ctx, reconciler)
 		},
-		Verdicts: auditedVerdicts{VerdictService: reporter, audit: auditLog},
+		Verdicts: audited,
 		Console:  consoleService{console: con},
 	}, logs.Logger(admin.Name)))
 

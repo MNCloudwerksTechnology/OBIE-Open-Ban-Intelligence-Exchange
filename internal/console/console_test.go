@@ -198,6 +198,28 @@ func TestApplySwitchesAndMoves(t *testing.T) {
 	}
 }
 
+// TestApplySwitchesActions: a reload switches the actions on and off
+// without moving or restarting the console (ADR 0026).
+func TestApplySwitchesActions(t *testing.T) {
+	a := freeAddr(t)
+	c := newConsole(t, config.Console{Enabled: true, Listen: a}, &syncBuffer{})
+	if err := c.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	served := c.Addr()
+	if c.actionsOn() {
+		t.Error("actions on without console.actions")
+	}
+	c.Apply(config.Console{Enabled: true, Listen: a, Actions: true})
+	if !c.actionsOn() || c.Addr() != served {
+		t.Errorf("switched on: actions %v, addr %v (was %v)", c.actionsOn(), c.Addr(), served)
+	}
+	c.Apply(config.Console{Enabled: true, Listen: a})
+	if c.actionsOn() || c.Addr() != served {
+		t.Errorf("switched off: actions %v, addr %v (was %v)", c.actionsOn(), c.Addr(), served)
+	}
+}
+
 func TestApplyOutsideStartAndStop(t *testing.T) {
 	c := newConsole(t, config.Console{Listen: "127.0.0.1:9465"}, &syncBuffer{})
 	c.Apply(config.Console{Enabled: true, Listen: "127.0.0.1:0"})

@@ -24,11 +24,11 @@ type fuzzOverrides struct{}
 
 func (fuzzOverrides) List() ([]OverrideResponse, error) { return nil, nil }
 
-func (fuzzOverrides) Set(ind obieproto.Indicator, action string, _ time.Duration, note string) (OverrideResponse, error) {
+func (fuzzOverrides) Set(_ context.Context, ind obieproto.Indicator, action string, _ time.Duration, note string) (OverrideResponse, error) {
 	return OverrideResponse{Indicator: ind, Action: action, Note: note, CreatedAt: started}, nil
 }
 
-func (fuzzOverrides) Delete(obieproto.Indicator) (bool, error) { return false, nil }
+func (fuzzOverrides) Delete(context.Context, obieproto.Indicator) (bool, error) { return false, nil }
 
 // newFuzzHandler returns the admin API backed by the real verdict service
 // on an in-memory store; nothing it is asked may fail internally.

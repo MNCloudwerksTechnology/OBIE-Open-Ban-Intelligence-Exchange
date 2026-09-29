@@ -7,6 +7,8 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"path"
 	"strings"
 
 	"golang.org/x/time/rate"
@@ -31,6 +33,9 @@ type signInPage struct {
 	Next string
 	// Error explains why the last attempt failed.
 	Error string
+	// Action is set when an action was not carried out because the
+	// session ended (ADR 0026).
+	Action bool
 }
 
 // render writes the page t with data and status code.
@@ -50,11 +55,34 @@ func (c *Console) render(w http.ResponseWriter, code int, t *template.Template, 
 // on to where it was going.
 func (c *Console) showSignIn(w http.ResponseWriter, r *http.Request) {
 	next := safeNext(r.URL.Query().Get("next"))
+	action := r.URL.Query().Get("reason") == "action"
+	if crossSiteNavigation(r) {
+		// A link on another site or port may not lead through sign-in to
+		// an action's page, nor say that an action waits (ADR 0026).
+		next, action = crossSiteNext(next), false
+	}
 	if c.signedIn(r) {
 		http.Redirect(w, r, next, http.StatusSeeOther) // #nosec G710 -- safeNext allows only paths on the console.
 		return
 	}
-	c.render(w, http.StatusOK, signInTemplate, signInPage{Next: next})
+	c.render(w, http.StatusOK, signInTemplate, signInPage{Next: next, Action: action})
+}
+
+// crossSiteNext returns next for a sign-in page reached from another site
+// or port, or "/" if it would lead on to an action's page: directly,
+// through dot segments (plain or percent-encoded, which browsers remove),
+// or through the sign-in page again, which redirects once signed in.
+func crossSiteNext(next string) string {
+	u, err := url.Parse(next)
+	if err != nil {
+		return "/"
+	}
+	switch p := path.Clean("/" + u.Path); {
+	case p == "/login", p == "/actions", strings.HasPrefix(p, "/actions/"):
+		return "/"
+	default:
+		return next
+	}
 }
 
 // signIn exchanges the token for a session.

@@ -49,7 +49,8 @@ func isChange(cause string) bool {
 	return cause != decision.CauseStartup && cause != decision.CauseSnapshot
 }
 
-// auditedVerdicts records the verdicts and revocations this node issues.
+// auditedVerdicts records the verdicts and revocations this node issues,
+// with the origin their context carries.
 type auditedVerdicts struct {
 	admin.VerdictService
 	audit *audit.Log
@@ -58,7 +59,9 @@ type auditedVerdicts struct {
 func (v auditedVerdicts) Report(ctx context.Context, r verdicts.Report) (verdicts.Result, error) {
 	res, err := v.VerdictService.Report(ctx, r)
 	if err == nil && !res.Coalesced {
-		v.audit.Write(audit.LocalReport(res.Event))
+		rec := audit.LocalReport(res.Event)
+		rec.Origin = audit.OriginOf(ctx)
+		v.audit.Write(rec)
 	}
 	return res, err
 }
@@ -67,7 +70,9 @@ func (v auditedVerdicts) Revoke(ctx context.Context, r verdicts.Revocation) ([]*
 	revocations, err := v.VerdictService.Revoke(ctx, r)
 	// Revocations issued before a failure took effect too.
 	for _, ev := range revocations {
-		v.audit.Write(audit.Revocation(ev))
+		rec := audit.Revocation(ev)
+		rec.Origin = audit.OriginOf(ctx)
+		v.audit.Write(rec)
 	}
 	return revocations, err
 }

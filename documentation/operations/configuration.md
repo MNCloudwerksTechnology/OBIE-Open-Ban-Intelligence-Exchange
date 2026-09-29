@@ -130,8 +130,9 @@ bootstrap addresses.
 
 | Key | Default | Applied on | Meaning |
 |-----|---------|------------|---------|
-| `console.enabled` | `false` | reload | Serve the local web console, a read-only view of the node for its operator. Off by default; a reload starts or stops it without touching anything else. Sign in with the token `obiectl console` shows. |
+| `console.enabled` | `false` | reload | Serve the local web console, a view of the node for its operator. Off by default; a reload starts or stops it without touching anything else. Sign in with the token `obiectl console` shows. |
 | `console.listen` | `127.0.0.1:9465` | reload | Loopback `ip:port` of the console: `127.0.0.1` (or another `127.0.0.0/8` address) or `::1`. Any other address — a host name, `localhost`, `0.0.0.0`, an empty host, an interface address — is refused, because it would expose the console to the network. From another machine, forward the port over SSH: `ssh -L 9465:127.0.0.1:9465 <this host>`. A reload moves the console to the new address. |
+| `console.actions` | `true` | reload | Let the console carry out what `obiectl allow`, `block`, `unoverride`, `report` and `revoke` do — each after a confirmation that says what will happen, under the same rules, and recorded in the audit log with `obie.origin: console`. `false` makes the console strictly read-only: it shows no action and refuses them. It adds no right: whoever may sign in may run `obiectl` too. See [Act from the console](console.md#act-from-the-console). |
 
 The console admits only root, the user `obied` runs as and members of
 `admin.socket_group`, and only with the token; its security model is

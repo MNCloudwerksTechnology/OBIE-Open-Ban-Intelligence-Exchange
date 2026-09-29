@@ -1,7 +1,9 @@
 // Package console serves the node's local web console (ADR 0019): an
-// opt-in, read-only view of the node for its operator. It listens on a
-// loopback address only, serves only the local users the admin API admits,
-// and only to browsers signed in with a token that obied keeps in memory.
+// opt-in view of the node for its operator, from which the operator also
+// carries out obiectl's actions after a confirmation, unless
+// console.actions is off (ADR 0026). It listens on a loopback address
+// only, serves only the local users the admin API admits, and only to
+// browsers signed in with a token that obied keeps in memory.
 //
 // The console is a lifecycle subsystem that never fails: when it cannot
 // listen, the node runs without it and the reason is logged and shown in
@@ -16,6 +18,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -71,6 +74,9 @@ type Node struct {
 	// Activity reads the audit trail for the activity timeline; nil reads
 	// none (ADR 0025).
 	Activity ActivitySource
+	// Actions checks and carries out the operator's actions; nil carries
+	// out none (ADR 0026).
+	Actions ActionSource
 }
 
 // Options configures a Console.
@@ -100,6 +106,13 @@ type Console struct {
 	// signInLimit bounds sign-in attempts; warnLimit the warnings clients
 	// can provoke.
 	signInLimit, warnLimit *rate.Limiter
+	// actionMu makes checking the state an action acts on and carrying it
+	// out one step among all browser tabs; outcomes keeps what actions
+	// did for the pages the browsers return to, pending the actions whose
+	// session ended, for their confirmation after signing in (ADR 0026).
+	actionMu sync.Mutex
+	outcomes *memo[actionNotice]
+	pending  *memo[url.Values]
 
 	// applyMu serializes Start, Stop and Apply. It is held while a server
 	// starts or stops, which may wait for requests in flight; those only
@@ -120,7 +133,8 @@ var _ lifecycle.DetailReporter = (*Console)(nil)
 func New(cfg config.Console, opts Options, log *slog.Logger) *Console {
 	policy, err := peercred.NewPolicy(opts.Group)
 	c := &Console{log: log, node: opts.Node, policy: policy, policyErr: err, lookup: peercred.LoopbackTCP,
-		creds: newCredentials(), now: time.Now, signInLimit: newSignInLimit(), warnLimit: rate.NewLimiter(1, 10), cfg: cfg}
+		creds: newCredentials(), now: time.Now, signInLimit: newSignInLimit(), warnLimit: rate.NewLimiter(1, 10), cfg: cfg,
+		outcomes: newMemo[actionNotice](maxOutcomes, outcomeLifetime), pending: newMemo[url.Values](maxOutcomes, outcomeLifetime)}
 	c.pages = c.views()
 	c.handler = c.routes()
 	return c
@@ -313,6 +327,14 @@ func (c *Console) Detail() string {
 	default:
 		return "not started"
 	}
+}
+
+// actionsOn reports whether console.actions lets the console carry out
+// operator actions; a reload switches it through Apply (ADR 0026).
+func (c *Console) actionsOn() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.cfg.Actions
 }
 
 // Addr returns the address the console listens on; nil while it does not

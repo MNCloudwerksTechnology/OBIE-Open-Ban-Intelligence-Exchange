@@ -165,6 +165,10 @@ type Console struct {
 	// Listen is the loopback ip:port the console listens on; it is never
 	// reachable from another host.
 	Listen string `yaml:"listen"`
+	// Actions lets the console carry out the operator actions of obiectl —
+	// allow, block, unoverride, report, revoke — after a confirmation; off,
+	// the console is read-only (ADR 0026).
+	Actions bool `yaml:"actions"`
 }
 
 // Audit configures the JSON decision audit log.
@@ -203,7 +207,7 @@ func Default() Config {
 		Allowlist: Allowlist{CIDRs: []string{}, Files: []string{}},
 		Enforce:   Enforce{Backend: BackendDryRun, MaxEntries: 100000, ReconcileInterval: Duration(10 * time.Second)},
 		Metrics:   Metrics{Listen: "127.0.0.1:9464"},
-		Console:   Console{Enabled: false, Listen: "127.0.0.1:9465"},
+		Console:   Console{Enabled: false, Listen: "127.0.0.1:9465", Actions: true},
 		Audit:     Audit{Path: ""},
 		Log:       Log{Level: "info"},
 	}

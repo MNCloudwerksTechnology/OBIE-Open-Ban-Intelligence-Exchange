@@ -51,6 +51,11 @@
 
 <section class="section" aria-labelledby="list-heading">
   <h2 id="list-heading">{{.Heading}}</h2>
+  {{- if .Report}}
+  <p class="section-actions"><a class="button button-secondary" href="{{.Report}}">Report an address…</a></p>
+  {{- else if .ActionsOff}}
+  <p class="note">{{.ActionsOff}}</p>
+  {{- end}}
   <nav class="filters scopes" aria-label="Whose verdicts">
     <ul>
       {{- range .Scopes}}
@@ -147,6 +152,9 @@
           <span class="verdict-state" data-state="{{.State}}">{{.StateLabel}}</span>
           {{- if eq .State "active"}}
           <span class="cell-note">counts: {{.Counts}}</span>
+          {{- if .Revoke}}
+          <a class="row-action" href="{{.Revoke}}">Revoke<span class="visually-hidden"> my verdict on {{.Address}}</span>…</a>
+          {{- end}}
           {{- else if eq .State "revoked"}}
           {{- if .RevokeReason}}
           <span class="cell-note">why: {{.RevokeReason}}</span>

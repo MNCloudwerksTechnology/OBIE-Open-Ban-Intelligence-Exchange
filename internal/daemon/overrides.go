@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -34,7 +35,7 @@ func (s storeOverrides) List() ([]admin.OverrideResponse, error) {
 	return out, nil
 }
 
-func (s storeOverrides) Set(ind obieproto.Indicator, action string, ttl time.Duration, note string) (admin.OverrideResponse, error) {
+func (s storeOverrides) Set(ctx context.Context, ind obieproto.Indicator, action string, ttl time.Duration, note string) (admin.OverrideResponse, error) {
 	now := s.now()
 	o := store.Override{Indicator: ind, Action: store.Action(action), Note: note, CreatedAt: now}
 	if ttl > 0 {
@@ -51,17 +52,21 @@ func (s storeOverrides) Set(ind obieproto.Indicator, action string, ttl time.Dur
 	if err != nil {
 		return admin.OverrideResponse{}, err
 	}
-	s.audit.Write(audit.OverrideSet(&stored))
+	rec := audit.OverrideSet(&stored)
+	rec.Origin = audit.OriginOf(ctx)
+	s.audit.Write(rec)
 	return overrideResponse(&stored), nil
 }
 
-func (s storeOverrides) Delete(ind obieproto.Indicator) (bool, error) {
+func (s storeOverrides) Delete(ctx context.Context, ind obieproto.Indicator) (bool, error) {
 	// The action is only recorded; an override that cannot be read is
 	// deleted all the same.
 	old, _ := s.store.Override(ind.Key(), s.now())
 	deleted, err := s.store.DeleteOverride(ind.Key())
 	if deleted {
-		s.audit.Write(audit.OverrideRemoved(ind, old.Action))
+		rec := audit.OverrideRemoved(ind, old.Action)
+		rec.Origin = audit.OriginOf(ctx)
+		s.audit.Write(rec)
 	}
 	return deleted, err
 }
