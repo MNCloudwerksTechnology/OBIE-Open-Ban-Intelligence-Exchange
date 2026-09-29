@@ -1,0 +1,100 @@
+# OBIE sandbox: three nodes that trust each other and a stranger that
+# nobody trusts, on one bridge network, enforcing with the dryrun backend
+# (it blocks nothing). Each trusted node's web console is published on
+# 127.0.0.1 only. Start and remove it with the script next to this file:
+#
+#   ./sandbox up
+#   ./sandbox down
+#
+# See documentation/sandbox.md for the walkthrough.
+
+name: obie-sandbox
+
+x-init-build: &init-build
+  context: ../..
+  target: sandbox-init
+
+# A node can do without every capability: the dryrun backend never
+# touches a firewall.
+x-hardening: &hardening
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+x-node: &node
+  <<: *hardening
+  image: ${OBIE_SANDBOX_PROJECT:-obie-sandbox}:node
+  build:
+    context: ../..
+  command: ["--config", "/var/lib/obie/obie.yaml"]
+  depends_on:
+    init:
+      condition: service_completed_successfully
+  networks: [sandbox]
+  restart: unless-stopped
+
+# The console listens on the node's loopback interface only. This forwarder
+# shares the node's network namespace and passes the port published on the
+# host's 127.0.0.1 on to it, as the image user nonroot, whom the console
+# admits like obiectl.
+x-console: &console
+  <<: *hardening
+  image: ${OBIE_SANDBOX_PROJECT:-obie-sandbox}:init
+  build: *init-build
+  entrypoint: ["nc", "-ll", "-p", "9466", "-e", "nc", "127.0.0.1", "9465"]
+  user: "65532:65532"
+  restart: unless-stopped
+
+services:
+  # Creates the node keys (once) and the configurations (every start), and
+  # hands them to nonroot: the only capabilities any container keeps.
+  init:
+    <<: *hardening
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    image: ${OBIE_SANDBOX_PROJECT:-obie-sandbox}:init
+    build: *init-build
+    command: [--stranger, /sandbox/stranger, /sandbox/node1, /sandbox/node2, /sandbox/node3]
+    volumes:
+      - node1:/sandbox/node1
+      - node2:/sandbox/node2
+      - node3:/sandbox/node3
+      - stranger:/sandbox/stranger
+    network_mode: none
+
+  node1:
+    <<: *node
+    volumes: [node1:/var/lib/obie]
+    ports: ["127.0.0.1:${OBIE_SANDBOX_CONSOLE1:-9401}:9466"]
+  node2:
+    <<: *node
+    volumes: [node2:/var/lib/obie]
+    ports: ["127.0.0.1:${OBIE_SANDBOX_CONSOLE2:-9402}:9466"]
+  node3:
+    <<: *node
+    volumes: [node3:/var/lib/obie]
+    ports: ["127.0.0.1:${OBIE_SANDBOX_CONSOLE3:-9403}:9466"]
+  stranger:
+    <<: *node
+    volumes: [stranger:/var/lib/obie]
+
+  console1:
+    <<: *console
+    network_mode: service:node1
+    depends_on: [node1]
+  console2:
+    <<: *console
+    network_mode: service:node2
+    depends_on: [node2]
+  console3:
+    <<: *console
+    network_mode: service:node3
+    depends_on: [node3]
+
+networks:
+  sandbox:
+    driver: bridge
+
+volumes:
+  node1:
+  node2:
+  node3:
+  stranger:

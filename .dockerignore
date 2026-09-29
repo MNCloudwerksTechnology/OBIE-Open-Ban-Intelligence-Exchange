@@ -8,5 +8,6 @@
 !pkg/
 !packaging/docker/
 !packaging/compose/lab-init.sh
+!packaging/sandbox/sandbox-init.sh
 **/*_test.go
 **/testdata/
