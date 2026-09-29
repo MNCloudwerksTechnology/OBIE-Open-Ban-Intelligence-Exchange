@@ -340,10 +340,10 @@ const releasing = "../CONTRIBUTING.md#releasing"
 
 // TestCapabilitiesDescribeCurrentRelease checks that the overview names
 // the release it describes before its first section, that this is the
-// release the README and the quick start install, that it names no other release, and that
-// it says how it is kept current with every release (make release refuses
-// a version it does not name: TestReleaseRefusesStaleCapabilities in
-// packaging).
+// release the README and the quick start install, that it names no other
+// release, and that it says how it is kept current with every release
+// (make release refuses a version it does not name:
+// TestReleaseRefusesStaleCapabilities in packaging).
 func TestCapabilitiesDescribeCurrentRelease(t *testing.T) {
 	doc := readRepoFile(t, capabilitiesPath)
 	top, _, _ := strings.Cut(doc, "\n## ")

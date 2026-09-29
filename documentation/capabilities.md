@@ -134,8 +134,8 @@ node of three, while its two peers send it verdicts:
   and unban through the OBIE action work with Fail2Ban 0.11.2, 1.0.2 and
   1.1.0 ([measurement](operations/performance.md#fail2ban-versions)).
   Those are the versions of Ubuntu 22.04, 24.04 and 26.04, Debian 12 and
-  13, Alpine 3.22 and Rocky Linux 9. Fail2Ban 0.10 reports bans too, but its verdicts
-  then last 7 days instead of the ban time.
+  13, Alpine 3.22 and Rocky Linux 9. Fail2Ban 0.10 reports bans too, but
+  its verdicts then last 7 days instead of the ban time.
 
 ## Remaining risks
 
