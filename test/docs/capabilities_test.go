@@ -42,12 +42,15 @@ type capability struct {
 
 var capabilities = []capability{
 	{"Share what Fail2Ban catches.", nil},
-	{"Exchange warnings only with peers you choose.", nil},
+	{"Choose the peers you connect to and trust.", nil},
 	{"Block only when enough trusted peers agree.", nil},
 	{"Keep the last word.", nil},
 	{"Watch before you block.", func(c config.Config) bool { return c.Node.Mode != config.ModeObserve }},
 	{"Block attackers in your firewall.", func(c config.Config) bool {
 		return c.Node.Mode != config.ModeEnforce || c.Enforce.Backend != config.BackendNFTables
+	}},
+	{"Protect what sits behind your server.", func(c config.Config) bool {
+		return c.Node.Mode != config.ModeEnforce || c.Enforce.Backend != config.BackendNFTables || !c.Enforce.NFTables.Forward
 	}},
 	{"See how the node is doing.", func(c config.Config) bool { return c.Metrics.Listen == "" }},
 	{"Keep an audit trail.", func(c config.Config) bool { return c.Audit.Path == "" }},
@@ -66,11 +69,15 @@ var missingFeatures = []string{
 }
 
 // Plan labels of what the release cannot do yet: "Planned" names where it
-// is planned, with a link.
+// is planned, with a link to the whitepaper or the architecture's future
+// work.
 const (
 	planPlanned = "Planned"
 	planNone    = "No plan yet"
 )
+
+// roadmap matches the links a "Planned" may cite.
+var roadmap = regexp.MustCompile(`^(whitepaper\.md#|\.\./ARCHITECTURE\.md#future-work$)`)
 
 // requirementTopics are the subsections of "What it needs" (WP-1692).
 var requirementTopics = []string{
@@ -177,9 +184,9 @@ func TestNotYetIsAsProminent(t *testing.T) {
 	for lead, row := range cannotRows {
 		switch {
 		case row[1] == planNone:
-		case strings.HasPrefix(row[1], planPlanned) && len(relativeLinks(row[1])) > 0:
+		case strings.HasPrefix(row[1], planPlanned) && citesRoadmap(row[1]):
 		default:
-			t.Errorf("%q: %q, want %q or %q with a link to where it is planned", lead, row[1], planNone, planPlanned)
+			t.Errorf("%q: %q, want %q, or %q with a link to the whitepaper or the architecture's future work", lead, row[1], planNone, planPlanned)
 		}
 		if strings.TrimSpace(row[2]) == "" {
 			t.Errorf("%q does not say what to do until then", lead)
@@ -237,6 +244,9 @@ func defaultPorts(t *testing.T) []string {
 		}
 	}
 	for _, addr := range []string{d.Metrics.Listen, d.Console.Listen} {
+		if addr == "" {
+			continue // switched off
+		}
 		_, port, err := net.SplitHostPort(addr)
 		if err != nil {
 			t.Fatal(err)
@@ -330,7 +340,7 @@ const releasing = "../CONTRIBUTING.md#releasing"
 
 // TestCapabilitiesDescribeCurrentRelease checks that the overview names
 // the release it describes before its first section, that this is the
-// release the README installs, that it names no other release, and that
+// release the README and the quick start install, that it names no other release, and that
 // it says how it is kept current with every release (make release refuses
 // a version it does not name: TestReleaseRefusesStaleCapabilities in
 // packaging).
@@ -342,13 +352,15 @@ func TestCapabilitiesDescribeCurrentRelease(t *testing.T) {
 		t.Fatal("the overview does not name the release it describes, as **OBIE x.y.z**, before its first section")
 	}
 	release := m[1]
-	installs := installedRelease.FindAllStringSubmatch(readRepoFile(t, "README.md"), -1)
-	if len(installs) == 0 {
-		t.Fatal("the README installs no release")
-	}
-	for _, in := range installs {
-		if in[1] != release {
-			t.Errorf("the README installs %s, but the overview describes OBIE %s", in[1], release)
+	for _, page := range []string{"README.md", quickstartPath} {
+		installs := installedRelease.FindAllStringSubmatch(readRepoFile(t, page), -1)
+		if len(installs) == 0 {
+			t.Errorf("%s installs no release", page)
+		}
+		for _, in := range installs {
+			if in[1] != release {
+				t.Errorf("%s installs %s, but the overview describes OBIE %s", page, in[1], release)
+			}
 		}
 	}
 	for _, n := range namedRelease.FindAllStringSubmatch(doc, -1) {
@@ -416,6 +428,13 @@ func tableRows(doc string) [][]string {
 		rows = append(rows, cells)
 	}
 	return rows
+}
+
+// citesRoadmap reports whether text links where a plan is recorded, and
+// nothing else.
+func citesRoadmap(text string) bool {
+	links := relativeLinks(text)
+	return len(links) > 0 && !slices.ContainsFunc(links, func(l string) bool { return !roadmap.MatchString(l) })
 }
 
 // isGuideLink reports whether a relative link leads to a page that shows

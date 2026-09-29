@@ -81,6 +81,7 @@ EOF
 	expect_args report --ip "$ip" --protocol obie-check --reason bruteforce --events 2 \
 		--mitre T1110 --ttl 900s --evidence-from-stdin
 	expect_args revoke --reason unbanned "$ip"
+	[ -f "$work/stdin" ] || fail "obiectl report got no matched lines on stdin"
 	if [ "$(grep -c "obie-check: failed login from $ip" "$work/stdin")" -ne 2 ]; then
 		fail "stdin of obiectl report holds $(wc -l <"$work/stdin") lines, want the 2 matched lines"
 	fi
@@ -127,7 +128,7 @@ dir=$(cd "$(dirname "$0")" && pwd)
 [ $# -gt 0 ] || set -- $IMAGES
 failed=0
 for image in "$@"; do
-	if out=$(docker run --rm -v "$dir:/obie:ro" "$image" sh /obie/check-versions.sh --inside 2>&1); then
+	if out=$(docker run --rm -v "$dir:/obie:ro,z" "$image" sh /obie/check-versions.sh --inside 2>&1); then
 		echo "$image: $(printf '%s\n' "$out" | tail -n 1)"
 	else
 		echo "$image: FAILED" >&2

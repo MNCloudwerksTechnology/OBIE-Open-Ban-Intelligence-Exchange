@@ -18,11 +18,12 @@ means it shows what it would block and never blocks anything.
 | What you get | Status | How |
 |---|---|---|
 | **Share what Fail2Ban catches.** Each ban of a [Fail2Ban](glossary.md#fail2ban) jail you choose becomes a signed warning, a [verdict](glossary.md#verdict), for the servers you exchange warnings with. The log lines stay on your server. | Supported | [Fail2Ban guide](guides/fail2ban.md): one extra line per jail |
-| **Exchange warnings only with [peers](glossary.md#peer) you choose.** Your [node](glossary.md#node), the OBIE program on your server, connects to the peers you name: a friend's server, a partner's, or your own. There is no central service and no account. | Supported | [Federation](operations/federation.md) |
-| **Block only when enough trusted peers agree.** You give each peer a [trust weight](glossary.md#trust-weight). Your node blocks an address only when the weighted verdicts reach a [threshold](glossary.md#threshold) and enough different peers agree, the [quorum](glossary.md#quorum). With the default settings, one peer alone can never get an address blocked. Your node shows why it blocks an address, or why not. | Supported | [Choose trust weights and quorum](operations/federation.md#choose-trust-weights-and-quorum) |
-| **Keep the last word.** Always allow or always block any address with an [override](glossary.md#override), and put the networks you depend on on the [allow-list](glossary.md#allow-list). Your server's own addresses, internal networks and the peers you told your node to connect to are protected from the start. | Supported | [Override the mesh](operations/operations.md#override-the-mesh), [quick start, step 5](operations/quickstart.md#5-enforce) |
+| **Choose the [peers](glossary.md#peer) you connect to and trust.** Your [node](glossary.md#node), the OBIE program on your server, connects to the peers you name: a friend's server, a partner's, or your own. There is no central service and no account. Other nodes that reach yours can connect too and receive your warnings, but theirs count for nothing unless you trust them. | Supported | [Federation](operations/federation.md) |
+| **Block only when enough trusted peers agree.** You give each peer a [trust weight](glossary.md#trust-weight). Your node blocks an address only when the weighted verdicts reach a [threshold](glossary.md#threshold) and enough different peers agree, the [quorum](glossary.md#quorum). With the default settings, one peer alone can never get an address blocked. Your own server's detections block at once ([local autoblock](glossary.md#local-autoblock)). Your node shows why it blocks an address, or why not. | Supported | [Choose trust weights and quorum](operations/federation.md#choose-trust-weights-and-quorum) |
+| **Keep the last word.** Always allow any address, or always block any address that is not protected, with an [override](glossary.md#override). Put the networks you depend on on the [allow-list](glossary.md#allow-list). Your server's own addresses, internal networks and the peers you told your node to connect to are [protected](glossary.md#protected-addresses) from the start. A public address your server has only behind a router (NAT) is not detected; put it on the allow-list. | Supported | [Override the mesh](operations/operations.md#override-the-mesh), [quick start, step 5](operations/quickstart.md#5-enforce) |
 | **Watch before you block.** A new node starts in [observe mode](glossary.md#observe-mode): it decides and lists what it would block, but does not touch your firewall. | Supported | [Quick start, step 2](operations/quickstart.md#2-start-in-observe-mode) |
 | **Block attackers in your firewall.** In [enforce mode](glossary.md#enforce-mode), your node blocks through its own [nftables](glossary.md#nftables) table and never changes the rules your administrators made. Every block ends on its own when its verdicts expire. | Off by default | [Quick start, step 5](operations/quickstart.md#5-enforce), [nftables guide](guides/nftables.md) |
+| **Protect what sits behind your server.** On a router or a host of containers, your node can also block traffic that passes through it to other machines or containers, such as the ports Docker publishes. | Off by default | [nftables guide](guides/nftables.md#configuration) |
 | **Take back a report.** A [revocation](glossary.md#revocation) withdraws a verdict of your node from the peers it reaches. | Supported | [Fail2Ban guide](guides/fail2ban.md#remove), [federation](operations/federation.md#leave-a-federation) |
 | **See how the node is doing.** Health checks and metrics for your monitoring (Prometheus), and a Grafana dashboard. They are only reachable on the server itself unless you open them. | Supported | [Monitoring](operations/monitoring.md#metrics) |
 | **Keep an audit trail.** A log of every decision, override and report, in a format security tools (SIEM) read. | Off by default | [Audit log](operations/monitoring.md#audit-log) |
@@ -47,8 +48,8 @@ a date. **No plan yet** means nobody has planned it.
 | **Replacing a node's key.** A node whose secret key is lost or stolen needs a new identity. | Planned ([future work](../ARCHITECTURE.md#future-work)) | Create a new key and ask every peer's operator to enter your new peer ID ([operations](operations/operations.md#back-up-the-node-key)). |
 | **Other detection tools, ready-made.** Only Fail2Ban has a ready-made connection. One for honeypots (Cowrie, T-Pot) is planned; others, such as CrowdSec or Suricata, are not. | Planned for honeypots ([whitepaper](whitepaper.md#53-operational-integration-siem-and-soar)), no plan yet for others | Any tool that can run a command can report an address with `obiectl report`, as the [Fail2Ban action](guides/fail2ban.md) does. |
 | **Warnings about more than addresses.** Verdicts name internet addresses and address ranges only: no domain names, web addresses, fingerprints or file hashes. | Planned ([whitepaper](whitepaper.md#321-technical-schema)) | Keep using your other tools for them. |
-| **Other firewalls.** OBIE blocks only through nftables on Linux: not through iptables-legacy, pf, Windows Firewall or a cloud provider's firewall. Faster blocking with eBPF is planned. | Planned for eBPF ([whitepaper](whitepaper.md#33-the-tech-stack)), no plan yet for others | OBIE's own table works next to firewalld, Docker and iptables-nft ([nftables guide](guides/nftables.md)). |
-| **Hosts other than Linux.** No Windows, macOS or BSD, and no 32-bit processors. | No plan yet | A Linux router or firewall in front of those servers can run OBIE and block for them ([nftables guide](guides/nftables.md#configuration)). |
+| **Other firewalls.** OBIE blocks only through nftables on Linux: not through iptables-legacy, pf, Windows Firewall or a cloud provider's firewall. Faster blocking inside the Linux kernel (eBPF), and blocking through Fail2Ban, are planned. | Planned for eBPF and Fail2Ban ([whitepaper](whitepaper.md#33-the-tech-stack)), no plan yet for others | OBIE's own table works next to firewalld, Docker and iptables-nft ([nftables guide](guides/nftables.md)). |
+| **Hosts other than Linux.** No Windows, macOS or BSD, and no 32-bit processors. | No plan yet | A Linux router or firewall in front of those servers can run OBIE and block for them, once you switch on blocking of passing traffic ([nftables guide](guides/nftables.md#configuration)). |
 | **Blocking from the container image.** The container image only observes. | No plan yet | Install OBIE on the host itself to block ([install](operations/install.md#install-on-a-host-with-systemd)). |
 | **Catching up after being offline.** A node receives verdicts only while it is connected; most of what it missed never arrives. | No plan yet | Keep your node connected. A peer's Fail2Ban reports an address again when it bans it again. |
 | **Limiting who may connect.** Any node that reaches the OBIE port can connect. Its warnings count for nothing unless you trust it, but it uses bandwidth, processor time and disk. | No plan yet | Open the OBIE port only to your peers in your firewall ([federation](operations/federation.md#open-the-mesh-port)). |
@@ -98,8 +99,8 @@ a date. **No plan yet** means nobody has planned it.
 
 ### Resources
 
-Measured with `make resources` on the reference host, a desktop computer
-whose nodes were each limited to one processor core
+Measured with `make resources` on the reference host, a desktop computer,
+with each node set to use one processor core (`GOMAXPROCS=1`)
 ([measurement](operations/performance.md#resource-usage-of-one-node)). One
 node of three, while its two peers send it verdicts:
 
@@ -107,14 +108,14 @@ node of three, while its two peers send it verdicts:
 |---|---:|---:|---:|
 | No verdicts, connected to 2 peers | 34 MiB | 0.2 % of one core | under 1 MiB |
 | 10,000 verdicts, receiving 200 a second | 123 MiB | 10 % | 17 MiB |
-| 100,000 verdicts, receiving 200 a second | 366 MiB, at most 514 MiB | 43 % | 87 MiB |
+| 100,000 verdicts, receiving 200 a second | 366 MiB, peaking at 514 MiB | 43 % | 87 MiB |
 | 100,000 verdicts, at rest | 349 MiB | 2 % | 87 MiB |
 
 - **Memory grows with the verdicts your node holds**, by about 3 MiB per
   1,000. A verdict from Fail2Ban lives as long as its ban: 10 minutes
   with Fail2Ban's default, 7 days for a permanent ban. Five peers that
-  each ban 300 addresses a day for a week keep about 10,000 verdicts on
-  your node.
+  each ban 300 addresses a day, each for a week, keep about 10,000
+  verdicts on your node.
 - **200 verdicts a second is far more than a small federation sends.**
   The processor numbers come from a fast desktop core; a small server's
   core is slower.
@@ -132,8 +133,8 @@ node of three, while its two peers send it verdicts:
 - **Fail2Ban 0.11 or newer**, on the same server as the node. A real ban
   and unban through the OBIE action work with Fail2Ban 0.11.2, 1.0.2 and
   1.1.0 ([measurement](operations/performance.md#fail2ban-versions)).
-  Those are the versions of Ubuntu 22.04 to 26.04, Debian 12 and 13, Alpine
-  3.22 and Rocky Linux 9. Fail2Ban 0.10 reports bans too, but its verdicts
+  Those are the versions of Ubuntu 22.04, 24.04 and 26.04, Debian 12 and
+  13, Alpine 3.22 and Rocky Linux 9. Fail2Ban 0.10 reports bans too, but its verdicts
   then last 7 days instead of the ban time.
 
 ## Remaining risks
@@ -145,8 +146,8 @@ limits it and what is left. In short:
 
 - **A peer you trust can get the wrong address blocked.** If enough peers
   you trust agree, or you lower the quorum to one, they can block any
-  public address on your server, even by mistake. Nothing limits how much
-  one peer reports, and the blocked party cannot appeal
+  public address on your server, even by mistake. Nothing limits how many
+  addresses one peer can get blocked, and the blocked party cannot appeal
   (threat model: [poisoning by a trusted peer](../SECURITY.md#poisoning-by-a-trusted-peer)).
 - **Anyone who reaches the OBIE port can connect.** Their verdicts count
   for nothing unless you trust them, but they use bandwidth, processor time
@@ -171,9 +172,10 @@ limits it and what is left. In short:
   SSH, other users of your workstation can reach it too, and only the
   sign-in token protects it
   (threat model: [local web console](../SECURITY.md#local-web-console)).
-- **Your peers learn about your servers.** Every verdict tells them which
-  of your services was attacked, and they see your server's address.
-  Attacker addresses can be personal data, for example under the GDPR
+- **Other nodes learn about your servers.** Every node connected to your
+  mesh, trusted or not, receives your verdicts. It learns which of your
+  services were attacked and sees your server's address. Attacker
+  addresses can be personal data, for example under the GDPR
   (threat model: [privacy leakage](../SECURITY.md#privacy-leakage)).
 
 OBIE's code is fuzzed and checked by static analysis before every release
@@ -189,12 +191,12 @@ it is missing and not planned.
 | Your situation | Answer | Why |
 |---|---|---|
 | **One Linux VPS, and someone you trust who runs OBIE too.** | **Yes** | Connect your two nodes. Start with only your own detections blocking; let your peer's verdicts block once you trust them ([federation](operations/federation.md#choose-trust-weights-and-quorum)). |
-| **One Linux VPS, and nobody to exchange warnings with.** | **Not yet** | On its own, OBIE adds little to Fail2Ban, and there is no public network of nodes to join until automatic peer discovery arrives. |
+| **One Linux VPS, and nobody to exchange warnings with.** | **Not yet** | On its own, OBIE adds little to Fail2Ban, and there is no public network of nodes to join until automatic peer discovery and trust that adapts arrive. |
 | **Several Linux servers of your own.** | **Yes** | Each server's node warns the others, and you decide how many must agree before one blocks. |
 | **A small hosting provider with many Linux servers.** | **Yes** | Start in observe mode, and put your customers' and your monitoring's addresses on the allow-list before you block. Remember that blocking an address shared by many users blocks all of them. |
 | **A homelab behind a home router, next to a friend's server on the internet.** | **Yes** | Your node connects out to your friend's, so you open no port at home. If neither of you can accept connections, it does not work yet. |
-| **Servers with a firewall managed by firewalld, Docker or iptables-nft.** | **Yes** | OBIE adds its own firewall table and never changes theirs. |
-| **Servers that run Windows, macOS or BSD.** | **No** | OBIE runs on Linux only. A Linux router or firewall in front of those servers can run OBIE and block for them. |
+| **Servers with a firewall managed by firewalld, Docker or iptables-nft.** | **Yes** | OBIE adds its own firewall table and never changes theirs. To protect Docker's containers too, switch on blocking of passing traffic, which is off by default ([nftables guide](guides/nftables.md#configuration)). |
+| **Servers that run Windows, macOS or BSD.** | **No** | OBIE runs on Linux only. A Linux router or firewall in front of those servers can run OBIE and block for them, once you switch on blocking of passing traffic. |
 | **Only containers, such as managed Kubernetes, without access to the host's firewall.** | **No** | The container image only observes. Blocking needs OBIE on the host itself. |
 
 ## How this page is kept current

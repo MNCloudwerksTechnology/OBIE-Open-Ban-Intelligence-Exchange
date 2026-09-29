@@ -5,7 +5,7 @@ into signed [verdicts](../glossary.md#verdict) and, once you trust what it
 shows you, blocks attackers with nftables. Plan on half an hour. You need:
 
 - a Linux host (amd64 or arm64) with systemd, nftables and root access;
-- Fail2Ban 0.10 or newer, already banning something (an `sshd` jail will
+- Fail2Ban 0.11 or newer, already banning something (an `sshd` jail will
   do);
 - a console to the host that does not depend on its network (provider
   console, IPMI, KVM), in case you lock yourself out in step 5.
