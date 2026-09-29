@@ -165,8 +165,10 @@ things need a decision:
   node. `Mesh.Held` tells whether an event waits.
 - The console's outcome says so: "No peer is reachable now. The verdict is
   stored and counts on this node; it will be sent as soon as a peer is
-  reachable (unless obied restarts before)." `obiectl report` benefits
-  alike.
+  reachable (unless obied restarts before)." When a peer is reachable but
+  events held before still wait, the confirmation and the outcome say how
+  many and roughly how long sending them takes (`Mesh.Backlog`), since
+  they are lost with a restart too. `obiectl report` benefits alike.
 
 ### Threats considered
 
@@ -215,8 +217,8 @@ things need a decision:
 - The admin package exports its request checks; `admin.Overrides.Set` and
   `Delete` take a context, which carries the origin. `verdicts.Service`
   gains `Check`, `store` gains `CheckOverride`, `decision.Engine` gains
-  `ExplainWith` and `Flush`, `gossip.Gossip` and `mesh.Mesh` gain `Held` and
-  `TopicPeers`.
+  `ExplainWith` and `Flush`, `gossip.Gossip` and `mesh.Mesh` gain `Held`,
+  `Backlog` and `TopicPeers`.
 - Audit records of operator actions gain `obie.origin`, `user.id` and
   `user.name`; existing SIEM queries are unaffected.
 - `console.actions` joins the configuration (reload).

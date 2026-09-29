@@ -30,6 +30,7 @@ type reportChecker interface {
 type meshReach interface {
 	TopicPeers() int
 	Held(id string) bool
+	Backlog() (events int, wait time.Duration)
 	// Ready fails while the mesh does not run.
 	Ready() error
 }
@@ -150,6 +151,7 @@ func (a *consoleActions) Review(req console.ActionRequest) (console.ActionReview
 	}
 	key := act.ind.Key()
 	r := console.ActionReview{Peers: a.mesh.TopicPeers(), Mode: a.mode()}
+	r.Backlog, r.BacklogWait = a.mesh.Backlog()
 	r.Range, _ = sovereignty.PrefixOf(act.ind)
 	current, err := a.store.Override(key, now)
 	switch {
@@ -282,10 +284,12 @@ func (a *consoleActions) Do(ctx context.Context, req console.ActionRequest, acto
 			held = held || a.mesh.Held(ev.ID)
 		}
 	}
-	// An event held while a peer is on the topic only waits behind others
-	// that were held, and goes out within seconds: it is as good as sent.
-	out.Peers = a.mesh.TopicPeers()
-	out.Held = held && out.Peers == 0
+	// An event held while a peer is on the topic waits behind others that
+	// were held, which may take minutes, and is lost with a restart.
+	out.Peers, out.Held = a.mesh.TopicPeers(), held
+	if held {
+		out.Backlog, out.BacklogWait = a.mesh.Backlog()
+	}
 	a.engine.Flush()
 	d, err := a.engine.Explain(act.ind)
 	if err != nil {

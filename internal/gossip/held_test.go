@@ -187,6 +187,10 @@ func TestHeldEventsGoOutInBatches(t *testing.T) {
 	if !a.gossip.Held(late.ID) {
 		t.Error("a new event overtook the held ones")
 	}
+	// 55 events wait: 4 batches, the first at once, the others an hour apart.
+	if events, wait := a.gossip.Backlog(); events != 70-heldBatch+1 || wait != 3*time.Hour {
+		t.Errorf("Backlog = %d, %s; want %d, 3h", events, wait, 70-heldBatch+1)
+	}
 
 	a.setInterval(50 * time.Millisecond)
 	waitFor(t, propagationDeadline, "every held event on the peer", func() bool {
@@ -199,5 +203,32 @@ func TestHeldEventsGoOutInBatches(t *testing.T) {
 	})
 	if a.gossip.Held(late.ID) || len(a.gossip.held) != 0 {
 		t.Errorf("%d events still held", len(a.gossip.held))
+	}
+}
+
+// TestHeldEventsReachAPeerWithDefaultLimits: more held events than a
+// peer's default publisher burst (mesh.rate_limit.publisher, 10 a second,
+// burst 50) all reach it at the node's pace, none ignored by its rate
+// limit (review finding N2).
+func TestHeldEventsReachAPeerWithDefaultLimits(t *testing.T) {
+	a := newNode(t)
+	var held []*obieproto.Event
+	for range 60 {
+		ev := a.verdict(t, time.Now(), 3600)
+		a.publish(t, ev)
+		held = append(held, ev)
+	}
+	b := newNode(t) // the default limits of mesh.rate_limit
+	connect(t, a.host, b.host, a.gossip.topic, b.gossip.topic)
+	waitFor(t, 4*heldInterval+propagationDeadline, "every held event on the peer", func() bool {
+		for _, ev := range held {
+			if !b.has(ev.ID) {
+				return false
+			}
+		}
+		return true
+	})
+	if n := b.metrics.count(RateLimited); n != 0 {
+		t.Errorf("the peer ignored %d events over its rate limit", n)
 	}
 }

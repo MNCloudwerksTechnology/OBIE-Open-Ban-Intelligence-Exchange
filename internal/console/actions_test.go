@@ -542,6 +542,32 @@ func TestReportAndRevokeConsequences(t *testing.T) {
 	}
 }
 
+// TestBacklogIsSaid: a report or revocation that waits behind events held
+// while no peer was reachable says so, and how long they take, before and
+// after it is carried out (review finding N1).
+func TestBacklogIsSaid(t *testing.T) {
+	w := consequenceWriter{review: &ActionReview{Range: netip.MustParsePrefix("198.51.100.7/32"), Peers: 2, Backlog: 300,
+		BacklogWait: 36 * time.Second, Planned: &PlannedVerdict{Action: "ban", TTL: time.Hour}, Verdict: &OwnVerdict{Action: "ban"}},
+		req: ActionRequest{Kind: ActionReport, Report: ReportDetails{Events: 1}}, now: time.Now(), addr: "198.51.100.7"}
+	for name, got := range map[string][]consequence{"report": w.report(), "revocation": w.revoke()} {
+		if len(got) < 2 || got[1].Level != "warning" ||
+			got[1].Text != "It goes out after the 300 events of this node that wait to be sent, within a minute. "+
+				"They wait in memory only: if obied restarts before, they are not sent." {
+			t.Errorf("%s = %+v", name, got)
+		}
+	}
+	w.review.Backlog = 0
+	if got := w.report(); strings.Contains(got[1].Text, "wait to be sent") {
+		t.Errorf("a report without backlog = %+v", got)
+	}
+	n := outcomeNotice(ActionReport, &ActionOutcome{Range: w.review.Range, Held: true, Peers: 2, Backlog: 3000,
+		BacklogWait: 6 * time.Minute})
+	if n.Level != "warning" || len(n.Lines) == 0 || n.Lines[0] != "It waits behind events of this node held while no peer was reachable: "+
+		"it will be sent to the 2 peers with the 3,000 events waiting, within about 6 minutes (unless obied restarts before)." {
+		t.Errorf("outcome = %+v", n)
+	}
+}
+
 // TestBlockWithoutEffectWarns: an always-block that a protected address
 // beats says so before it is set, as obiectl block warns after.
 func TestBlockWithoutEffectWarns(t *testing.T) {

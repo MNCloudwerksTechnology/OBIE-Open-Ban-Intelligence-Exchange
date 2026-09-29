@@ -97,7 +97,7 @@ func TestPublishBeforeStart(t *testing.T) {
 	if err := m.Publish(context.Background(), signedVerdict(t, id, 0)); err == nil {
 		t.Error("Publish succeeded before Start")
 	}
-	if m.Held(signedVerdict(t, id, 0).ID) || m.TopicPeers() != 0 {
-		t.Error("Held or TopicPeers report something before Start")
+	if events, wait := m.Backlog(); m.Held(signedVerdict(t, id, 0).ID) || m.TopicPeers() != 0 || events != 0 || wait != 0 {
+		t.Error("Held, TopicPeers or Backlog report something before Start")
 	}
 }

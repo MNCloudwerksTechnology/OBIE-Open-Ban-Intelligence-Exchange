@@ -208,7 +208,7 @@ Only the packages that exist today are listed in detail; the remaining
   behind held ones; once a peer is on the topic it sends them in order, 16
   every 2 seconds (below GossipSub's per-peer queue and the default
   publisher rate limit), dropping those about to expire
-  (`Mesh.Held`, `Mesh.TopicPeers`; ADR 0026). Outcomes are counted in
+  (`Mesh.Held`, `Mesh.Backlog`, `Mesh.TopicPeers`; ADR 0026). Outcomes are counted in
   `obie_events_received_total` and reported through the `gossip.Metrics`
   interface (ADR 0009).
 - **Decision.** The `decision` subsystem (registered right after `store`)

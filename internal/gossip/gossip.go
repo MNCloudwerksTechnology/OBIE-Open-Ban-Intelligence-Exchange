@@ -390,6 +390,16 @@ func (g *Gossip) Held(id string) bool {
 	return false
 }
 
+// Backlog counts the held events and estimates how long sending them all
+// takes once a peer is on the topic, batch by batch.
+func (g *Gossip) Backlog() (events int, wait time.Duration) {
+	g.pubMu.Lock()
+	defer g.pubMu.Unlock()
+	events = len(g.held)
+	batches := (events + g.heldBatch - 1) / g.heldBatch
+	return events, time.Duration(max(batches-1, 0)) * g.heldInterval
+}
+
 // TopicPeers counts the peers on the topic: those the node's events are
 // sent to.
 func (g *Gossip) TopicPeers() int { return len(g.topic.ListPeers()) }

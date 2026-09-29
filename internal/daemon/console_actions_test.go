@@ -72,6 +72,13 @@ func (m *publishingMesh) TopicPeers() int {
 	return m.peers
 }
 
+// Backlog counts the held events, which it sends one a second.
+func (m *publishingMesh) Backlog() (int, time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.held), time.Duration(len(m.held)) * time.Second
+}
+
 func (m *publishingMesh) Held(id string) bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -279,14 +286,18 @@ func TestConsoleReportAndRevoke(t *testing.T) {
 	if err != nil || len(out.EventIDs) != 1 || out.Held || out.Peers != 3 || out.Decision.State == "block" {
 		t.Errorf("Do(revoke) = %+v, %v", out, err)
 	}
-	// Held behind other events while a peer is on the topic, a report is
-	// as good as sent.
+	// Held behind other events while a peer is on the topic, a report
+	// waits, and the review and the outcome say how long.
 	f.mesh.mu.Lock()
 	f.mesh.queued = true
 	f.mesh.mu.Unlock()
-	out, err = f.actions.Do(context.Background(), console.ActionRequest{Kind: console.ActionReport, Address: "85.10.0.9",
-		Report: console.ReportDetails{Protocol: "ssh", Reason: "password_bruteforce", Events: 1}}, alice)
-	if err != nil || !f.mesh.Held(out.EventIDs[0]) || out.Held || out.Peers != 3 {
+	behind := console.ActionRequest{Kind: console.ActionReport, Address: "85.10.0.9",
+		Report: console.ReportDetails{Protocol: "ssh", Reason: "password_bruteforce", Events: 1}}
+	if r, err := f.actions.Review(behind); err != nil || r.Backlog != 1 || r.BacklogWait != time.Second || r.Peers != 3 {
+		t.Errorf("Review(report behind held events) = %+v, %v", r, err)
+	}
+	out, err = f.actions.Do(context.Background(), behind, alice)
+	if err != nil || !out.Held || out.Peers != 3 || out.Backlog != 2 || out.BacklogWait != 2*time.Second {
 		t.Errorf("Do(report behind held events) = %+v, %v", out, err)
 	}
 	_, err = f.actions.Review(revoke)

@@ -114,6 +114,11 @@ type ActionReview struct {
 	Planned *PlannedVerdict
 	// Peers counts the peers a report or revocation would be sent to now.
 	Peers int
+	// Backlog counts this node's events that wait to be sent before it,
+	// and BacklogWait estimates how long sending them takes once a peer
+	// is on the topic.
+	Backlog     int
+	BacklogWait time.Duration
 	// Mode is node.mode.
 	Mode string
 }
@@ -133,10 +138,14 @@ type ActionOutcome struct {
 	// next refresh of the verdict in EventIDs.
 	EventIDs  []string
 	Coalesced bool
-	// Held is set if the events issued wait for a peer, none being
-	// reachable; Peers counts the peers they were sent to otherwise.
-	Held  bool
-	Peers int
+	// Held is set if the events issued wait to be sent: for a peer, with
+	// Peers 0, or behind other events waiting for Peers peers. Peers
+	// counts the peers on the topic; Backlog the events that wait, these
+	// included, and BacklogWait estimates how long sending them takes.
+	Held        bool
+	Peers       int
+	Backlog     int
+	BacklogWait time.Duration
 }
 
 // ActionError is why the node does not carry out an action: the

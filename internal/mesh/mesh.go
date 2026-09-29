@@ -464,6 +464,19 @@ func (m *Mesh) Held(id string) bool {
 	return g != nil && g.Held(id)
 }
 
+// Backlog counts this node's events waiting to be sent and estimates how
+// long sending them takes once a peer is on the topic; none while the mesh
+// is not running.
+func (m *Mesh) Backlog() (events int, wait time.Duration) {
+	m.mu.Lock()
+	g := m.gossip
+	m.mu.Unlock()
+	if g == nil {
+		return 0, 0
+	}
+	return g.Backlog()
+}
+
 // TopicPeers counts the peers on the GossipSub topic, those this node's
 // events are sent to; 0 while the mesh is not running.
 func (m *Mesh) TopicPeers() int {

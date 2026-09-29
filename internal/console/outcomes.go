@@ -47,7 +47,7 @@ func outcomeNotice(kind string, out *ActionOutcome) actionNotice {
 		case out.Held:
 			n.Level = "warning"
 			n.Title = "Your verdict on " + addr + " is stored and counts on this node."
-			n.Lines = append(n.Lines, "No peer is reachable now: it will be sent as soon as one is (unless obied restarts before).")
+			n.Lines = append(n.Lines, waitingText("it", out))
 		default:
 			n.Title = fmt.Sprintf("Your verdict on %s was published to %s.", addr, plural(out.Peers, "peer", "peers"))
 		}
@@ -55,7 +55,7 @@ func outcomeNotice(kind string, out *ActionOutcome) actionNotice {
 		if out.Held {
 			n.Level = "warning"
 			n.Title = "Your verdict on " + addr + " is revoked on this node."
-			n.Lines = append(n.Lines, "No peer is reachable now: the revocation will be sent as soon as one is (unless obied restarts before).")
+			n.Lines = append(n.Lines, waitingText("the revocation", out))
 		} else {
 			n.Title = fmt.Sprintf("Your verdict on %s was revoked; the revocation was published to %s.", addr,
 				plural(out.Peers, "peer", "peers"))
@@ -65,6 +65,17 @@ func outcomeNotice(kind string, out *ActionOutcome) actionNotice {
 	n.Links = []link{{Text: "Its decision", Href: decisionHref(out.Range)},
 		{Text: "In the activity timeline", Href: activityQuery{address: addr}.href("/activity")}}
 	return n
+}
+
+// waitingText says when what, an event of out that waits, will be sent:
+// once a peer is reachable, or after the events waiting before it.
+func waitingText(what string, out *ActionOutcome) string {
+	if out.Peers == 0 {
+		return "No peer is reachable now: " + what + " will be sent as soon as one is (unless obied restarts before)."
+	}
+	return fmt.Sprintf("It waits behind events of this node held while no peer was reachable: %s will be sent to the %s "+
+		"with the %s waiting, %s (unless obied restarts before).", what, plural(out.Peers, "peer", "peers"),
+		plural(out.Backlog, "event", "events"), withinText(out.BacklogWait))
 }
 
 // memo keeps what the browser returns to after a redirect — the outcome
