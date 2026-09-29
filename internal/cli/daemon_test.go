@@ -48,12 +48,18 @@ func TestRunDaemonCheckConfig(t *testing.T) {
 			wantStderr: []string{badAllowFile + ":2: invalid address \"not-a-cidr\""}},
 		{name: "missing allow-list file", args: []string{"--config", missingAllowlist, "--check-config"}, wantCode: ExitInvalidConfig,
 			wantStderr: []string{"allow-list file", "no such file"}},
-		{name: "help lists flags", args: []string{"--help"}, wantCode: ExitOK,
-			wantStderr: []string{"-check-config", "-config file", "/etc/obie/obie.yaml", "-version"}},
+		{name: "run checks", args: []string{"run", "--config", valid, "--check-config"}, wantCode: ExitOK,
+			wantStdout: "obied run: configuration " + valid + " is valid\n"},
 		{name: "version needs no config", args: []string{"--version", "--config", missing}, wantCode: ExitOK,
 			wantStdout: "obied dev\n"},
-		{name: "positional argument", args: []string{"start"}, wantCode: ExitUsage,
-			wantStderr: []string{`unexpected argument "start"`}},
+		{name: "unknown command", args: []string{"start"}, wantCode: ExitUsage,
+			wantStderr: []string{`unknown command "start"`, "Manage: set up, run and look after the node"}},
+		{name: "run with argument", args: []string{"run", "now"}, wantCode: ExitUsage,
+			wantStderr: []string{`obied run: unexpected argument "now"`}},
+		{name: "flags with argument", args: []string{"--config", valid, "now"}, wantCode: ExitUsage,
+			wantStderr: []string{`obied: unexpected argument "now"`}},
+		{name: "no arguments", args: nil, wantCode: ExitUsage,
+			wantStderr: []string{"Start here: sudo obied setup", "  run  ", "  self-check  "}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"io"
 	"time"
@@ -24,17 +23,16 @@ var selfCheckEnv = selfcheck.HostEnv
 // problem. It exits 1 if any check found a problem.
 func runSelfCheck(args []string, stdout, stderr io.Writer) int {
 	const program = "obied self-check"
-	fs := newFlagSet(program, stderr)
+	fs := newFlagSet(program)
 	configPath := fs.String("config", config.DefaultPath, "configuration `file` of the node")
 	serviceUser := fs.String("service-user", "obie", "`user` obied runs as")
 	asJSON := fs.Bool("json", false, "print the report as JSON, for scripts")
 	timeout := fs.Duration("timeout", selfCheckTimeout, "give up after this `duration`, e.g. 30s")
-	fs.Usage = func() { selfCheckUsage(fs) }
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	if *timeout <= 0 {
-		_, _ = fmt.Fprintf(stderr, "%s: --timeout must be positive\n", program)
+		usageProblem(program, fmt.Sprintf("--timeout must be positive, e.g. 30s, got %s", *timeout)).write(stderr, program)
 		return ExitUsage
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
@@ -52,22 +50,4 @@ func runSelfCheck(args []string, stdout, stderr io.Writer) int {
 		return ExitFailure
 	}
 	return ExitOK
-}
-
-func selfCheckUsage(fs *flag.FlagSet) {
-	out := fs.Output()
-	_, _ = fmt.Fprintf(out, `Usage: obied self-check [flags]
-
-Checks the node and this server, before the first start or at any time
-later, and reports each check as OK, WARNING or PROBLEM with the next step:
-configuration, identity, admin access, node, peers, clock, Fail2Ban,
-firewall and your SSH session's address. It changes nothing. Run it as
-root to let it look everywhere.
-
-Exit status: 0 no problem (warnings may remain), 1 at least one problem,
-2 wrong usage, 3 the report could not be written.
-
-Flags:
-`)
-	fs.PrintDefaults()
 }

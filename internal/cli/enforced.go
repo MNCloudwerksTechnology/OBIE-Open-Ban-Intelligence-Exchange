@@ -13,9 +13,9 @@ import (
 
 func runEnforced(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl enforced"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the entries as JSON")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the entries as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	resp, err := client.Enforced(ctx)

@@ -160,20 +160,17 @@ func TestOverrideUsage(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		"allow without argument":  {[]string{"allow"}, ExitUsage, "want 1 argument, got 0"},
-		"block with two":          {[]string{"block", "185.0.0.1", "185.0.0.2"}, ExitUsage, "want 1 argument, got 2"},
+		"allow without argument":  {[]string{"allow"}, ExitUsage, "missing the address or range"},
+		"block with two":          {[]string{"block", "185.0.0.1", "185.0.0.2"}, ExitUsage, "expects one address or range, got 2 arguments"},
 		"block bad ttl":           {[]string{"block", "185.0.0.1", "--ttl", "soon"}, ExitUsage, `invalid --ttl "soon"`},
 		"block zero ttl":          {[]string{"block", "185.0.0.1", "--ttl", "0s"}, ExitUsage, "positive duration"},
-		"block unknown flag":      {[]string{"block", "185.0.0.1", "--mode", "enforce"}, ExitUsage, "flag provided but not defined"},
-		"allow help":              {[]string{"allow", "--help"}, ExitOK, "Never block the address or range"},
-		"block help":              {[]string{"block", "-h"}, ExitOK, "but never the built-in ranges"},
-		"unoverride help":         {[]string{"unoverride", "--help"}, ExitOK, "Usage: obiectl unoverride <ip | cidr>"},
+		"block unknown flag":      {[]string{"block", "185.0.0.1", "--mode", "enforce"}, ExitUsage, "unknown flag --mode"},
 		"overrides argument":      {[]string{"overrides", "all"}, ExitUsage, `unexpected argument "all"`},
 		"allow not running":       {[]string{"allow", "185.0.0.1"}, ExitFailure, "obied is not running"},
 		"overrides not running":   {[]string{"overrides"}, ExitFailure, "obied is not running"},
 		"unoverride not running":  {[]string{"unoverride", "185.0.0.1"}, ExitFailure, "obied is not running"},
-		"unoverride two":          {[]string{"unoverride", "a", "b"}, ExitUsage, "want 1 argument, got 2"},
-		"unoverride unknown flag": {[]string{"unoverride", "--ttl", "1h", "185.0.0.1"}, ExitUsage, "flag provided but not defined"},
+		"unoverride two":          {[]string{"unoverride", "a", "b"}, ExitUsage, "expects one address or range, got 2 arguments: a b"},
+		"unoverride unknown flag": {[]string{"unoverride", "--ttl", "1h", "185.0.0.1"}, ExitUsage, "unknown flag --ttl"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer

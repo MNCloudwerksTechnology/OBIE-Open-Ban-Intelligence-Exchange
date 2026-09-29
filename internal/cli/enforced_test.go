@@ -47,7 +47,6 @@ func TestEnforcedUsage(t *testing.T) {
 		stderr string
 	}{
 		"argument":    {[]string{"enforced", "all"}, ExitUsage, `unexpected argument "all"`},
-		"help":        {[]string{"enforced", "--help"}, ExitOK, "-json"},
 		"not running": {[]string{"enforced"}, ExitFailure, "obied is not running"},
 	} {
 		t.Run(name, func(t *testing.T) {

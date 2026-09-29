@@ -14,9 +14,9 @@ import (
 
 func runPeers(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl peers"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the peers as JSON")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the peers as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	peers, err := client.Peers(ctx)

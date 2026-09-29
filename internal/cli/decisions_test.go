@@ -95,10 +95,10 @@ func TestExplainUsage(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		"no argument":    {[]string{"explain"}, ExitUsage, "want 1 argument(s), got 0"},
-		"two arguments":  {[]string{"explain", "203.0.113.7", "203.0.113.8"}, ExitUsage, "want 1 argument(s), got 2"},
-		"help":           {[]string{"explain", "--help"}, ExitOK, "Usage: obiectl explain [--json] <ip | cidr | indicator key>"},
-		"unknown flag":   {[]string{"explain", "--yaml", "203.0.113.7"}, ExitUsage, "flag provided but not defined"},
+		"no argument":    {[]string{"explain"}, ExitUsage, "missing the address or range"},
+		"two arguments":  {[]string{"explain", "203.0.113.7", "203.0.113.8"}, ExitUsage, "expects one address or range, got 2 arguments"},
+		"unknown flag":   {[]string{"explain", "--yaml", "203.0.113.7"}, ExitUsage, "unknown flag --yaml"},
+		"flag after arg": {[]string{"explain", "203.0.113.7", "--yaml"}, ExitUsage, "unknown flag --yaml"},
 		"not running":    {[]string{"explain", "203.0.113.7"}, ExitFailure, "obied is not running"},
 		"decisions arg":  {[]string{"decisions", "block"}, ExitUsage, `unexpected argument "block"`},
 		"decisions down": {[]string{"decisions"}, ExitFailure, "obied is not running"},

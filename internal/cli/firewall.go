@@ -23,10 +23,10 @@ var teardownFirewall = func(ctx context.Context) error {
 // their timeout.
 func runTeardownFirewall(args []string, stdout, stderr io.Writer) int {
 	const program = "obied teardown-firewall"
-	fs := newFlagSet(program, stderr)
+	fs := newFlagSet(program)
 	configPath := fs.String("config", config.DefaultPath, "path to the YAML configuration `file`, read with --on-stop")
 	onStop := fs.Bool("on-stop", false, "only remove the table if enforce.nftables.teardown_on_stop is true (for ExecStopPost)")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	if *onStop {

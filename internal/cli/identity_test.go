@@ -206,11 +206,7 @@ func TestIdentityCommandErrors(t *testing.T) {
 		{name: "unexpected argument", args: []string{"identity", "now"}, wantCode: ExitUsage,
 			wantStderr: []string{`unexpected argument "now"`}},
 		{name: "unknown flag", args: []string{"keygen", "--overwrite"}, wantCode: ExitUsage,
-			wantStderr: []string{"-force", "-state-dir"}},
-		{name: "keygen help", args: []string{"keygen", "--help"}, wantCode: ExitOK,
-			wantStderr: []string{"-force", "-config file", "-state-dir directory"}},
-		{name: "obied help lists commands", args: []string{"--help"}, wantCode: ExitOK,
-			wantStderr: []string{"keygen", "identity", "-check-config"}},
+			wantStderr: []string{"unknown flag --overwrite", "obied keygen --help"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

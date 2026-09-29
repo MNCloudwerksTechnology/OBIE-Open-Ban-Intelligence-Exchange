@@ -375,11 +375,11 @@ func TestSetupLockoutWarning(t *testing.T) {
 }
 
 func TestSetupHelp(t *testing.T) {
-	code, _, stderr := runSetupTest(t, testSetupEnv(""), "", "--help")
-	if code != ExitOK || !strings.Contains(stderr, "obied setup --non-interactive") || !strings.Contains(stderr, "-peer address[,name=NAME][,weight=0..1]") {
-		t.Errorf("exit code %d:\n%s", code, stderr)
+	code, stdout, _ := runSetupTest(t, testSetupEnv(""), "", "--help")
+	if code != ExitOK || !strings.Contains(stdout, "obied setup --non-interactive") || !strings.Contains(stdout, "--peer address[,name=NAME][,weight=0..1]") {
+		t.Errorf("exit code %d:\n%s", code, stdout)
 	}
-	if code, _, stderr := runObied(t, "--help"); code != ExitOK || !strings.Contains(stderr, "  setup ") {
-		t.Errorf("obied --help does not list setup:\n%s", stderr)
+	if code, stdout, _ := runObied(t, "--help"); code != ExitOK || !strings.Contains(stdout, "  setup ") {
+		t.Errorf("obied --help does not list setup:\n%s", stdout)
 	}
 }

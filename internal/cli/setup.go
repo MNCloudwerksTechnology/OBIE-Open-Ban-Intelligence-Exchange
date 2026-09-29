@@ -84,19 +84,18 @@ func runSetup(args []string, stdout, stderr io.Writer) int {
 func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env setupEnv) int {
 	const program = "obied setup"
 	defaults := setup.Defaults()
-	flags := newFlagSet(program, stderr)
+	flags := newFlagSet(program)
 	configPath := flags.String("config", config.DefaultPath, "configuration `file` to write")
 	nonInteractive := flags.Bool("non-interactive", false, "ask nothing: take the answers from the flags below")
 	stateDir := flags.String("state-dir", defaults.StateDir, "state `directory` of the node (node.state_dir)")
 	auditLog := flags.String("audit-log", defaults.AuditLog, "audit log `file` (audit.path), or none")
 	var peers, allows repeatable
 	flags.Var(&peers, "peer", "a peer to connect to and trust: `address[,name=NAME][,weight=0..1]` (weight "+
-		strconv.FormatFloat(setup.DefaultWeight, 'f', -1, 64)+" unless given); repeat for more peers")
+		strconv.FormatFloat(setup.DefaultWeight, 'f', -1, 64)+" unless given); repeat for more peers (default: no peers)")
 	mode := flags.String("mode", string(defaults.Mode), "observe (recommended: block nothing) or enforce")
-	flags.Var(&allows, "allow", "an `address or network` never to block; repeat for more")
+	flags.Var(&allows, "allow", "an `address or network` never to block; repeat for more (default: none besides the protected addresses)")
 	force := flags.Bool("force", false, "replace an existing configuration file; the old one is kept as a backup")
-	flags.Usage = func() { setupUsage(flags) }
-	if code, done := parseCommand(flags, program, args, stderr); done {
+	if code, done := parseNoArgs(flags, args, stdout, stderr); done {
 		return code
 	}
 	path, err := filepath.Abs(*configPath)
@@ -175,24 +174,6 @@ func setFlags(fs *flag.FlagSet, names []string) []string {
 		}
 	})
 	return given
-}
-
-func setupUsage(fs *flag.FlagSet) {
-	out := fs.Output()
-	_, _ = fmt.Fprintf(out, `Usage: obied setup [--config file]
-       obied setup --non-interactive [answer flags] [--force]
-
-Writes the configuration of this node after asking a few questions:
-where it keeps its state and audit log, which peers it connects to and
-how much it trusts them, whether it starts in observe mode, and which
-addresses it must never block. Every question offers a safe default. An
-existing configuration file is only replaced after you agree; the old one
-is kept as a backup. With --non-interactive the answers come from the
-flags, and the same answers always write the same file.
-
-Flags:
-`)
-	fs.PrintDefaults()
 }
 
 // answersFromFlags builds the answers given as flags.

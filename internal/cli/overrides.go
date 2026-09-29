@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -24,16 +22,11 @@ func runBlock(ctx context.Context, client *admin.Client, args []string, stdout, 
 // runSetOverride sets a force-allow or force-block override.
 func runSetOverride(ctx context.Context, client *admin.Client, name, action string, args []string, stdout, stderr io.Writer) int {
 	program := "obiectl " + name
-	fs := newFlagSet(program, stderr)
-	ttl := fs.String("ttl", "", "remove the override after `duration` (e.g. 90m, 36h, 7d); default: never")
-	note := fs.String("note", "", "why the override was set, shown by obiectl overrides and explain")
-	asJSON := fs.Bool("json", false, "print the result as JSON")
-	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: %s <ip | cidr> [--ttl duration] [--note text] [--json]\n\n", program)
-		_, _ = fmt.Fprintf(fs.Output(), "%s\n\nFlags:\n", overrideHelp[action])
-		fs.PrintDefaults()
-	}
-	indicator, code, done := parseOne(fs, program, args, stderr)
+	fs := newFlagSet(program)
+	ttl := fs.String("ttl", "", "remove the override after this `duration`, e.g. 90m, 36h or 7d (default: never)")
+	note := fs.String("note", "", "why the override was set, shown by obiectl overrides and explain (default: no note)")
+	asJSON := fs.Bool("json", false, "print the result as JSON, for scripts")
+	indicator, code, done := parseOneArg(fs, args, "address or range", stdout, stderr)
 	if done {
 		return code
 	}
@@ -66,16 +59,11 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 	return ExitOK
 }
 
-var overrideHelp = map[string]string{
-	admin.ActionForceAllow: "Never block the address or range, whatever the mesh reports. Beats every\nother rule, including the allow-list and force-blocks on overlapping ranges.",
-	admin.ActionForceBlock: "Block the address or range whatever its score. Beats allowlist.cidrs and\nallowlist.files, but never the built-in ranges, this node's own addresses\nor its bootstrap peers.",
-}
-
 func runOverrides(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl overrides"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the overrides as JSON")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the overrides as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	resp, err := client.Overrides(ctx)
@@ -97,13 +85,9 @@ func runOverrides(ctx context.Context, client *admin.Client, args []string, stdo
 
 func runUnoverride(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl unoverride"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the result as JSON")
-	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: %s <ip | cidr> [--json]\n\nFlags:\n", program)
-		fs.PrintDefaults()
-	}
-	indicator, code, done := parseOne(fs, program, args, stderr)
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the result as JSON, for scripts")
+	indicator, code, done := parseOneArg(fs, args, "address or range", stdout, stderr)
 	if done {
 		return code
 	}
@@ -125,31 +109,6 @@ func runUnoverride(ctx context.Context, client *admin.Client, args []string, std
 		return ExitIOError
 	}
 	return ExitOK
-}
-
-// parseOne parses a command's flags, which may also follow the one
-// positional argument, and returns that argument.
-func parseOne(fs *flag.FlagSet, program string, args []string, stderr io.Writer) (arg string, code int, done bool) {
-	var positional []string
-	for {
-		if err := fs.Parse(args); err != nil {
-			if errors.Is(err, flag.ErrHelp) {
-				return "", ExitOK, true
-			}
-			return "", ExitUsage, true
-		}
-		if fs.NArg() == 0 {
-			break
-		}
-		positional = append(positional, fs.Arg(0))
-		args = fs.Args()[1:]
-	}
-	if len(positional) != 1 {
-		_, _ = fmt.Fprintf(stderr, "%s: want 1 argument, got %d\n", program, len(positional))
-		fs.Usage()
-		return "", ExitUsage, true
-	}
-	return positional[0], 0, false
 }
 
 // writeOverrideResult prints the override that was set and the resulting

@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"math"
@@ -16,16 +14,13 @@ import (
 
 func runExplain(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl explain"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the explanation as JSON")
-	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: %s [--json] <ip | cidr | indicator key>\n\nFlags:\n", program)
-		fs.PrintDefaults()
-	}
-	if code, done := parseArgs(fs, program, args, 1, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the explanation as JSON, for scripts")
+	target, code, done := parseOneArg(fs, args, "address or range", stdout, stderr)
+	if done {
 		return code
 	}
-	d, err := client.Explain(ctx, fs.Arg(0))
+	d, err := client.Explain(ctx, target)
 	if err != nil {
 		reportClientError(stderr, err)
 		return ExitFailure
@@ -44,10 +39,10 @@ func runExplain(ctx context.Context, client *admin.Client, args []string, stdout
 
 func runDecisions(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl decisions"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the decisions as JSON")
-	state := fs.String("state", "", "list only decisions in `state` (block, none or allowed)")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the decisions as JSON, for scripts")
+	state := fs.String("state", "", "list only the decisions in `state`: block, none or allowed (default: every state)")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	resp, err := client.Decisions(ctx, *state)
@@ -65,23 +60,6 @@ func runDecisions(ctx context.Context, client *admin.Client, args []string, stdo
 		return ExitIOError
 	}
 	return ExitOK
-}
-
-// parseArgs parses a command's flags and requires exactly n positional
-// arguments.
-func parseArgs(fs *flag.FlagSet, program string, args []string, n int, stderr io.Writer) (code int, done bool) {
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return ExitOK, true
-		}
-		return ExitUsage, true
-	}
-	if fs.NArg() != n {
-		_, _ = fmt.Fprintf(stderr, "%s: want %d argument(s), got %d\n", program, n, fs.NArg())
-		fs.Usage()
-		return ExitUsage, true
-	}
-	return 0, false
 }
 
 // writeExplanation prints the decision summary followed by one row per
