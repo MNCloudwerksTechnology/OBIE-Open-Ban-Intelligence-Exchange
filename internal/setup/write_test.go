@@ -5,6 +5,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -92,6 +95,53 @@ func TestWriteRefusesNonRegularFile(t *testing.T) {
 	}
 	if _, err := Write(path, []byte("x\n"), WriteOptions{Replace: true}); err == nil {
 		t.Error("Write replaced a symbolic link")
+	}
+}
+
+func TestCheckPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "obie.yaml")
+	if err := CheckPath(path); err != nil {
+		t.Errorf("CheckPath of a new file: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckPath(path); err != nil {
+		t.Errorf("CheckPath of a regular file: %v", err)
+	}
+	link := filepath.Join(dir, "link.yaml")
+	if err := os.Symlink(path, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckPath(link); err == nil || !strings.Contains(err.Error(), "is not a regular file (a symbolic link?)") {
+		t.Errorf("CheckPath of a symbolic link: %v", err)
+	}
+	if err := CheckPath(path + "\nadmin: {}"); err == nil || !strings.Contains(err.Error(), "line break") {
+		t.Errorf("CheckPath of a path with a line break: %v", err)
+	}
+}
+
+// TestWriteKeepsTheGroupItCannotGive checks that a user who is not root
+// writes a file of their own when they may not give it the group.
+func TestWriteKeepsTheGroupItCannotGive(t *testing.T) {
+	groups, err := os.Getgroups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if os.Geteuid() == 0 || os.Getegid() == 0 || slices.Contains(groups, 0) {
+		t.Skip("the user may give files to the group root")
+	}
+	path := filepath.Join(t.TempDir(), "obie.yaml")
+	if _, err := Write(path, []byte("x\n"), WriteOptions{Group: "root"}); err != nil {
+		t.Fatalf("Write with a group the user is not in: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, ok := info.Sys().(*syscall.Stat_t); ok && int(st.Gid) == 0 {
+		t.Error("the file got the group root")
 	}
 }
 

@@ -243,6 +243,32 @@ func TestSetupWithoutPermission(t *testing.T) {
 	}
 }
 
+// TestSetupRefusesAPathBeforeAsking checks that a configuration path the
+// file cannot be written to fails before the first question.
+func TestSetupRefusesAPathBeforeAsking(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "managed.yaml")
+	if err := os.WriteFile(target, []byte("node: {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "obie.yaml")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]string{
+		link:                            "is not a regular file (a symbolic link?)",
+		filepath.Join(dir, "a\nb.yaml"): "holds a line break",
+	} {
+		code, stdout, stderr := runSetupTest(t, testSetupEnv(""), "\n\n\n\n\n\n", "--config", path)
+		if code != ExitFailure || stdout != "" || !strings.Contains(stderr, want) {
+			t.Errorf("%q: exit code %d, stdout %q, stderr %q; want %q", path, code, stdout, stderr, want)
+		}
+	}
+	if got := readText(t, target); got != "node: {}\n" {
+		t.Errorf("the file behind the link holds %q", got)
+	}
+}
+
 func TestSetupInputEnds(t *testing.T) {
 	path := configPathIn(t)
 	code, _, stderr := runSetupTest(t, testSetupEnv(""), "\n\n", "--config", path)

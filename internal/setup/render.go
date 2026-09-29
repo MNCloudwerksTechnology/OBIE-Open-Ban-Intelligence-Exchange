@@ -25,8 +25,8 @@ func Render(a Answers, path string) ([]byte, error) {
 		return nil, fmt.Errorf("the answers do not make a valid configuration: node.mode must be %s or %s, got %q",
 			config.ModeObserve, config.ModeEnforce, a.Mode)
 	}
-	if strings.ContainsFunc(path, func(r rune) bool { return r < ' ' || r == 0x7f || r == 0x85 || r == 0x2028 || r == 0x2029 }) {
-		return nil, fmt.Errorf("the configuration path %q holds a line break or another control character", path)
+	if err := checkPathText(path); err != nil {
+		return nil, err
 	}
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
@@ -115,6 +115,15 @@ func Render(a Answers, path string) ([]byte, error) {
 		return nil, fmt.Errorf("the answers do not make a valid configuration: %w", err)
 	}
 	return data, nil
+}
+
+// checkPathText refuses a configuration path with a control character or
+// a YAML line break, which would end the comments that name it.
+func checkPathText(path string) error {
+	if strings.ContainsFunc(path, func(r rune) bool { return r < ' ' || r == 0x7f || r == 0x85 || r == 0x2028 || r == 0x2029 }) {
+		return fmt.Errorf("the configuration path %q holds a line break or another control character", path)
+	}
+	return nil
 }
 
 // quote writes s as a YAML double-quoted scalar: JSON strings are valid

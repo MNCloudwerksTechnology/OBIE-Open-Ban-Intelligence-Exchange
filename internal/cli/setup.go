@@ -108,6 +108,12 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 			return ExitUsage
 		}
 	}
+	// Before any question: a path the file cannot be written to fails now,
+	// not after the last answer.
+	if err := setup.CheckPath(path); err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		return ExitFailure
+	}
 	if err := env.checkWritable(path); err != nil {
 		var pathErr *fs.PathError
 		if errors.As(err, &pathErr) {
@@ -240,15 +246,16 @@ const exampleUnchanged = "the unchanged example that install.sh installed"
 // what to do next.
 func writeSetup(program, path string, a setup.Answers, replace bool, stdout, stderr io.Writer, env setupEnv) int {
 	data, err := setup.Render(a, path)
+	var backup string
 	if err == nil {
-		var backup string
 		backup, err = setup.Write(path, data, setup.WriteOptions{Replace: replace, Group: env.group})
-		if err == nil {
-			_, _ = fmt.Fprintf(stdout, "Wrote %s.\n", path)
-			if backup != "" {
-				_, _ = fmt.Fprintf(stdout, "The previous file is kept as %s.\n", backup)
-			}
-		}
+	}
+	if err == nil {
+		_, _ = fmt.Fprintf(stdout, "Wrote %s.\n", path)
+	}
+	// Also after a failure, the operator must learn where the old file is.
+	if backup != "" {
+		_, _ = fmt.Fprintf(stdout, "The previous file is kept as %s.\n", backup)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)

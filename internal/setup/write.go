@@ -51,7 +51,7 @@ func Write(path string, data []byte, opts WriteOptions) (backup string, err erro
 	case exists && !opts.Replace:
 		return "", fmt.Errorf("%w: %s", ErrExists, path)
 	case exists && !info.Mode().IsRegular():
-		return "", fmt.Errorf("%s is not a regular file; refusing to replace it", path)
+		return "", notRegular(path)
 	}
 
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
@@ -76,7 +76,30 @@ func Write(path string, data []byte, opts WriteOptions) (backup string, err erro
 	if err != nil {
 		return backup, fmt.Errorf("write %s: %w", path, err)
 	}
-	return backup, syncDir(dir)
+	if err := syncDir(dir); err != nil {
+		return backup, fmt.Errorf("wrote %s, but it may not survive a crash: %w", path, err)
+	}
+	return backup, nil
+}
+
+// notRegular is the refusal to replace path, which is not a regular file.
+func notRegular(path string) error {
+	return fmt.Errorf("%s is not a regular file (a symbolic link?), which obied setup never replaces; "+
+		"give the file itself with --config", path)
+}
+
+// CheckPath reports whether Write may write the configuration to path, as
+// far as the path tells: it names no file Write refuses to replace, and no
+// character ends the comments that name it. The assistant checks it
+// before it asks anything.
+func CheckPath(path string) error {
+	if err := checkPathText(path); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(path); err == nil && !info.Mode().IsRegular() {
+		return notRegular(path)
+	}
+	return nil
 }
 
 // fill writes data to f, gives it FileMode and group, and closes it.
@@ -108,6 +131,11 @@ func chgrp(f *os.File, group string) error {
 		return fmt.Errorf("group %s has the non-numeric ID %q", group, g.Gid)
 	}
 	if err := f.Chown(-1, gid); err != nil {
+		if errors.Is(err, fs.ErrPermission) && os.Geteuid() != 0 {
+			// Not root and not in the group: a file of the user's own, as
+			// for a node run by hand; the group cannot be given.
+			return nil
+		}
 		return fmt.Errorf("give the file to group %s: %w", group, err)
 	}
 	return nil
