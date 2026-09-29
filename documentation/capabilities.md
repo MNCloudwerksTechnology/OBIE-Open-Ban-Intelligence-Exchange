@@ -52,3 +52,85 @@ a date. **No plan yet** means nobody has planned it.
 | **Blocking from the container image.** The container image only observes. | No plan yet | Install OBIE on the host itself to block ([install](operations/install.md#install-on-a-host-with-systemd)). |
 | **Catching up after being offline.** A node receives verdicts only while it is connected; most of what it missed never arrives. | No plan yet | Keep your node connected. A peer's Fail2Ban reports an address again when it bans it again. |
 | **Limiting who may connect.** Any node that reaches the OBIE port can connect. Its warnings count for nothing unless you trust it, but it uses bandwidth, processor time and disk. | No plan yet | Open the OBIE port only to your peers in your firewall ([federation](operations/federation.md#open-the-mesh-port)). |
+
+## What it needs
+
+### Operating system and processor
+
+- **Linux on a 64-bit processor:** x86 (amd64) or ARM (arm64). OBIE is two
+  programs, each a single file that needs no other software. Every change
+  is tested on amd64 with Ubuntu; the arm64 programs are built, but not
+  tested on ARM hardware.
+- **systemd** for the service that the installer sets up. The service is
+  checked with systemd 255 (Ubuntu 24.04). Without systemd, you have to
+  start the node yourself; no guide covers that yet.
+- **A Linux kernel with nftables**, only for blocking in enforce mode. The
+  `nft` command is not needed. Blocking is tested on Linux 7.0; older
+  kernels are not tested.
+- **Docker**, only for the container image or the three-node lab.
+
+### Privileges
+
+- **Root, once, to install.** The installer creates the system user
+  `obie`, installs the programs and the service, and starts nothing.
+- **The node does not run as root.** It runs as the user `obie`, in a
+  sandbox, with one extra right: changing the firewall (`CAP_NET_ADMIN`).
+  It uses it only in enforce mode
+  ([service sandbox](operations/install.md#the-service-sandbox)).
+- **Only you control it.** Root and the members of the group `obie` may
+  use `obiectl` and sign in to the web console. The Fail2Ban action runs as
+  root, like Fail2Ban itself.
+
+### Network
+
+| Port | Reachable from | Used for |
+|---|---|---|
+| 4001, TCP and UDP | your peers | The connections between nodes. Of every two nodes, at least one must accept connections on it. |
+| 9464, TCP | this server only | Health checks and metrics. Open it to your monitoring if you use them. |
+| 9465, TCP | this server only | The web console, if you switch it on. Reach it from your workstation through SSH. |
+
+- **Outgoing connections go only to your peers.** Your node contacts no
+  central server, sends no usage data and does not check for updates. It
+  asks DNS for the addresses of peers you name by host name.
+- **Clocks must be right.** A node ignores verdicts dated more than five
+  minutes ahead and lets verdicts expire by its clock. Keep time
+  synchronisation (NTP) running, as most servers do.
+
+### Resources
+
+Measured with `make resources` on the reference host, a desktop computer
+whose nodes were each limited to one processor core
+([measurement](operations/performance.md#resource-usage-of-one-node)). One
+node of three, while its two peers send it verdicts:
+
+| Your node holds | Memory | Processor | Disk |
+|---|---:|---:|---:|
+| No verdicts, connected to 2 peers | 34 MiB | 0.2 % of one core | under 1 MiB |
+| 10,000 verdicts, receiving 200 a second | 123 MiB | 10 % | 17 MiB |
+| 100,000 verdicts, receiving 200 a second | 366 MiB, at most 514 MiB | 43 % | 87 MiB |
+| 100,000 verdicts, at rest | 349 MiB | 2 % | 87 MiB |
+
+- **Memory grows with the verdicts your node holds**, by about 3 MiB per
+  1,000. A verdict lives as long as its ban, or 7 days for a permanent
+  ban. Five peers that each ban 300 addresses a day send about 10,000
+  verdicts a week.
+- **200 verdicts a second is far more than a small federation sends.**
+  The processor numbers come from a fast desktop core; a small server's
+  core is slower.
+- **Disk** counts the node's state and its audit log, if you switch it
+  on. The audit log grows until you rotate it
+  ([rotation](operations/monitoring.md#rotation)).
+- **Limits:** a node keeps at most 1,000,000 verdicts by default. On a
+  small server, lower that limit, `store.max_indicators`, to bound memory
+  and disk ([configuration](operations/configuration.md#store)).
+
+### Fail2Ban
+
+- **Optional.** Without it, your node acts on your peers' verdicts and on
+  what you report yourself.
+- **Fail2Ban 0.11 or newer**, on the same server as the node. A real ban
+  and unban through the OBIE action work with Fail2Ban 0.11.2, 1.0.2 and
+  1.1.0 ([measurement](operations/performance.md#fail2ban-versions)).
+  Those are the versions of Ubuntu 22.04 to 26.04, Debian 12 and 13, Alpine
+  3.22 and Rocky Linux 9. Fail2Ban 0.10 reports bans too, but its verdicts
+  then last 7 days instead of the ban time.

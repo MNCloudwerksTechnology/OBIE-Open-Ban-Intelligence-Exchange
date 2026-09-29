@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"net"
 	"regexp"
 	"slices"
 	"strings"
@@ -17,6 +18,7 @@ const capabilitiesPath = "documentation/capabilities.md"
 var capabilitySections = []string{
 	"What it can do",
 	"What it cannot do yet",
+	"What it needs",
 }
 
 // Status labels of what the release can do.
@@ -66,7 +68,28 @@ const (
 	planNone    = "No plan yet"
 )
 
+// requirementTopics are the subsections of "What it needs" (WP-1692).
+var requirementTopics = []string{
+	"Operating system and processor",
+	"Privileges",
+	"Network",
+	"Resources",
+	"Fail2Ban",
+}
+
+// measurements are the records the requirements are measured in, by the
+// subsection that cites them.
+var measurements = map[string]string{
+	"Resources": "operations/performance.md#resource-usage-of-one-node",
+	"Fail2Ban":  "operations/performance.md#fail2ban-versions",
+}
+
 var (
+	// releasePlatforms is the default of PLATFORMS in packaging/release.sh:
+	// the platforms a release is built for.
+	releasePlatforms = regexp.MustCompile(`platforms=\$\{PLATFORMS:-([^}]*)\}`)
+	// multiaddrPort is the TCP or UDP port of a multiaddr.
+	multiaddrPort = regexp.MustCompile(`/(?:tcp|udp)/(\d+)`)
 	// separatorRow is the row below a table's header.
 	separatorRow = regexp.MustCompile(`^\|[\s:|-]+\|$`)
 	// boldLead is the bold text a table cell starts with.
@@ -148,6 +171,80 @@ func TestNotYetIsAsProminent(t *testing.T) {
 		}
 		if strings.TrimSpace(row[2]) == "" {
 			t.Errorf("%q does not say what to do until then", lead)
+		}
+	}
+}
+
+// TestRequirementsAreComplete checks "What it needs": a subsection per
+// requirement, every processor architecture a release is built for, every
+// port a node listens on by default, and a link to the measurement behind
+// the resource and Fail2Ban requirements.
+func TestRequirementsAreComplete(t *testing.T) {
+	doc := readRepoFile(t, capabilitiesPath)
+	needs, ok := section(doc, "What it needs")
+	if !ok {
+		t.Fatal("the overview has no section \"What it needs\"")
+	}
+	if got := headings(needs, 3); !slices.Equal(got, requirementTopics) {
+		t.Errorf("\"What it needs\" covers %q, want %q", got, requirementTopics)
+	}
+	system, _ := section(needs, "Operating system and processor")
+	m := releasePlatforms.FindStringSubmatch(readRepoFile(t, "packaging/release.sh"))
+	if m == nil {
+		t.Fatal("packaging/release.sh has no default PLATFORMS")
+	}
+	for _, platform := range strings.Fields(m[1]) {
+		_, arch, _ := strings.Cut(platform, "/")
+		if !strings.Contains(system, arch) {
+			t.Errorf("\"Operating system and processor\" does not name %s, which releases are built for", arch)
+		}
+	}
+	network, _ := section(needs, "Network")
+	for _, port := range defaultPorts(t) {
+		if !regexp.MustCompile(`\b` + port + `\b`).MatchString(network) {
+			t.Errorf("\"Network\" does not name port %s, which a node listens on by default", port)
+		}
+	}
+	for topic, target := range measurements {
+		body, _ := section(needs, topic)
+		if !slices.Contains(relativeLinks(body), target) {
+			t.Errorf("%q does not link its measurement %s", topic, target)
+		}
+	}
+}
+
+// defaultPorts returns the ports a node listens on with the default
+// configuration: the mesh, the metrics and the web console.
+func defaultPorts(t *testing.T) []string {
+	t.Helper()
+	d := config.Default()
+	var ports []string
+	for _, addr := range d.Mesh.Listen {
+		for _, m := range multiaddrPort.FindAllStringSubmatch(addr, -1) {
+			ports = append(ports, m[1])
+		}
+	}
+	for _, addr := range []string{d.Metrics.Listen, d.Console.Listen} {
+		_, port, err := net.SplitHostPort(addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ports = append(ports, port)
+	}
+	slices.Sort(ports)
+	return slices.Compact(ports)
+}
+
+// TestCapabilitiesArePlainLanguage keeps the overview readable for
+// evaluators who are not engineers: short sentences, as in the
+// introduction.
+func TestCapabilitiesArePlainLanguage(t *testing.T) {
+	doc := readRepoFile(t, capabilitiesPath)
+	for _, block := range prose(doc) {
+		for _, s := range sentences(block) {
+			if n := len(words(s)); n > maxSentenceWords {
+				t.Errorf("sentence of %d words, want at most %d: %q", n, maxSentenceWords, s)
+			}
 		}
 	}
 }

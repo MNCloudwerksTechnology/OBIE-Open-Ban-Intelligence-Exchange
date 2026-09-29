@@ -128,6 +128,48 @@ While these tests were written, goleak found two goroutine leaks,
 both fixed (ADR 0017): Badger's goroutines after a failed open of a
 damaged store, and libp2p's swarm when no listen address could be bound.
 
+## Resource usage of one node
+
+What one node costs to run, as the
+[capability overview](../capabilities.md#resources) reports it. `make
+resources` (`TestResources` in `test/resources`, build tag `resources`)
+starts three `obied` processes on 127.0.0.1 that trust each other (weight
+0.8, threshold 1.2, quorum 2) and measures the first, A. A runs in
+enforce mode with the `dryrun` backend, keeping every block without a
+firewall, and writes an audit log. The two others report the same public
+addresses at 100 reports per second each, so A receives 200 verdicts a
+second and blocks every address. Every node runs with `GOMAXPROCS=1`, as
+on a host with one processor core, and with rate limits raised to let the
+load through. The test reads A's resident memory (RSS), its peak in each
+phase and its CPU time from `/proc`, and the disk blocks of its state
+directory and audit log.
+
+Run on 2026-09-29 on the test machine above (AMD Ryzen 9 7950X3D, Linux
+7.0), `obied` built from `8087b05`, the code of the upcoming 0.1.0:
+
+| Phase | Verdicts held | Blocks | RSS | Peak RSS | CPU (share of one core) | State directory | Audit log |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| idle for 2 min, 2 peers | 0 | 0 | 34 MiB | 34 MiB | 0.2 % | 0 MiB | 0.0 MiB |
+| receiving 200 verdicts/s | 10,000 | 5,000 | 123 MiB | 123 MiB | 9.7 % | 15 MiB | 2.2 MiB |
+| receiving 200 verdicts/s | 100,000 | 50,000 | 366 MiB | 514 MiB | 43.4 % | 65 MiB | 22.0 MiB |
+| at rest for 2 min | 100,000 | 50,000 | 349 MiB | 362 MiB | 2.2 % | 65 MiB | 22.0 MiB |
+
+An earlier run of the same code gave the same numbers within 3 %. How to
+read them:
+
+- **Memory grows with the verdicts held**, by about 3.2 MiB per 1,000
+  once the node is at rest. The peak while receiving is higher: a Badger
+  memtable flush briefly holds the table it builds (see the soak test).
+- **CPU per received verdict grows with the decisions kept.** After every
+  batch of decisions, the engine counts all it keeps for its metrics
+  ([Console](#console): 11 ms at 1,000,000), so the same 200 verdicts a
+  second cost 9.7 % of a core at 10,000 verdicts and 43.4 % at 100,000. At
+  rest, the periodic sweeps and reconciliation take 2.2 %.
+- **Disk:** the state directory took about 0.7 KiB per verdict, the audit
+  log about 0.45 KiB per blocked address.
+- **The core is fast.** A small cloud server's core is slower, so expect
+  higher CPU shares there; memory and disk do not depend on the processor.
+
 ## Console
 
 The console's decisions list reads its page on the node, in one pass over
