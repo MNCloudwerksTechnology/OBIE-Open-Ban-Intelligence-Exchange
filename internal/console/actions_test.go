@@ -465,6 +465,21 @@ func TestActionPagesRefuseOtherSites(t *testing.T) {
 	if !strings.Contains(page, `name="next" value="/"`) || strings.Contains(page, "Your session ended") {
 		t.Errorf("sign-in page reached cross-site:\n%s", page)
 	}
+	// Nor through the sign-in page again, nor through dot segments; a link
+	// to a view still returns there.
+	for next, want := range map[string]string{
+		"/login?next=" + url.QueryEscape("/actions/block?review=1&address=203.0.113.7"): "/",
+		"/./actions/block?review=1&address=203.0.113.7":                                 "/",
+		"/%2e/actions/block?review=1":                                                   "/",
+		"/decisions/../actions/allow?review=1":                                          "/",
+		"/decisions/203.0.113.7":                                                        "/decisions/203.0.113.7",
+	} {
+		_, page := stranger.do(http.MethodGet, "/login?next="+url.QueryEscape(next), nil,
+			map[string]string{"Sec-Fetch-Site": "cross-site", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Dest": "document"})
+		if !strings.Contains(page, `name="next" value="`+want+`"`) {
+			t.Errorf("sign-in page reached cross-site with next %q keeps another next than %q:\n%s", next, want, page)
+		}
+	}
 	_, page = stranger.do(http.MethodGet, "/login?reason=action&next="+url.QueryEscape("/actions/block?pending=x"), nil,
 		map[string]string{"Sec-Fetch-Site": "same-origin"})
 	if !strings.Contains(page, `name="next" value="/actions/block?pending=x"`) || !strings.Contains(page, "Your session ended") {
@@ -602,6 +617,25 @@ func TestStateToken(t *testing.T) {
 	b.Override = &Override{Action: "force_allow", Note: "b"}
 	if stateToken(&a) == stateToken(&b) {
 		t.Error("the token ignores the override's note")
+	}
+}
+
+func TestCrossSiteNext(t *testing.T) {
+	for next, want := range map[string]string{
+		"/":                           "/",
+		"/decisions?state=block":      "/decisions?state=block",
+		"/actions/block?review=1":     "/",
+		"/actions":                    "/",
+		"/login?next=%2Factions%2Fx":  "/",
+		"/./actions/x":                "/",
+		"/%2E/actions/x":              "/",
+		"/verdicts/../actions/revoke": "/",
+		"/actionsX":                   "/actionsX",
+		"%zz":                         "/",
+	} {
+		if got := crossSiteNext(next); got != want {
+			t.Errorf("crossSiteNext(%q) = %q, want %q", next, got, want)
+		}
 	}
 }
 

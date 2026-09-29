@@ -117,8 +117,10 @@ things need a decision:
   another site (`Sec-Fetch-Site: cross-site` or `same-site`) is refused —
   before the session check, since such a navigation carries no
   `SameSite=Strict` cookie and would otherwise be sent to sign in and on
-  to the page — and the sign-in page reached that way forgets an action
-  page as the page to return to, and does not say that an action waits.
+  to the page — and the sign-in page reached that way forgets a page to
+  return to that leads to an action's page, directly, through dot
+  segments or through the sign-in page again, and does not say that an
+  action waits.
   So a link elsewhere cannot present a prefilled confirmation.
 
 ### Switching them off
