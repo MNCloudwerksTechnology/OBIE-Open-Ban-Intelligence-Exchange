@@ -257,8 +257,10 @@ func (c *check) buildImages() {
 // the page's download commands.
 func (c *check) startServer() {
 	c.must(time.Minute, "docker", "run", "-d", "--name", c.host, "--hostname", "server",
-		"--privileged", "--cgroupns=private", "--tmpfs", "/run", "--tmpfs", "/run/lock",
-		"-v", c.release+":/srv/release:ro", checkName+"-host")
+		"--privileged", "--cgroupns=private", "--tmpfs", "/run", "--tmpfs", "/run/lock", checkName+"-host")
+	// Copied, not mounted: a Docker daemon outside the test's file system,
+	// as in some CI runners, would mount an empty directory.
+	c.must(time.Minute, "docker", "cp", c.release+"/.", c.host+":/srv/release")
 	// systemd answers once its bus is up, and then when it has started
 	// everything.
 	state := ""
