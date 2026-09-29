@@ -22,8 +22,8 @@ import (
 )
 
 // TutorialURL is the tutorial the assistant sends the operator to once the
-// configuration is written: the quick start, from connecting Fail2Ban on.
-const TutorialURL = "https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange/blob/main/documentation/operations/quickstart.md#3-connect-fail2ban"
+// configuration is written: getting started, from connecting Fail2Ban on.
+const TutorialURL = "https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange/blob/main/documentation/getting-started.md#6-connect-fail2ban"
 
 // setupGroup is the group that gets the configuration file: the service
 // group install.sh creates, in which obied runs.

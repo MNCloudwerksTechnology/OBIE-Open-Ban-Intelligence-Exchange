@@ -61,7 +61,7 @@ func TestCheckFail2BanInstallation(t *testing.T) {
 	assertCheck(t, h.run(t, "fail2ban"), Warning, "cannot list the jails", "sudo obied self-check")
 
 	h.commands["fail2ban-client"] = func([]string) ([]byte, error) { return []byte("['set', 'sshd', 'addaction', 'iptables']\n"), nil }
-	// Not connected yet, as between steps 2 and 3 of the quick start: the
+	// Not connected yet, as between steps 5 and 6 of the tutorial: the
 	// node works, so it is no problem.
 	assertCheck(t, h.run(t, "fail2ban"), Warning, "no Fail2Ban jail uses OBIE's action yet, so no ban is reported", "jail.local")
 }

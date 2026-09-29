@@ -29,17 +29,18 @@ const commandTimeout = 10 * time.Second
 var jailAction = regexp.MustCompile(`\['(?:multi-)?set', '([^']+)', '(?:add)?action', 'obie'`)
 
 // refusedAsIntended are parts of obied's answers to reports it refuses by
-// design; the quick start tests the way from Fail2Ban with one of them.
+// design; the getting-started tutorial tests the way from Fail2Ban with one
+// of them.
 var refusedAsIntended = []string{"is not a public address", "overlaps the allow-listed network"}
 
 // Next steps of the Fail2Ban check.
 const (
 	nextInstallFail2Ban = "to report bans, install Fail2Ban (e.g. sudo apt install fail2ban), run install.sh from the release " +
 		"again to add OBIE's action, and follow documentation/guides/fail2ban.md"
-	nextAddJail = "add obie to the action of a jail in /etc/fail2ban/jail.local and reload Fail2Ban " +
-		"(quick start, step 3: documentation/operations/quickstart.md#3-connect-fail2ban)"
+	nextAddJail = "add obie to the action of a jail in /etc/fail2ban/jail.local and restart Fail2Ban " +
+		"(getting started, step 6: documentation/getting-started.md#6-connect-fail2ban)"
 	nextTestBan = "test the way from Fail2Ban to the node: sudo fail2ban-client set sshd banip 203.0.113.7, " +
-		"then sudo journalctl -t obie-fail2ban -n 5 (quick start, step 4)"
+		"then sudo journalctl -t obie-fail2ban -n 1 -o cat (getting started, step 6)"
 )
 
 // checkFail2Ban: Fail2Ban has OBIE's action, a jail uses it, and its
@@ -88,8 +89,8 @@ func (r *run) jails(client string, lookErr error) (int, finding) {
 		}
 	}
 	if len(names) == 0 {
-		// As without Fail2Ban, the node works; the quick start connects a
-		// jail only after the first start.
+		// As without Fail2Ban, the node works; the tutorial connects a jail
+		// only after the first start.
 		return 0, warn("no Fail2Ban jail uses OBIE's action yet, so no ban is reported", nextAddJail)
 	}
 	return len(names), ok("jails that report every ban to the node: " + strings.Join(names, ", "))

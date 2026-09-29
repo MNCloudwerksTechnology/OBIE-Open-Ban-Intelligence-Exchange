@@ -499,6 +499,14 @@ sudo obied setup
 ```text
 OBIE setup
 …
+1/5  Where should the node keep its state?
+…
+State directory [/var/lib/obie]:
+
+2/5  Where should the node write its audit log?
+…
+Audit log [/var/log/obie/audit.jsonl]:
+
 3/5  Which peers should this node connect to?
 …
 Peer address (empty: done): /ip4/198.51.100.20/tcp/4001/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf
@@ -624,7 +632,9 @@ rule. Switch it on only once the review of step 9 looks right.
 
 ### Protect your own access
 
-The self-check must say that your SSH session is protected:
+Every check should now be `OK`, except a warning for the peers if you
+skipped step 8. Above all, the `SSH session` line must say that your
+session is protected:
 
 ```sh
 sudo obied self-check
@@ -634,10 +644,20 @@ sudo obied self-check
 OBIE self-check of /etc/obie/obie.yaml (obied 0.1.0, as root)
 
 OK       Configuration  /etc/obie/obie.yaml is valid; the node runs in observe mode
-…
+OK       Identity       /var/lib/obie/node.key exists and only obie can read it; the node's peer ID is 12D3KooWPqtsL3NjMswRrqG8xYAsfMjPgfajfvg9625cc6Y9WmiD
+OK       Admin access   the admin socket /run/obie/obie.sock is open to root, obie and the group obie only (mode 0660)
+                        - alice is not in the group obie: use sudo obiectl, or join the group with sudo usermod -aG obie alice and log in again
+OK       Node           obied 0.1.0 is running and ready in observe mode, up 1m12s
+OK       Peers          1 of 1 peer in mesh.bootstrap connected; 1 connected in all
+                        - friend is connected
+OK       Clock          the clock is synchronized (estimated error 12ms)
+OK       Fail2Ban       jails that report every ban to the node: sshd
+                        - the node holds verdicts of its own, so bans reach it
+                        - OBIE's action is installed: /etc/fail2ban/action.d/obie.conf
+OK       Firewall       not needed yet: in observe mode the node blocks nothing
 OK       SSH session    your SSH session comes from 85.10.3.20, which is protected (allow-listed: allowlist.cidrs entry 85.10.3.20/32)
 
-Result: 0 problems, 0 warnings, 9 OK. No problems; read the warnings.
+Result: 0 problems, 0 warnings, 9 OK. Everything checked is fine.
 ```
 
 The node itself confirms that it never blocks your address:
@@ -653,7 +673,7 @@ Reason:                allow-listed: allowlist.cidrs entry 85.10.3.20/32; verdic
 Score:                 0 (threshold 1.8)
 Publishers:            0 (quorum 2)
 Local autoblock:       no
-Allow-list/overrides:  none apply
+Allow-list/overrides:  allow-listed: allowlist.cidrs entry 85.10.3.20/32
 Evaluated:             2026-10-14T09:16:10Z
 
 No active verdicts.
