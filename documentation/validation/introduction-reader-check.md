@@ -5,8 +5,8 @@ a networking background. This page is how we check that such a reader can
 follow it, and the record of every check. Repeat the check when the
 introduction changes substantially.
 
-Only a real person counts. A reader simulated by an AI model is useful for
-a first draft, but it is not a reader check.
+Only a real person counts. Never let an AI model play the reader, and
+never record a check that did not happen.
 
 ## Who can be the reader
 
@@ -61,10 +61,6 @@ Record each check here: the reader's role, never their name.
 
 | Date | Reader (role, background) | Reading time | Q1 to Q5 correct | Stumbling points | Changes made |
 |---|---|---|---|---|---|
-| pending | No real reader has checked the introduction yet. | | | | |
 
-On 2026-09-28 an AI model played a decision maker without IT background
-(WP-1691). Its findings led to clearer wording: "internet addresses (IP
-addresses)", protected addresses and the allow-list, observe mode, how a
-wrongly blocked customer is unblocked, data protection, and why a single
-server without peers gains little. It does not replace the check above.
+No check has been recorded yet. The first one is work package
+[#1723](https://openproject.niew.dev/work_packages/1723).
