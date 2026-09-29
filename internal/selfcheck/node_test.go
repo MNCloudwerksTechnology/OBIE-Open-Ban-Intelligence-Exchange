@@ -62,13 +62,15 @@ func TestCheckNode(t *testing.T) {
 	h.node.statusErr = errors.New("connection reset")
 	assertCheck(t, h.run(t, "node"), Problem, "cannot ask the node: connection reset", "sudo systemctl status obied")
 
-	// Without a configuration, a stopped node cannot be told from one
-	// that never started.
+	// With an unusable configuration, a stopped node cannot be told from
+	// one that never started; without one, it never started.
+	h.writeConfig(t, "log:\n  level: loud\n")
+	h.node.statusErr = admin.ErrDaemonNotRunning
+	assertCheck(t, h.run(t, "node"), Problem, "the node is not running", "sudo systemctl start obied")
 	if err := os.Remove(h.config); err != nil {
 		t.Fatal(err)
 	}
-	h.node.statusErr = admin.ErrDaemonNotRunning
-	assertCheck(t, h.run(t, "node"), Problem, "the node is not running", "sudo systemctl start obied")
+	assertCheck(t, h.run(t, "node"), Warning, "the node has not been started yet", "sudo systemctl enable --now obied")
 }
 
 const (

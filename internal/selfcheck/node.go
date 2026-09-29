@@ -97,12 +97,16 @@ func (r *run) checkNode() Check {
 	}
 }
 
-// startedIfConfigured is started, unknown without a configuration.
+// startedIfConfigured is started; without a configuration file obied
+// never started, and with an unusable one it cannot be told.
 func (r *run) startedIfConfigured() (started, known bool) {
-	if r.cfg == nil {
-		return false, false
+	switch {
+	case r.cfg != nil:
+		return r.started()
+	case errors.Is(r.cfgErr, fs.ErrNotExist):
+		return false, true
 	}
-	return r.started()
+	return false, false
 }
 
 // notReady lists the subsystems that are not ready, sorted.

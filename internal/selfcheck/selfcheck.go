@@ -227,5 +227,5 @@ const asRoot = "run the self-check as root: sudo obied self-check"
 // it could not be loaded.
 func notChecked(id, name string) Check {
 	return newCheck(id, name, warn("not checked: the configuration could not be loaded",
-		"fix the configuration first (see the configuration check), then run the self-check again"))
+		"fix the configuration first, then run the self-check again"))
 }
