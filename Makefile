@@ -100,6 +100,10 @@ image: ## Build the container image obie:$(VERSION) (docker)
 lab-smoke: ## Start the 3-node compose lab, check the nodes see each other and block, remove it (docker)
 	packaging/compose/smoke-test.sh
 
+.PHONY: sandbox-check
+sandbox-check: ## Run every step of documentation/sandbox.md against a sandbox of its own and compare the output (docker)
+	$(GO) test -tags sandbox -run '^TestWalkthrough$$' -count=1 -v -timeout 20m ./test/sandbox
+
 .PHONY: fail2ban-versions
 fail2ban-versions: ## Ban and unban through the Fail2Ban action with the Fail2Ban of current distributions (docker); not part of `make ci`
 	contrib/fail2ban/check-versions.sh

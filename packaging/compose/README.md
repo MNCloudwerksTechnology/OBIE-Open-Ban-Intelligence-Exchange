@@ -1,5 +1,10 @@
 # OBIE three-node lab
 
+New to OBIE? The [sandbox](../../documentation/sandbox.md) walks you through
+it step by step, with a [node](../../documentation/glossary.md#node) nobody
+trusts and a web console per node. This lab is a plain mesh to experiment
+with.
+
 Three OBIE [nodes](../../documentation/glossary.md#node) on one Docker
 bridge network, trying the whole mesh on a laptop in a few minutes: each
 node bootstraps to the other two and trusts them fully, and blocks an

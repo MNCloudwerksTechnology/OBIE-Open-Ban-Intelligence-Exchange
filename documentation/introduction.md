@@ -158,8 +158,8 @@ and runs next to your existing tools.
   how OBIE differs from blocklists.
 - [Glossary](glossary.md): every OBIE term, briefly explained.
 - [What OBIE can and cannot do yet](capabilities.md).
-- [Try it on a laptop](../packaging/compose/README.md): three nodes that
-  block nothing real.
+- [Try it safely](sandbox.md): watch it work on your computer, blocking
+  nothing.
 - [Quick start](operations/quickstart.md): a first node, safely in observe
   mode.
 - [Threat model](../SECURITY.md#threat-model): the risks that remain.

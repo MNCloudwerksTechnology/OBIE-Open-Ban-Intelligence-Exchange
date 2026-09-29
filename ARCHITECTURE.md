@@ -55,7 +55,9 @@ with their origin, in
 first-run setup assistant and the node self-check in
 [ADR 0027](documentation/adr/0027-setup-assistant-and-self-check.md); the
 command-line help, error messages, shell completion and manual pages in
-[ADR 0028](documentation/adr/0028-command-line-help-and-messages.md); the website
+[ADR 0028](documentation/adr/0028-command-line-help-and-messages.md); the
+newcomer sandbox and its walkthrough, run as a test, in
+[ADR 0029](documentation/adr/0029-sandbox-and-checked-walkthrough.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -119,6 +121,7 @@ pkg/
     internal/jcs/   RFC 8785 JSON Canonicalization Scheme
 documentation/
   introduction.md   "What is OBIE?", the plain-language entry point; faq.md, glossary.md
+  sandbox.md        "Try OBIE in a sandbox", the walkthrough that `make sandbox-check` runs
   images/           diagrams of the newcomer documentation (SVG with text alternatives)
   adr/              architecture decision records
   examples/         commented example configuration (tested against the schema)
@@ -134,9 +137,11 @@ packaging/          release packaging (ADR 0017)
   systemd/          hardened obied.service and its systemd-analyze check
   docker/           configuration baked into the container image
   compose/          three-node lab (bridge network, dryrun) and its smoke test
-Dockerfile          multi-stage build of the distroless/static nonroot image (+ lab-init stage)
+  sandbox/          newcomer sandbox: three trusted nodes and a stranger, consoles on 127.0.0.1, the `sandbox` script (ADR 0029)
+Dockerfile          multi-stage build of the distroless/static nonroot image (+ lab-init and sandbox-init stages)
 test/
   e2e/              four complete obied nodes in one process: report → quorum block → revoke (ADR 0016)
+  sandbox/          the sandbox's configurations, script and walkthrough; `make sandbox-check` runs documentation/sandbox.md (ADR 0029)
 diagrams/           whitepaper diagrams (PlantUML sources + PNG)
 website/            public website, independent of the node (see Website)
 ```

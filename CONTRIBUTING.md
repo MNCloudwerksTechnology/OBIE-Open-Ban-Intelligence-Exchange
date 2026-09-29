@@ -56,8 +56,12 @@ is a byte-identical copy for the public GitHub mirror — change both together;
 - **release build, image and lab** — `make release` twice (the
   `SHA256SUMS` must match: the build is reproducible), `make check-unit`
   (`systemd-analyze verify` and an exposure of at most 3.0 for the systemd
-  unit), `make image` and `make lab-smoke` (the three-node compose lab comes
-  up, the nodes see each other and block by consensus). Nothing is pushed.
+  unit), `make image`, `make lab-smoke` (the three-node compose lab comes
+  up, the nodes see each other and block by consensus) and
+  `make sandbox-check` (every step of the
+  [sandbox walkthrough](documentation/sandbox.md) runs and prints what the
+  page shows; a change to `obiectl`'s output or the console that the page
+  shows needs the page updated). Nothing is pushed.
 - **website** — `make -C website ci` for the website in `website/` (see
   [`website/README.md`](website/README.md)) and `make -C website smoke`
   (builds the website image and checks it in its production compose stack;

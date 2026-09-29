@@ -14,7 +14,9 @@
 # better fit for.
 #
 # The stage lab-init is the key and configuration generator of the
-# compose lab in packaging/compose; the last stage is the image.
+# compose lab in packaging/compose, sandbox-init that of the sandbox in
+# packaging/sandbox (and its console forwarders); the last stage is the
+# image.
 
 ARG GO_VERSION=1.26.7
 
@@ -42,6 +44,11 @@ FROM busybox:1.37 AS lab-init
 COPY --from=build /out/obied /usr/local/bin/obied
 COPY packaging/compose/lab-init.sh /usr/local/bin/lab-init
 ENTRYPOINT ["/bin/sh", "/usr/local/bin/lab-init"]
+
+FROM busybox:1.37 AS sandbox-init
+COPY --from=build /out/obied /usr/local/bin/obied
+COPY packaging/sandbox/sandbox-init.sh /usr/local/bin/sandbox-init
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/sandbox-init"]
 
 FROM gcr.io/distroless/static-debian12:nonroot
 ARG VERSION=dev

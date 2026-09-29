@@ -182,6 +182,16 @@ The first release, v0.1.0 "Stable Base".
   compose lab with a smoke test ([install](documentation/operations/install.md)).
   `make release` refuses a final version that the capability overview
   does not describe.
+- **Sandbox.** `./sandbox up` in `packaging/sandbox` starts four nodes in
+  Docker on a workstation, three that trust each other and a stranger
+  nobody trusts, without root and without touching any firewall;
+  `./sandbox down` removes them completely. It says what to do when
+  Docker is missing or a console port is taken.
+  [Try OBIE in a sandbox](documentation/sandbox.md) walks a newcomer
+  through the core story step by step, in the terminal and in each node's
+  web console, with the output of every step. `make sandbox-check` runs
+  the walkthrough in CI and compares every output with the page
+  ([ADR 0029](documentation/adr/0029-sandbox-and-checked-walkthrough.md)).
 - **Testing.** An end-to-end test of report → block under quorum → revoke
   across several nodes, with an nftables variant in network namespaces.
   `make resources` measures one node's memory, CPU and disk in a mesh of
