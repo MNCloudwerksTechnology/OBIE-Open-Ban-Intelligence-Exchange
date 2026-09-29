@@ -128,7 +128,7 @@ node of three, while its two peers send it verdicts:
   on. The audit log grows until you rotate it
   ([rotation](operations/monitoring.md#rotation)).
 - **Limits:** a node keeps at most 1,000,000 verdicts by default, which
-  takes about 3 GiB of memory. On a small server, lower that limit,
+  take 2.5 to 3.6 GiB of memory. On a small server, lower that limit,
   `store.max_indicators`, to bound memory, processor time and disk
   ([configuration](operations/configuration.md#store)). The firewall holds
   at most 100,000 blocks by default; beyond that, the blocks with the

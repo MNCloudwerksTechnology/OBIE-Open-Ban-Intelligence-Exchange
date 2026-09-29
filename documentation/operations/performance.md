@@ -148,7 +148,7 @@ Run on 2026-09-29 on the test machine above (AMD Ryzen 9 7950X3D, Linux
 7.0), `obied` built from `1b3edc3`, the code of the upcoming 0.1.0, up
 to the verdicts a node keeps by default (`make resources
 RESOURCESVERDICTS=10000,100000,1000000`, 91 minutes). The CPU share of a
-load phase is measured over its last 30 seconds:
+load phase is measured over its last 30 seconds of load:
 
 | Phase | Verdicts held | Blocks | RSS | Peak RSS | CPU (share of one core) | State directory | Audit log |
 |---|---:|---:|---:|---:|---:|---:|---:|
