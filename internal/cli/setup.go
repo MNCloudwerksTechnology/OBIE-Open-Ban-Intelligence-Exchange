@@ -290,7 +290,7 @@ func writeSetup(program, path string, a setup.Answers, replace bool, stdout, std
 		_, _ = fmt.Fprintf(stdout, "\n%s\n", note)
 	}
 	if addr, ok := env.session(); ok && !a.Protects(addr) {
-		_, _ = fmt.Fprintf(stdout, "\n%s", session.LockoutWarning(addr, a.Mode == config.ModeEnforce))
+		_, _ = fmt.Fprintf(stdout, "\n%s", session.LockoutWarning(addr, a.Mode == config.ModeEnforce, "sudo obiectl"))
 	}
 	if _, err = io.WriteString(stdout, nextSteps(path)); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: writing the next steps: %v\n", program, err)

@@ -189,7 +189,9 @@ func TestCheckSession(t *testing.T) {
 	if err := WriteText(&text, report); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(text.String(), "!! LOCKOUT RISK: your SSH session comes from 85.10.0.7") || !strings.Contains(text.String(), "observe mode") {
+	// The banner's command reaches the node's socket, as the finding's does.
+	if !strings.Contains(text.String(), "!! LOCKOUT RISK: your SSH session comes from 85.10.0.7") || !strings.Contains(text.String(), "observe mode") ||
+		!strings.Contains(text.String(), "or on a running node: "+h.obiectl()+" allow 85.10.0.7 --note") {
 		t.Errorf("text report has no lockout banner:\n%s", text.String())
 	}
 

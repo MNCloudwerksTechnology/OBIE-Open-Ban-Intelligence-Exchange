@@ -114,7 +114,7 @@ func TestCompletionOfArgumentsAndRepeatedFlags(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, want := range []string{"\t\tblock)\n\t\t\t_arguments \\\n", "'1:address or range: '\n", "'1:event ID, address or range: '\n", "'1:completion:(bash zsh fish)'"} {
+	for _, want := range []string{"\t\tblock)\n\t\t\t_arguments \\\n", "'1:address or range:_nothing'\n", "'1:event ID, address or range:_nothing'\n", "'1:completion:(bash zsh fish)'"} {
 		if !strings.Contains(zshCtl.String(), want) {
 			t.Errorf("obiectl zsh completion lacks %q", want)
 		}

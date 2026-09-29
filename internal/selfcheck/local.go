@@ -175,6 +175,6 @@ func (r *run) operatorFinding(gid, group string) finding {
 	case member:
 		return ok(fmt.Sprintf("%s is in the group %s and may use obiectl without sudo", op, group))
 	}
-	return ok(fmt.Sprintf("%s is not in the group %s: use sudo obiectl, or join the group with sudo usermod -aG %s %s and log in again",
-		op, group, group, op))
+	return ok(fmt.Sprintf("%s is not in the group %s: use %s, or join the group with sudo usermod -aG %s %s and log in again",
+		op, group, r.obiectl(), group, op))
 }

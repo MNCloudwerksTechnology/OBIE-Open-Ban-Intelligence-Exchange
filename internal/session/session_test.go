@@ -124,8 +124,11 @@ func TestClientAddrRealProcess(t *testing.T) {
 
 func TestLockoutWarning(t *testing.T) {
 	addr := netip.MustParseAddr("85.10.0.7")
-	observe, enforce := LockoutWarning(addr, false), LockoutWarning(addr, true)
-	for _, want := range []string{"LOCKOUT RISK", "85.10.0.7, and OBIE does not protect", "add 85.10.0.7/32 to allowlist.cidrs", "sudo obiectl allow 85.10.0.7"} {
+	// The banner runs obiectl as it is given, e.g. with the node's socket.
+	ctl := "sudo obiectl --socket /run/node-a.sock"
+	observe, enforce := LockoutWarning(addr, false, ctl), LockoutWarning(addr, true, ctl)
+	for _, want := range []string{"LOCKOUT RISK", "85.10.0.7, and OBIE does not protect", "add 85.10.0.7/32 to allowlist.cidrs",
+		"or on a running node: sudo obiectl --socket /run/node-a.sock allow 85.10.0.7"} {
 		if !strings.Contains(observe, want) || !strings.Contains(enforce, want) {
 			t.Errorf("warning lacks %q:\n%s", want, observe)
 		}

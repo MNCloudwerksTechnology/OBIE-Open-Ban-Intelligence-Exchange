@@ -118,7 +118,7 @@ func TestClientProblems(t *testing.T) {
 			err: context.DeadlineExceeded, id: "node-timeout", what: "obied did not answer in time",
 			next: []string{"try again with more time: " + ctl + " --timeout 2m decisions\n"}},
 		{name: "timeout pipes the evidence again", program: "obiectl report", socket: stale,
-			inv: invocation{args: []string{"report", "--protocol", "ssh", "--reason", "password_bruteforce", "--evidence-file", "-", "45.10.0.1"}, timeout: requestTimeout},
+			inv: invocation{args: []string{"report", "--protocol", "ssh", "--reason", "password_bruteforce", "--evidence-file", "-", "45.10.0.1"}, timeout: requestTimeout, stdin: true},
 			err: context.DeadlineExceeded, id: "node-timeout", what: "obied did not answer in time",
 			next: []string{"try again with more time: <the command that printed the log lines> | " + ctl +
 				" --timeout 30s report --protocol ssh --reason password_bruteforce --evidence-file - 45.10.0.1\n"}},
@@ -144,23 +144,6 @@ func TestClientProblems(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestInvocationReadsStdin(t *testing.T) {
-	for args, want := range map[string]bool{
-		"report --evidence-from-stdin 45.10.0.1":       true,
-		"report -evidence-from-stdin=true 45.10.0.1":   true,
-		"report --evidence-from-stdin=false 45.10.0.1": false,
-		"report --evidence-file=- 45.10.0.1":           true,
-		"report --evidence-file - 45.10.0.1":           true,
-		"report --evidence-file auth.log 45.10.0.1":    false,
-		"report -- --evidence-from-stdin":              false,
-		"decisions":                                    false,
-	} {
-		if got := (invocation{args: strings.Fields(args)}).readsStdin(); got != want {
-			t.Errorf("readsStdin(%s) = %v, want %v", args, got, want)
-		}
 	}
 }
 
@@ -231,5 +214,22 @@ func TestObiectlTimeoutRepeatsTheCommand(t *testing.T) {
 	if code != ExitFailure || !strings.Contains(stderr.String(),
 		"\n  Next: try again with more time: sudo obiectl --socket "+socket+" --timeout 30s block --note 'ssh abuse' 45.10.0.1\n") {
 		t.Errorf("exit code %d, stderr %q", code, stderr.String())
+	}
+	// A report that read its evidence from standard input needs it again;
+	// one with --evidence-from-stdin=false read none.
+	for _, tc := range []struct {
+		flag, want string
+	}{
+		{"--evidence-from-stdin", "Next: try again with more time: <the command that printed the log lines> | sudo obiectl --socket "},
+		{"--evidence-from-stdin=0", "Next: try again with more time: sudo obiectl --socket "},
+	} {
+		stderr.Reset()
+		withStdin(t, "Sep 28 12:00:01 host sshd[1]: Failed password from 45.10.0.1\n", func() {
+			code = RunCtl([]string{"--socket", socket, "--timeout", "50ms", "report", "--protocol", "ssh", "--reason", "password_bruteforce",
+				tc.flag, "45.10.0.1"}, &stdout, &stderr)
+		})
+		if code != ExitFailure || !strings.Contains(stderr.String(), tc.want) {
+			t.Errorf("%s: exit code %d, stderr %q", tc.flag, code, stderr.String())
+		}
 	}
 }

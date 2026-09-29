@@ -115,7 +115,7 @@ func TestTeardownProblems(t *testing.T) {
 
 func TestStartNext(t *testing.T) {
 	bindErr := func(errno syscall.Errno) error {
-		return &net.OpError{Op: "listen", Net: "tcp4", Err: os.NewSyscallError("bind", errno)}
+		return &net.OpError{Op: "listen", Net: "tcp4", Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 443}, Err: os.NewSyscallError("bind", errno)}
 	}
 	// The mesh fails as libp2p does: with the reasons as text only.
 	meshErr := func(errno syscall.Errno) error {
@@ -123,13 +123,16 @@ func TestStartNext(t *testing.T) {
 			fmt.Errorf("failed to listen on any addresses: %s", []error{bindErr(errno), bindErr(errno)}))
 	}
 	for err, want := range map[error]string{
-		fmt.Errorf("mesh: listen: %w", syscall.EADDRINUSE):       "another process uses the address",
-		meshErr(syscall.EADDRINUSE):                              "another process uses the address",
-		fmt.Errorf("admin socket: %w", fs.ErrPermission):         "obied lacks a permission for what the error names: run it as the service",
-		fmt.Errorf("metrics: %w", bindErr(syscall.EACCES)):       "only root may listen on a port below 1024",
-		meshErr(syscall.EACCES):                                  "only root may listen on a port below 1024",
-		errors.New("something else"):                             "sudo obied self-check names what is wrong",
-		fmt.Errorf("x: %w", fmt.Errorf("y: %w", syscall.EACCES)): "obied lacks a permission",
+		fmt.Errorf("mesh: listen: %w", syscall.EADDRINUSE): "another process uses the address",
+		meshErr(syscall.EADDRINUSE):                        "another process uses the address",
+		fmt.Errorf("admin socket: %w", fs.ErrPermission):   "obied lacks a permission for what the error names: run it as the service",
+		fmt.Errorf("metrics: %w", bindErr(syscall.EACCES)): "only root may listen on a port below 1024",
+		meshErr(syscall.EACCES):                            "only root may listen on a port below 1024",
+		errors.New("something else"):                       "sudo obied self-check names what is wrong",
+		// A Unix socket is a file: its permission is the directory's.
+		fmt.Errorf("admin: %w", &net.OpError{Op: "listen", Net: "unix", Err: os.NewSyscallError("bind", syscall.EACCES)}): "obied lacks a permission for what the error names",
+		errors.New("listen unix /run/x/obie.sock: bind: permission denied"):                                               "sudo obied self-check",
+		fmt.Errorf("x: %w", fmt.Errorf("y: %w", syscall.EACCES)):                                                          "obied lacks a permission",
 	} {
 		if got := startNext(err, config.DefaultPath); !strings.HasPrefix(got, want) || !strings.Contains(got, "troubleshooting.md#obied-does-not-start") {
 			t.Errorf("startNext(%v) = %q, want it to start with %q", err, got, want)

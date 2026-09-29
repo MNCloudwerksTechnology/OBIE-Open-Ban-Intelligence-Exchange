@@ -92,6 +92,9 @@ func runReport(ctx context.Context, client *admin.Client, args []string, stdout,
 			req.MITRE = append(req.MITRE, strings.TrimSpace(id))
 		}
 	}
+	if *evidence == "-" || *evidence == "/dev/stdin" {
+		ctx = readingStdin(ctx, program)
+	}
 	if *evidence != "" {
 		lines, err := readEvidence(*evidence)
 		if err != nil {

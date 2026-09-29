@@ -306,7 +306,7 @@ func (s completionSpec) writeZsh(b *strings.Builder) {
 		case len(c.args) > 0:
 			fmt.Fprintf(b, " \\\n\t\t\t\t'1:%s:(%s)'", c.name, strings.Join(c.args, " "))
 		case c.operand != "":
-			fmt.Fprintf(b, " \\\n\t\t\t\t'1:%s: '", zshQuote(c.operand))
+			fmt.Fprintf(b, " \\\n\t\t\t\t'1:%s:_nothing'", zshQuote(c.operand))
 		}
 		b.WriteString("\n\t\t\t;;\n")
 	}

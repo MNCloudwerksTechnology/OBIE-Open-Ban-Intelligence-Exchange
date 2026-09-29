@@ -322,7 +322,7 @@ func TestCheckAdmin(t *testing.T) {
 	h := newTestHost(t, "")
 	c := h.run(t, "admin")
 	assertCheck(t, c, OK, "appears when the node runs; only root, obie-test and the group obie-test may use it")
-	if len(c.Details) != 1 || !strings.Contains(c.Details[0], "alice is not in the group obie-test: use sudo obiectl, or join the group with sudo usermod -aG obie-test alice") {
+	if len(c.Details) != 1 || !strings.Contains(c.Details[0], "alice is not in the group obie-test: use "+h.obiectl()+", or join the group with sudo usermod -aG obie-test alice") {
 		t.Errorf("details = %q", c.Details)
 	}
 	h.env.InGroup = func(name, gid string) (bool, error) { return name == "alice" && gid == strconv.Itoa(os.Getegid()), nil }

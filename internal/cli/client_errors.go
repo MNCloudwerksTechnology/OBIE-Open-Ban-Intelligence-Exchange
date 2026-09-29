@@ -18,11 +18,12 @@ import (
 )
 
 // invocation is how obiectl was run, for next steps that repeat it: the
-// command with its arguments, as given after the global flags, and
-// --timeout.
+// command with its arguments, as given after the global flags, --timeout,
+// and whether the command read its input from standard input.
 type invocation struct {
 	args    []string
 	timeout time.Duration
+	stdin   bool
 }
 
 // invocationKey is the context key of the invocation.
@@ -31,6 +32,14 @@ type invocationKey struct{}
 // withInvocation returns ctx carrying inv.
 func withInvocation(ctx context.Context, inv invocation) context.Context {
 	return context.WithValue(ctx, invocationKey{}, inv)
+}
+
+// readingStdin returns ctx whose invocation, of program, read its input from
+// standard input, which a repeat of it needs again.
+func readingStdin(ctx context.Context, program string) context.Context {
+	inv := invocationOf(ctx, program)
+	inv.stdin = true
+	return withInvocation(ctx, inv)
 }
 
 // invocationOf returns the invocation ctx carries, or else one of the
@@ -53,26 +62,10 @@ func (inv invocation) retry(ctl string) string {
 	}
 	longer := max(30*time.Second, 2*inv.timeout)
 	command := ctl + " --timeout " + durationFlag(longer) + " " + strings.Join(words, " ")
-	if inv.readsStdin() {
+	if inv.stdin {
 		command = "<the command that printed the log lines> | " + command
 	}
 	return command
-}
-
-// readsStdin reports whether the command of inv reads its evidence from
-// standard input.
-func (inv invocation) readsStdin() bool {
-	for i, arg := range inv.args {
-		name := strings.TrimLeft(arg, "-")
-		switch {
-		case arg == "--":
-			return false
-		case name == "evidence-from-stdin", strings.HasPrefix(name, "evidence-from-stdin=") && name != "evidence-from-stdin=false",
-			name == "evidence-file=-", name == "evidence-file" && i+1 < len(inv.args) && inv.args[i+1] == "-":
-			return true
-		}
-	}
-	return false
 }
 
 // durationFlag writes d as a value of a duration flag, without zero

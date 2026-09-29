@@ -127,8 +127,10 @@ func procParent(pid int) (int, error) {
 
 // LockoutWarning is the banner shown when addr, the address of the
 // operator's session, is not protected from being blocked; enforcing says
-// whether the node is, or will be, in enforce mode.
-func LockoutWarning(addr netip.Addr, enforcing bool) string {
+// whether the node is, or will be, in enforce mode. obiectl is how the
+// banner runs obiectl against the node, e.g. "sudo obiectl --socket
+// /run/node-a.sock".
+func LockoutWarning(addr netip.Addr, enforcing bool, obiectl string) string {
 	mode := "The node is in observe mode and blocks nothing yet, but it will as soon as you switch to enforce mode."
 	if enforcing {
 		mode = "The node is in enforce mode: this can happen at any moment."
@@ -138,7 +140,7 @@ func LockoutWarning(addr netip.Addr, enforcing bool) string {
 		"If this node or a trusted peer reports it, the node blocks it and you lose access to this server.",
 		mode,
 		fmt.Sprintf("Protect it: add %s to allowlist.cidrs in the configuration and reload the node", netip.PrefixFrom(addr, addr.BitLen())),
-		fmt.Sprintf("(sudo systemctl reload obied), or on a running node: sudo obiectl allow %s --note \"my SSH session\"", addr),
+		fmt.Sprintf("(sudo systemctl reload obied), or on a running node: %s allow %s --note \"my SSH session\"", obiectl, addr),
 	}
 	var b strings.Builder
 	rule := strings.Repeat("!", 78)

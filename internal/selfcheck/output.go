@@ -42,7 +42,7 @@ func WriteText(w io.Writer, r Report) error {
 		}
 	}
 	if r.lockout.IsValid() {
-		fmt.Fprintf(&b, "\n%s", session.LockoutWarning(r.lockout, r.enforcing))
+		fmt.Fprintf(&b, "\n%s", session.LockoutWarning(r.lockout, r.enforcing, r.obiectl))
 	}
 	fmt.Fprintf(&b, "\nResult: %s, %s, %d OK. %s\n",
 		plural(r.Summary[Problem], "problem"), plural(r.Summary[Warning], "warning"), r.Summary[OK], verdict(r.Status))

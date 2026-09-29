@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"regexp"
 	"strings"
 	"syscall"
 
@@ -135,17 +136,17 @@ func teardownProblem(err error) problem {
 	return p
 }
 
-// isListenError reports whether err is a failure to listen on a network
-// address with errno.
+// isListenError reports whether err is a failure to listen on a TCP or UDP
+// port with errno; not on a Unix socket, which is a file.
 func isListenError(err error, errno syscall.Errno) bool {
 	var opErr *net.OpError
 	if errors.As(err, &opErr) && opErr.Op == "listen" && errors.Is(err, errno) {
-		return true
+		return !strings.HasPrefix(opErr.Net, "unix")
 	}
 	// The mesh reports why it could not listen as text only, e.g. "failed to
 	// listen on any addresses: [listen tcp4 0.0.0.0:443: bind: permission
 	// denied]", as libp2p does.
-	return strings.Contains(err.Error(), "bind: "+errno.Error())
+	return regexp.MustCompile(`listen (tcp|udp)[46]?( \S+)?: bind: ` + regexp.QuoteMeta(errno.Error())).MatchString(err.Error())
 }
 
 // startNext is the next step after obied failed to run with err, for the
