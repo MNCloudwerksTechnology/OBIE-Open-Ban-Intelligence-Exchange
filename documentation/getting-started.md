@@ -645,8 +645,8 @@ looks right.
 ### Protect your own access
 
 Every check should now be `OK`, except a warning for the peers if you
-skipped step 8. Above all, the `SSH session` line must say that your
-session is protected:
+skipped step 8, and one for Fail2Ban if this server has none. Above all,
+the `SSH session` line must say that your session is protected:
 
 ```sh
 sudo obied self-check
