@@ -68,18 +68,14 @@ func TestTutorialTakesOnePath(t *testing.T) {
 	if p.title != title {
 		t.Errorf("title %q, want %q", p.title, title)
 	}
+	// Exactly these: another section in between would be a way to choose.
 	want := append(slices.Clone(story), noFail2BanSection, containerSection, testedSection, nextSection)
 	var got []string
 	for _, s := range p.sections {
-		if slices.Contains(want, s.title) {
-			got = append(got, s.title)
-		}
+		got = append(got, s.title)
 	}
 	if !slices.Equal(got, want) {
-		t.Errorf("the tutorial's sections are %q, want %q in this order", got, want)
-	}
-	if n := len(p.sections); n == 0 || p.sections[n-1].title != nextSection {
-		t.Errorf("the tutorial does not end with %q", nextSection)
+		t.Errorf("the tutorial's sections are %q, want %q in this order, and no others", got, want)
 	}
 	for _, title := range story {
 		s, ok := p.section(title)
@@ -141,6 +137,18 @@ func TestTutorialProtectsAccessBeforeEnforcing(t *testing.T) {
 		i := slices.IndexFunc(cmds, func(c string) bool { return strings.Contains(c, before) })
 		if i < 0 || i > switchOn {
 			t.Errorf("%q does not run %q before it switches enforcement on", enforceSection, before)
+		}
+	}
+	// What the reader confirms is on the page.
+	for cmd, shows := range map[string]string{
+		"sudo obied self-check":                  "your SSH session comes from " + sessionAddress + ", which is protected",
+		"sudo obiectl explain " + sessionAddress: "Decision: allowed",
+	} {
+		if !slices.ContainsFunc(p.steps, func(s step) bool {
+			return s.section == enforceSection && s.hasWant && s.commands[0] == cmd &&
+				strings.Contains(strings.Join(normalize(s.want), "\n"), shows)
+		}) {
+			t.Errorf("%q does not show that %s prints %q", enforceSection, cmd, shows)
 		}
 	}
 }

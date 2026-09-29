@@ -10,7 +10,8 @@ import (
 const tutorialPath = "documentation/getting-started.md"
 
 // A step is a shell block of the tutorial: its commands and, if a text
-// block follows it, the output the page shows for its one command.
+// block follows it, the output the page shows for its one command. line is
+// the line of the block's opening fence.
 type step struct {
 	section    string
 	subsection string
@@ -23,7 +24,6 @@ type step struct {
 // A section is a level-2 heading of the tutorial with its running text.
 type section struct {
 	title string
-	line  int
 	// purpose is the paragraph that opens the section, if one does.
 	purpose string
 	// paragraphs are the section's paragraphs and list items, each joined
@@ -97,7 +97,7 @@ func parsePage(doc string) page {
 		case strings.HasPrefix(line, "## "):
 			flushPara()
 			flushStep()
-			p.sections = append(p.sections, section{title: strings.TrimPrefix(line, "## "), line: i + 1})
+			p.sections = append(p.sections, section{title: strings.TrimPrefix(line, "## ")})
 			cur, subsection = len(p.sections)-1, ""
 		case strings.HasPrefix(line, "### "):
 			flushPara()

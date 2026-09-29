@@ -18,7 +18,7 @@ export const LINKS = {
   repository: REPOSITORY_URL,
   introduction: `${DOCS_URL}/documentation/introduction.md`,
   capabilities: `${DOCS_URL}/documentation/capabilities.md`,
-  quickStart: `${DOCS_URL}/documentation/operations/quickstart.md`,
+  quickStart: `${DOCS_URL}/documentation/getting-started.md`,
   spec: `${DOCS_URL}/documentation/spec/obie-0.1.md`,
   whitepaper: `${DOCS_URL}/documentation/whitepaper.md#1-introduction-the-centralization-trap`,
   manifesto: `${DOCS_URL}/documentation/whitepaper.md#2-the-obie-manifesto-principles-and-philosophy`,

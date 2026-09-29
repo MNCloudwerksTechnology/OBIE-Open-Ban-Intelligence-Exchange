@@ -42,7 +42,7 @@ const (
 		"(getting started, step 6: documentation/getting-started.md#6-connect-fail2ban)"
 	nextTestBan = "test the way from Fail2Ban to the node: sudo fail2ban-client set sshd banip 203.0.113.7, " +
 		"then sudo journalctl -t obie-fail2ban -n 1 -o cat (getting started, step 6)"
-	nextRestartFail2Ban = "restart Fail2Ban, which a reload does not replace: sudo systemctl restart fail2ban"
+	nextRestartFail2Ban = "restart Fail2Ban (a reload is not enough): sudo systemctl restart fail2ban"
 )
 
 // runningActions is how fail2ban-client get <jail> actions starts its

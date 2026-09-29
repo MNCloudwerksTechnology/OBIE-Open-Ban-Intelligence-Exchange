@@ -61,7 +61,8 @@ connecting Fail2Ban reported nothing, and no test noticed.
   - the download: the release's address is replaced by a local copy
     served inside the container;
   - the attack: an address in a network namespace inside the container,
-    85.10.0.7, fails five SSH logins, and the sshd jail bans it;
+    85.10.0.7, fails five SSH logins, and the sshd jail bans it, for an
+    hour, so that its verdict outlasts a slow run;
   - the peer: `obied` from the same release runs in a second network
     namespace, at 198.51.100.20;
   - the answers to `obied setup`: the test gives each prompt the answer
@@ -74,18 +75,23 @@ connecting Fail2Ban reported nothing, and no test noticed.
   moment. Commands that change something run once. The container
   section's `docker` commands run on the Docker host, against an image
   built from the same source. Their container, volume and port are
-  replaced by the test's own. The test removes its containers, volumes
-  and images at the end.
+  replaced by the test's own. At the end, the test takes both ways back
+  of step 10 again, while the node blocks, and checks that no block is
+  left: on the page, the reader practises them before anything is
+  blocked. The test removes its containers, volumes and images.
 - **The host container is privileged.** systemd, the service's sandbox,
   nftables and network namespaces need it. The container has its own
   network namespace, so its Fail2Ban and nftables rules never reach the
   host's firewall. The check is for CI and developers; readers never run
   it.
-- **`make ci` checks the form without Docker:** the steps in order, each
-  with its purpose, expected output and troubleshooting link. It also
-  checks the block kinds, that access is protected and the way back
-  practised before the switch, the separate container section, the edge
-  cases and the "What next" links.
+- **`make ci` checks the form without Docker:** exactly the expected
+  sections, the steps in order, each with its purpose, expected output
+  and troubleshooting link. It also checks the block kinds, that access
+  is protected and the way back practised before the switch, the separate
+  container section, the edge cases and the "What next" links. Every page
+  and heading of the documentation that a program names in a message
+  must exist, so that a renamed heading cannot break the links of
+  `obied setup` and the self-check.
 
 ## Consequences
 

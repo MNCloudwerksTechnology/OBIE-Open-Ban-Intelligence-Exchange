@@ -1,4 +1,4 @@
-//go:build tutorial
+//go:build tutorial && linux
 
 package tutorial
 
@@ -40,6 +40,8 @@ const (
 	downloads = "http://127.0.0.1:8000/"
 	// attackSection is the step before which the attack happens.
 	attackSection = "7. See the first verdict"
+	// wayBack is the part of step 10 that shows how to stop blocking.
+	wayBack = "Know the way back"
 )
 
 var cyclonedx = flag.String("tutorial.cyclonedx", "", "the cyclonedx-gomod binary packaging/release.sh needs (make tutorial-check passes it)")
@@ -113,6 +115,74 @@ func TestTutorial(t *testing.T) {
 		for _, cmd := range s.commands {
 			c.run(s, cmd)
 		}
+	}
+	c.takeTheWaysBack(p)
+}
+
+// takeTheWaysBack runs the two ways back of step 10 again, now that the
+// node blocks, as a reader would after a mistake: stopping the node and
+// removing its table must leave no block, and so must observe mode.
+func (c *check) takeTheWaysBack(p page) {
+	var back []step
+	for _, s := range p.steps {
+		if s.section == enforceSection && s.subsection == wayBack {
+			back = append(back, s)
+		}
+	}
+	find := func(part string) step {
+		for _, s := range back {
+			for _, cmd := range s.commands {
+				if strings.Contains(cmd, part) {
+					return s
+				}
+			}
+		}
+		c.t.Fatalf("%q of %q runs no %q", wayBack, enforceSection, part)
+		return step{}
+	}
+	observe, stop, teardown, start := find("mode: observe/"), find("systemctl stop obied"), find("teardown-firewall"), find("systemctl start obied")
+	blocking := func(out string) bool {
+		return strings.HasPrefix(out, "Entries applied: ") && !strings.HasPrefix(out, "Entries applied: 0")
+	}
+	noTable := func(out string) bool { return !strings.Contains(out, "table inet obie") }
+
+	c.until("sudo obiectl enforced", "the node blocks nothing before the ways back are taken", blocking)
+	for _, s := range []step{stop, teardown} {
+		for _, cmd := range s.commands {
+			c.run(s, cmd)
+		}
+	}
+	c.until("sudo nft list tables", "the stopped node's table is still there after obied teardown-firewall", noTable)
+	for _, cmd := range start.commands {
+		c.run(start, cmd)
+	}
+	c.until("sudo obiectl enforced", "the node does not block again after it started", blocking)
+	for _, cmd := range observe.commands {
+		c.run(observe, cmd)
+	}
+	c.until("sudo obiectl enforced", "the node still blocks in observe mode",
+		func(out string) bool {
+			return strings.HasPrefix(out, "No entries applied: the node is in observe mode.")
+		})
+	c.until("sudo nft list tables", "the table is still there in observe mode", noTable)
+}
+
+// until repeats a command on the server until its output is as ok wants
+// it, for up to settle, and fails the check with what otherwise.
+func (c *check) until(cmd, what string, ok func(string) bool) {
+	c.t.Helper()
+	deadline := time.Now().Add(settle)
+	for {
+		out, err := c.onServer(cmd)
+		if err == nil && ok(out) {
+			return
+		}
+		if time.Now().After(deadline) {
+			c.diagnose()
+			c.t.Errorf("%s: %s; it printed (%v):\n%s", cmd, what, err, out)
+			return
+		}
+		time.Sleep(time.Second)
 	}
 }
 

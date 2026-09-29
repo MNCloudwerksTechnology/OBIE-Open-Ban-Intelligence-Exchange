@@ -2,10 +2,12 @@
 
 This tutorial takes you from nothing to a working OBIE
 [node](glossary.md#node) on your own server. At the end, the node turns
-Fail2Ban's bans into signed [verdicts](glossary.md#verdict), shares them
-with one [peer](glossary.md#peer), and shows you what it would block, in
+the bans of [Fail2Ban](glossary.md#fail2ban) into signed
+[verdicts](glossary.md#verdict), shares them with one
+[peer](glossary.md#peer), and shows you what it would block, in
 [observe mode](glossary.md#observe-mode). If you want, it then blocks
-attackers in your firewall, without locking you out.
+attackers in your [firewall](glossary.md#firewall), once you have made
+sure that it cannot lock you out.
 
 Plan on about 30 minutes, plus the wait for Fail2Ban's next ban in step 7.
 You never have to choose between two ways: follow the steps in order.
@@ -39,8 +41,9 @@ You need:
 
 - a Linux server with systemd, on a 64-bit x86 (amd64) or ARM (arm64)
   processor, where you can run commands with `sudo`;
-- Fail2Ban 0.11 or newer with its `sshd` jail switched on, as most
-  servers have it. Without Fail2Ban, OBIE works too; step 6 says how;
+- Fail2Ban 0.11 or newer with its `sshd` jail switched on, as the
+  Fail2Ban packages of Debian and Ubuntu do. Without Fail2Ban, OBIE works
+  too; step 6 says how;
 - for step 10 only: a way into the server that does not depend on its
   network, such as your provider's web console.
 
@@ -490,7 +493,11 @@ port 4001, TCP and UDP, for the peer in your firewall
 
 Run the setup assistant again. Press Enter at every question, except
 three: paste the peer's address at `Peer address`, name the peer
-`friend`, and answer `y` to replace the file:
+`friend`, and answer `y` to replace the file. Coming back to this step
+after step 10? Then also answer `n` at question 4 and `y` when the
+assistant asks whether to start in
+[enforce mode](glossary.md#enforce-mode) anyway, or the node goes back to
+observe mode.
 
 ```sh
 sudo obied setup
@@ -540,7 +547,8 @@ The previous file is kept as /etc/obie/obie.yaml.bak.1.
 The node now connects to `friend` and gives its verdicts a
 [trust weight](glossary.md#trust-weight) of 0.8. A peer's verdicts count
 towards a block only together with others: by default, at least two
-publishers must agree (the [quorum](glossary.md#quorum)), with enough
+[publishers](glossary.md#publisher) must agree (the
+[quorum](glossary.md#quorum)), with enough
 weight to reach the [threshold](glossary.md#threshold). So one peer alone
 never gets an address blocked on your server. The node reads its peers
 only when it starts, so restart it:
@@ -599,10 +607,11 @@ PUBLISHER    PEER ID                                               ACTION  WEIGH
 (this node)  12D3KooWPqtsL3NjMswRrqG8xYAsfMjPgfajfvg9625cc6Y9WmiD  ban     1       0.8         0.8    yes     ssh       bruteforce  2026-10-14T09:12:05Z  2026-10-14T09:22:05Z
 ```
 
-Your own node's verdicts block at once, without waiting for others (local
-autoblock): the node trusts this server's Fail2Ban as much as you do.
-Verdicts of your peer show up here too, but block only when enough
-publishers agree. Nothing is blocked yet:
+Your own node's verdicts block at once, without waiting for others: the
+node trusts this server's Fail2Ban as much as you do
+([local autoblock](glossary.md#local-autoblock)). Verdicts of your peer
+show up here too, but block only when enough publishers agree. Nothing is
+blocked yet:
 
 ```sh
 sudo obiectl enforced
@@ -612,14 +621,16 @@ sudo obiectl enforced
 No entries applied: the node is in observe mode.
 ```
 
-Let the node observe for a few days, and review what it would have
-blocked from time to time. The [web console](operations/console.md) shows
-the same in a browser. If a decision looks wrong,
+Let the node observe for a few days, and review what it would block from
+time to time. These lists show what is active right now: a verdict from
+Fail2Ban lasts as long as its ban, so later they show other addresses, or
+none. The audit log `/var/log/obie/audit.jsonl` keeps every decision.
+Once you switch it on, the [web console](operations/console.md) shows the
+same in a browser. If a decision looks wrong,
 [Nothing is enforced](operations/troubleshooting.md#nothing-is-enforced)
 explains every reason.
 
-If there is no decision yet, Fail2Ban has not banned anyone since step 6
-(step 7).
+If there is no decision, no ban is active right now (step 7).
 
 ## 10. Switch to enforcement (optional)
 
@@ -627,8 +638,8 @@ Let the node block what it decides, after you have made sure that it
 cannot lock you out and that you know the way back.
 
 In [enforce mode](glossary.md#enforce-mode), the node blocks through its
-own table in the Linux firewall, nftables, and never touches any other
-rule. Switch it on only once the review of step 9 looks right.
+own table in the Linux firewall, [nftables](glossary.md#nftables), and
+never touches any other rule. Switch it on only once the review of step 9 looks right.
 
 ### Protect your own access
 
@@ -721,12 +732,19 @@ sudo obied teardown-firewall
 obied teardown-firewall: table inet obie removed; nothing is blocked by OBIE anymore
 ```
 
-Try them now: the node blocks nothing yet, so they change nothing, and you
-know that they work. Your own firewall rules are never touched.
+Try them now, while the node blocks nothing: they change nothing yet, and
+you have run them once before you need them. Your own firewall rules are
+never touched. Then start the node again:
+
+```sh
+sudo systemctl start obied
+```
 
 ### Switch enforcement on
 
-Set enforce mode, and let the node block through nftables:
+Set enforce mode, and let the node block through nftables. Run the second
+command only once: the section it adds stays when you go back to observe
+mode.
 
 ```sh
 sudo sed -i 's/^  mode: observe$/  mode: enforce/' /etc/obie/obie.yaml
@@ -776,8 +794,10 @@ PREFIX        EXPIRES               REMAINING
 85.10.0.7/32  2026-10-14T09:22:05Z  5m38s
 ```
 
-The node now blocks the banned address. The Linux firewall shows it in
-OBIE's own table, `inet obie`:
+The node now blocks what it decided: here, the address Fail2Ban banned.
+The list shows the blocks active right now, so yours may name other
+addresses, or none. The Linux firewall shows them in OBIE's own table,
+`inet obie`:
 
 ```sh
 sudo nft list table inet obie
@@ -804,8 +824,9 @@ table inet obie {
 }
 ```
 
-If `obiectl status` still says `OBSERVE`, or an address is not blocked,
-see [Nothing is enforced](operations/troubleshooting.md#nothing-is-enforced).
+If `obiectl status` still says `OBSERVE`, or an address that
+`sudo obiectl decisions --state block` lists is missing here, see
+[Nothing is enforced](operations/troubleshooting.md#nothing-is-enforced).
 If you lose access, see [Locked out](operations/troubleshooting.md#locked-out).
 
 ## If this server has no Fail2Ban
@@ -855,10 +876,14 @@ install.sh: installed the Fail2Ban action /etc/fail2ban/action.d/obie.conf (over
 …
 ```
 
+If a command stops with a message, its `Next:` line says what to do;
+[Messages of obied and obiectl](operations/messages.md) explains every
+message, and [Troubleshooting](operations/troubleshooting.md) the rest.
+
 ## Install the container image instead
 
 The container image runs a node that exchanges verdicts, but cannot read
-the server's Fail2Ban and cannot block: it pretends to block and only
+the server's Fail2Ban and cannot block: it runs in observe mode and only
 lists what it would block. Use it to try OBIE, or to run a node next to
 other containers. You need Docker.
 
@@ -921,9 +946,13 @@ What a reader brings along is played by the check:
 
 - The SSH session comes from `85.10.3.20`.
 - The release is downloaded from a copy inside the container.
-- The attacker `85.10.0.7` fails five SSH logins, and Fail2Ban bans it.
+- The attacker `85.10.0.7` fails five SSH logins, and Fail2Ban bans it,
+  for an hour instead of ten minutes, so that the ban outlasts the check.
 - The peer `friend` is a second node at `198.51.100.20`.
 - The container image is built from the same change.
+
+At the end, the check also takes both ways back of step 10 while the node
+blocks, and makes sure that no block is left.
 
 Before it compares, the check replaces what differs from run to run:
 peer IDs, event IDs, fingerprints, container IDs, times and durations.

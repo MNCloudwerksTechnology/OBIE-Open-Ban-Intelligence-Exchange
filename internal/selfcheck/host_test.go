@@ -130,7 +130,7 @@ func TestCheckFail2BanRunningJails(t *testing.T) {
 	h.node.indicators = 1
 	assertCheck(t, h.run(t, "fail2ban"), Warning,
 		"Fail2Ban's configuration gives sshd OBIE's action, but the running jail does not use it yet, so its bans are not reported",
-		"restart Fail2Ban, which a reload does not replace: sudo systemctl restart fail2ban")
+		"restart Fail2Ban (a reload is not enough): sudo systemctl restart fail2ban")
 
 	running["sshd"] = "The jail sshd has the following actions:\nnftables, obie\n"
 	assertCheck(t, h.run(t, "fail2ban"), OK, "jails that report every ban to the node: sshd, nginx-http-auth")

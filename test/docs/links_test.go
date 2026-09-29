@@ -61,6 +61,33 @@ func TestRelativeLinksResolve(t *testing.T) {
 	})
 }
 
+// codeDocLink is a page of the documentation that a program names, with the
+// heading it points to, if any.
+var codeDocLink = regexp.MustCompile(`documentation/[A-Za-z0-9_./-]+\.md(#[A-Za-z0-9_-]+)?`)
+
+// TestCodeLinksResolve checks the pages of the documentation that the
+// programs name in their messages and next steps, as a path or in a URL:
+// the page exists and, for a link to a heading, the heading does. A renamed
+// heading would otherwise send the reader of a message nowhere.
+func TestCodeLinksResolve(t *testing.T) {
+	walkRepo(t, ".go", func(path string, data []byte) {
+		if strings.HasSuffix(path, "_test.go") {
+			return
+		}
+		for _, link := range codeDocLink.FindAllString(string(data), -1) {
+			file, frag, _ := strings.Cut(link, "#")
+			doc, err := os.ReadFile(filepath.Join(repoRoot, file)) // #nosec G304 G703 -- a page of this repository, named in its code.
+			if err != nil {
+				t.Errorf("%s names %s: %v", path, link, err)
+				continue
+			}
+			if frag != "" && !headingAnchors(string(doc))[frag] {
+				t.Errorf("%s names %s, but %s has no heading #%s", path, link, file, frag)
+			}
+		}
+	})
+}
+
 // relativeLinks returns the targets of the links outside code blocks that
 // point into the repository.
 func relativeLinks(doc string) []string {
