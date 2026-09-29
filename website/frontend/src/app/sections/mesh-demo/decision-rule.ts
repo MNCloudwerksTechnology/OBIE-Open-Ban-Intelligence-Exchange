@@ -2,6 +2,7 @@ import {
   Contribution,
   Decision,
   DecisionCause,
+  PUBLISHER_IDS,
   PublisherId,
   Report,
   ServerSetup,
@@ -15,8 +16,6 @@ import {
 
 /** Absorbs float rounding, so that e.g. 0.6 + 0.6 + 0.6 reaches 1.8. */
 export const SCORE_TOLERANCE = 1e-9;
-
-const PUBLISHER_ORDER: readonly PublisherId[] = ['a', 'b', 'c', 'rogue'];
 
 /** The weight `server` gives reports of `publisher`. */
 export function weightOf(server: ServerSetup, publisher: PublisherId): number {
@@ -38,7 +37,7 @@ export function decide(
   reports: readonly Report[],
 ): Decision {
   const contributions = [...reports]
-    .sort((x, y) => PUBLISHER_ORDER.indexOf(x.publisher) - PUBLISHER_ORDER.indexOf(y.publisher))
+    .sort((x, y) => PUBLISHER_IDS.indexOf(x.publisher) - PUBLISHER_IDS.indexOf(y.publisher))
     .map((report) => contribution(server, report));
   const counting = contributions.filter((c) => c.counts);
   const score = counting.reduce((sum, c) => sum + c.score, 0);

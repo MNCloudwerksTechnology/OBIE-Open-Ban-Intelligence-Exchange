@@ -17,8 +17,8 @@ import {
   SubjectId,
 } from './mesh-demo.model';
 
-/** Each server's reports: per subject, the latest report of each publisher. */
-type Stores = Record<ServerId, Map<SubjectId, Map<PublisherId, Report>>>;
+/** Each server's reports per subject, as they arrived; `active` picks what counts. */
+type Stores = Record<ServerId, Map<SubjectId, Report[]>>;
 
 /**
  * Plays the scenario and returns what the demo shows after each step. The
@@ -76,7 +76,7 @@ function apply(
       return;
     }
     case 'share':
-      // Each copy replaces the previous one: a publisher counts once, however often it reports.
+      // However often a publisher repeats a report, it counts once (`active`).
       for (let copy = 0; copy < event.copies; copy++) {
         event.to.forEach((server) => keep(stores, server, event.report));
       }
@@ -93,20 +93,35 @@ function apply(
 }
 
 function keep(stores: Stores, server: ServerId, report: Report): void {
-  const bySubject = stores[server];
-  const byPublisher = bySubject.get(report.subject) ?? new Map<PublisherId, Report>();
-  byPublisher.set(report.publisher, report);
-  bySubject.set(report.subject, byPublisher);
+  const reports = stores[server].get(report.subject) ?? [];
+  if (!reports.includes(report)) {
+    stores[server].set(report.subject, [...reports, report]);
+  }
 }
 
 function drop(stores: Stores, server: ServerId, report: Report): void {
-  stores[server].get(report.subject)?.delete(report.publisher);
+  const reports = stores[server].get(report.subject) ?? [];
+  stores[server].set(
+    report.subject,
+    reports.filter((kept) => kept !== report),
+  );
 }
 
-/** The server's reports on `subject` that have not expired at minute `now`. */
+/**
+ * The reports that count for `subject` at minute `now`, as the node picks
+ * them (latestPerPublisher in internal/decision): expired reports are
+ * dropped first, then the newest remaining report of each publisher counts.
+ */
 function active(stores: Stores, server: ServerId, subject: SubjectId, now: number): Report[] {
-  const reports = [...(stores[server].get(subject)?.values() ?? [])];
-  return reports.filter((report) => now < report.issuedAt + report.ttlMinutes);
+  const newest = new Map<PublisherId, Report>();
+  for (const report of stores[server].get(subject) ?? []) {
+    const current = newest.get(report.publisher);
+    const live = now < report.issuedAt + report.ttlMinutes;
+    if (live && (!current || report.issuedAt >= current.issuedAt)) {
+      newest.set(report.publisher, report);
+    }
+  }
+  return [...newest.values()];
 }
 
 function message(

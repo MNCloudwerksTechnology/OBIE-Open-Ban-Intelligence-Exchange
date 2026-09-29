@@ -16,6 +16,8 @@ export type SubjectId = 'bot' | 'office' | 'scanner' | 'payment';
 export type AttackerId = Extract<SubjectId, 'bot' | 'scanner'>;
 
 export const SERVER_IDS: readonly ServerId[] = ['a', 'b', 'c'];
+/** Publishers in a fixed order, so that sums read the same everywhere. */
+export const PUBLISHER_IDS: readonly PublisherId[] = [...SERVER_IDS, 'rogue'];
 export const SUBJECT_IDS: readonly SubjectId[] = ['bot', 'office', 'scanner', 'payment'];
 
 /** A node's decision settings, named after its configuration keys. */

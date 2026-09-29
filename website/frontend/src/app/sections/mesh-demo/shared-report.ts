@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { LANDING_CONTENT } from '../../content/landing.content';
-import { decimal, duration, fill } from './format';
+import { decimal, duration, fill, shortName } from './format';
 import { Report, ServerId } from './mesh-demo.model';
 import { SCENARIO } from './scenario';
 
@@ -106,10 +106,7 @@ export class SharedReport {
   protected readonly copy = this.content.howItWorks.demo.report;
   private readonly demo = this.content.howItWorks.demo;
 
-  private readonly sender = computed(() => {
-    const { publisher } = this.report();
-    return publisher === 'rogue' ? this.demo.rogue.short : this.demo.servers[publisher].short;
-  });
+  private readonly sender = computed(() => shortName(this.demo, this.report().publisher));
 
   protected readonly heading = computed(() => fill(this.copy.heading, { server: this.sender() }));
   protected readonly keptHeading = computed(() =>

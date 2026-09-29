@@ -1,10 +1,10 @@
 import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
 import { LANDING_CONTENT } from '../../content/landing.content';
-import { decimal, fill } from './format';
+import { decimal, fill, shortName } from './format';
 import {
   DecisionView,
-  PublisherId,
+  PUBLISHER_IDS,
   ServerSetup,
   ServerView,
   SubjectState,
@@ -29,8 +29,6 @@ interface Row {
     readonly fill: number;
   };
 }
-
-const PUBLISHERS: readonly PublisherId[] = ['a', 'b', 'c', 'rogue'];
 
 /** What one server of the demo trusts, never blocks and decides about each subject. */
 @Component({
@@ -98,9 +96,11 @@ export class ServerCard {
   /** "B 0.8 · C 0.5 · anyone else 0.0": the trust list, then everyone else. */
   protected readonly trust = computed(() => {
     const { trust, settings } = this.setup();
-    const listed = PUBLISHERS.flatMap((publisher) => {
+    const listed = PUBLISHER_IDS.flatMap((publisher) => {
       const weight = trust[publisher];
-      return weight === undefined ? [] : [`${this.short(publisher)} ${this.number(weight, 1)}`];
+      return weight === undefined
+        ? []
+        : [`${shortName(this.demo, publisher)} ${this.number(weight, 1)}`];
     });
     const others = fill(this.demo.labels.anyoneElse, {
       weight: this.number(settings.defaultWeight, 1),
@@ -128,7 +128,7 @@ export class ServerCard {
     const sum = contributions
       .map(
         (c) =>
-          `${this.short(c.publisher)} ${this.number(c.weight, 1)} × ${this.number(c.confidence, 1)}`,
+          `${shortName(this.demo, c.publisher)} ${this.number(c.weight, 1)} × ${this.number(c.confidence, 1)}`,
       )
       .join(' + ');
     return {
@@ -143,10 +143,6 @@ export class ServerCard {
         fill: Math.min(decision.score / (threshold * 1.5), 1) * 100,
       },
     };
-  }
-
-  private short(publisher: PublisherId): string {
-    return publisher === 'rogue' ? this.demo.rogue.short : this.demo.servers[publisher].short;
   }
 
   private number(value: number, digits: number): string {

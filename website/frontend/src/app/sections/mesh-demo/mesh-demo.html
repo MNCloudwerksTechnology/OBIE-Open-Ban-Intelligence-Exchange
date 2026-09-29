@@ -72,6 +72,7 @@
     <div class="map">
       <app-mesh-map [frame]="frame()" [animate]="motion() === 'full'" />
     </div>
+    <!-- A one-item loop keyed by the step: the narrative is rebuilt on every step, so its fade restarts. -->
     @for (index of [step()]; track index) {
       <div class="narrative" [class.animated]="motion() === 'full'">
         <p class="progress">{{ progress() }}</p>
