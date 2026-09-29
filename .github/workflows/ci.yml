@@ -175,6 +175,8 @@ jobs:
           tar -xzf obie-0.0.0-ci-linux-amd64.tar.gz
           DESTDIR="$RUNNER_TEMP/root" ./obie-0.0.0-ci-linux-amd64/install.sh
           "$RUNNER_TEMP/root/usr/local/bin/obied" --config "$RUNNER_TEMP/root/etc/obie/obie.yaml" --check-config
+          "$RUNNER_TEMP/root/usr/local/bin/obied" setup --non-interactive --force --config "$RUNNER_TEMP/root/etc/obie/obie.yaml"
+          "$RUNNER_TEMP/root/usr/local/bin/obied" --config "$RUNNER_TEMP/root/etc/obie/obie.yaml" --check-config
 
       - name: make check-unit
         run: |

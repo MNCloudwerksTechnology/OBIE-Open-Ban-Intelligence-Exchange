@@ -8,11 +8,32 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
 // DefaultPath is the configuration file read when --config is not given.
 const DefaultPath = "/etc/obie/obie.yaml"
+
+// PathFlag returns the flag that selects the configuration file at path,
+// for a command shown to the operator: nothing for DefaultPath, else
+// " --config" and the path as one shell word.
+func PathFlag(path string) string {
+	if path == DefaultPath {
+		return ""
+	}
+	return " --config " + QuotePath(path)
+}
+
+// QuotePath returns path as one POSIX shell word: as it is when the shell
+// leaves each of its characters alone, else in single quotes.
+func QuotePath(path string) string {
+	const plain = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@%+=:,./_-"
+	if path != "" && !strings.ContainsFunc(path, func(r rune) bool { return !strings.ContainsRune(plain, r) }) {
+		return path
+	}
+	return "'" + strings.ReplaceAll(path, "'", `'\''`) + "'"
+}
 
 // Mode selects whether decisions are only recorded or also enforced.
 type Mode string

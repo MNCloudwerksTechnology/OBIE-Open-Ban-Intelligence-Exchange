@@ -449,3 +449,23 @@ func TestFingerprint(t *testing.T) {
 		t.Errorf("Fingerprint = %q, want %q", got, want)
 	}
 }
+
+// TestVerifyChecksTheOwnerGiven checks that Verify applies Load's rules
+// with the key file owned by the user given, not the calling user.
+func TestVerifyChecksTheOwnerGiven(t *testing.T) {
+	dir := newStateDir(t)
+	key, err := Create(dir, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Verify(dir, os.Geteuid())
+	if err != nil || got.PeerID() != key.PeerID() {
+		t.Fatalf("Verify as the owner = %v, %v", got, err)
+	}
+	if _, err := Verify(dir, os.Geteuid()+1); !errors.Is(err, ErrInsecure) || !strings.Contains(err.Error(), "is owned by") {
+		t.Errorf("Verify for another user: %v, want ErrInsecure naming the owner", err)
+	}
+	if _, err := Verify(filepath.Join(dir, "missing"), os.Geteuid()); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("Verify of a missing state directory: %v, want fs.ErrNotExist", err)
+	}
+}

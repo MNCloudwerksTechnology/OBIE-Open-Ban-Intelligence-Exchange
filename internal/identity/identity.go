@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"os"
 	"path/filepath"
 
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -110,11 +111,24 @@ func Path(stateDir string) string { return filepath.Join(stateDir, FileName) }
 // access, replace or delete yields ErrInsecure; an unreadable key yields
 // ErrCorrupt.
 func Load(stateDir string) (*Key, error) {
+	return load(stateDir, os.Geteuid())
+}
+
+// Verify checks the key file in stateDir as obied running as the user with
+// uid would load it, and returns the key: the errors are those of Load,
+// with the key file required to belong to uid rather than to the calling
+// user. The self-check calls it as root for the service user.
+func Verify(stateDir string, uid int) (*Key, error) {
+	return load(stateDir, uid)
+}
+
+// load is Load with the key file required to belong to uid.
+func load(stateDir string, uid int) (*Key, error) {
 	if err := checkDir(stateDir); err != nil {
 		return nil, err
 	}
 	path := Path(stateDir)
-	data, err := readKeyFile(path)
+	data, err := readKeyFile(path, uid)
 	if err != nil {
 		return nil, err
 	}

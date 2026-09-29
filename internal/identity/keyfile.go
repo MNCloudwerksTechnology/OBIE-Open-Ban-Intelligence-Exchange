@@ -45,8 +45,8 @@ func decodeKey(data []byte) (ed25519.PrivateKey, error) {
 }
 
 // readKeyFile opens the key file without following symlinks, checks its
-// type, permissions and owner on the open file, and reads it.
-func readKeyFile(path string) ([]byte, error) {
+// type, permissions and owner (uid) on the open file, and reads it.
+func readKeyFile(path string, uid int) ([]byte, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0) // #nosec G304 -- path is <state_dir>/node.key.
 	switch {
 	case errors.Is(err, syscall.ELOOP):
@@ -62,7 +62,7 @@ func readKeyFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read key file: %w", err)
 	}
-	if err := checkFile(path, info, os.Geteuid()); err != nil {
+	if err := checkFile(path, info, uid); err != nil {
 		return nil, err
 	}
 	// Read one byte more than a key file has, so that decodeKey rejects

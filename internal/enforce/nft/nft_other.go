@@ -31,3 +31,6 @@ func (*Backend) Apply(context.Context, []enforce.Entry, []enforce.Entry) error {
 
 // Teardown fails: nftables needs Linux.
 func (*Backend) Teardown(context.Context) error { return errUnsupported }
+
+// Probe reports that nftables needs Linux.
+func Probe(context.Context) error { return errUnsupported }

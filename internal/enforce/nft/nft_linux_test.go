@@ -117,6 +117,7 @@ func TestNeedsCapNetAdmin(t *testing.T) {
 		"Setup":    func() error { return b.Setup(ctx) },
 		"List":     func() error { _, err := b.List(ctx); return err },
 		"Teardown": func() error { return b.Teardown(ctx) },
+		"Probe":    func() error { return Probe(ctx) },
 	} {
 		err := call()
 		if !errors.Is(err, ErrPermission) {

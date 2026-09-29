@@ -124,7 +124,7 @@ func runDaemonWith(ctx context.Context, reload <-chan struct{}, args []string, s
 
 func daemonUsage(fs *flag.FlagSet) {
 	out := fs.Output()
-	_, _ = fmt.Fprintf(out, "Usage: obied [flags]\n       obied <command> [command flags]\n\nCommands (offline):\n")
+	_, _ = fmt.Fprintf(out, "Usage: obied [flags]\n       obied <command> [command flags]\n\nCommands:\n")
 	names := make([]string, 0, len(daemonCommands))
 	for name := range daemonCommands {
 		names = append(names, name)

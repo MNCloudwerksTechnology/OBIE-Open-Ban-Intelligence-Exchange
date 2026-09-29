@@ -118,9 +118,13 @@ fi
 
 cat <<EOF
 install.sh: done. Next steps:
-  1. Review /etc/obie/obie.yaml (mesh.bootstrap, trust, allowlist), then
-     check it: $PREFIX/bin/obied --config /etc/obie/obie.yaml --check-config
+  1. Answer a few questions to write /etc/obie/obie.yaml:
+       $PREFIX/bin/obied setup
+     (or review the file yourself and check it:
+       $PREFIX/bin/obied --config /etc/obie/obie.yaml --check-config)
   2. Start the node:  systemctl enable --now obied
-  3. Use obiectl as root or as a member of the group obie:
+  3. Let it check itself; every problem comes with the next step:
+       $PREFIX/bin/obied self-check
+  4. Use obiectl as root or as a member of the group obie:
      usermod -aG obie <user>; obiectl status
 EOF
