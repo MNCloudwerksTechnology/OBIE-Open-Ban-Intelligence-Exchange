@@ -21,7 +21,7 @@ func runPeers(ctx context.Context, client *admin.Client, args []string, stdout, 
 	}
 	peers, err := client.Peers(ctx)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {

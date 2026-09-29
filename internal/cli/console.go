@@ -27,7 +27,7 @@ func runConsole(ctx context.Context, client *admin.Client, args []string, stdout
 		resp, err = client.Console(ctx)
 	}
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {

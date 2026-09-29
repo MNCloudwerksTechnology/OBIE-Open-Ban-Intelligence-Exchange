@@ -123,16 +123,18 @@ func TestOverrideCommands(t *testing.T) {
 	if !strings.Contains(out, "Decision now: allowed") ||
 		!strings.HasPrefix(stderr, "obiectl block: warning: the force-block does not take effect: allow-listed: built-in range 10.0.0.0/8 (private (RFC 1918)); verdicts: no active verdicts\n") ||
 		!strings.Contains(stderr, "\n  Why:  protected addresses") ||
-		!strings.HasSuffix(stderr, "\n  Next: the override is kept but has no effect; remove it: sudo obiectl unoverride 10.0.0.5\n") {
+		!strings.HasSuffix(stderr, "\n  Next: the override is kept but has no effect; remove it: sudo obiectl --socket "+socket+" unoverride 10.0.0.5\n") {
 		t.Errorf("block of a private address:\n%s%s", out, stderr)
 	}
-	// A force-block below an always-allow override names that override.
+	// A force-block below an always-allow override names that override;
+	// the commands keep the socket.
 	ctl(ExitOK, "allow", "45.10.0.0/16")
 	_, stderr = ctl(ExitOK, "block", "45.10.20.30")
 	if !strings.HasPrefix(stderr, "obiectl block: warning: the force-block does not take effect: operator force-allow override on cidr:45.10.0.0/16") ||
 		!strings.Contains(stderr, "\n  Why:  an always-allow override beats every other rule") ||
-		!strings.Contains(stderr, "\n  Next: to block it, remove the always-allow override: sudo obiectl unoverride 45.10.0.0/16\n") ||
-		!strings.HasSuffix(stderr, "\n  Next: otherwise remove this block, which has no effect: sudo obiectl unoverride 45.10.20.30\n") {
+		!strings.Contains(stderr, "\n  Next: to block it, remove the always-allow override: sudo obiectl --socket "+socket+" unoverride 45.10.0.0/16; "+
+			"then sudo obiectl --socket "+socket+" explain 45.10.20.30 shows whether another one still beats the block\n") ||
+		!strings.HasSuffix(stderr, "\n  Next: otherwise remove this block, which has no effect: sudo obiectl --socket "+socket+" unoverride 45.10.20.30\n") {
 		t.Errorf("block below an allow override:\n%s", stderr)
 	}
 	ctl(ExitOK, "unoverride", "45.10.20.30")

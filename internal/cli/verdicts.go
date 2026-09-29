@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -96,7 +97,7 @@ func runReport(ctx context.Context, client *admin.Client, args []string, stdout,
 		if err != nil {
 			problem{id: "evidence-unreadable", what: fmt.Sprintf("cannot use the evidence of %s: %v", evidenceFlag, err),
 				next: []string{"check the file, or pass the log lines about this address on standard input: " +
-					"grep <address> <log file> | sudo obiectl report --evidence-from-stdin ..."}}.write(stderr, program)
+					"grep <address> <log file> | " + ctlCommandLine(client.Socket()) + " report --evidence-from-stdin ..."}}.write(stderr, program)
 			return ExitFailure
 		}
 		req.EvidenceLines = lines
@@ -104,7 +105,7 @@ func runReport(ctx context.Context, client *admin.Client, args []string, stdout,
 
 	resp, err := client.Report(ctx, req)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -128,7 +129,7 @@ func runRevoke(ctx context.Context, client *admin.Client, args []string, stdout,
 	if done {
 		return code
 	}
-	if !checkRevokeTarget(program, target, stderr) {
+	if !checkRevokeTarget(program, ctlCommandLine(client.Socket()), target, stderr) {
 		return ExitUsage
 	}
 	req := admin.RevocationRequest{Reason: *reason}
@@ -139,7 +140,7 @@ func runRevoke(ctx context.Context, client *admin.Client, args []string, stdout,
 	}
 	resp, err := client.Revoke(ctx, req)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -169,23 +170,24 @@ func runIndicators(ctx context.Context, client *admin.Client, args []string, std
 		usageProblem(program, "give only one of --mine and --publisher").write(stderr, program)
 		return ExitUsage
 	}
+	nextPage := indicatorsNextPage(ctlCommandLine(client.Socket()), *mine, *publisher, *limit)
 	if *mine {
 		id, err := client.Identity(ctx)
 		if err != nil {
-			reportClientError(stderr, program, client, err)
+			reportClientError(ctx, stderr, program, client, err)
 			return ExitFailure
 		}
 		*publisher = id.PeerID
 	}
 	resp, err := client.Indicators(ctx, admin.IndicatorsQuery{Publisher: *publisher, Limit: *limit, Cursor: *cursor})
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
 		err = writeJSON(stdout, resp)
 	} else {
-		err = writeIndicatorsTable(stdout, resp)
+		err = writeIndicatorsTable(stdout, resp, nextPage)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "obiectl: writing indicators: %v\n", err)
@@ -204,7 +206,7 @@ func runShow(ctx context.Context, client *admin.Client, args []string, stdout, s
 	}
 	resp, err := client.Indicator(ctx, target)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -304,9 +306,26 @@ func writeRevocations(w io.Writer, revs []*obieproto.Event) error {
 	return nil
 }
 
+// indicatorsNextPage is the command that lists the next page of obiectl
+// indicators with the same filters and page size, without the cursor.
+func indicatorsNextPage(ctl string, mine bool, publisher string, limit int) string {
+	next := ctl + " indicators"
+	switch {
+	case mine:
+		next += " --mine"
+	case publisher != "":
+		next += " --publisher " + config.QuotePath(publisher)
+	}
+	if limit > 0 {
+		next += " --limit " + strconv.Itoa(limit)
+	}
+	return next
+}
+
 // writeIndicatorsTable prints one row per active verdict, grouped by
-// indicator in the order the daemon sends them (sorted by key).
-func writeIndicatorsTable(w io.Writer, resp *admin.IndicatorsResponse) error {
+// indicator in the order the daemon sends them (sorted by key). When more
+// follow, it says how to get them: with nextPage and the cursor.
+func writeIndicatorsTable(w io.Writer, resp *admin.IndicatorsResponse, nextPage string) error {
 	if len(resp.Indicators) == 0 {
 		_, err := fmt.Fprintln(w, "No active verdicts.")
 		return err
@@ -325,7 +344,7 @@ func writeIndicatorsTable(w io.Writer, resp *admin.IndicatorsResponse) error {
 		return err
 	}
 	if resp.NextCursor != "" {
-		_, err := fmt.Fprintf(w, "\nMore indicators follow: obiectl indicators --cursor %s\n", resp.NextCursor)
+		_, err := fmt.Fprintf(w, "\nMore indicators follow: %s --cursor %s\n", nextPage, config.QuotePath(resp.NextCursor))
 		return err
 	}
 	return nil

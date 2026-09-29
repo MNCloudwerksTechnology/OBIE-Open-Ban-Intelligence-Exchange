@@ -54,15 +54,16 @@ func parseAddressArg(fs *flag.FlagSet, args []string, stdout, stderr io.Writer) 
 }
 
 // checkRevokeTarget reports whether s is an event ID, an address or a
-// range; otherwise it explains the mistake on stderr.
-func checkRevokeTarget(program, s string, stderr io.Writer) bool {
+// range; otherwise it explains the mistake on stderr. ctl is how the next
+// step runs obiectl.
+func checkRevokeTarget(program, ctl, s string, stderr io.Writer) bool {
 	if eventIDPattern.MatchString(s) {
 		return true
 	}
 	if _, err := admin.ParseIndicator(s); err != nil {
 		addressProblem(s, err, "is neither an event ID nor an IP address or range",
 			"give the event ID of a verdict of this node, such as 1b4e28ba-2fa1-41d2-883f-0016d3cca427 "+
-				"(sudo obiectl show <address> lists them), or "+addressExamples).write(stderr, program)
+				"("+ctl+" show <address> lists them), or "+addressExamples).write(stderr, program)
 		return false
 	}
 	return true

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -50,10 +51,13 @@ func TestClientProblems(t *testing.T) {
 	}
 	tests := []struct {
 		name, program, socket string
-		err                   error
-		id                    string
-		what, why             string
-		next                  []string
+		// command is the command with its arguments; commandOf(program)
+		// if "".
+		command   string
+		err       error
+		id        string
+		what, why string
+		next      []string
 	}{
 		{name: "no socket", program: "obiectl peers", socket: missing, err: notRunning, id: "node-not-running",
 			what: "obied is not running: there is no admin socket " + missing,
@@ -104,6 +108,9 @@ func TestClientProblems(t *testing.T) {
 			id: "node-failed", what: "reporting failed; see the obied log", next: []string{"sudo journalctl -u obied -n 50"}},
 		{name: "other status", program: "obiectl report", socket: stale, err: api(http.StatusTeapot, "tea"),
 			id: "node-error", what: "the node answered 418 I'm a teapot: tea", next: []string{"journalctl"}},
+		{name: "timeout repeats the arguments", program: "obiectl unoverride", socket: stale, command: "unoverride 45.10.0.1",
+			err: context.DeadlineExceeded, id: "node-timeout", what: "obied did not answer in time",
+			next: []string{"try again with more time: " + ctl + " --timeout 30s unoverride 45.10.0.1\n"}},
 		{name: "default socket", program: "obiectl decisions", socket: config.Default().Admin.Socket, err: context.DeadlineExceeded,
 			id: "node-timeout", what: "obied did not answer in time", next: []string{"try again with more time: sudo obiectl --timeout 30s decisions"}},
 		{name: "other error", program: "obiectl status", socket: stale, err: errors.New("decode response: unexpected EOF"),
@@ -111,7 +118,11 @@ func TestClientProblems(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p := clientProblem(tt.program, tt.socket, tt.err)
+			command := tt.command
+			if command == "" {
+				command = commandOf(tt.program)
+			}
+			p := clientProblem(tt.program, tt.socket, command, tt.err)
 			if p.id != tt.id || !strings.HasPrefix(p.what, tt.what) || !strings.Contains(p.why, tt.why) || len(p.next) == 0 {
 				t.Errorf("problem = %+v, want id %s, what %q, why containing %q and a next step", p, tt.id, tt.what, tt.why)
 			}
@@ -151,6 +162,36 @@ func TestObiectlAgainstStaleSocket(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if code := RunCtl([]string{"--socket", socket, "decisions"}, &stdout, &stderr); code != ExitFailure ||
 		!strings.HasPrefix(stderr.String(), "obiectl decisions: obied is not running: nothing answers on the admin socket "+socket+"\n  Why:  ") {
+		t.Errorf("exit code %d, stderr %q", code, stderr.String())
+	}
+}
+
+// TestObiectlTimeoutRepeatsTheCommand runs obiectl against a node that
+// never answers: the next step is the whole command again, with more time.
+func TestObiectlTimeoutRepeatsTheCommand(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "hung.sock")
+	l, err := net.Listen("unix", socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = l.Close() })
+	go func() {
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			// Read the request, never answer, close when obiectl gives up.
+			go func() {
+				_, _ = io.Copy(io.Discard, conn)
+				_ = conn.Close()
+			}()
+		}
+	}()
+	var stdout, stderr bytes.Buffer
+	code := RunCtl([]string{"--socket", socket, "--timeout", "50ms", "block", "--note", "ssh abuse", "45.10.0.1"}, &stdout, &stderr)
+	if code != ExitFailure || !strings.Contains(stderr.String(),
+		"\n  Next: try again with more time: sudo obiectl --socket "+socket+" --timeout 30s block --note 'ssh abuse' 45.10.0.1\n") {
 		t.Errorf("exit code %d, stderr %q", code, stderr.String())
 	}
 }

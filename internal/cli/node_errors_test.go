@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -114,10 +115,11 @@ func TestTeardownProblems(t *testing.T) {
 
 func TestStartNext(t *testing.T) {
 	for err, want := range map[error]string{
-		fmt.Errorf("mesh: listen: %w", syscall.EADDRINUSE):       "another process uses the address",
-		fmt.Errorf("admin socket: %w", fs.ErrPermission):         "obied lacks a permission for what the error names: run it as the service",
-		errors.New("something else"):                             "sudo obied self-check names what is wrong",
-		fmt.Errorf("x: %w", fmt.Errorf("y: %w", syscall.EACCES)): "obied lacks a permission",
+		fmt.Errorf("mesh: listen: %w", syscall.EADDRINUSE):                                                                 "another process uses the address",
+		fmt.Errorf("admin socket: %w", fs.ErrPermission):                                                                   "obied lacks a permission for what the error names: run it as the service",
+		fmt.Errorf("metrics: %w", &net.OpError{Op: "listen", Net: "tcp", Err: os.NewSyscallError("bind", syscall.EACCES)}): "only root may listen on a port below 1024",
+		errors.New("something else"):                                                                                       "sudo obied self-check names what is wrong",
+		fmt.Errorf("x: %w", fmt.Errorf("y: %w", syscall.EACCES)):                                                           "obied lacks a permission",
 	} {
 		if got := startNext(err); !strings.HasPrefix(got, want) || !strings.Contains(got, "troubleshooting.md#obied-does-not-start") {
 			t.Errorf("startNext(%v) = %q, want it to start with %q", err, got, want)

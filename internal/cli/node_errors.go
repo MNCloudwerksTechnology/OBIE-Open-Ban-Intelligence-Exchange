@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net"
 	"os"
 	"strings"
 	"syscall"
@@ -134,6 +135,13 @@ func teardownProblem(err error) problem {
 	return p
 }
 
+// isListenError reports whether err is a failure to listen on a network
+// address.
+func isListenError(err error) bool {
+	var opErr *net.OpError
+	return errors.As(err, &opErr) && opErr.Op == "listen"
+}
+
 // startNext is the next step after obied failed to run with err, for the
 // "next" attribute of its last log line.
 func startNext(err error) string {
@@ -141,6 +149,9 @@ func startNext(err error) string {
 	switch {
 	case errors.Is(err, syscall.EADDRINUSE):
 		return "another process uses the address: stop it, or change mesh.listen, metrics.listen or console.listen; " + always
+	case isListenError(err) && errors.Is(err, fs.ErrPermission):
+		return "only root may listen on a port below 1024, and the service runs as the user obie: use a port of 1024 " +
+			"or higher in mesh.listen, metrics.listen or console.listen; " + always
 	case errors.Is(err, fs.ErrPermission):
 		return "obied lacks a permission for what the error names: run it as the service, sudo systemctl start obied, " +
 			"which runs as the user obie with the rights it needs; if the service fails, what the error names must belong " +

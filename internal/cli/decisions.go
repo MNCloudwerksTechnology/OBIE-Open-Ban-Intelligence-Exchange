@@ -22,7 +22,7 @@ func runExplain(ctx context.Context, client *admin.Client, args []string, stdout
 	}
 	d, err := client.Explain(ctx, target)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -51,7 +51,7 @@ func runDecisions(ctx context.Context, client *admin.Client, args []string, stdo
 	}
 	resp, err := client.Decisions(ctx, *state)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {

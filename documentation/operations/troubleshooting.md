@@ -193,3 +193,4 @@ is in the `obied failed` line, whose `next` says what to do. Common ones:
 | `chgrp admin socket to … operation not permitted` | `admin.socket_group` differs from the unit's `Group=`; make them equal ([install.md](install.md#the-service-sandbox)). |
 | `state directory has a newer format` | A newer `obied` used the state directory. Run that version again, or restore the backup taken before the upgrade. |
 | `address already in use` | Another process has port 4001 or 9464; change `mesh.listen` or `metrics.listen`. |
+| `listen tcp …:80: bind: permission denied` | Only root may listen on a port below 1024, and the service runs as `obie`; use a port of 1024 or higher in `mesh.listen`, `metrics.listen` or `console.listen`. |

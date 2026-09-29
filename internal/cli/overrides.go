@@ -42,7 +42,7 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 	}
 	res, err := client.SetOverride(ctx, req)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -55,15 +55,15 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 		return ExitIOError
 	}
 	if res.Warning != "" {
-		blockWarning(indicator, res).write(stderr, program)
+		blockWarning(ctlCommandLine(client.Socket()), indicator, res).write(stderr, program)
 	}
 	return ExitOK
 }
 
 // blockWarning explains why the force-block on indicator that res reports
 // does not take effect: an always-allow override that beats it, or a
-// protected address.
-func blockWarning(indicator string, res *admin.OverrideResult) problem {
+// protected address. ctl is how the next steps run obiectl.
+func blockWarning(ctl, indicator string, res *admin.OverrideResult) problem {
 	if s := res.Decision.Sovereignty; s != nil && s.Rule == string(sovereignty.RuleForceAllow) && s.Match != "" {
 		match := s.Match
 		if ind, err := admin.ParseIndicator(s.Match); err == nil {
@@ -71,13 +71,14 @@ func blockWarning(indicator string, res *admin.OverrideResult) problem {
 		}
 		return problem{id: "block-overruled", what: "warning: " + res.Warning,
 			why: "an always-allow override beats every other rule, also an always-block override",
-			next: []string{"to block it, remove the always-allow override: sudo obiectl unoverride " + match,
-				"otherwise remove this block, which has no effect: sudo obiectl unoverride " + indicator}}
+			next: []string{"to block it, remove the always-allow override: " + ctl + " unoverride " + match +
+				"; then " + ctl + " explain " + indicator + " shows whether another one still beats the block",
+				"otherwise remove this block, which has no effect: " + ctl + " unoverride " + indicator}}
 	}
 	return problem{id: "block-protected", what: "warning: " + res.Warning,
 		why: "protected addresses, such as private networks, this node's own addresses and its bootstrap peers, " +
 			"are never blocked, not even by an override, so that OBIE cannot cut this server off",
-		next: []string{"the override is kept but has no effect; remove it: sudo obiectl unoverride " + indicator}}
+		next: []string{"the override is kept but has no effect; remove it: " + ctl + " unoverride " + indicator}}
 }
 
 func runOverrides(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
@@ -89,7 +90,7 @@ func runOverrides(ctx context.Context, client *admin.Client, args []string, stdo
 	}
 	resp, err := client.Overrides(ctx)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -114,7 +115,7 @@ func runUnoverride(ctx context.Context, client *admin.Client, args []string, std
 	}
 	res, err := client.DeleteOverride(ctx, indicator)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {

@@ -62,6 +62,26 @@ Publisher:   12D3KooWSSS
 	}
 }
 
+// TestIndicatorsNextPage checks that the command for the next page keeps
+// the filter, the page size and the socket of the first.
+func TestIndicatorsNextPage(t *testing.T) {
+	for _, tc := range []struct {
+		ctl       string
+		mine      bool
+		publisher string
+		limit     int
+		want      string
+	}{
+		{"sudo obiectl", false, "", 0, "sudo obiectl indicators"},
+		{"sudo obiectl", true, "", 0, "sudo obiectl indicators --mine"},
+		{"sudo obiectl --socket /tmp/a.sock", false, "12D3KooWAAA", 20, "sudo obiectl --socket /tmp/a.sock indicators --publisher 12D3KooWAAA --limit 20"},
+	} {
+		if got := indicatorsNextPage(tc.ctl, tc.mine, tc.publisher, tc.limit); got != tc.want {
+			t.Errorf("indicatorsNextPage(%q, %v, %q, %d) = %q, want %q", tc.ctl, tc.mine, tc.publisher, tc.limit, got, tc.want)
+		}
+	}
+}
+
 func TestWriteIndicators(t *testing.T) {
 	local := reportedVerdict()
 	foreign := reportedVerdict()
@@ -71,20 +91,21 @@ func TestWriteIndicators(t *testing.T) {
 	ind := admin.IndicatorResponse{Indicator: local.Indicator, Verdicts: []admin.VerdictResponse{{Event: foreign}, {Local: true, Event: local}}}
 
 	var out bytes.Buffer
-	if err := writeIndicatorsTable(&out, &admin.IndicatorsResponse{Indicators: []admin.IndicatorResponse{ind}, NextCursor: "ipv4:85.10.0.7"}); err != nil {
+	nextPage := indicatorsNextPage("sudo obiectl", true, "", 50)
+	if err := writeIndicatorsTable(&out, &admin.IndicatorsResponse{Indicators: []admin.IndicatorResponse{ind}, NextCursor: "ipv4:85.10.0.7"}, nextPage); err != nil {
 		t.Fatal(err)
 	}
 	want := `INDICATOR       PUBLISHER    ACTION  CONFIDENCE  EVENTS  PROTOCOL  REASON               EXPIRES
 ipv4:85.10.0.7  12D3KooWAAA  watch   0.55        5       ssh       password_bruteforce  2026-10-05T12:00:00Z
 ipv4:85.10.0.7  (this node)  ban     0.8         5       ssh       password_bruteforce  2026-10-05T12:00:00Z
 
-More indicators follow: obiectl indicators --cursor ipv4:85.10.0.7
+More indicators follow: sudo obiectl indicators --mine --limit 50 --cursor ipv4:85.10.0.7
 `
 	if out.String() != want {
 		t.Errorf("indicators =\n%s\nwant\n%s", out.String(), want)
 	}
 	out.Reset()
-	if err := writeIndicatorsTable(&out, &admin.IndicatorsResponse{}); err != nil || out.String() != "No active verdicts.\n" {
+	if err := writeIndicatorsTable(&out, &admin.IndicatorsResponse{}, nextPage); err != nil || out.String() != "No active verdicts.\n" {
 		t.Errorf("empty indicators = %q, %v", out.String(), err)
 	}
 

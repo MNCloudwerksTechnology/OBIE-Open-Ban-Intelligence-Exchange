@@ -16,15 +16,40 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 )
 
+// commandLineKey is the context key of the command obiectl runs with its
+// arguments, as given after the global flags.
+type commandLineKey struct{}
+
+// withCommandLine returns ctx carrying args, the command and its
+// arguments, for next steps that repeat them.
+func withCommandLine(ctx context.Context, args []string) context.Context {
+	return context.WithValue(ctx, commandLineKey{}, args)
+}
+
+// commandLine returns the command and its arguments that ctx carries, as
+// shell words, or else the command of program.
+func commandLine(ctx context.Context, program string) string {
+	args, _ := ctx.Value(commandLineKey{}).([]string)
+	if len(args) == 0 {
+		return commandOf(program)
+	}
+	words := make([]string, len(args))
+	for i, arg := range args {
+		words[i] = config.QuotePath(arg)
+	}
+	return strings.Join(words, " ")
+}
+
 // reportClientError explains on stderr why program could not do what it
-// was asked through client.
-func reportClientError(stderr io.Writer, program string, client *admin.Client, err error) {
-	clientProblem(program, client.Socket(), err).write(stderr, program)
+// was asked through client within ctx.
+func reportClientError(ctx context.Context, stderr io.Writer, program string, client *admin.Client, err error) {
+	clientProblem(program, client.Socket(), commandLine(ctx, program), err).write(stderr, program)
 }
 
 // clientProblem explains a failed call of program to the node's admin
-// socket: what went wrong, why and what to do next.
-func clientProblem(program, socket string, err error) problem {
+// socket: what went wrong, why and what to do next. command is the
+// command with its arguments, for a next step that repeats it.
+func clientProblem(program, socket, command string, err error) problem {
 	ctl := ctlCommandLine(socket)
 	var apiErr *admin.APIError
 	switch {
@@ -35,7 +60,7 @@ func clientProblem(program, socket string, err error) problem {
 	case errors.Is(err, context.DeadlineExceeded):
 		return problem{id: "node-timeout", what: "obied did not answer in time (--timeout)",
 			why: "the node is busy, still starting, or stuck",
-			next: []string{"try again with more time: " + ctl + " --timeout 30s " + commandOf(program),
+			next: []string{"try again with more time: " + ctl + " --timeout 30s " + command,
 				"see whether the node is ready and what it logs: " + ctl + " --timeout 30s status; sudo journalctl -u obied -n 50"}}
 	case errors.Is(err, admin.ErrNoOverride):
 		return problem{id: "no-override", what: err.Error(), next: []string{"see which overrides there are: " + ctl + " overrides"}}

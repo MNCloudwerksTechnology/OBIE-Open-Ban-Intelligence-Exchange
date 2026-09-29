@@ -83,12 +83,16 @@ type completionSpec struct {
 	tool     string
 	global   []completionFlag
 	commands []completionCommand
+	// flagsOnly is true if the tool's own flags stand in place of a
+	// command, as obied's run the node: a command is then only offered as
+	// the first word.
+	flagsOnly bool
 }
 
 // newCompletionSpec reads the completion of t from its registry and from
 // the flags of every command.
 func newCompletionSpec(t *tool) completionSpec {
-	s := completionSpec{tool: t.name, global: completionFlags(t.flags(""), nil)}
+	s := completionSpec{tool: t.name, global: completionFlags(t.flags(""), nil), flagsOnly: t.bareCommand != "" && !t.globalFlags}
 	s.global = append(s.global, completionFlag{name: "help", usage: "show the commands and where to start"})
 	for _, c := range t.commands {
 		cc := completionCommand{name: c.name, summary: c.summary, flags: completionFlags(t.flags(c.name), c.values), operand: c.operand}
@@ -205,7 +209,12 @@ func (s completionSpec) writeBash(b *strings.Builder) {
 	}
 	b.WriteString("\t\t=) i=$((i + 1)) ;;\n\t\t-*) ;;\n\t\t*)\n\t\t\tcmd=${COMP_WORDS[i]}\n\t\t\tbreak\n\t\t\t;;\n\t\tesac\n\t\ti=$((i + 1))\n\tdone\n")
 	fmt.Fprintf(b, "\t%s_value && return\n\tcase $cmd in\n", fn)
-	fmt.Fprintf(b, "\t\"\") %s_reply %q %q ;;\n", fn, flagWords(s.global), strings.Join(s.commandNames(), " "))
+	if s.flagsOnly {
+		fmt.Fprintf(b, "\t\"\") if [ \"$COMP_CWORD\" -eq 1 ]; then %s_reply %q %q; else %s_reply %q \"\"; fi ;;\n",
+			fn, flagWords(s.global), strings.Join(s.commandNames(), " "), fn, flagWords(s.global))
+	} else {
+		fmt.Fprintf(b, "\t\"\") %s_reply %q %q ;;\n", fn, flagWords(s.global), strings.Join(s.commandNames(), " "))
+	}
 	for _, c := range s.commands {
 		fmt.Fprintf(b, "\t%s) %s_reply %q %q ;;\n", c.name, fn, flagWords(c.flags), strings.Join(c.args, " "))
 	}
@@ -238,11 +247,13 @@ func writeBashValues(b *strings.Builder, command string, flags []completionFlag)
 // zshQuote quotes s for a single-quoted zsh word.
 func zshQuote(s string) string { return strings.ReplaceAll(s, "'", `'\''`) }
 
-// zshSpec is the _arguments specification of flag f.
-func zshSpec(f completionFlag) string {
+// zshSpec is the _arguments specification of flag f. exclude lists what
+// is no longer offered once f is given, e.g. "(1 *)" for the arguments;
+// "" for nothing.
+func zshSpec(f completionFlag, exclude string) string {
 	desc := strings.NewReplacer("[", `\[`, "]", `\]`).Replace(zshQuote(f.usage))
 	if !f.takesValue {
-		return fmt.Sprintf("'--%s[%s]'", f.name, desc)
+		return fmt.Sprintf("'%s--%s[%s]'", exclude, f.name, desc)
 	}
 	action := " "
 	switch {
@@ -259,7 +270,7 @@ func zshSpec(f completionFlag) string {
 	if f.repeatable {
 		repeat = "*"
 	}
-	return fmt.Sprintf("'%s--%s=[%s]:%s:%s'", repeat, f.name, desc, f.name, action)
+	return fmt.Sprintf("'%s%s--%s=[%s]:%s:%s'", exclude, repeat, f.name, desc, f.name, action)
 }
 
 // writeZsh writes the zsh completion, a function for $fpath that also
@@ -272,8 +283,12 @@ func (s completionSpec) writeZsh(b *strings.Builder) {
 		fmt.Fprintf(b, "\t\t'%s:%s'\n", c.name, zshQuote(c.summary))
 	}
 	b.WriteString("\t)\n\tlocal curcontext=$curcontext state line\n\t_arguments -C \\\n")
+	exclude := ""
+	if s.flagsOnly {
+		exclude = "(1 *)"
+	}
 	for _, f := range s.global {
-		fmt.Fprintf(b, "\t\t%s \\\n", zshSpec(f))
+		fmt.Fprintf(b, "\t\t%s \\\n", zshSpec(f, exclude))
 	}
 	b.WriteString("\t\t'1: :->command' \\\n\t\t'*:: :->argument'\n")
 	fmt.Fprintf(b, "\tcase $state in\n\tcommand) _describe -t commands '%s command' commands ;;\n\targument)\n\t\tcase $words[1] in\n", s.tool)
@@ -285,7 +300,7 @@ func (s completionSpec) writeZsh(b *strings.Builder) {
 		}
 		fmt.Fprintf(b, "\t\t%s)\n\t\t\t_arguments", c.name)
 		for _, f := range c.flags {
-			fmt.Fprintf(b, " \\\n\t\t\t\t%s", zshSpec(f))
+			fmt.Fprintf(b, " \\\n\t\t\t\t%s", zshSpec(f, ""))
 		}
 		switch {
 		case len(c.args) > 0:
@@ -326,8 +341,12 @@ func (s completionSpec) writeFish(b *strings.Builder) {
 	fmt.Fprintf(b, "complete -c %s -f\n", s.tool)
 	none := fishQuote("not " + fn + " >/dev/null")
 	writeFishFlags(b, s.tool, none, s.global)
+	commandCond := none
+	if s.flagsOnly {
+		commandCond = fishQuote("test (count (commandline -opc)) -eq 1")
+	}
 	for _, c := range s.commands {
-		fmt.Fprintf(b, "complete -c %s -n %s -a %s -d %s\n", s.tool, none, c.name, fishQuote(c.summary))
+		fmt.Fprintf(b, "complete -c %s -n %s -a %s -d %s\n", s.tool, commandCond, c.name, fishQuote(c.summary))
 	}
 	for _, c := range s.commands {
 		cond := fishQuote(fn + "_is " + c.name)

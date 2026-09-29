@@ -49,7 +49,7 @@ func RunCtl(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	return cmds[i].run(ctx, admin.NewClient(*socket), fs.Args()[1:], stdout, stderr)
+	return cmds[i].run(withCommandLine(ctx, fs.Args()), admin.NewClient(*socket), fs.Args()[1:], stdout, stderr)
 }
 
 func runStatus(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
@@ -62,7 +62,7 @@ func runStatus(ctx context.Context, client *admin.Client, args []string, stdout,
 
 	status, err := client.Status(ctx)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {

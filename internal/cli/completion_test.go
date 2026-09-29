@@ -61,6 +61,10 @@ func TestBashCompletion(t *testing.T) {
 		// Flags in place of a command run the node.
 		{"obied", []string{"--"}, "--check-config --config --version --help"},
 		{"obied", []string{"--config", "/etc/obie/obie.yaml", "--ch"}, "--check-config"},
+		// After them no command may follow.
+		{"obied", []string{"--config", "/etc/obie/obie.yaml", ""}, ""},
+		{"obied", []string{"--config=/etc/obie/obie.yaml", "se"}, ""},
+		{"obied", []string{"se"}, "self-check setup"},
 	} {
 		script := writeScript(t, tc.tool, "bash")
 		words := append([]string{tc.tool}, tc.words...)
@@ -115,7 +119,8 @@ func TestCompletionOfArgumentsAndRepeatedFlags(t *testing.T) {
 			t.Errorf("obiectl zsh completion lacks %q", want)
 		}
 	}
-	for _, want := range []string{"'*--peer=[", "'*--allow=[", "'--config=[path to the YAML configuration file]:config:_files'"} {
+	for _, want := range []string{"'*--peer=[", "'*--allow=[", "'--config=[path to the YAML configuration file]:config:_files'",
+		"'(1 *)--config=[path to the YAML configuration file]:config:_files' \\\n"} {
 		if !strings.Contains(zshDaemon.String(), want) {
 			t.Errorf("obied zsh completion lacks %q", want)
 		}
@@ -126,6 +131,15 @@ func TestCompletionOfArgumentsAndRepeatedFlags(t *testing.T) {
 		if !strings.Contains(fish.String(), want) {
 			t.Errorf("obiectl fish completion lacks %q", want)
 		}
+	}
+	// obied offers its commands only as the first word, not after the
+	// flags that run the node.
+	var fishDaemon bytes.Buffer
+	if err := WriteCompletion(&fishDaemon, "obied", "fish"); err != nil {
+		t.Fatal(err)
+	}
+	if want := "complete -c obied -n 'test (count (commandline -opc)) -eq 1' -a run "; !strings.Contains(fishDaemon.String(), want) {
+		t.Errorf("obied fish completion lacks %q", want)
 	}
 }
 

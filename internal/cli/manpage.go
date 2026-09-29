@@ -85,8 +85,9 @@ func WriteManPage(w io.Writer, toolName, version, date string) error {
 	fmt.Fprintf(&b, ".\\\" Manual page of %s, generated from its help by packaging/gendocs.\n", t.name)
 	fmt.Fprintf(&b, ".TH %s 1 %s %s \"OBIE Manual\"\n", strings.ToUpper(t.name), roffQuote(date), roffQuote("OBIE "+version))
 	// Commands and paths in the text must stay whole to be copied: no
-	// hyphenation, no stretched spaces.
-	b.WriteString(".nh\n.ad l\n")
+	// hyphenation, no stretched spaces. The man macros restore the
+	// adjustment from the string AD after every paragraph, so it is set too.
+	b.WriteString(".nh\n.ad l\n.ds AD l\n")
 	fmt.Fprintf(&b, ".SH NAME\n%s \\- %s\n", t.name, roffText(t.summary))
 	b.WriteString(".SH SYNOPSIS\n")
 	for i, u := range t.usage {

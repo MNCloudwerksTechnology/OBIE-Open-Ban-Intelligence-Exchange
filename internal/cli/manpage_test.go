@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -37,6 +38,10 @@ func TestReferenceIsCurrent(t *testing.T) {
 // TestManPages checks both manual pages: every command and flag is on
 // them, groff reads them without a warning, and the commands they show
 // can be copied, with plain hyphens.
+// stretchedGap is a gap of two spaces or more between words, other than
+// after the end of a sentence.
+var stretchedGap = regexp.MustCompile(`[^\s.?!]  +\S`)
+
 func TestManPages(t *testing.T) {
 	for _, name := range ToolNames {
 		var b bytes.Buffer
@@ -78,14 +83,22 @@ func TestManPages(t *testing.T) {
 			}
 		}
 		// In a terminal of 80 columns, no command or path in the text is
-		// broken with a hyphen (U+2010).
-		narrow := exec.Command("groff", "-man", "-Tutf8", "-rLL=78n") // #nosec G204 -- a fixed command.
+		// broken with a hyphen (U+2010), and no line is stretched to the
+		// margin: more than one wide gap in a line, other than after a
+		// sentence, means justified text.
+		narrow := exec.Command("groff", "-man", "-Tutf8", "-P-cbou", "-rLL=78n") // #nosec G204 -- a fixed command.
 		narrow.Stdin = strings.NewReader(page)
 		if out, err = narrow.Output(); err != nil {
 			t.Fatal(err)
 		}
 		if i := strings.Index(string(out), "\u2010"); i >= 0 {
 			t.Errorf("%s(1) hyphenates words: %q", name, string(out)[max(0, i-40):i+3])
+		}
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		for _, line := range lines[1 : len(lines)-1] { // not the header and footer
+			if gaps := stretchedGap.FindAllStringIndex(line, -1); len(gaps) > 1 {
+				t.Errorf("%s(1) stretches a line to the margin: %q", name, line)
+			}
 		}
 	}
 	if err := WriteManPage(&bytes.Buffer{}, "nft", "0.1.0", "2026-09-29"); err == nil {

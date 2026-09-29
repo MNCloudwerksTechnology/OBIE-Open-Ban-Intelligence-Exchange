@@ -24,7 +24,7 @@ func runEnforced(ctx context.Context, client *admin.Client, args []string, stdou
 	}
 	resp, err := client.Enforced(ctx)
 	if err != nil {
-		reportClientError(stderr, program, client, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
