@@ -111,6 +111,8 @@ pkg/
   obieproto/        public protocol types + sign/verify (importable by third parties)
     internal/jcs/   RFC 8785 JSON Canonicalization Scheme
 documentation/
+  introduction.md   "What is OBIE?", the plain-language entry point; faq.md, glossary.md
+  images/           diagrams of the newcomer documentation (SVG with text alternatives)
   adr/              architecture decision records
   examples/         commented example configuration (tested against the schema)
   guides/           integration guides (Fail2Ban)

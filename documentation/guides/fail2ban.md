@@ -1,7 +1,8 @@
 # Publishing Fail2Ban bans to OBIE
 
 If you already run Fail2Ban, one extra line in a jail makes every ban of that
-jail a signed verdict of your OBIE node. The action
+jail a signed [verdict](../glossary.md#verdict) of your OBIE
+[node](../glossary.md#node). The action
 [`contrib/fail2ban/action.d/obie.conf`](../../contrib/fail2ban/action.d/obie.conf)
 calls `obiectl report` for each ban:
 
@@ -22,14 +23,15 @@ obiectl --socket /run/obie/obie.sock --timeout 5s report --ip <ip> \
   `decision.max_ttl`.
 - **Fail2Ban is never blocked.** `obiectl` gives up after 5 s. If `obied` is
   down, hung or refuses the report (for example for an address on its
-  allow-list), the action logs the error to syslog with the tag
-  `obie-fail2ban` and still succeeds. The ban itself is not affected.
+  [allow-list](../glossary.md#allow-list)), the action logs the error to
+  syslog with the tag `obie-fail2ban` and still succeeds. The ban itself is
+  not affected.
 - **A manual ban counts as one event.** `fail2ban-client set <jail> banip`
   has no failures and no matched lines, so it reports one event without
   evidence.
 - **Unbanning does nothing by default.** The verdict expires with its TTL.
-  With `revoke_on_unban = true` the action revokes the verdict when Fail2Ban
-  lifts the ban.
+  With `revoke_on_unban = true` the action
+  [revokes](../glossary.md#revocation) the verdict when Fail2Ban lifts the ban.
 - **Restarts do not re-report.** Bans that Fail2Ban restores after a restart
   were already reported (`norestored`).
 - **One verdict per address, shared by all jails.** If an address is banned
@@ -92,7 +94,7 @@ Parameters are passed in brackets after the action name, for example
 |-------------------|------------------|---------|
 | `protocol`        | from jail name   | Attacked service, e.g. `ssh`, `http`, `smtp`. If empty, it is derived from the jail name: `*ssh*`/`*dropbear*` → `ssh`; `*postfix*`/`*exim*`/`*sendmail*`/`*smtp*` → `smtp`; `*dovecot*`/`*courier*`/`*imap*` → `imap`; `*ftp*` → `ftp`; `*nginx*`/`*apache*`/`*lighttpd*`/`*http*` → `http`; otherwise the jail name in lower case, with every character outside `a-z0-9_-` replaced by `_` and cut to 32 characters. |
 | `reason`          | `bruteforce`     | Behavior class of the attack, `[a-z0-9_]+`, e.g. `password_bruteforce` or `web_scan`. |
-| `confidence`      | `0.8` (obiectl)  | Your confidence in the verdict, in `[0, 1]`. Peers weight it with the trust they give your node. |
+| `confidence`      | `0.8` (obiectl)  | Your confidence in the verdict, in `[0, 1]`. [Peers](../glossary.md#peer) weight it with the [trust weight](../glossary.md#trust-weight) they give your node. |
 | `mitre`           | `T1110`          | Comma-separated MITRE ATT&CK technique IDs. `T1110` (Brute Force) fits authentication jails. For other jails, set it to something else, or to empty (`mitre=`) to send none. |
 | `revoke_on_unban` | `false`          | `true`: revoke the verdict when Fail2Ban unbans the address. The verdict is shared by all jails, so this also withdraws it while another jail (e.g. `recidive`) still bans the address; enable it only where that is acceptable. |
 | `revoke_reason`   | `unbanned`       | Reason given for those revocations. |
@@ -133,8 +135,8 @@ action  = %(action_)s
 - `postfix-sasl` reports SASL login failures as `smtp` and revokes the
   verdict when Fail2Ban unbans the address.
 
-For a jail that does not detect authentication failures, override `mitre`,
-e.g. `obie[reason=web_scan, mitre=T1595]` for `nginx-botsearch`.
+For a jail that does not detect authentication failures, set a matching
+`mitre`, e.g. `obie[reason=web_scan, mitre=T1595]` for `nginx-botsearch`.
 
 ## Verify
 

@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with the node's own view, then its log:
+Start with the [node's](../glossary.md#node) own view, then its log:
 
 ```sh
 sudo obiectl status
@@ -15,8 +15,8 @@ with its error. The log is JSON; errors have `"level":"ERROR"`.
 You cannot reach the host any more, and suspect OBIE blocked you.
 
 1. **Get in another way**: the provider's console, IPMI/KVM, or from an
-   address on the allow-list (private networks are never blocked, so a
-   jump host on the same LAN works).
+   address on the [allow-list](../glossary.md#allow-list) (private networks
+   are never blocked, so a jump host on the same LAN works).
 2. **Remove every OBIE block at once.** This deletes OBIE's nftables
    table and nothing else; your own firewall rules stay:
 
@@ -31,7 +31,8 @@ You cannot reach the host any more, and suspect OBIE blocked you.
    the audit log has a `block-added` line with the reason, score and
    publishers (`grep '"ip":"198.51.100.7"' /var/log/obie/audit.jsonl`).
    Common causes: your address is not on the allow-list and your own
-   Fail2Ban banned it (a local ban blocks at once), or peers reported it.
+   Fail2Ban banned it (a local ban blocks at once), or
+   [peers](../glossary.md#peer) reported it.
 4. **Protect the address** before you start the node again. Add your
    management networks to `allowlist.cidrs` in `/etc/obie/obie.yaml` and
    check the file. Then start the node and make sure:
@@ -47,10 +48,11 @@ You cannot reach the host any more, and suspect OBIE blocked you.
    other rule, even a force-block. Also add the address to Fail2Ban's
    `ignoreip`, so the local jail does not report it again.
 
-If you cannot get in at all: OBIE blocks expire with their verdicts, at
-most after `decision.max_ttl` (30 days by default), even if `obied` is
-not running. A reboot does not remove them while the node runs in enforce
-mode, because it re-applies its decisions at start.
+If you cannot get in at all: OBIE blocks expire with their
+[verdicts](../glossary.md#verdict), at most after `decision.max_ttl` (30
+days by default), even if `obied` is not running. A reboot does not remove
+them while the node runs in [enforce mode](../glossary.md#enforce-mode),
+because it re-applies its decisions at start.
 
 To prevent it: keep the allow-list complete *before* switching to
 `enforce` ([quick start, step 5](quickstart.md#5-enforce)), keep a console
@@ -67,11 +69,11 @@ sudo obiectl explain 85.10.0.7
 
 | `explain` or `status` shows | Cause and fix |
 |-----------------------------|---------------|
-| `Decision: none`, `below consensus: score 0.64 < threshold 1.8` | Not enough trusted publishers agree. See [Federation](federation.md#choose-trust-weights-and-quorum) for threshold and quorum. |
+| `Decision: none`, `below consensus: score 0.64 < threshold 1.8` | Not enough trusted publishers agree. See [Federation](federation.md#choose-trust-weights-and-quorum) for [threshold](../glossary.md#threshold) and [quorum](../glossary.md#quorum). |
 | A publisher with `WEIGHT 0` and `COUNTS no` | Its peer ID is not in `trust.publishers`, or not exactly. Compare it with `obiectl peers`. |
 | `No active verdicts.` | The verdict never arrived: the publisher restarted before it had a peer to send it to, or it was dropped (see [no peers](#no-peers) and the event outcomes below). |
 | `Decision: allowed` | The allow-list or a force-allow (`obiectl overrides`) covers the address. |
-| `Decision: block…`, but `status` says `Mode: OBSERVE` | Observe mode never blocks. Set `node.mode: enforce` and reload. |
+| `Decision: block…`, but `status` says `Mode: OBSERVE` | [Observe mode](../glossary.md#observe-mode) never blocks. Set `node.mode: enforce` and reload. |
 | `enforce … enforcing via dryrun` in `status` | The `dryrun` backend only logs. Set `enforce.backend: nftables` and **restart**. |
 | `enforce … N skipped over enforce.max_entries` | More blocks than `enforce.max_entries`; raise it. |
 | `enforce` not ready, `nftables access denied: obied needs CAP_NET_ADMIN` | `obied` runs without the capability. Use the shipped unit, or grant `CAP_NET_ADMIN`. |
@@ -121,13 +123,14 @@ After a failed dial the node retries with a backoff of up to five minutes,
 so a fixed problem can take that long to heal; `sudo systemctl restart
 obied` dials at once.
 
-What this node reports or revokes while no peer is connected is not lost:
-it counts on this node at once, and the node holds it in memory and sends
-it, in order, as soon as a peer joins — 16 events every 2 seconds, so that
-peers do not drop a long backlog (`obied` logs `no peer is on the topic;
-the event is held and sent when one joins`, and later `the held events
-were sent`). A restart before then drops what is held; the
-verdicts still count on this node, and a new report sends them again.
+What this node reports or [revokes](../glossary.md#revocation) while no
+peer is connected is not lost: it counts on this node at once, and the
+node holds it in memory and sends it, in order, as soon as a peer joins —
+16 events every 2 seconds, so that peers do not drop a long backlog
+(`obied` logs `no peer is on the topic; the event is held and sent when
+one joins`, and later `the held events were sent`). A restart before then
+drops what is held; the verdicts still count on this node, and a new
+report sends them again.
 Verdicts about to expire within a minute are not sent any more.
 
 ## Fail2Ban reports do not arrive

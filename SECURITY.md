@@ -115,11 +115,13 @@ revoked, and an older verdict never replaces a newer one of the same
 publisher. Only a verdict's own publisher can revoke it.
 
 **Remaining risk.** Replay works within a verdict's lifetime on a node
-that never saw its revocation: v0.1 has no catch-up, so a node that was
-disconnected when the revocation was published keeps, or can be sent
-again, the revoked verdict until it expires. The same holds after the
-event store (`/var/lib/obie/db`) is lost. Nodes need synchronised clocks;
-a clock far off drops valid events or keeps expired ones.
+that never saw its revocation: v0.1 has no catch-up (a publisher sends
+its events later only if it had no peer at all when it published them and
+did not restart before one joined), so a node that was disconnected when
+the revocation was published keeps, or can be sent again, the revoked
+verdict until it expires. The same holds after the event store
+(`/var/lib/obie/db`) is lost. Nodes need synchronised clocks; a clock far
+off drops valid events or keeps expired ones.
 
 ### Key theft
 
@@ -155,9 +157,12 @@ at most `enforce.max_entries` (100,000) blocks, and when full, drops the
 lowest scores first; nftables sets are kernel hash sets with per-element
 timeouts. The admin API is a Unix socket, reachable only locally.
 
-**Remaining risk.** The store has no size cap: its growth is bounded only
-by the rate limits and the TTL, and new keys bypass the per-publisher
-limit, so a patient attacker with many connections can fill the disk.
+**Remaining risk.** The store holds at most `store.max_indicators`
+verdicts; when it is full, the verdict that expires first makes room,
+whoever published it (never this node's own). New keys bypass the
+per-publisher limit, so a patient attacker with many connections can fill
+the store and push out verdicts of trusted publishers that expire sooner,
+lifting the blocks they caused.
 Keep the mesh port open only to your peers. A flood of well-formed events
 from a trusted publisher can fill `enforce.max_entries` with its blocks;
 alert on `obie_enforcer_skipped_total`.

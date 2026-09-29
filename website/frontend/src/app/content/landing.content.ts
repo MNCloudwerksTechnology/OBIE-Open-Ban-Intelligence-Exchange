@@ -16,6 +16,7 @@ const DOCS_URL = `${REPOSITORY_URL}/blob/develop`;
 
 export const LINKS = {
   repository: REPOSITORY_URL,
+  introduction: `${DOCS_URL}/documentation/introduction.md`,
   quickStart: `${DOCS_URL}/documentation/operations/quickstart.md`,
   spec: `${DOCS_URL}/documentation/spec/obie-0.1.md`,
   whitepaper: `${DOCS_URL}/documentation/whitepaper.md#1-introduction-the-centralization-trap`,
@@ -152,7 +153,10 @@ export const LANDING_CONTENT_EN: LandingContent = {
       safetyList: 'safety list checked',
       block: 'block · expires',
     },
-    nextStep: { label: 'Read the protocol specification', href: LINKS.spec },
+    nextStep: {
+      label: 'Read the plain-language introduction: what OBIE is, in five minutes',
+      href: LINKS.introduction,
+    },
   },
   principles: {
     id: 'principles',
@@ -466,6 +470,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
     tagline: 'OBIE: Shared Intelligence, Sovereign Enforcement.',
     github: { label: 'View on GitHub', href: LINKS.repository },
     links: [
+      { label: 'What is OBIE?', href: LINKS.introduction },
       { label: 'Specification', href: LINKS.spec },
       { label: 'Security policy', href: LINKS.securityPolicy },
       { label: 'Impressum', href: LINKS.impressum },

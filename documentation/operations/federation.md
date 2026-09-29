@@ -1,13 +1,16 @@
 # Federation
 
-A node on its own only acts on its own detections. Federating means two
-things, and each operator decides both for their own node:
+A [node](../glossary.md#node) on its own only acts on its own detections.
+[Federating](../glossary.md#federation) means two things, and each operator
+decides both for their own node:
 
-- **Connect.** The nodes gossip their signed verdicts to each other over
-  libp2p (`mesh.bootstrap`).
-- **Trust.** Each node gives the other's verdicts a weight
-  (`trust.publishers`). Only weighted verdicts count towards a block;
-  everything else is shown by `obiectl explain` but never acts.
+- **Connect.** The nodes gossip their signed
+  [verdicts](../glossary.md#verdict) to each other over libp2p
+  (`mesh.bootstrap`).
+- **Trust.** Each node gives the other's verdicts a
+  [trust weight](../glossary.md#trust-weight) (`trust.publishers`). Only
+  weighted verdicts count towards a block; everything else is shown by
+  `obiectl explain` but never acts.
 
 Connecting without trusting is safe. Trusting is where the risk is: a
 publisher you trust can get addresses blocked on your host. Read the
@@ -19,9 +22,10 @@ v0.1: there is no discovery and no public mesh.
 
 ## Exchange peer IDs and addresses
 
-A node is known by its **peer ID**, derived from its Ed25519 key. It is
-both its name on the mesh and the key its verdicts are signed with, so it
-is the one thing you must get right. Each of you runs:
+A node is known by its **[peer ID](../glossary.md#peer-id)**, derived from
+its Ed25519 key. It is both its name on the mesh and the key its verdicts
+are signed with, so it is the one thing you must get right. Each of you
+runs:
 
 ```sh
 sudo obiectl identity
@@ -101,9 +105,12 @@ PEER ID                                               NAME    TRUST  BOOTSTRAP  
 peers)`, and `obie_peers_connected` is 1. If the peer does not appear, see
 [Troubleshooting](troubleshooting.md#no-peers).
 
-Verdicts reach a node only while it is connected. v0.1 has no catch-up:
-what your friend publishes while your node is down or disconnected does
-not arrive later, until the friend's Fail2Ban bans the address again.
+Verdicts reach a node only while it is connected. v0.1 has no general
+catch-up: what your friend publishes while your node is down or
+disconnected arrives later only if your node was the friend's only
+connected peer and the friend's `obied` did not restart in the meantime
+(it holds its own events until a peer is back). Otherwise it does not
+arrive until the friend's Fail2Ban bans the address again.
 
 ## Choose trust weights and quorum
 
@@ -113,11 +120,12 @@ verdicts:
 
 > score = Σ weight × confidence
 
-and blocks the address when the score reaches `decision.threshold` **and**
-at least `decision.quorum` distinct publishers with a weight above 0
-reported it. Your own node is a publisher too, with weight
-`trust.local_weight` (1.0). A Fail2Ban ban has confidence 0.8 unless the
-jail sets `confidence`. Independently of the score, your own verdicts
+and blocks the address when the score reaches the
+[threshold](../glossary.md#threshold) `decision.threshold` **and** at least
+`decision.quorum` distinct publishers with a weight above 0 reported it (the
+[quorum](../glossary.md#quorum)). Your own node is a publisher too, with
+weight `trust.local_weight` (1.0). A Fail2Ban ban has confidence 0.8 unless
+the jail sets `confidence`. Independently of the score, your own verdicts
 block at once (`decision.local_autoblock`), so federation is about what
 *other* nodes' reports make your node do.
 
@@ -167,7 +175,8 @@ To **disconnect**, also remove it from `mesh.bootstrap`, close port 4001
 to it and restart. It can still dial you while the port is open.
 
 To **leave for good**, first withdraw what you published, while you are
-still connected, since revocations sent later never arrive:
+still connected, since [revocations](../glossary.md#revocation) sent later
+never arrive:
 
 ```sh
 sudo obiectl indicators --mine

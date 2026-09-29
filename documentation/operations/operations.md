@@ -1,8 +1,8 @@
 # Operating a node
 
-Day-2 tasks for a node installed with `install.sh` and the systemd unit
-([quick start](quickstart.md)). For the container image, see
-[Installing and upgrading](install.md#run-the-container-image).
+Day-2 tasks for a [node](../glossary.md#node) installed with `install.sh`
+and the systemd unit ([quick start](quickstart.md)). For the container
+image, see [Installing and upgrading](install.md#run-the-container-image).
 
 ## Metrics and health
 
@@ -14,7 +14,7 @@ lists every metric and ships a Grafana dashboard. Alert on at least:
 | Condition | PromQL | Means |
 |-----------|--------|-------|
 | Node down | `up{job="obie"} == 0` | `obied` is not running or not reachable. |
-| Isolated | `obie_peers_connected == 0` for 15m | No peer is connected ([no peers](troubleshooting.md#no-peers)). |
+| Isolated | `obie_peers_connected == 0` for 15m | No [peer](../glossary.md#peer) is connected ([no peers](troubleshooting.md#no-peers)). |
 | Enforcement failing | `rate(obie_enforcer_apply_total{result="error"}[5m]) > 0` | The firewall is not in line with the decisions. |
 | Blocks dropped | `increase(obie_enforcer_skipped_total{reason="max_entries"}[1h]) > 0` | More blocks than `enforce.max_entries`; the lowest scores are left out. |
 | Peer sends garbage | `rate(obie_events_received_total{outcome=~"invalid_.*\|too_large"}[5m]) > 0` | A connected peer forwards forged or broken events. |
@@ -41,9 +41,11 @@ port over SSH.
 
 With `audit.path: /var/log/obie/audit.jsonl` every decision change is one
 JSON line with Elastic Common Schema fields: blocks added, updated and
-removed with their score and reason, allow-list hits, overrides, local
-reports and revocations. [Monitoring](monitoring.md#audit-log) describes
-the fields, log rotation and how to ship it to Loki or Elasticsearch.
+removed with their score and reason, [allow-list](../glossary.md#allow-list)
+hits, [overrides](../glossary.md#override), local reports and
+[revocations](../glossary.md#revocation).
+[Monitoring](monitoring.md#audit-log) describes the fields, log rotation and
+how to ship it to Loki or Elasticsearch.
 
 The audit log answers "why was this address blocked at 03:12?". For the
 current state, ask the node:
@@ -110,10 +112,11 @@ is set.
 
 ## Back up the node key
 
-`/var/lib/obie/node.key` is the node's identity: its peer ID and the key
-its verdicts are signed with. Peers trust that key. Lose it and your node
-becomes a stranger to them; leak it and someone else can publish verdicts
-in your name. Back it up once, offline, readable only by root:
+`/var/lib/obie/node.key` is the node's identity: its peer ID and the key its
+[verdicts](../glossary.md#verdict) are signed with. Peers trust that key.
+Lose it and your node becomes a stranger to them; leak it and someone else
+can publish verdicts in your name. Back it up once, offline, readable only
+by root:
 
 ```sh
 sudo install -d -m 0700 /root/obie-backup
