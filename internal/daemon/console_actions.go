@@ -30,6 +30,8 @@ type reportChecker interface {
 type meshReach interface {
 	TopicPeers() int
 	Held(id string) bool
+	// Ready fails while the mesh does not run.
+	Ready() error
 }
 
 // consoleActions carries out the console's operator actions with the
@@ -120,12 +122,30 @@ func (a *consoleActions) check(req console.ActionRequest, now time.Time) (*actio
 	return act, nil
 }
 
+// meshDown refuses a report or revocation while the mesh does not run —
+// the console serves before it starts and after it stops — since the
+// node could neither store the event through it nor send it later.
+func (a *consoleActions) meshDown(kind string) error {
+	if kind != console.ActionReport && kind != console.ActionRevoke {
+		return nil
+	}
+	if err := a.mesh.Ready(); err != nil {
+		return &console.ActionError{Status: http.StatusServiceUnavailable, Message: fmt.Sprintf(
+			"the mesh is not running (%v): the node is starting or stopping, so it can neither store nor send a verdict "+
+				"or revocation now. Try again once the node is ready", err)}
+	}
+	return nil
+}
+
 // Review checks req and tells what it would do, from the same store and
 // rules the action changes.
 func (a *consoleActions) Review(req console.ActionRequest) (console.ActionReview, error) {
 	now := a.now()
 	act, err := a.check(req, now)
 	if err != nil {
+		return console.ActionReview{}, err
+	}
+	if err := a.meshDown(req.Kind); err != nil {
 		return console.ActionReview{}, err
 	}
 	key := act.ind.Key()
@@ -212,6 +232,9 @@ func (a *consoleActions) Do(ctx context.Context, req console.ActionRequest, acto
 	now := a.now()
 	act, err := a.check(req, now)
 	if err != nil {
+		return console.ActionOutcome{}, err
+	}
+	if err := a.meshDown(req.Kind); err != nil {
 		return console.ActionOutcome{}, err
 	}
 	origin := audit.Origin{Via: audit.OriginConsole}

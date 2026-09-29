@@ -633,6 +633,9 @@ it at once.
   soon as a peer is reachable, and the console says so. It waits in
   memory: if `obied` restarts before, it is not sent (the verdict still
   counts on this node).
+- **While the node starts or stops**, the console already or still serves
+  but the mesh does not run: a report or revocation is refused with that
+  reason until the node is ready; overrides work throughout.
 - **Two tabs, or obiectl at the same time.** If the address's override or
   this node's verdict on it changed after you opened the confirmation, the
   console carries nothing out, shows the confirmation again with the state

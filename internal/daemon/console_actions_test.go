@@ -34,6 +34,14 @@ type publishingMesh struct {
 	mu    sync.Mutex
 	peers int
 	held  map[string]bool
+	// down is why the mesh does not run; nil while it runs.
+	down error
+}
+
+func (m *publishingMesh) Ready() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.down
 }
 
 func (m *publishingMesh) Publish(_ context.Context, ev *obieproto.Event) error {
@@ -333,5 +341,29 @@ func TestConsoleActionsObeyTheAdminAPI(t *testing.T) {
 	}
 	if recs := f.records(); len(recs) != 0 {
 		t.Errorf("refused actions were recorded: %+v", recs)
+	}
+}
+
+// TestConsoleActionsWhileTheMeshIsDown: while the mesh does not run, a
+// report or revocation is refused with the reason instead of promising to
+// send it; overrides need no mesh.
+func TestConsoleActionsWhileTheMeshIsDown(t *testing.T) {
+	f := newActionsFixture(t)
+	f.mesh.mu.Lock()
+	f.mesh.down = errors.New("host not started")
+	f.mesh.mu.Unlock()
+	report := console.ActionRequest{Kind: console.ActionReport, Address: "85.10.0.8",
+		Report: console.ReportDetails{Protocol: "ssh", Reason: "password_bruteforce", Events: 1}}
+	_, err := f.actions.Review(report)
+	wantActionError(t, "review of a report", err, http.StatusServiceUnavailable, "the mesh is not running (host not started)")
+	_, err = f.actions.Do(context.Background(), report, alice)
+	wantActionError(t, "report", err, http.StatusServiceUnavailable, "the mesh is not running")
+	_, err = f.actions.Review(console.ActionRequest{Kind: console.ActionRevoke, Address: "85.10.0.8", Reason: "false_positive"})
+	wantActionError(t, "review of a revocation", err, http.StatusServiceUnavailable, "the mesh is not running")
+	if _, err := f.actions.Do(context.Background(), console.ActionRequest{Kind: console.ActionAllow, Address: "85.10.0.8"}, alice); err != nil {
+		t.Errorf("an override while the mesh is down = %v", err)
+	}
+	if active, _ := f.st.ActiveVerdicts("ipv4:85.10.0.8", time.Now()); len(active) != 0 {
+		t.Errorf("verdicts stored while the mesh is down: %v", active)
 	}
 }
