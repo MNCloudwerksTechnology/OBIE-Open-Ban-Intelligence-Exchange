@@ -220,3 +220,23 @@ func (a Answers) Notes() []string {
 	}
 	return notes
 }
+
+// Protects reports whether a node configured with these answers never
+// blocks addr: a built-in range, an allow-list entry or the literal IP
+// address of a peer covers it. The node's own interface addresses and the
+// DNS names of peers are left out, as they are only known at the start.
+func (a Answers) Protects(addr netip.Addr) bool {
+	entries := sovereignty.Builtin()
+	for _, p := range a.Allow {
+		entries = append(entries, sovereignty.Entry{Prefix: p, Source: sovereignty.SourceConfig})
+	}
+	for _, p := range a.Peers {
+		if m, err := ma.NewMultiaddr(p.Address); err == nil {
+			if ip, err := netip.ParseAddr(hostOf(m)); err == nil {
+				entries = append(entries, sovereignty.Entry{Prefix: netip.PrefixFrom(ip, ip.BitLen()), Source: sovereignty.SourceBootstrap})
+			}
+		}
+	}
+	_, ok := sovereignty.NewAllowlist(entries...).Match(netip.PrefixFrom(addr, addr.BitLen()))
+	return ok
+}

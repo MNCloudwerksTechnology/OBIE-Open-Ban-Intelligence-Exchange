@@ -121,3 +121,21 @@ func TestClientAddrRealProcess(t *testing.T) {
 		t.Errorf("ClientAddr = %s, %v", got, ok)
 	}
 }
+
+func TestLockoutWarning(t *testing.T) {
+	addr := netip.MustParseAddr("85.10.0.7")
+	observe, enforce := LockoutWarning(addr, false), LockoutWarning(addr, true)
+	for _, want := range []string{"LOCKOUT RISK", "85.10.0.7, and OBIE does not protect", "add 85.10.0.7/32 to allowlist.cidrs", "sudo obiectl allow 85.10.0.7"} {
+		if !strings.Contains(observe, want) || !strings.Contains(enforce, want) {
+			t.Errorf("warning lacks %q:\n%s", want, observe)
+		}
+	}
+	if !strings.Contains(observe, "observe mode") || !strings.Contains(enforce, "at any moment") {
+		t.Errorf("warnings do not name the mode:\n%s\n%s", observe, enforce)
+	}
+	for _, line := range strings.Split(strings.TrimSuffix(enforce, "\n"), "\n") {
+		if !strings.HasPrefix(line, "!!") {
+			t.Errorf("line %q is not marked", line)
+		}
+	}
+}

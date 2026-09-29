@@ -124,3 +124,28 @@ func procParent(pid int) (int, error) {
 	}
 	return 0, fmt.Errorf("no PPid in /proc/%d/status", pid)
 }
+
+// LockoutWarning is the banner shown when addr, the address of the
+// operator's session, is not protected from being blocked; enforcing says
+// whether the node is, or will be, in enforce mode.
+func LockoutWarning(addr netip.Addr, enforcing bool) string {
+	mode := "The node is in observe mode and blocks nothing yet, but it will as soon as you switch to enforce mode."
+	if enforcing {
+		mode = "The node is in enforce mode: this can happen at any moment."
+	}
+	lines := []string{
+		fmt.Sprintf("LOCKOUT RISK: your SSH session comes from %s, and OBIE does not protect that address.", addr),
+		"If this node or a trusted peer reports it, the node blocks it and you lose access to this server.",
+		mode,
+		fmt.Sprintf("Protect it: add %s to allowlist.cidrs in the configuration and reload the node", netip.PrefixFrom(addr, addr.BitLen())),
+		fmt.Sprintf("(sudo systemctl reload obied), or on a running node: sudo obiectl allow %s --note \"my SSH session\"", addr),
+	}
+	var b strings.Builder
+	rule := strings.Repeat("!", 78)
+	b.WriteString(rule + "\n")
+	for _, l := range lines {
+		b.WriteString("!! " + l + "\n")
+	}
+	b.WriteString(rule + "\n")
+	return b.String()
+}

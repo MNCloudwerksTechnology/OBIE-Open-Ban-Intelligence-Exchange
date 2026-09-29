@@ -128,3 +128,25 @@ func TestNotes(t *testing.T) {
 		t.Errorf("notes = %q", notes)
 	}
 }
+
+func TestProtects(t *testing.T) {
+	a := Defaults()
+	p, err := ParsePeerAddress("/ip4/85.10.0.20/tcp/4001/p2p/" + friendID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.AddPeer(p); err != nil {
+		t.Fatal(err)
+	}
+	a.AddAllow(netip.MustParsePrefix("85.10.1.0/24"))
+	for addr, want := range map[string]bool{
+		"10.1.2.3":   true,  // private, built in
+		"85.10.1.99": true,  // allow-list entry
+		"85.10.0.20": true,  // a peer's address
+		"85.10.0.7":  false, // nothing covers it
+	} {
+		if got := a.Protects(netip.MustParseAddr(addr)); got != want {
+			t.Errorf("Protects(%s) = %v, want %v", addr, got, want)
+		}
+	}
+}

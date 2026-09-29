@@ -27,6 +27,7 @@ var daemonCommands = map[string]daemonCommand{
 	"keygen":            {summary: "create the node identity key", run: runKeygen},
 	"identity":          {summary: "show the node identity from its key file", run: runIdentity},
 	"teardown-firewall": {summary: "remove the nftables table inet obie with every block", run: runTeardownFirewall},
+	"setup":             {summary: "write the configuration after a few questions (first-run assistant)", run: runSetup},
 }
 
 // stateDirFlags registers the flags that locate the state directory.
