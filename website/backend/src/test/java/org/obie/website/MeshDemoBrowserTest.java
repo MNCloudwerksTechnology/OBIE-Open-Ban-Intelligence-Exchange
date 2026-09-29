@@ -174,13 +174,15 @@ class MeshDemoBrowserTest extends IntegrationTest {
     wait.until(
         ExpectedConditions.presenceOfElementLocated(By.cssSelector("app-mesh-demo .toolbar")));
 
-    // The section still starts just below the sticky header, at scroll-padding-top.
+    // The section still starts near scroll-padding-top, just below the sticky header. The page
+    // settles by some 35 px while it loads, with or without the demo; the demo's own switch moved
+    // the target by its change in height, over 400 px at this width, before it was compensated.
     Number offset =
         (Number)
             script(
                 "return document.querySelector('#get-started').getBoundingClientRect().top"
                     + " - parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop)");
-    assertThat(offset.doubleValue()).isBetween(-2.0, 2.0);
+    assertThat(offset.doubleValue()).isBetween(-100.0, 100.0);
   }
 
   private void open(ChromeOptions options) {
