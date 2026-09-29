@@ -126,6 +126,17 @@ soak: ## Run the soak test (3 nodes, SOAKRATE events/s for SOAKTIME, default 50/
 	$(GO) test -tags soak -run '^TestSoak$$' -count=1 -v -timeout 0 ./test/e2e \
 		-soak.duration=$(SOAKTIME) -soak.rate=$(SOAKRATE)
 
+# RESOURCESVERDICTS are the verdicts the measured node holds at each
+# measurement of `make resources`; RESOURCESRATE how many reports per second
+# each of the two publishing nodes sends.
+RESOURCESVERDICTS ?= 10000,100000
+RESOURCESRATE     ?= 100
+
+.PHONY: resources
+resources: build ## Measure one node's memory, CPU and disk in a 3-node mesh: idle, receiving verdicts, at rest; not part of `make ci`
+	$(GO) test -tags resources -run '^TestResources$$' -count=1 -v -timeout 0 ./test/resources \
+		-resources.bin=$(BIN_DIR) -resources.verdicts=$(RESOURCESVERDICTS) -resources.rate=$(RESOURCESRATE)
+
 .PHONY: ci
 ci: fmt-check vet lint lint-workflows lint-md test vuln ## Run every check the CI gate runs
 
