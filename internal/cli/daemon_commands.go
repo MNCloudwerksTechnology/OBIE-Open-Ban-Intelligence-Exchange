@@ -153,5 +153,8 @@ table if enforce.nftables.teardown_on_stop is true in the configuration.`,
 				{"Lift every OBIE block at once:", "sudo systemctl stop obied && sudo obied teardown-firewall"},
 			},
 		}, run: offline(runTeardownFirewall)},
+		{commandHelp: completionHelp(daemonName), run: offline(func(args []string, stdout, stderr io.Writer) int {
+			return runCompletion(daemonName, args, stdout, stderr)
+		})},
 	}
 }

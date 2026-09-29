@@ -254,5 +254,8 @@ off unless console.enabled is true in the configuration.`,
 				{"Issue a new token and sign every browser out:", "sudo obiectl console --rotate"},
 			},
 		}, run: runConsole},
+		{commandHelp: completionHelp(ctlName), run: func(_ context.Context, _ *admin.Client, args []string, stdout, stderr io.Writer) int {
+			return runCompletion(ctlName, args, stdout, stderr)
+		}},
 	}
 }
