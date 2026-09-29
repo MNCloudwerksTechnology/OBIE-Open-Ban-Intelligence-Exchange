@@ -111,6 +111,9 @@ describe('Landing page content', () => {
       expect(demo.settings).toContain('at least two reporters, its quorum');
       expect(DEMO_SETTINGS.quorum).toBe(2);
       expect(demo.settings).toContain(`confidence of ${NODE_DEFAULTS.fail2banConfidence}`);
+      // Out of the box a node only observes; the demo's servers block.
+      expect(NODE_DEFAULTS.mode).toBe('observe');
+      expect(demo.settings).toContain('a new server only watches (observe mode)');
     });
 
     it('marks every later feature it mentions as planned', () => {

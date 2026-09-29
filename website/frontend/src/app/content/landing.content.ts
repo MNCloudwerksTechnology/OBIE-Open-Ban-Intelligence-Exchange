@@ -163,7 +163,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
       illustration:
         'Illustration: made-up servers and example addresses, not live data from the network.',
       settings:
-        'Here, a server blocks an address when the reports it trusts reach a combined score of 1.2, its threshold, from at least two reporters, its quorum. The federation guide suggests this for three to five servers; out of the box the threshold is 1.8. A Fail2Ban report has a confidence of 0.8.',
+        'Here, a server blocks an address when the reports it trusts reach a combined score of 1.2, its threshold, from at least two reporters, its quorum. The federation guide suggests this for three to five servers; out of the box the threshold is 1.8. A Fail2Ban report has a confidence of 0.8. These servers block in their firewalls; a new server only watches (observe mode) until its operator switches blocking on.',
       steps: [
         {
           title: 'Meet the neighbourhood',
@@ -190,12 +190,12 @@ export const LANDING_CONTENT_EN: LandingContent = {
         {
           title: 'The bot moves on to server B',
           caption:
-            'Next the bot tries B. B’s own detection catches it and blocks it at once, just as A did; A’s earlier report counts as a second voice. B shares its own signed report with A and C.',
+            'Next the bot tries B. B’s own detection catches it, and B blocks it at once. Its own report and A’s earlier one agree: two trusted voices.',
         },
         {
           title: 'C is protected before the attack arrives',
           caption:
-            'B’s report reaches C. Together with A’s, two independent, trusted reports now pass C’s bar, so C blocks the bot. When the bot knocks on C minutes later, it is turned away at the door.',
+            'B shares its signed report with A and C. Together with A’s, two independent, trusted reports now pass C’s bar, so C blocks the bot. When the bot knocks on C minutes later, it is turned away at the door.',
           planned:
             'Today the quorum counts servers, not organisations. Checking that reporters come from different networks is planned.',
         },

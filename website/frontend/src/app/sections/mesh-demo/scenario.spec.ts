@@ -169,6 +169,7 @@ describe('Demo scenario', () => {
 
   it('uses the node’s documented defaults, except the threshold the demo announces', () => {
     const yaml = repoFile('documentation/examples/obie.yaml');
+    expect(yaml).toMatch(new RegExp(`^  mode: ${NODE_DEFAULTS.mode}$`, 'm'));
     expect(yaml).toMatch(new RegExp(`^  threshold: ${NODE_DEFAULTS.threshold}$`, 'm'));
     expect(yaml).toMatch(new RegExp(`^  quorum: ${NODE_DEFAULTS.quorum}$`, 'm'));
     expect(yaml).toMatch(/^ {2}local_weight: 1\.0$/m);

@@ -16,6 +16,8 @@ import {
  * confidence of a Fail2Ban report (documentation/guides/fail2ban.md).
  */
 export const NODE_DEFAULTS = {
+  /** `node.mode`: a new node decides but blocks nothing; the demo's servers enforce. */
+  mode: 'observe',
   threshold: 1.8,
   quorum: 2,
   localWeight: 1,
@@ -173,6 +175,9 @@ export const SCENARIO: Scenario = {
     { id: 'c', settings: DEMO_SETTINGS, trust: { a: TRUSTED, b: TRUSTED }, safetyList: [] },
   ],
   // Documentation ranges (RFC 5737): example addresses that belong to nobody.
+  // A real node keeps these ranges on its built-in allow-list and refuses
+  // reports about them; the demo is an illustration and uses them on purpose,
+  // so that it names no real address. Do not "fix" the rule for them.
   addresses: {
     bot: '203.0.113.7',
     office: '198.51.100.23',
