@@ -46,6 +46,10 @@ const OUTCOMES: Record<string, Record<ServerId, string>> = {
 const LETTER = { unknown: 'U', watching: 'W', blocked: 'B', safe: 'S' } as const;
 
 describe('Demo scenario', () => {
+  it('sets up each of the three servers once', () => {
+    expect(SCENARIO.servers.map((server) => server.id)).toEqual([...SERVER_IDS]);
+  });
+
   it('tells ten steps in the order of the story', () => {
     expect(STEP_IDS).toEqual(Object.keys(OUTCOMES));
     expect(frames.length).toBe(10);

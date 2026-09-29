@@ -1,6 +1,7 @@
 import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
+  ChangeDetectorRef,
   Component,
   DOCUMENT,
   DestroyRef,
@@ -11,21 +12,41 @@ import {
   signal,
 } from '@angular/core';
 
+import { DemoStepContent } from '../../content/landing-content.model';
 import { LANDING_CONTENT } from '../../content/landing.content';
 import { fill } from './format';
+import { ServerId, ServerSetup } from './mesh-demo.model';
 import { MeshMap } from './mesh-map';
 import { replay } from './replay';
 import { SCENARIO, SHARED_REPORT } from './scenario';
 import { ServerCard } from './server-card';
 import { SharedReport } from './shared-report';
 
-/** How long autoplay shows each step: time to read a caption of 40 words. */
-export const AUTOPLAY_STEP_MS = 10_000;
+// Autoplay shows a step long enough to read its text, or to hear it read
+// out by a screen reader: 0.4 s per word, at least 8 s, and 6 s more for the
+// step that takes the shared report apart.
+const AUTOPLAY_MS_PER_WORD = 400;
+const AUTOPLAY_MIN_MS = 8_000;
+const AUTOPLAY_REPORT_MS = 6_000;
+
+/** How long autoplay shows `step`; `withReport` for the step with the shared report. */
+export function autoplayDelay(step: DemoStepContent, withReport: boolean): number {
+  const words = [step.caption, step.note, step.planned].join(' ').trim().split(/\s+/).length;
+  return (
+    Math.max(AUTOPLAY_MIN_MS, words * AUTOPLAY_MS_PER_WORD) + (withReport ? AUTOPLAY_REPORT_MS : 0)
+  );
+}
 
 const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
 
 /** What the demo shows after each step; computed once, so no step can show a mixed state. */
 const FRAMES = replay(SCENARIO);
+
+/** Each server's settings and trust, by id. */
+const SETUPS = Object.fromEntries(SCENARIO.servers.map((server) => [server.id, server])) as Record<
+  ServerId,
+  ServerSetup
+>;
 
 /** Where A shares the report that the demo takes apart: the step and the receivers. */
 const SHARE = SCENARIO.steps.flatMap((step, index) =>
@@ -53,10 +74,11 @@ export class MeshDemo {
   private readonly content = inject(LANDING_CONTENT);
   private readonly document = inject(DOCUMENT);
   private readonly host: HTMLElement = inject(ElementRef).nativeElement;
+  private readonly changeDetector = inject(ChangeDetectorRef);
 
   protected readonly demo = this.content.howItWorks.demo;
   protected readonly total = FRAMES.length;
-  protected readonly setups = SCENARIO.servers;
+  protected readonly setups = SETUPS;
   protected readonly sharedReport = SHARED_REPORT;
   protected readonly shareStep = SHARE.index;
   protected readonly receivers = SHARE.to;
@@ -83,8 +105,8 @@ export class MeshDemo {
     const destroyRef = inject(DestroyRef);
     destroyRef.onDestroy(() => this.stopTimer());
     afterNextRender(() => {
-      this.interactive.set(true);
-      this.followMotionPreference();
+      this.becomeInteractive();
+      this.followMotionPreference(destroyRef);
       this.pauseWhenOutOfSight(destroyRef);
     });
   }
@@ -161,7 +183,9 @@ export class MeshDemo {
 
   private schedule(): void {
     this.stopTimer();
-    this.timer = setTimeout(() => this.advance(), AUTOPLAY_STEP_MS);
+    const index = this.step();
+    const delay = autoplayDelay(this.demo.steps[index], index === this.shareStep);
+    this.timer = setTimeout(() => this.advance(), delay);
   }
 
   private advance(): void {
@@ -178,11 +202,33 @@ export class MeshDemo {
     this.timer = undefined;
   }
 
-  private followMotionPreference(): void {
-    const query = this.document.defaultView?.matchMedia?.(REDUCED_MOTION);
+  /**
+   * Swaps the prerendered list for the interactive demo, which has another
+   * height. When the demo is above the viewport, e.g. after a link to
+   * /#contact, the page scrolls by the difference, so that what the visitor
+   * looks at stays in place (browsers without scroll anchoring would move it).
+   */
+  private becomeInteractive(): void {
+    const bottom = this.host.getBoundingClientRect().bottom;
+    this.interactive.set(true);
+    this.changeDetector.detectChanges();
+    const shift = this.host.getBoundingClientRect().bottom - bottom;
+    if (bottom <= 0 && shift !== 0) {
+      this.document.defaultView?.scrollBy(0, shift);
+    }
+  }
+
+  private followMotionPreference(destroyRef: DestroyRef): void {
     const apply = (reduce: boolean) => this.motion.set(reduce ? 'reduced' : 'full');
-    apply(query?.matches ?? false);
-    query?.addEventListener('change', (event) => apply(event.matches));
+    const query = this.document.defaultView?.matchMedia?.(REDUCED_MOTION);
+    if (!query) {
+      apply(false);
+      return;
+    }
+    apply(query.matches);
+    const onChange = (event: MediaQueryListEvent) => apply(event.matches);
+    query.addEventListener('change', onChange);
+    destroyRef.onDestroy(() => query.removeEventListener('change', onChange));
   }
 
   /** Autoplay pauses when the demo leaves the viewport or the tab is hidden. */

@@ -109,9 +109,13 @@
   </div>
 
   <ul class="servers" [attr.aria-label]="demo.controls.servers">
-    @for (server of frame().servers; track server.id; let i = $index) {
+    @for (server of frame().servers; track server.id) {
       <li>
-        <app-server-card [view]="server" [setup]="setups[i]" [animate]="motion() === 'full'" />
+        <app-server-card
+          [view]="server"
+          [setup]="setups[server.id]"
+          [animate]="motion() === 'full'"
+        />
       </li>
     }
   </ul>

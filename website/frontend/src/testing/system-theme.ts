@@ -13,6 +13,15 @@ export class FakeDarkQuery {
     this.listeners.push(listener);
   }
 
+  removeEventListener(_type: 'change', listener: (event: { matches: boolean }) => void): void {
+    this.listeners.splice(this.listeners.indexOf(listener) >>> 0, 1);
+  }
+
+  /** How many listeners are registered. */
+  get listenerCount(): number {
+    return this.listeners.length;
+  }
+
   /** Simulates the visitor changing the system setting. */
   change(matches: boolean): void {
     this.matches = matches;

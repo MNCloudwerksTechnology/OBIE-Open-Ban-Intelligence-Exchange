@@ -4,13 +4,17 @@ import axe from 'axe-core';
 import { renderPrerendered } from '../../../testing/prerender';
 import { stubMediaQueries } from '../../../testing/system-theme';
 import { LANDING_CONTENT_EN, REPOSITORY_URL } from '../../content/landing.content';
-import { AUTOPLAY_STEP_MS, MeshDemo } from './mesh-demo';
+import { MeshDemo, autoplayDelay } from './mesh-demo';
 import { replay } from './replay';
 import { SCENARIO } from './scenario';
 
 const demo = LANDING_CONTENT_EN.howItWorks.demo;
 const FRAMES = replay(SCENARIO);
 const LAST = FRAMES.length - 1;
+/** How long autoplay shows step `index` (the shared report is on step 3). */
+const delay = (index: number) => autoplayDelay(demo.steps[index], index === 2);
+/** Longer than any step. */
+const AGES = 10 * 60_000;
 
 /** An IntersectionObserver the test drives (jsdom has none). */
 class FakeObserver {
@@ -323,7 +327,7 @@ describe('MeshDemo', () => {
     it('never starts on its own', async () => {
       await render();
       vi.useFakeTimers();
-      vi.advanceTimersByTime(AUTOPLAY_STEP_MS * 5);
+      vi.advanceTimersByTime(AGES);
       fixture.detectChanges();
       expect(current()).toBe(0);
       expect(control('Play')).toBeTruthy();
@@ -335,7 +339,7 @@ describe('MeshDemo', () => {
       press(control('Play'));
       expect(control('Pause')).toBeTruthy();
 
-      vi.advanceTimersByTime(AUTOPLAY_STEP_MS - 1);
+      vi.advanceTimersByTime(delay(0) - 1);
       fixture.detectChanges();
       expect(current()).toBe(0);
       vi.advanceTimersByTime(1);
@@ -343,7 +347,14 @@ describe('MeshDemo', () => {
       expect(current()).toBe(1);
       expect(announced()).toContain('Step 2 of 10');
 
-      vi.advanceTimersByTime(AUTOPLAY_STEP_MS * 20);
+      vi.advanceTimersByTime(delay(1) + delay(2) - 1);
+      fixture.detectChanges();
+      expect(current()).toBe(2);
+      vi.advanceTimersByTime(1);
+      fixture.detectChanges();
+      expect(current()).toBe(3);
+
+      vi.advanceTimersByTime(AGES);
       fixture.detectChanges();
       expect(current()).toBe(LAST);
       expect(control('Play')).toBeTruthy();
@@ -363,14 +374,14 @@ describe('MeshDemo', () => {
       vi.useFakeTimers();
       press(control('Play'));
       press(control('Pause'));
-      vi.advanceTimersByTime(AUTOPLAY_STEP_MS * 3);
+      vi.advanceTimersByTime(AGES);
       fixture.detectChanges();
       expect(current()).toBe(0);
 
       press(control('Play'));
       press(dots()[4]);
       expect(control('Play')).toBeTruthy();
-      vi.advanceTimersByTime(AUTOPLAY_STEP_MS * 3);
+      vi.advanceTimersByTime(AGES);
       fixture.detectChanges();
       expect(current()).toBe(4);
     });
@@ -384,7 +395,7 @@ describe('MeshDemo', () => {
       fixture.detectChanges();
 
       expect(control('Play')).toBeTruthy();
-      vi.advanceTimersByTime(AUTOPLAY_STEP_MS * 3);
+      vi.advanceTimersByTime(AGES);
       fixture.detectChanges();
       expect(current()).toBe(0);
     });
@@ -399,9 +410,58 @@ describe('MeshDemo', () => {
       fixture.detectChanges();
 
       expect(control('Play')).toBeTruthy();
-      vi.advanceTimersByTime(AUTOPLAY_STEP_MS * 3);
+      vi.advanceTimersByTime(AGES);
       fixture.detectChanges();
       expect(current()).toBe(0);
+    });
+  });
+
+  describe('autoplay timing', () => {
+    it('shows a step long enough to read it: 0.4 s per word, at least 8 s', () => {
+      const words = (text = '') => (text ? text.trim().split(/\s+/).length : 0);
+      demo.steps.forEach((step, index) => {
+        const count = words(step.caption) + words(step.note) + words(step.planned);
+        const expected = Math.max(8_000, count * 400) + (index === 2 ? 6_000 : 0);
+        expect(delay(index), step.title).toBe(expected);
+      });
+      expect(delay(9)).toBe(8_000);
+      expect(delay(2)).toBeGreaterThan(delay(3) - 1);
+    });
+  });
+
+  describe('switching from the prerendered list', () => {
+    function stubDemoBox(bottoms: number[]): ReturnType<typeof vi.fn> {
+      const original = HTMLElement.prototype.getBoundingClientRect;
+      let call = 0;
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+        this: HTMLElement,
+      ) {
+        // The demo's host (a <div> under TestBed): it holds the list or the toolbar.
+        if (!this.querySelector(':scope > ol.story, :scope > .toolbar')) {
+          return original.call(this);
+        }
+        const bottom = bottoms[Math.min(call++, bottoms.length - 1)];
+        return { bottom, top: bottom - 100 } as DOMRect;
+      });
+      const scrollBy = vi.fn();
+      vi.stubGlobal('scrollBy', scrollBy);
+      return scrollBy;
+    }
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('keeps what the visitor looks at in place when the demo above it changes height', async () => {
+      // A link to /#contact: the demo is above the viewport and gets 466 px shorter.
+      const scrollBy = stubDemoBox([-300, -766]);
+      await render();
+      expect(host.querySelector('.toolbar')).not.toBeNull();
+      expect(scrollBy).toHaveBeenCalledExactlyOnceWith(0, -466);
+    });
+
+    it('does not scroll when the visitor can see the demo, or nothing moved', async () => {
+      const scrollBy = stubDemoBox([400, 120]);
+      await render();
+      expect(scrollBy).not.toHaveBeenCalled();
     });
   });
 
@@ -428,6 +488,10 @@ describe('MeshDemo', () => {
       fixture.detectChanges();
       expect(host.getAttribute('data-motion')).toBe('reduced');
       expect(host.querySelectorAll('.animated').length).toBe(0);
+
+      expect(reducedMotion.listenerCount).toBe(1);
+      fixture.destroy();
+      expect(reducedMotion.listenerCount).toBe(0);
     });
   });
 
