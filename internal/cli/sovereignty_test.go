@@ -213,6 +213,9 @@ func TestSovereigntyAgainstInProcessDaemon(t *testing.T) {
 	for _, l := range lines {
 		if l["component"] == "reload" && l["msg"] == "configuration reload rejected; the running configuration is kept" {
 			rejected = append(rejected, l["error"].(string))
+			if next, _ := l["next"].(string); !strings.Contains(next, "sudo obied --check-config") {
+				t.Errorf("rejected reload without the next step: %v", l)
+			}
 		}
 	}
 	if len(rejected) != 4 || !strings.Contains(rejected[1], "decision.quorum") || !strings.Contains(rejected[3], allowFile+":1") {

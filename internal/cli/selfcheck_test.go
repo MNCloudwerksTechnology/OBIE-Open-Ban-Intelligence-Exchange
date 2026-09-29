@@ -181,12 +181,12 @@ func TestSelfCheckUsage(t *testing.T) {
 			t.Errorf("self-check %v: exit code %d, stderr %q", args, code, stderr)
 		}
 	}
-	code, _, stderr := runObied(t, "self-check", "--help")
-	if code != ExitOK || !strings.Contains(stderr, "Exit status: 0 no problem") || !strings.Contains(stderr, "-json") {
-		t.Errorf("help: exit code %d\n%s", code, stderr)
+	code, stdout, _ := runObied(t, "self-check", "--help")
+	if code != ExitOK || !strings.Contains(stdout, "Exit status: 0 no problem") || !strings.Contains(stdout, "--json") {
+		t.Errorf("help: exit code %d\n%s", code, stdout)
 	}
-	if _, _, stderr := runObied(t, "--help"); !strings.Contains(stderr, "  self-check ") {
-		t.Errorf("obied --help does not list self-check:\n%s", stderr)
+	if _, stdout, _ := runObied(t, "--help"); !strings.Contains(stdout, "  self-check ") {
+		t.Errorf("obied --help does not list self-check:\n%s", stdout)
 	}
 }
 

@@ -5,8 +5,9 @@
 # For each platform in PLATFORMS:
 #   obie-<version>-linux-<arch>.tar.gz          obied, obiectl, install.sh, the
 #                                              example configuration, the systemd
-#                                              unit, the Fail2Ban action, LICENSE
-#                                              and README
+#                                              unit, the Fail2Ban action, the
+#                                              manual pages and shell completions
+#                                              (share/), LICENSE and README
 #   obie-<version>-linux-<arch>.<bin>.cdx.json  CycloneDX SBOM of each binary
 # and SHA256SUMS over all of them.
 #
@@ -59,6 +60,10 @@ export SOURCE_DATE_EPOCH
 
 rm -rf "$out"
 mkdir -p "$out"
+# The manual pages and shell completions (packaging/gendocs) are the same
+# for every platform; they are generated once, for the build host.
+share="$out/share"
+(cd "$root" && "$go" run ./packaging/gendocs -out "$share" -version "$version")
 for platform in $platforms; do
 	goos=${platform%/*}
 	goarch=${platform#*/}
@@ -81,12 +86,14 @@ for platform in $platforms; do
 	install -m 0644 "$root/contrib/fail2ban/action.d/obie.conf" "$stage/fail2ban/action.d/obie.conf"
 	install -m 0644 "$root/LICENSE.md" "$stage/LICENSE.md"
 	install -m 0644 "$root/README.md" "$stage/README.md"
+	cp -R "$share" "$stage/share"
 	# No pipe: sh has no pipefail, and a failing tar must fail the release.
 	tar --sort=name --format=gnu --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
 		--mode='go-w' -C "$out" -cf "$out/$name.tar" "$name"
 	gzip -9 -n "$out/$name.tar"
 	rm -rf "$stage"
 done
+rm -rf "$share"
 
 (cd "$out" && sha256sum -- *.tar.gz *.cdx.json >SHA256SUMS)
 echo "release.sh: artefacts in $out:"

@@ -434,8 +434,15 @@ func (s *Service) validate(ev *obieproto.Event, now time.Time) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, obieproto.ErrNonPublicIndicator):
-		return fmt.Errorf("%w: %s is not a public address; OBIE never publishes internal or special-purpose addresses: %w",
-			ErrRefused, ev.Key(), err)
+		// The detail names the range, e.g. "192.168.1.9/32 overlaps
+		// special-purpose range 192.168.0.0/16".
+		detail := err.Error()
+		var fe *obieproto.FieldError
+		if errors.As(err, &fe) && fe.Detail != "" {
+			detail = fe.Detail
+		}
+		return fmt.Errorf("%w: %s is not a public address: %s; OBIE never publishes internal or special-purpose addresses",
+			ErrRefused, ev.Key(), detail)
 	default:
 		return fmt.Errorf("%w: %w", ErrInvalid, err)
 	}

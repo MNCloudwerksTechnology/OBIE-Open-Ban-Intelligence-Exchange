@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/httpserver"
+	"github.com/MNCloudwerksTechnology/obie/internal/peercred"
 )
 
 // SocketMode is the permission of the admin socket: owner and group may
@@ -86,7 +87,8 @@ func setOwnership(path, group string, log *slog.Logger) error {
 	}
 	g, err := user.LookupGroup(group)
 	if err != nil {
-		log.Warn("admin socket group not found; keeping the process group", "group", group, "socket", path, "error", err)
+		log.Warn("admin socket group not found; keeping the process group", "group", group, "socket", path, "error", err,
+			"next", peercred.MissingGroupNext(group))
 		return nil
 	}
 	gid, err := strconv.Atoi(g.Gid)

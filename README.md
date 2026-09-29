@@ -126,6 +126,8 @@ try a three-node mesh on a laptop instead, run the
 | First node, step by step | [Quick start](documentation/operations/quickstart.md) |
 | Setting up a node with a few questions, and checking it | [Set up and check a node](documentation/operations/setup.md) |
 | Every configuration key | [Configuration reference](documentation/operations/configuration.md) |
+| Every command, its flags and examples (also `man obiectl`, `obiectl help <command>`) | [Command-line reference](documentation/operations/cli.md) |
+| What an error or a log line means, and what to do | [Messages of obied and obiectl](documentation/operations/messages.md), [Troubleshooting](documentation/operations/troubleshooting.md) |
 | Connecting to other nodes | [Federation](documentation/operations/federation.md) |
 | Day-2: metrics, audit log, upgrades, backup, uninstall | [Operations](documentation/operations/operations.md), [Monitoring](documentation/operations/monitoring.md) |
 | Looking into the node in a browser | [Web console](documentation/operations/console.md) |

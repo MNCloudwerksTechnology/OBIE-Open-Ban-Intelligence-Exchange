@@ -126,10 +126,10 @@ sudo fail2ban-client set sshd unbanip 203.0.113.7
 ```
 
 The log line `could not report 203.0.113.7 of jail sshd to OBIE (obiectl
-exit code 1): …` must end with the refusal, `… is not a public address;
-OBIE never publishes internal or special-purpose addresses …`: the action
-reached `obied`. If it says `obied is not running` or `context deadline
-exceeded` instead, see
+exit code 1): …` must go on with the refusal, `nothing was reported:
+ipv4:203.0.113.7 is not a public address …`, and why: the action reached
+`obied`. If it says `obied is not running` or `obied did not answer in
+time` instead, see
 [Troubleshooting](troubleshooting.md#fail2ban-reports-do-not-arrive). The
 self-check reads the same log: its Fail2Ban line now names the jail and
 says that the last report reached the node and was refused as intended.

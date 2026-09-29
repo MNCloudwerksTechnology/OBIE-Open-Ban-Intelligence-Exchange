@@ -2,11 +2,9 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"text/tabwriter"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
@@ -16,26 +14,21 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/version"
 )
 
-// daemonCommand is an offline obied subcommand; it never talks to a running
-// daemon.
-type daemonCommand struct {
-	summary string
-	run     func(args []string, stdout, stderr io.Writer) int
-}
-
-var daemonCommands = map[string]daemonCommand{
-	"keygen":            {summary: "create the node identity key", run: runKeygen},
-	"identity":          {summary: "show the node identity from its key file", run: runIdentity},
-	"teardown-firewall": {summary: "remove the nftables table inet obie with every block", run: runTeardownFirewall},
-	"setup":             {summary: "write the configuration after a few questions (first-run assistant)", run: runSetup},
-	"self-check":        {summary: "check the node and this server; every problem comes with the next step", run: runSelfCheck},
-}
-
 // stateDirFlags registers the flags that locate the state directory.
 func stateDirFlags(fs *flag.FlagSet) (configPath, stateDir *string) {
 	configPath = fs.String("config", config.DefaultPath, "path to the YAML configuration `file` naming node.state_dir")
-	stateDir = fs.String("state-dir", "", "state `directory` holding "+identity.FileName+" (overrides --config)")
+	stateDir = fs.String("state-dir", "", "state `directory` holding "+identity.FileName+" (default: node.state_dir of --config)")
 	return configPath, stateDir
+}
+
+// stateDirWhere returns the flags that locate the state directory, as the
+// user gave them, for the commands a message suggests: "" for the
+// defaults.
+func stateDirWhere(configPath, stateDir string) string {
+	if stateDir != "" {
+		return " --state-dir " + config.QuotePath(stateDir)
+	}
+	return config.PathFlag(configPath)
 }
 
 // resolveStateDir returns stateDir if set, else node.state_dir of the
@@ -46,54 +39,32 @@ func resolveStateDir(configPath, stateDir string) (string, error) {
 	}
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", configPath, err)
+		return "", err
 	}
 	return cfg.Node.StateDir, nil
 }
 
-// parseCommand parses the flags of a subcommand, which takes no positional
-// arguments. It returns done when the program must exit with code.
-func parseCommand(fs *flag.FlagSet, program string, args []string, stderr io.Writer) (code int, done bool) {
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return ExitOK, true
-		}
-		return ExitUsage, true
-	}
-	if fs.NArg() > 0 {
-		_, _ = fmt.Fprintf(stderr, "%s: unexpected argument %q\n", program, fs.Arg(0))
-		fs.Usage()
-		return ExitUsage, true
-	}
-	return 0, false
-}
-
 func runKeygen(args []string, stdout, stderr io.Writer) int {
 	const program = "obied keygen"
-	fs := newFlagSet(program, stderr)
+	fs := newFlagSet(program)
 	configPath, stateDirFlag := stateDirFlags(fs)
 	force := fs.Bool("force", false, "replace an existing key; this changes the node's peer ID")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	stateDir, err := resolveStateDir(*configPath, *stateDirFlag)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		configProblem(*configPath, err).write(stderr, program)
 		return ExitInvalidConfig
 	}
 
 	if err := statedir.Check(stateDir, version.Version); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		stateDirProblem(err).write(stderr, program)
 		return ExitFailure
 	}
 	key, err := identity.Create(stateDir, *force)
-	if errors.Is(err, identity.ErrKeyExists) {
-		_, _ = fmt.Fprintf(stderr, "%s: %s already exists; pass --force to replace it (this changes the node's peer ID)\n",
-			program, identity.Path(stateDir))
-		return ExitFailure
-	}
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		keygenProblem(stateDir, stateDirWhere(*configPath, *stateDirFlag), err).write(stderr, program)
 		return ExitFailure
 	}
 	_, _ = fmt.Fprintf(stderr, "%s: wrote a new node key to %s\n", program, identity.Path(stateDir))
@@ -105,24 +76,21 @@ func runKeygen(args []string, stdout, stderr io.Writer) int {
 
 func runIdentity(args []string, stdout, stderr io.Writer) int {
 	const program = "obied identity"
-	fs := newFlagSet(program, stderr)
+	fs := newFlagSet(program)
 	configPath, stateDirFlag := stateDirFlags(fs)
-	asJSON := fs.Bool("json", false, "print the identity as JSON")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	asJSON := fs.Bool("json", false, "print the identity as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	stateDir, err := resolveStateDir(*configPath, *stateDirFlag)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		configProblem(*configPath, err).write(stderr, program)
 		return ExitInvalidConfig
 	}
 
 	key, err := identity.Load(stateDir)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
-		if errors.Is(err, os.ErrNotExist) {
-			_, _ = fmt.Fprintf(stderr, "%s: create the key with obied keygen, or start obied once\n", program)
-		}
+		identityProblem(stateDir, stateDirWhere(*configPath, *stateDirFlag), err).write(stderr, program)
 		return ExitFailure
 	}
 	return printIdentity(stdout, stderr, program, admin.NewIdentityResponse(key), *asJSON)
@@ -130,14 +98,14 @@ func runIdentity(args []string, stdout, stderr io.Writer) int {
 
 func runCtlIdentity(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl identity"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the identity as JSON")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the identity as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	id, err := client.Identity(ctx)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	return printIdentity(stdout, stderr, "obiectl", *id, *asJSON)

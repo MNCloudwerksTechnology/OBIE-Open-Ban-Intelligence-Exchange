@@ -165,8 +165,9 @@ func TestReloadApplies(t *testing.T) {
 	if f.rl.running.Config.Log.Level != "info" {
 		t.Errorf("running log level %s after a reload", f.rl.running.Config.Log.Level)
 	}
-	if !strings.Contains(f.logs.String(), `"msg":"configuration changes that need a restart were not applied","keys":["log.level"]`) {
-		t.Errorf("no restart warning:\n%s", f.logs)
+	if !strings.Contains(f.logs.String(), `"msg":"configuration changes that need a restart were not applied","keys":["log.level"],`+
+		`"next":"restart the node to apply them: sudo systemctl restart obied"`) {
+		t.Errorf("no restart warning with the next step:\n%s", f.logs)
 	}
 	if got := f.engine.Decisions(decision.StateBlock); len(got) != 0 {
 		t.Errorf("blocks after reload: %+v", got)

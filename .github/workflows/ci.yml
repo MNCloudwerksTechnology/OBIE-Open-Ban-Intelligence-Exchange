@@ -177,6 +177,9 @@ jobs:
           "$RUNNER_TEMP/root/usr/local/bin/obied" --config "$RUNNER_TEMP/root/etc/obie/obie.yaml" --check-config
           "$RUNNER_TEMP/root/usr/local/bin/obied" setup --non-interactive --force --config "$RUNNER_TEMP/root/etc/obie/obie.yaml"
           "$RUNNER_TEMP/root/usr/local/bin/obied" --config "$RUNNER_TEMP/root/etc/obie/obie.yaml" --check-config
+          # The manual pages and completions are installed and load.
+          grep -q '^\.TH OBIECTL 1' "$RUNNER_TEMP/root/usr/local/share/man/man1/obiectl.1"
+          bash -c '. "$1" && complete -p obiectl' _ "$RUNNER_TEMP/root/usr/local/share/bash-completion/completions/obiectl"
 
       - name: make check-unit
         run: |

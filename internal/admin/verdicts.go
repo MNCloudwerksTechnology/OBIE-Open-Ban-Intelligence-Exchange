@@ -402,7 +402,7 @@ func writeServiceError(w http.ResponseWriter, action string, err error, log *slo
 	case errors.Is(err, verdicts.ErrNotFound):
 		http.Error(w, err.Error(), http.StatusNotFound)
 	default:
-		log.Error(action+" failed", "error", err)
+		log.Error("verdict request failed", "action", action, "error", err)
 		http.Error(w, action+" failed; see the obied log", http.StatusInternalServerError)
 	}
 }

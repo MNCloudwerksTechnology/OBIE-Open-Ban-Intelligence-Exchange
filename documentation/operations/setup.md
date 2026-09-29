@@ -63,14 +63,16 @@ anything:
 
 ```text
 obied setup: cannot write /etc/obie/obie.yaml as user alice: permission denied
-obied setup: run it as root: sudo obied setup
+  Why:  the configuration directory belongs to root
+  Next: run it as root: sudo obied setup
 ```
 
 ### Set up without questions
 
 For automated installs, give the answers as flags with
-`--non-interactive`. The same answers always write the same file as the
-questions would:
+`--non-interactive`. The assistant asks its questions only in a terminal:
+in a pipe or a script it asks nothing and points here. The same answers
+always write the same file as the questions would:
 
 ```sh
 sudo obied setup --non-interactive \

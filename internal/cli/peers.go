@@ -14,14 +14,14 @@ import (
 
 func runPeers(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl peers"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the peers as JSON")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the peers as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	peers, err := client.Peers(ctx)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -32,6 +32,10 @@ func runPeers(ctx context.Context, client *admin.Client, args []string, stdout, 
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "obiectl: writing peers: %v\n", err)
 		return ExitIOError
+	}
+	if !*asJSON && len(peers.Peers) == 0 {
+		_, _ = fmt.Fprintf(stderr, "%s: if this node should have peers, sudo obied self-check tests whether each configured peer "+
+			"answers, and documentation/operations/troubleshooting.md#no-peers lists the usual causes\n", program)
 	}
 	return ExitOK
 }
@@ -52,7 +56,7 @@ func writePeersTable(w io.Writer, peers []admin.PeerResponse) error {
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", p.PeerID, orDash(p.Name),
 			strconv.FormatFloat(p.TrustWeight, 'g', -1, 64), yesNo(p.Bootstrap),
-			p.ConnectedSince.UTC().Format(time.RFC3339), latency, orDash(strings.Join(p.Addresses, ",")))
+			formatTime(p.ConnectedSince), latency, orDash(strings.Join(p.Addresses, ",")))
 	}
 	return tw.Flush()
 }

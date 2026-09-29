@@ -46,6 +46,11 @@ func (b *backoff) Next() time.Duration {
 // Reset starts over at min.
 func (b *backoff) Reset() { b.next = b.min }
 
+// unreachableNext is the next step when a bootstrap peer cannot be
+// dialed, logged with the failure.
+const unreachableNext = "check that the peer's node runs, that TCP and UDP port 4001 are open between both servers " +
+	"and that the peer ID at the end of its address is the one its node shows; sudo obied self-check tests it"
+
 // keepConnected dials the bootstrap peer pi until ctx is canceled: at
 // start, after a failed dial with backoff, and after a disconnect one
 // backoff step later. The backoff resets once a connection stayed up for
@@ -61,7 +66,7 @@ func (m *Mesh) keepConnected(ctx context.Context, h host.Host, pi peer.AddrInfo,
 				}
 				m.dialFailed(pi.ID, err)
 				delay := b.Next()
-				log.Warn("bootstrap peer unreachable", "error", err, "retry_in", delay.String())
+				log.Warn("bootstrap peer unreachable", "error", err, "retry_in", delay.String(), "next", unreachableNext)
 				if !sleep(ctx, delay) {
 					return
 				}

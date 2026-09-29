@@ -2,32 +2,27 @@ package cli
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"math"
+	"slices"
 	"strconv"
 	"text/tabwriter"
-	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 )
 
 func runExplain(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl explain"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the explanation as JSON")
-	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: %s [--json] <ip | cidr | indicator key>\n\nFlags:\n", program)
-		fs.PrintDefaults()
-	}
-	if code, done := parseArgs(fs, program, args, 1, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the explanation as JSON, for scripts")
+	target, code, done := parseAddressArg(fs, args, stdout, stderr)
+	if done {
 		return code
 	}
-	d, err := client.Explain(ctx, fs.Arg(0))
+	d, err := client.Explain(ctx, target)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -44,44 +39,31 @@ func runExplain(ctx context.Context, client *admin.Client, args []string, stdout
 
 func runDecisions(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl decisions"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the decisions as JSON")
-	state := fs.String("state", "", "list only decisions in `state` (block, none or allowed)")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the decisions as JSON, for scripts")
+	state := fs.String("state", "", "list only the decisions in `state`: block, none or allowed (default: every state)")
+	limit := limitFlag(fs)
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
+	}
+	if !checkLimit(program, *limit, stderr) {
+		return ExitUsage
 	}
 	resp, err := client.Decisions(ctx, *state)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
 		err = writeJSON(stdout, resp)
 	} else {
-		err = writeDecisionsTable(stdout, resp.Decisions)
+		err = writeDecisionsTable(stdout, resp.Decisions, *limit)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "obiectl: writing decisions: %v\n", err)
 		return ExitIOError
 	}
 	return ExitOK
-}
-
-// parseArgs parses a command's flags and requires exactly n positional
-// arguments.
-func parseArgs(fs *flag.FlagSet, program string, args []string, n int, stderr io.Writer) (code int, done bool) {
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return ExitOK, true
-		}
-		return ExitUsage, true
-	}
-	if fs.NArg() != n {
-		_, _ = fmt.Fprintf(stderr, "%s: want %d argument(s), got %d\n", program, n, fs.NArg())
-		fs.Usage()
-		return ExitUsage, true
-	}
-	return 0, false
 }
 
 // writeExplanation prints the decision summary followed by one row per
@@ -91,7 +73,7 @@ func writeExplanation(w io.Writer, d *admin.DecisionResponse) error {
 	_, _ = fmt.Fprintf(tw, "Indicator:\t%s\n", d.Indicator.Key())
 	decision := d.State
 	if d.ExpiresAt != nil {
-		decision += " until " + d.ExpiresAt.UTC().Format(time.RFC3339)
+		decision += " until " + formatTime(*d.ExpiresAt)
 	}
 	_, _ = fmt.Fprintf(tw, "Decision:\t%s\n", decision)
 	_, _ = fmt.Fprintf(tw, "Reason:\t%s\n", d.Reason)
@@ -104,7 +86,7 @@ func writeExplanation(w io.Writer, d *admin.DecisionResponse) error {
 			_, _ = fmt.Fprintf(tw, "Override note:\t%s\n", s.OverrideNote)
 		}
 	}
-	_, _ = fmt.Fprintf(tw, "Evaluated:\t%s\n", d.EvaluatedAt.UTC().Format(time.RFC3339))
+	_, _ = fmt.Fprintf(tw, "Evaluated:\t%s\n", formatTime(d.EvaluatedAt))
 	if err := tw.Flush(); err != nil {
 		return err
 	}
@@ -120,7 +102,7 @@ func writeExplanation(w io.Writer, d *admin.DecisionResponse) error {
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", orDash(name), p.PeerID, p.Action,
 			formatScore(p.Weight), formatScore(p.Confidence), formatScore(p.Score), yesNo(p.Contributes),
-			orDash(p.Protocol), orDash(p.Reason), p.IssuedAt.UTC().Format(time.RFC3339), p.ExpiresAt.UTC().Format(time.RFC3339))
+			orDash(p.Protocol), orDash(p.Reason), formatTime(p.IssuedAt), formatTime(p.ExpiresAt))
 	}
 	return tw.Flush()
 }
@@ -137,24 +119,49 @@ func sovereigntyText(s *admin.SovereigntyResponse) string {
 	}
 }
 
-// writeDecisionsTable prints one row per decision, in the order the daemon
-// sends them (sorted by indicator key).
-func writeDecisionsTable(w io.Writer, ds []admin.DecisionResponse) error {
+// stateOrder ranks the decision states for listings: blocks first, then
+// what is allowed, then the rest.
+var stateOrder = map[string]int{admin.StateBlock: 0, admin.StateAllowed: 1, admin.StateNone: 2}
+
+// writeDecisionsTable prints how many decisions there are in each state,
+// then at most limit rows (0: every row), blocks first, then allowed and
+// none, each in the order the daemon sends them (sorted by indicator key).
+func writeDecisionsTable(w io.Writer, ds []admin.DecisionResponse, limit int) error {
 	if len(ds) == 0 {
 		_, err := fmt.Fprintln(w, "No decisions.")
 		return err
 	}
+	counts := map[string]int{}
+	for _, d := range ds {
+		counts[d.State]++
+	}
+	if _, err := fmt.Fprintf(w, "Decisions: %d (%d block, %d allowed, %d none)\n\n", len(ds),
+		counts[admin.StateBlock], counts[admin.StateAllowed], counts[admin.StateNone]); err != nil {
+		return err
+	}
+	rank := func(state string) int {
+		if r, ok := stateOrder[state]; ok {
+			return r
+		}
+		return len(stateOrder)
+	}
+	rows := slices.Clone(ds)
+	slices.SortStableFunc(rows, func(a, b admin.DecisionResponse) int { return rank(a.State) - rank(b.State) })
+	rows = rows[:shownRows(len(rows), limit)]
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintf(tw, "INDICATOR\tSTATE\tSCORE\tPUBLISHERS\tEXPIRES\tREASON\n")
-	for _, d := range ds {
+	for _, d := range rows {
 		expires := "-"
 		if d.ExpiresAt != nil {
-			expires = d.ExpiresAt.UTC().Format(time.RFC3339)
+			expires = formatTime(*d.ExpiresAt)
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%s\t%s\n", d.Indicator.Key(), d.State, formatScore(d.Score),
 			d.Contributors, expires, d.Reason)
 	}
-	return tw.Flush()
+	if err := tw.Flush(); err != nil {
+		return err
+	}
+	return writeMoreRows(w, len(rows), len(ds), "decisions, blocks first", "Narrow them down with --state block, allowed or none. ")
 }
 
 // formatScore prints a score, weight or confidence rounded to four decimals,

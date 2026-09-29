@@ -70,7 +70,6 @@ func TestConsoleUsage(t *testing.T) {
 		stderr string
 	}{
 		"argument":    {[]string{"console", "now"}, ExitUsage, `unexpected argument "now"`},
-		"help":        {[]string{"console", "--help"}, ExitOK, "-rotate"},
 		"not running": {[]string{"console"}, ExitFailure, "obied is not running"},
 	} {
 		t.Run(name, func(t *testing.T) {

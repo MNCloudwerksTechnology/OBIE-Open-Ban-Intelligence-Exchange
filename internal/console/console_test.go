@@ -156,7 +156,7 @@ func TestPortInUseKeepsRunning(t *testing.T) {
 		t.Errorf("State = %+v, want the error and no URL", s)
 	}
 	if !strings.Contains(logs.String(), `"level":"ERROR","msg":"console not started; the node runs without it"`) ||
-		!strings.Contains(logs.String(), "address already in use") {
+		!strings.Contains(logs.String(), "address already in use") || !strings.Contains(logs.String(), "choose another console.listen") {
 		t.Errorf("no log line explaining why:\n%s", logs)
 	}
 

@@ -3,13 +3,12 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"os/signal"
-	"sort"
+	"strings"
 	"syscall"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
@@ -29,12 +28,13 @@ const (
 	ExitIOError       = 3
 )
 
-// RunDaemon runs obied with args and returns the process exit code. If the
-// first argument names an offline command (keygen, identity), it runs that
-// command. Otherwise it loads and validates the configuration file and the
-// allow-list files; with --check-config it stops there. Otherwise it runs
-// the node until SIGTERM or SIGINT and then shuts down gracefully; a second
-// signal terminates the process immediately. SIGHUP reloads the
+// RunDaemon runs obied with args and returns the process exit code. The
+// first argument names the command; without one it prints the overview of
+// the commands. "run", or flags such as --config in place of a command, run
+// the node: it loads and validates the configuration file and the
+// allow-list files, and with --check-config it stops there. Otherwise it
+// runs the node until SIGTERM or SIGINT and then shuts down gracefully; a
+// second signal terminates the process immediately. SIGHUP reloads the
 // configuration.
 func RunDaemon(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
@@ -75,29 +75,66 @@ func runDaemon(ctx context.Context, args []string, stdout, stderr io.Writer) int
 	return runDaemonWith(ctx, nil, args, stdout, stderr)
 }
 
+// daemonName is the name of the node daemon.
+const daemonName = "obied"
+
 // runDaemonWith is RunDaemon with the shutdown signal delivered as ctx and
 // the reload signal as reload.
 func runDaemonWith(ctx context.Context, reload <-chan struct{}, args []string, stdout, stderr io.Writer) int {
-	const program = "obied"
-	if len(args) > 0 {
-		if cmd, ok := daemonCommands[args[0]]; ok {
-			return cmd.run(args[1:], stdout, stderr)
+	t := daemonTool()
+	switch {
+	case len(args) == 0:
+		t.overview(stderr)
+		return ExitUsage
+	case isHelpFlag(args[0]):
+		return t.runHelp(nil, stdout, stderr)
+	case args[0] == "help":
+		return t.runHelp(args[1:], stdout, stderr)
+	case strings.HasPrefix(args[0], "-"):
+		// obied --config <file>: how the systemd unit and the container
+		// image run the node.
+		return runNode(ctx, reload, daemonName, args, stdout, stderr)
+	}
+	for _, cmd := range daemonCommands() {
+		if cmd.name == args[0] {
+			return cmd.run(ctx, reload, args[1:], stdout, stderr)
 		}
 	}
-	fs := newFlagSet(program, stderr)
+	t.unknownCommand(stderr, args[0])
+	return ExitUsage
+}
+
+// isHelpFlag reports whether arg asks for help.
+func isHelpFlag(arg string) bool {
+	switch arg {
+	case "-h", "--h", "-help", "--help":
+		return true
+	}
+	return false
+}
+
+// runNode loads and validates the configuration file and the allow-list
+// files; with --check-config it stops there. Otherwise it runs the node
+// until ctx is done, reloading the configuration on every value of reload.
+func runNode(ctx context.Context, reload <-chan struct{}, program string, args []string, stdout, stderr io.Writer) int {
+	fs := newFlagSet(program)
 	configPath := fs.String("config", config.DefaultPath, "path to the YAML configuration `file`")
-	checkOnly := fs.Bool("check-config", false, "validate the configuration and exit 0 (valid) or 1 (invalid)")
-	fs.Usage = func() { daemonUsage(fs) }
-	if code, done := parse(fs, program, args, false, stdout, stderr); done {
+	checkOnly := fs.Bool("check-config", false, "only check the configuration: exit 0 if it is valid, 1 if not")
+	if code, done := parse(fs, args, stdout, stderr); done {
 		return code
+	}
+	if fs.NArg() > 0 {
+		usageProblem(program, fmt.Sprintf("unexpected argument %q", fs.Arg(0))).write(stderr, program)
+		return ExitUsage
 	}
 
 	file, err := config.LoadFile(*configPath)
-	if err == nil {
-		_, err = sovereignty.ReadFiles(file.Config.Allowlist.Files)
-	}
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", program, *configPath, err)
+		configProblem(*configPath, err).write(stderr, program)
+		return ExitInvalidConfig
+	}
+	if _, err := sovereignty.ReadFiles(file.Config.Allowlist.Files); err != nil {
+		allowlistProblem(*configPath, err).write(stderr, program)
 		return ExitInvalidConfig
 	}
 	if *checkOnly {
@@ -116,53 +153,25 @@ func runDaemonWith(ctx context.Context, reload <-chan struct{}, args []string, s
 	log.Info("configuration loaded", "path", *configPath, "mode", cfg.Node.Mode)
 	opts := daemon.Options{Reload: reload, File: file, LoadConfig: func() (*config.File, error) { return config.LoadFile(*configPath) }}
 	if err := daemon.Run(ctx, cfg, logs, opts); err != nil {
-		log.Error("obied failed", "error", err)
+		log.Error("obied failed", "error", err, "next", startNext(err, *configPath))
 		return ExitFailure
 	}
 	return ExitOK
 }
 
-func daemonUsage(fs *flag.FlagSet) {
-	out := fs.Output()
-	_, _ = fmt.Fprintf(out, "Usage: obied [flags]\n       obied <command> [command flags]\n\nCommands:\n")
-	names := make([]string, 0, len(daemonCommands))
-	for name := range daemonCommands {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		_, _ = fmt.Fprintf(out, "  %-18s %s\n", name, daemonCommands[name].summary)
-	}
-	_, _ = fmt.Fprintf(out, "\nFlags:\n")
-	fs.PrintDefaults()
-}
-
-func newFlagSet(program string, stderr io.Writer) *flag.FlagSet {
-	fs := flag.NewFlagSet(program, flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	return fs
-}
-
-// parse adds --version to fs and parses args; positional arguments are a
-// usage error unless allowArgs. It returns done when the program must exit
-// with code: on --help, usage errors and --version.
-func parse(fs *flag.FlagSet, program string, args []string, allowArgs bool, stdout, stderr io.Writer) (code int, done bool) {
+// parse adds --version to fs and parses args up to the first argument that
+// is not a flag. It returns done when the program must exit with code:
+// after --help, a usage error or --version.
+func parse(fs *flag.FlagSet, args []string, stdout, stderr io.Writer) (code int, done bool) {
 	showVersion := fs.Bool("version", false, "print the version and exit")
-
 	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return ExitOK, true
-		}
-		return ExitUsage, true
-	}
-	if fs.NArg() > 0 && !allowArgs {
-		_, _ = fmt.Fprintf(stderr, "%s: unexpected argument %q\n", program, fs.Arg(0))
-		fs.Usage()
-		return ExitUsage, true
+		return flagError(fs, err, stdout, stderr), true
 	}
 	if *showVersion {
-		if _, err := fmt.Fprintln(stdout, version.String(program)); err != nil {
-			_, _ = fmt.Fprintf(stderr, "%s: writing version: %v\n", program, err)
+		// The version is the tool's, also for obied run --version.
+		toolName, _, _ := strings.Cut(fs.Name(), " ")
+		if _, err := fmt.Fprintln(stdout, version.String(toolName)); err != nil {
+			_, _ = fmt.Fprintf(stderr, "%s: writing version: %v\n", fs.Name(), err)
 			return ExitIOError, true
 		}
 		return ExitOK, true

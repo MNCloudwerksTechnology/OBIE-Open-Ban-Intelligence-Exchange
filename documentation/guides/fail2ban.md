@@ -163,8 +163,8 @@ For a jail that does not detect authentication failures, set a matching
 
    The message `could not report 203.0.113.7 of jail sshd to OBIE (obiectl exit
    code 1): ...` should name the refusal. If it says `obied is not running`
-   or `context deadline exceeded`, `obied` is down or not answering, or the
-   `socket` parameter is wrong.
+   or `obied did not answer in time`, `obied` is down or not answering, or
+   the `socket` parameter is wrong; the message goes on with what to do.
 
 3. After the next real ban, list this node's active verdicts:
 

@@ -4,12 +4,57 @@
 package packaging_test
 
 import (
+	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// share is the share/ tree of a release tarball — the manual pages and
+// shell completions — as packaging/gendocs writes it for release.sh.
+var share string
+
+// TestMain generates share once for all tests.
+func TestMain(m *testing.M) {
+	os.Exit(runWithShare(m))
+}
+
+func runWithShare(m *testing.M) int {
+	dir, err := os.MkdirTemp("", "obie-share-")
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+	share = filepath.Join(dir, "share")
+	gendocs := exec.Command("go", "run", "./gendocs", "-out", share, "-version", "0.0.0-test") // #nosec G204 -- writes into a temporary directory.
+	if out, err := gendocs.CombinedOutput(); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "go run ./gendocs: %v\n%s", err, out)
+		return 1
+	}
+	return m.Run()
+}
+
+// shareFiles returns the slash-separated paths of the files below dir.
+func shareFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	var files []string
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		files = append(files, filepath.ToSlash(rel))
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
 
 // tarballFiles maps the files of a release tarball to their sources in the
 // repository; the binaries are stand-ins.
@@ -33,6 +78,9 @@ func newTarball(t *testing.T) string {
 	}
 	for _, b := range []string{"obied", "obiectl"} {
 		writeFile(t, filepath.Join(dir, "bin", b), "#!/bin/sh\necho "+b+"\n", 0o755)
+	}
+	for _, f := range shareFiles(t, share) {
+		writeFile(t, filepath.Join(dir, "share", f), readFile(t, filepath.Join(share, f)), 0o644)
 	}
 	return dir
 }
@@ -107,7 +155,19 @@ func TestInstallIsIdempotent(t *testing.T) {
 	if got := readFile(t, filepath.Join(root, "etc/systemd/system/obied.service")); got != readFile(t, "systemd/obied.service") {
 		t.Error("the installed unit differs from packaging/systemd/obied.service with the default PREFIX")
 	}
-	for _, step := range []string{"/usr/local/bin/obied setup", "systemctl enable --now obied", "/usr/local/bin/obied self-check"} {
+	// Every manual page and completion script of the tarball is installed
+	// where man and the shells find it, and nothing else.
+	files := shareFiles(t, share)
+	if installed := shareFiles(t, filepath.Join(root, "usr/local/share")); strings.Join(installed, " ") != strings.Join(files, " ") {
+		t.Errorf("installed below usr/local/share:\n%v\nwant the tarball's share/:\n%v", installed, files)
+	}
+	for _, f := range files {
+		assertMode(t, filepath.Join(root, "usr/local/share", f), 0o644)
+		if readFile(t, filepath.Join(root, "usr/local/share", f)) != readFile(t, filepath.Join(share, f)) {
+			t.Errorf("usr/local/share/%s differs from the tarball's", f)
+		}
+	}
+	for _, step := range []string{"/usr/local/bin/obied setup", "systemctl enable --now obied", "/usr/local/bin/obied self-check", "man obiectl"} {
 		if !strings.Contains(out, step) {
 			t.Errorf("output does not name the next step %q:\n%s", step, out)
 		}
@@ -150,6 +210,7 @@ func TestInstallPrefix(t *testing.T) {
 		t.Fatalf("install.sh: %v\n%s", err, out)
 	}
 	assertMode(t, filepath.Join(root, "opt/obie/bin/obied"), 0o755)
+	assertMode(t, filepath.Join(root, "opt/obie/share/man/man1/obiectl.1"), 0o644)
 	unit := readFile(t, filepath.Join(root, "etc/systemd/system/obied.service"))
 	if strings.Contains(unit, "/usr/local/bin") || !strings.Contains(unit, "ExecStart=/opt/obie/bin/obied --config") {
 		t.Errorf("unit does not use PREFIX /opt/obie:\n%s", unit)
@@ -171,6 +232,16 @@ func TestInstallRefuses(t *testing.T) {
 		}
 		out, err := install(t, tarball, "DESTDIR="+t.TempDir())
 		if err == nil || !strings.Contains(out, "bin/obiectl is missing") {
+			t.Errorf("install.sh = %v, want a missing-file error:\n%s", err, out)
+		}
+	})
+	t.Run("no manual page", func(t *testing.T) {
+		tarball := newTarball(t)
+		if err := os.Remove(filepath.Join(tarball, "share/man/man1/obied.1")); err != nil {
+			t.Fatal(err)
+		}
+		out, err := install(t, tarball, "DESTDIR="+t.TempDir())
+		if err == nil || !strings.Contains(out, "share/man/man1/obied.1 is missing") {
 			t.Errorf("install.sh = %v, want a missing-file error:\n%s", err, out)
 		}
 	})

@@ -13,10 +13,10 @@ import (
 
 func runConsole(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl console"
-	fs := newFlagSet(program, stderr)
+	fs := newFlagSet(program)
 	rotate := fs.Bool("rotate", false, "issue a new token: the old one stops working and every browser is signed out")
-	asJSON := fs.Bool("json", false, "print the console and its token as JSON")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	asJSON := fs.Bool("json", false, "print the console and its token as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	var resp *admin.ConsoleResponse
@@ -27,7 +27,7 @@ func runConsole(ctx context.Context, client *admin.Client, args []string, stdout
 		resp, err = client.Console(ctx)
 	}
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {

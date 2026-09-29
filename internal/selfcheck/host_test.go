@@ -129,7 +129,7 @@ func TestCheckFirewall(t *testing.T) {
 	h.node.status.Subsystems["enforce"] = admin.SubsystemStatus{Error: nft.ErrPermission.Error()}
 	assertCheck(t, h.run(t, "firewall"), Problem, "the nftables backend cannot block: nftables access denied", "grants CAP_NET_ADMIN")
 	h.node.status.Subsystems["enforce"] = admin.SubsystemStatus{Error: "table inet obie is missing"}
-	assertCheck(t, h.run(t, "firewall"), Problem, "cannot block: table inet obie is missing", "sudo obiectl status")
+	assertCheck(t, h.run(t, "firewall"), Problem, "cannot block: table inet obie is missing", h.obiectl()+" status")
 
 	h.node.status = readyStatus("1.2.3", "observe")
 	h.nftErr = nft.ErrPermission
@@ -167,7 +167,7 @@ func TestChecksWhenTheNodeRefusesTheUser(t *testing.T) {
 	}
 
 	h.session = netip.MustParseAddr("85.10.0.7")
-	assertCheck(t, h.run(t, "session"), Warning, "which OBIE does not protect", "sudo obiectl allow 85.10.0.7", "sudo obied self-check")
+	assertCheck(t, h.run(t, "session"), Warning, "which OBIE does not protect", h.obiectl()+" allow 85.10.0.7", "sudo obied self-check")
 	if c := h.run(t, "session"); len(c.Details) != 1 || c.Details[0] != "cannot ask the node about overrides of 85.10.0.7 as user alice" {
 		t.Errorf("details = %q", c.Details)
 	}
@@ -189,12 +189,14 @@ func TestCheckSession(t *testing.T) {
 	if err := WriteText(&text, report); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(text.String(), "!! LOCKOUT RISK: your SSH session comes from 85.10.0.7") || !strings.Contains(text.String(), "observe mode") {
+	// The banner's command reaches the node's socket, as the finding's does.
+	if !strings.Contains(text.String(), "!! LOCKOUT RISK: your SSH session comes from 85.10.0.7") || !strings.Contains(text.String(), "observe mode") ||
+		!strings.Contains(text.String(), "or on a running node: "+h.obiectl()+" allow 85.10.0.7 --note") {
 		t.Errorf("text report has no lockout banner:\n%s", text.String())
 	}
 
 	h.writeConfigWith(t, "  mode: enforce\n", "")
-	assertCheck(t, h.run(t, "session"), Problem, "which OBIE does not protect: a block would lock you out", "sudo obiectl allow 85.10.0.7")
+	assertCheck(t, h.run(t, "session"), Problem, "which OBIE does not protect: a block would lock you out", h.obiectl()+" allow 85.10.0.7")
 
 	h.writeConfigWith(t, "  mode: enforce\n", "allowlist:\n  cidrs: [85.10.0.0/24]\n")
 	assertCheck(t, h.run(t, "session"), OK, "which is protected (allow-listed: allowlist.cidrs entry 85.10.0.0/24)")
@@ -202,7 +204,7 @@ func TestCheckSession(t *testing.T) {
 	// A running node's explanation counts, overrides included.
 	h.node.status, h.node.statusErr = readyStatus("1.2.3", "enforce"), nil
 	h.node.allowed = map[string]string{}
-	assertCheck(t, h.run(t, "session"), Problem, "which OBIE does not protect", "sudo obiectl allow 85.10.0.7")
+	assertCheck(t, h.run(t, "session"), Problem, "which OBIE does not protect", h.obiectl()+" allow 85.10.0.7")
 	h.node.allowed["85.10.0.7"] = "operator force-allow override on ipv4:85.10.0.7"
 	assertCheck(t, h.run(t, "session"), OK, "which is protected (operator force-allow override on ipv4:85.10.0.7)")
 	h.node.explainErr = errors.New("503 Service Unavailable")
@@ -210,5 +212,5 @@ func TestCheckSession(t *testing.T) {
 
 	h.writeConfigWith(t, "", "allowlist:\n  files: ["+filepath.Join(h.dir, "missing.txt")+"]\n")
 	h.node.statusErr = admin.ErrDaemonNotRunning
-	assertCheck(t, h.run(t, "session"), Warning, "cannot tell whether 85.10.0.7, your SSH session's address, is protected", "sudo obiectl explain 85.10.0.7")
+	assertCheck(t, h.run(t, "session"), Warning, "cannot tell whether 85.10.0.7, your SSH session's address, is protected", h.obiectl()+" explain 85.10.0.7")
 }

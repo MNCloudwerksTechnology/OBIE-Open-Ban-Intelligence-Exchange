@@ -121,7 +121,8 @@ func TestKeygenRefusesOverwrite(t *testing.T) {
 	if code != ExitFailure || stdout != "" {
 		t.Fatalf("second keygen: exit code = %d, stdout %q", code, stdout)
 	}
-	if !strings.Contains(stderr, "already exists; pass --force to replace it") {
+	if !strings.Contains(stderr, "node.key exists already: this node has an identity\n") ||
+		!strings.Contains(stderr, "Next: to replace it, which gives the node a new peer ID that its peers must be told: obied keygen --state-dir "+stateDir+" --force") {
 		t.Errorf("stderr = %q", stderr)
 	}
 	if !bytes.Equal(before, readKeyFile(t, stateDir)) {
@@ -196,7 +197,12 @@ func TestIdentityCommandErrors(t *testing.T) {
 		wantStderr []string
 	}{
 		{name: "missing key", args: []string{"identity", "--state-dir", newStateDir(t)}, wantCode: ExitFailure,
-			wantStderr: []string{"no such file", "create the key with obied keygen, or start obied once"}},
+			wantStderr: []string{"this node has no identity yet: ", "node.key does not exist\n",
+				"Why:  the node creates its identity key the first time it starts",
+				"Next: start the node once: sudo systemctl enable --now obied", "Next: or create the key now"}},
+		{name: "missing state directory", args: []string{"identity", "--state-dir", "/nonexistent/obie"}, wantCode: ExitFailure,
+			wantStderr: []string{"this node has no identity yet: its state directory /nonexistent/obie does not exist\n",
+				"Next: if the node keeps its state elsewhere"}},
 		{name: "insecure key", args: []string{"identity", "--state-dir", insecure}, wantCode: ExitFailure,
 			wantStderr: []string{"insecure key file", "chmod 600 " + filepath.Join(insecure, "node.key")}},
 		{name: "invalid config", args: []string{"identity", "--config", invalidConfig}, wantCode: ExitInvalidConfig,
@@ -206,11 +212,7 @@ func TestIdentityCommandErrors(t *testing.T) {
 		{name: "unexpected argument", args: []string{"identity", "now"}, wantCode: ExitUsage,
 			wantStderr: []string{`unexpected argument "now"`}},
 		{name: "unknown flag", args: []string{"keygen", "--overwrite"}, wantCode: ExitUsage,
-			wantStderr: []string{"-force", "-state-dir"}},
-		{name: "keygen help", args: []string{"keygen", "--help"}, wantCode: ExitOK,
-			wantStderr: []string{"-force", "-config file", "-state-dir directory"}},
-		{name: "obied help lists commands", args: []string{"--help"}, wantCode: ExitOK,
-			wantStderr: []string{"keygen", "identity", "-check-config"}},
+			wantStderr: []string{"unknown flag --overwrite", "obied keygen --help"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

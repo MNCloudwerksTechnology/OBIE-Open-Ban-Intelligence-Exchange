@@ -79,6 +79,7 @@ var glossaryGuides = []string{
 	"documentation/operations/troubleshooting.md",
 	"documentation/operations/monitoring.md",
 	"documentation/operations/console.md",
+	"documentation/operations/messages.md",
 	"documentation/guides/fail2ban.md",
 	"documentation/guides/nftables.md",
 	"packaging/compose/README.md",

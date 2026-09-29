@@ -79,7 +79,8 @@ func (r *reloader) reload(ctx context.Context) error {
 
 	keys := config.ChangedOnRestart(r.running.Config, next)
 	if len(keys) > 0 {
-		r.log.Warn("configuration changes that need a restart were not applied", "keys", keys)
+		r.log.Warn("configuration changes that need a restart were not applied", "keys", keys,
+			"next", "restart the node to apply them: sudo systemctl restart obied")
 	}
 	applied := config.ChangedOnReload(r.running.Config, next)
 	r.running = r.running.Reload(file)
@@ -91,7 +92,8 @@ func (r *reloader) reload(ctx context.Context) error {
 }
 
 func (r *reloader) reject(err error) error {
-	r.log.Error("configuration reload rejected; the running configuration is kept", "error", err)
+	r.log.Error("configuration reload rejected; the running configuration is kept", "error", err,
+		"next", "sudo obied --check-config names every problem; fix them, then reload again: sudo systemctl reload obied")
 	r.loads.rejected(err)
 	return err
 }

@@ -20,7 +20,8 @@ Every `v*` tag publishes, for linux/amd64 and linux/arm64:
 - `obie-<version>-linux-<arch>.tar.gz` — static `bin/obied` and
   `bin/obiectl`, `install.sh`, `etc/obie.yaml` (the example
   configuration), `systemd/obied.service`, `fail2ban/action.d/obie.conf`,
-  `LICENSE.md`, `README.md`;
+  the manual pages and the bash, zsh and fish completions of both tools
+  below `share/`, `LICENSE.md`, `README.md`;
 - `obie-<version>-linux-<arch>.obied.cdx.json` and `….obiectl.cdx.json` —
   CycloneDX SBOMs of the two binaries;
 - `SHA256SUMS` over all of them;
@@ -47,7 +48,11 @@ sudo ./install.sh
 1. creates the system group and user `obie` (home `/var/lib/obie`, no
    login shell);
 2. installs `obied` and `obiectl` into `/usr/local/bin` (`PREFIX=/opt/obie
-   ./install.sh` for another prefix; the unit is adjusted to match);
+   ./install.sh` for another prefix; the unit is adjusted to match), and
+   their manual pages and shell completions below `/usr/local/share`, where
+   `man`, bash, zsh and fish find them: `man obiectl`, and Tab completes
+   commands and flags (the [command-line reference](cli.md) has the same
+   text);
 3. installs `/etc/obie/obie.yaml` (mode 0640, group `obie`) **only if there
    is none**, and always the current example as
    `/etc/obie/obie.yaml.example`;
@@ -179,6 +184,10 @@ sudo systemctl disable --now obied
 sudo obied teardown-firewall            # removes the table inet obie, if any
 sudo rm /etc/systemd/system/obied.service /usr/local/bin/obied /usr/local/bin/obiectl
 sudo rm -f /etc/fail2ban/action.d/obie.conf
+cd /usr/local/share && sudo rm -f man/man1/obied.1 man/man1/obiectl.1 \
+  bash-completion/completions/obied bash-completion/completions/obiectl \
+  zsh/site-functions/_obied zsh/site-functions/_obiectl \
+  fish/vendor_completions.d/obied.fish fish/vendor_completions.d/obiectl.fish
 sudo systemctl daemon-reload
 # and, to remove the identity, events and configuration as well:
 sudo rm -r /var/lib/obie /etc/obie /var/log/obie; sudo userdel obie

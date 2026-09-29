@@ -50,6 +50,15 @@ func (r *run) queryNode() {
 	r.status, r.statusErr = r.node.Status(ctx)
 }
 
+// obiectl is how a next step runs obiectl against the node's socket, the
+// one queryNode asks: with --socket unless it is the default.
+func (r *run) obiectl() string {
+	if r.cfg == nil || r.cfg.Admin.Socket == config.Default().Admin.Socket {
+		return "sudo obiectl"
+	}
+	return "sudo obiectl --socket " + config.QuotePath(r.cfg.Admin.Socket)
+}
+
 // running reports whether the node answered.
 func (r *run) running() bool { return r.statusErr == nil }
 
@@ -85,7 +94,7 @@ func (r *run) checkNode() Check {
 		return newCheck(id, name, findings...)
 	case err == nil:
 		c := newCheck(id, name, problem("the node is running, but not ready: "+strings.Join(notReady(s), ", "),
-			"see what the node says: sudo obiectl status; sudo journalctl -u obied -n 50"))
+			"see what the node says: "+r.obiectl()+" status; sudo journalctl -u obied -n 50"))
 		for _, sub := range notReady(s) {
 			if e := s.Subsystems[sub].Error; e != "" {
 				c.Details = append(c.Details, sub+": "+e)
@@ -184,7 +193,7 @@ func (r *run) checkPeers() Check {
 		peers, err := r.node.Peers(ctx)
 		cancel()
 		if err != nil {
-			return newCheck(id, name, warn(fmt.Sprintf("cannot list the node's peers: %v", err), "list them yourself: sudo obiectl peers"))
+			return newCheck(id, name, warn(fmt.Sprintf("cannot list the node's peers: %v", err), "list them yourself: "+r.obiectl()+" peers"))
 		}
 		for _, p := range peers.Peers {
 			connected[p.PeerID] = true

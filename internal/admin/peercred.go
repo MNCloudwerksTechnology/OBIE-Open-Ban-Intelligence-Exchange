@@ -18,7 +18,7 @@ func newAccessPolicy(group string, log *slog.Logger) peercred.Policy {
 	p, err := peercred.NewPolicy(group)
 	if err != nil {
 		log.Warn("admin socket group not found; only root and obied's own user may use the admin API",
-			"group", group, "error", err)
+			"group", group, "error", err, "next", peercred.MissingGroupNext(group))
 	}
 	return p
 }

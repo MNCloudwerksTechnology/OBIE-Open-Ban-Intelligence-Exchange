@@ -2,8 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"text/tabwriter"
@@ -11,6 +9,7 @@ import (
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 )
 
 func runAllow(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
@@ -24,16 +23,11 @@ func runBlock(ctx context.Context, client *admin.Client, args []string, stdout, 
 // runSetOverride sets a force-allow or force-block override.
 func runSetOverride(ctx context.Context, client *admin.Client, name, action string, args []string, stdout, stderr io.Writer) int {
 	program := "obiectl " + name
-	fs := newFlagSet(program, stderr)
-	ttl := fs.String("ttl", "", "remove the override after `duration` (e.g. 90m, 36h, 7d); default: never")
-	note := fs.String("note", "", "why the override was set, shown by obiectl overrides and explain")
-	asJSON := fs.Bool("json", false, "print the result as JSON")
-	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: %s <ip | cidr> [--ttl duration] [--note text] [--json]\n\n", program)
-		_, _ = fmt.Fprintf(fs.Output(), "%s\n\nFlags:\n", overrideHelp[action])
-		fs.PrintDefaults()
-	}
-	indicator, code, done := parseOne(fs, program, args, stderr)
+	fs := newFlagSet(program)
+	ttl := fs.String("ttl", "", "remove the override after this `duration`, e.g. 90m, 36h or 7d (default: never)")
+	note := fs.String("note", "", "why the override was set, shown by obiectl overrides and explain (default: no note)")
+	asJSON := fs.Bool("json", false, "print the result as JSON, for scripts")
+	indicator, code, done := parseAddressArg(fs, args, stdout, stderr)
 	if done {
 		return code
 	}
@@ -41,14 +35,14 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 	if *ttl != "" {
 		d, err := config.ParseDuration(*ttl)
 		if err != nil || d <= 0 {
-			_, _ = fmt.Fprintf(stderr, "%s: invalid --ttl %q: want a positive duration such as 90m, 36h or 7d\n", program, *ttl)
+			usageProblem(program, fmt.Sprintf("invalid --ttl %q: want a positive duration such as 90m, 36h or 7d", *ttl)).write(stderr, program)
 			return ExitUsage
 		}
 		req.TTLSeconds = int64(d.Std().Round(time.Second) / time.Second)
 	}
 	res, err := client.SetOverride(ctx, req)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -61,26 +55,42 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 		return ExitIOError
 	}
 	if res.Warning != "" {
-		_, _ = fmt.Fprintf(stderr, "obiectl: warning: %s\n", res.Warning)
+		blockWarning(ctlCommandLine(client.Socket()), indicator, res).write(stderr, program)
 	}
 	return ExitOK
 }
 
-var overrideHelp = map[string]string{
-	admin.ActionForceAllow: "Never block the address or range, whatever the mesh reports. Beats every\nother rule, including the allow-list and force-blocks on overlapping ranges.",
-	admin.ActionForceBlock: "Block the address or range whatever its score. Beats allowlist.cidrs and\nallowlist.files, but never the built-in ranges, this node's own addresses\nor its bootstrap peers.",
+// blockWarning explains why the force-block on indicator that res reports
+// does not take effect: an always-allow override that beats it, or a
+// protected address. ctl is how the next steps run obiectl.
+func blockWarning(ctl, indicator string, res *admin.OverrideResult) problem {
+	if s := res.Decision.Sovereignty; s != nil && s.Rule == string(sovereignty.RuleForceAllow) && s.Match != "" {
+		match := s.Match
+		if ind, err := admin.ParseIndicator(s.Match); err == nil {
+			match = ind.Value
+		}
+		return problem{id: "block-overruled", what: "warning: " + res.Warning,
+			why: "an always-allow override beats every other rule, also an always-block override",
+			next: []string{"to block it, remove the always-allow override: " + ctl + " unoverride " + match +
+				"; then " + ctl + " explain " + indicator + " shows whether another one still beats the block",
+				"otherwise remove this block, which has no effect: " + ctl + " unoverride " + indicator}}
+	}
+	return problem{id: "block-protected", what: "warning: " + res.Warning,
+		why: "protected addresses, such as private networks, this node's own addresses and its bootstrap peers, " +
+			"are never blocked, not even by an override, so that OBIE cannot cut this server off",
+		next: []string{"the override is kept but has no effect; remove it: " + ctl + " unoverride " + indicator}}
 }
 
 func runOverrides(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl overrides"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the overrides as JSON")
-	if code, done := parseCommand(fs, program, args, stderr); done {
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the overrides as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code
 	}
 	resp, err := client.Overrides(ctx)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -97,19 +107,15 @@ func runOverrides(ctx context.Context, client *admin.Client, args []string, stdo
 
 func runUnoverride(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl unoverride"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the result as JSON")
-	fs.Usage = func() {
-		_, _ = fmt.Fprintf(fs.Output(), "Usage: %s <ip | cidr> [--json]\n\nFlags:\n", program)
-		fs.PrintDefaults()
-	}
-	indicator, code, done := parseOne(fs, program, args, stderr)
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the result as JSON, for scripts")
+	indicator, code, done := parseAddressArg(fs, args, stdout, stderr)
 	if done {
 		return code
 	}
 	res, err := client.DeleteOverride(ctx, indicator)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -125,31 +131,6 @@ func runUnoverride(ctx context.Context, client *admin.Client, args []string, std
 		return ExitIOError
 	}
 	return ExitOK
-}
-
-// parseOne parses a command's flags, which may also follow the one
-// positional argument, and returns that argument.
-func parseOne(fs *flag.FlagSet, program string, args []string, stderr io.Writer) (arg string, code int, done bool) {
-	var positional []string
-	for {
-		if err := fs.Parse(args); err != nil {
-			if errors.Is(err, flag.ErrHelp) {
-				return "", ExitOK, true
-			}
-			return "", ExitUsage, true
-		}
-		if fs.NArg() == 0 {
-			break
-		}
-		positional = append(positional, fs.Arg(0))
-		args = fs.Args()[1:]
-	}
-	if len(positional) != 1 {
-		_, _ = fmt.Fprintf(stderr, "%s: want 1 argument, got %d\n", program, len(positional))
-		fs.Usage()
-		return "", ExitUsage, true
-	}
-	return positional[0], 0, false
 }
 
 // writeOverrideResult prints the override that was set and the resulting
@@ -181,7 +162,7 @@ func untilText(t *time.Time) string {
 	if t == nil {
 		return "until removed"
 	}
-	return "until " + t.UTC().Format(time.RFC3339)
+	return "until " + formatTime(*t)
 }
 
 // writeOverridesTable prints one row per override, in the order the daemon
@@ -196,10 +177,10 @@ func writeOverridesTable(w io.Writer, list []admin.OverrideResponse) error {
 	for _, o := range list {
 		expires := "never"
 		if o.ExpiresAt != nil {
-			expires = o.ExpiresAt.UTC().Format(time.RFC3339)
+			expires = formatTime(*o.ExpiresAt)
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", o.Indicator.Key(), o.Action, expires,
-			o.CreatedAt.UTC().Format(time.RFC3339), orDash(o.Note))
+			formatTime(o.CreatedAt), orDash(o.Note))
 	}
 	return tw.Flush()
 }

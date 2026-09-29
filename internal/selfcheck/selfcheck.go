@@ -79,9 +79,10 @@ type Report struct {
 	Summary map[Status]int `json:"summary"`
 	// lockout is the operator's session address when it is not protected,
 	// for the banner of the text report; enforcing says whether the node
-	// blocks.
+	// blocks; obiectl is how the banner runs obiectl against the node.
 	lockout   netip.Addr
 	enforcing bool
+	obiectl   string
 }
 
 // finding is one observation of a check.
@@ -209,7 +210,7 @@ func Run(ctx context.Context, env Env) Report {
 			report.Status = c.Status
 		}
 	}
-	report.lockout, report.enforcing = r.lockout, r.enforcing
+	report.lockout, report.enforcing, report.obiectl = r.lockout, r.enforcing, r.obiectl()
 	return report
 }
 

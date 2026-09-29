@@ -64,6 +64,13 @@ func NewPolicy(group string) (Policy, error) {
 	return p, nil
 }
 
+// MissingGroupNext is the next step when group, which admits users to the
+// node's admin interfaces, does not exist.
+func MissingGroupNext(group string) string {
+	return "create the group, sudo groupadd --system " + group +
+		", or set admin.socket_group to an existing one; then restart the node: sudo systemctl restart obied"
+}
+
 // Allows reports whether a peer with credentials c may use the interface.
 // A failure to look up the peer's groups is logged to log and denies.
 func (p Policy) Allows(c Cred, log *slog.Logger) bool {

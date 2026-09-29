@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"io/fs"
 	"net/netip"
 	"os"
@@ -35,6 +36,7 @@ func testSetupEnv(sessionAddr string) setupEnv {
 		groupExists:   func(string) bool { return true },
 		euid:          func() int { return 1000 },
 		userName:      func() string { return "alice" },
+		terminal:      func() bool { return true },
 	}
 }
 
@@ -231,7 +233,7 @@ func TestSetupNonInteractiveNeedsForce(t *testing.T) {
 	}
 	first := readText(t, path)
 	code, _, stderr := runSetupTest(t, env, "", "--config", path, "--non-interactive", "--mode", "enforce")
-	if code != ExitFailure || !strings.Contains(stderr, "exists already") || !strings.Contains(stderr, "pass --force") {
+	if code != ExitFailure || !strings.Contains(stderr, "exists already") || !strings.Contains(stderr, "Next: to replace it, add --force") {
 		t.Errorf("second run without --force: exit code %d: %s", code, stderr)
 	}
 	if readText(t, path) != first {
@@ -279,7 +281,7 @@ func TestSetupAsRootWithoutPermission(t *testing.T) {
 	code, stdout, stderr := runSetupTest(t, env, "", "--config", "/etc/obie/obie.yaml")
 	if code != ExitFailure || stdout != "" || strings.Contains(stderr, "as root") ||
 		!strings.Contains(stderr, "cannot write /etc/obie/obie.yaml as user root: read-only file system") ||
-		!strings.Contains(stderr, "choose a place it can write with --config FILE") {
+		!strings.Contains(stderr, "Next: choose a place it can write: --config <file>") {
 		t.Errorf("exit code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 }
@@ -375,11 +377,33 @@ func TestSetupLockoutWarning(t *testing.T) {
 }
 
 func TestSetupHelp(t *testing.T) {
-	code, _, stderr := runSetupTest(t, testSetupEnv(""), "", "--help")
-	if code != ExitOK || !strings.Contains(stderr, "obied setup --non-interactive") || !strings.Contains(stderr, "-peer address[,name=NAME][,weight=0..1]") {
-		t.Errorf("exit code %d:\n%s", code, stderr)
+	code, stdout, _ := runSetupTest(t, testSetupEnv(""), "", "--help")
+	if code != ExitOK || !strings.Contains(stdout, "obied setup --non-interactive") || !strings.Contains(stdout, "--peer address[,name=NAME][,weight=0..1]") {
+		t.Errorf("exit code %d:\n%s", code, stdout)
 	}
-	if code, _, stderr := runObied(t, "--help"); code != ExitOK || !strings.Contains(stderr, "  setup ") {
-		t.Errorf("obied --help does not list setup:\n%s", stderr)
+	if code, stdout, _ := runObied(t, "--help"); code != ExitOK || !strings.Contains(stdout, "  setup ") {
+		t.Errorf("obied --help does not list setup:\n%s", stdout)
+	}
+}
+
+// TestSetupAsksOnlyOnATerminal checks that the assistant asks nothing when
+// its input or output is not a terminal, so that no question ends up in a
+// pipe, and that --non-interactive still works there.
+func TestSetupAsksOnlyOnATerminal(t *testing.T) {
+	env := testSetupEnv("")
+	env.terminal = func() bool { return false }
+	path := filepath.Join(t.TempDir(), "obie.yaml")
+	code, stdout, stderr := runSetupTest(t, env, "\n\n\n\n\n\n", "--config", path)
+	if code != ExitUsage || stdout != "" ||
+		!strings.HasPrefix(stderr, "obied setup: obied setup asks questions, but its input or output is not a terminal\n") ||
+		!strings.Contains(stderr, "Next: run it in a terminal: sudo obied setup --config "+path+"\n") ||
+		!strings.Contains(stderr, "Next: or give the answers as flags with --non-interactive") {
+		t.Errorf("exit code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a file was written: %v", err)
+	}
+	if code, _, stderr := runSetupTest(t, env, "", "--config", path, "--non-interactive"); code != ExitOK {
+		t.Errorf("--non-interactive: exit code %d, stderr %q", code, stderr)
 	}
 }

@@ -62,6 +62,26 @@ Publisher:   12D3KooWSSS
 	}
 }
 
+// TestIndicatorsNextPage checks that the command for the next page keeps
+// the filter, the page size and the socket of the first.
+func TestIndicatorsNextPage(t *testing.T) {
+	for _, tc := range []struct {
+		ctl       string
+		mine      bool
+		publisher string
+		limit     int
+		want      string
+	}{
+		{"sudo obiectl", false, "", 0, "sudo obiectl indicators"},
+		{"sudo obiectl", true, "", 0, "sudo obiectl indicators --mine"},
+		{"sudo obiectl --socket /tmp/a.sock", false, "12D3KooWAAA", 20, "sudo obiectl --socket /tmp/a.sock indicators --publisher 12D3KooWAAA --limit 20"},
+	} {
+		if got := indicatorsNextPage(tc.ctl, tc.mine, tc.publisher, tc.limit); got != tc.want {
+			t.Errorf("indicatorsNextPage(%q, %v, %q, %d) = %q, want %q", tc.ctl, tc.mine, tc.publisher, tc.limit, got, tc.want)
+		}
+	}
+}
+
 func TestWriteIndicators(t *testing.T) {
 	local := reportedVerdict()
 	foreign := reportedVerdict()
@@ -71,20 +91,21 @@ func TestWriteIndicators(t *testing.T) {
 	ind := admin.IndicatorResponse{Indicator: local.Indicator, Verdicts: []admin.VerdictResponse{{Event: foreign}, {Local: true, Event: local}}}
 
 	var out bytes.Buffer
-	if err := writeIndicatorsTable(&out, &admin.IndicatorsResponse{Indicators: []admin.IndicatorResponse{ind}, NextCursor: "ipv4:85.10.0.7"}); err != nil {
+	nextPage := indicatorsNextPage("sudo obiectl", true, "", 50)
+	if err := writeIndicatorsTable(&out, &admin.IndicatorsResponse{Indicators: []admin.IndicatorResponse{ind}, NextCursor: "ipv4:85.10.0.7"}, nextPage); err != nil {
 		t.Fatal(err)
 	}
 	want := `INDICATOR       PUBLISHER    ACTION  CONFIDENCE  EVENTS  PROTOCOL  REASON               EXPIRES
 ipv4:85.10.0.7  12D3KooWAAA  watch   0.55        5       ssh       password_bruteforce  2026-10-05T12:00:00Z
 ipv4:85.10.0.7  (this node)  ban     0.8         5       ssh       password_bruteforce  2026-10-05T12:00:00Z
 
-More indicators follow: obiectl indicators --cursor ipv4:85.10.0.7
+More indicators follow: sudo obiectl indicators --mine --limit 50 --cursor ipv4:85.10.0.7
 `
 	if out.String() != want {
 		t.Errorf("indicators =\n%s\nwant\n%s", out.String(), want)
 	}
 	out.Reset()
-	if err := writeIndicatorsTable(&out, &admin.IndicatorsResponse{}); err != nil || out.String() != "No active verdicts.\n" {
+	if err := writeIndicatorsTable(&out, &admin.IndicatorsResponse{}, nextPage); err != nil || out.String() != "No active verdicts.\n" {
 		t.Errorf("empty indicators = %q, %v", out.String(), err)
 	}
 
@@ -171,21 +192,29 @@ func TestVerdictCommandsUsage(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		"report no target":        {[]string{"report", "--protocol", "ssh", "--reason", "x"}, ExitUsage, "want 1 argument, got 0"},
-		"report two targets":      {[]string{"report", "85.10.0.7", "85.10.0.8"}, ExitUsage, "want 1 argument, got 2"},
-		"report help":             {[]string{"report", "--help"}, ExitOK, "Usage: obiectl report --protocol <service> --reason <class>"},
-		"report bad ttl":          {[]string{"report", "--ttl", "soon", "85.10.0.7"}, ExitUsage, "--ttl: invalid duration"},
-		"report bad flag":         {[]string{"report", "--user", "root", "85.10.0.7"}, ExitUsage, "flag provided but not defined"},
-		"report missing file":     {[]string{"report", "--evidence-file", "/nonexistent/log", "85.10.0.7"}, ExitFailure, "--evidence-file"},
+		"report no target":        {[]string{"report", "--protocol", "ssh", "--reason", "x"}, ExitUsage, "missing the address or range"},
+		"report two targets":      {[]string{"report", "85.10.0.7", "85.10.0.8"}, ExitUsage, "expects one address or range, got 2 arguments"},
+		"report bad ttl":          {[]string{"report", "--protocol", "ssh", "--reason", "x", "--ttl", "soon", "85.10.0.7"}, ExitUsage, "--ttl: invalid duration"},
+		"report bad flag":         {[]string{"report", "--user", "root", "85.10.0.7"}, ExitUsage, "unknown flag --user"},
+		"report missing file":     {[]string{"report", "--protocol", "ssh", "--reason", "x", "--evidence-file", "/nonexistent/log", "85.10.0.7"}, ExitFailure, "cannot use the evidence of --evidence-file: open /nonexistent/log"},
+		"report no protocol":      {[]string{"report", "--reason", "x", "85.10.0.7"}, ExitUsage, "--protocol is missing: name the attacked service, e.g. --protocol ssh"},
+		"report no reason":        {[]string{"report", "--protocol", "ssh", "85.10.0.7"}, ExitUsage, "--reason is missing"},
+		"report no events":        {[]string{"report", "--protocol", "ssh", "--reason", "x", "--events", "0", "85.10.0.7"}, ExitUsage, "--events must be at least 1, got 0"},
+		"report bad confidence":   {[]string{"report", "--protocol", "ssh", "--reason", "x", "--confidence", "1.5", "85.10.0.7"}, ExitUsage, "--confidence must be a number from 0 to 1, got 1.5"},
+		"report bad action":       {[]string{"report", "--protocol", "ssh", "--reason", "x", "--action", "nuke", "85.10.0.7"}, ExitUsage, `--action must be ban or watch, got "nuke"`},
+		"report not an address":   {[]string{"report", "--protocol", "ssh", "--reason", "x", "85.10.0"}, ExitUsage, `"85.10.0" is not an IP address or range`},
+		"revoke not a target":     {[]string{"revoke", "1b4e28ba"}, ExitUsage, `"1b4e28ba" is neither an event ID nor an IP address or range`},
+		"revoke too broad":        {[]string{"revoke", "85.10.0.0/15"}, ExitUsage, `"85.10.0.0/15" is broader than /16`},
+		"report single cidr":      {[]string{"report", "--protocol", "ssh", "--reason", "x", "cidr:85.10.0.7/32"}, ExitUsage, `"85.10.0.7/32" is a single address`},
+		"show not an address":     {[]string{"show", "example.org"}, ExitUsage, `"example.org" is not an IP address or range`},
 		"report ip and argument":  {[]string{"report", "--ip", "85.10.0.7", "85.10.0.8"}, ExitUsage, "either with --ip or as the argument"},
 		"report two evidences":    {[]string{"report", "--evidence-file", "log", "--evidence-from-stdin", "--ip", "85.10.0.7"}, ExitUsage, "only one of --evidence-file and --evidence-from-stdin"},
 		"report --ip not running": {[]string{"report", "--ip", "85.10.0.7", "--protocol", "ssh", "--reason", "x"}, ExitFailure, "obied is not running"},
 		"zero timeout":            {[]string{"--timeout", "0s", "status"}, ExitUsage, "--timeout must be positive"},
 		"report not running":      {[]string{"report", "85.10.0.7", "--protocol", "ssh", "--reason", "x"}, ExitFailure, "obied is not running"},
-		"revoke no target":        {[]string{"revoke"}, ExitUsage, "want 1 argument, got 0"},
-		"revoke help":             {[]string{"revoke", "-h"}, ExitOK, "Usage: obiectl revoke"},
+		"revoke no target":        {[]string{"revoke"}, ExitUsage, "missing the event ID, address or range"},
 		"revoke not running":      {[]string{"revoke", "85.10.0.7"}, ExitFailure, "obied is not running"},
-		"show no target":          {[]string{"show"}, ExitUsage, "want 1 argument, got 0"},
+		"show no target":          {[]string{"show"}, ExitUsage, "missing the address or range"},
 		"show not running":        {[]string{"show", "85.10.0.7"}, ExitFailure, "obied is not running"},
 		"indicators arg":          {[]string{"indicators", "85.10.0.7"}, ExitUsage, `unexpected argument "85.10.0.7"`},
 		"indicators both":         {[]string{"indicators", "--mine", "--publisher", "12D3KooWAAA"}, ExitUsage, "only one of --mine and --publisher"},
@@ -261,16 +290,18 @@ func TestObiectlVerdictsAgainstInProcessDaemon(t *testing.T) {
 	}
 
 	_, errOut := ctl(ExitFailure, "report", "--protocol", "ssh", "--reason", "x", "192.168.1.9")
-	if !strings.Contains(errOut, "not a public address") || !strings.Contains(errOut, "422 Unprocessable Entity") ||
-		!strings.Contains(errOut, "nothing was published") {
+	if !strings.HasPrefix(errOut, "obiectl report: nothing was reported: ipv4:192.168.1.9 is not a public address: "+
+		"192.168.1.9/32 overlaps special-purpose range 192.168.0.0/16\n  Why:  OBIE never reports private") ||
+		!strings.Contains(errOut, "\n  Next: nothing needs to be done if this is right") {
 		t.Errorf("private report stderr = %q", errOut)
 	}
 	_, errOut = ctl(ExitFailure, "report", "--protocol", "ssh", "--reason", "x", "85.20.0.1")
-	if !strings.Contains(errOut, "allow-listed network 85.20.0.0/16") {
+	if !strings.Contains(errOut, "nothing was reported: ipv4:85.20.0.1 overlaps the allow-listed network 85.20.0.0/16 (allowlist.cidrs)\n") ||
+		!strings.Contains(errOut, "Next: if the address should not be protected, remove it from allowlist.cidrs") {
 		t.Errorf("allow-listed report stderr = %q", errOut)
 	}
-	_, errOut = ctl(ExitFailure, "report", "--reason", "x", "85.10.0.8")
-	if !strings.Contains(errOut, "protocol: missing") || !strings.Contains(errOut, "400 Bad Request") {
+	_, errOut = ctl(ExitUsage, "report", "--reason", "x", "85.10.0.8")
+	if !strings.Contains(errOut, "--protocol is missing") {
 		t.Errorf("report without protocol stderr = %q", errOut)
 	}
 
@@ -300,7 +331,8 @@ func TestObiectlVerdictsAgainstInProcessDaemon(t *testing.T) {
 		t.Errorf("revoke output = %q", out)
 	}
 	_, errOut = ctl(ExitFailure, "revoke", "85.10.0.7")
-	if !strings.Contains(errOut, "no active verdict on ipv4:85.10.0.7") || !strings.Contains(errOut, "404 Not Found") {
+	if errOut != "obiectl revoke: this node has no active verdict on ipv4:85.10.0.7\n"+
+		"  Next: see what this node has reported: sudo obiectl --socket "+n.socket+" indicators --mine\n" {
 		t.Errorf("second revoke stderr = %q", errOut)
 	}
 	var revs admin.RevocationsResponse

@@ -64,6 +64,30 @@ The first release, v0.1.0 "Stable Base".
 - **Admin API and CLI.** A local Unix-socket API restricted to root, the
   service user and the `obie` group, and `obiectl` on top of it
   (`status`, `peers` and the commands above).
+- **Self-explanatory command line.** Every command of `obied` and
+  `obiectl` has help with its purpose, every flag with its default and
+  realistic examples (`--help`, `help <command>`); without a command, or
+  with an unknown one, both list their commands grouped by task (look,
+  decide, report, manage) with where to start and the closest match.
+  `obied` without arguments now shows this list instead of starting a
+  node with the default configuration; `obied run` and
+  `obied --config <file>`, as the systemd unit and the image call it, run
+  the node. Errors say what went wrong, why and what to do next — node
+  not running, permission denied on the admin socket, invalid address,
+  protected address, invalid configuration with file, line and setting,
+  missing identity — and the node's log names the next step for an
+  unreachable peer, a failed start or reload and other problems an
+  operator must act on. Output uses RFC 3339 UTC times, days for long
+  spans and no colour; every listing has `--json`; `decisions` and
+  `enforced` show a summary and at most `--limit` rows; `obied setup`
+  never asks questions into a pipe. Shell completion for bash, zsh and
+  fish (`completion <shell>`) and the manual pages `obied(1)` and
+  `obiectl(1)` ship in the release tarballs and are installed by
+  `install.sh`. The [command-line reference](documentation/operations/cli.md)
+  is generated from the same help, and the
+  [message inventory](documentation/operations/messages.md) lists every
+  error and log warning with what to do; tests keep both current
+  ([ADR 0028](documentation/adr/0028-command-line-help-and-messages.md)).
 - **Web console.** An opt-in browser view of the node
   (`console.enabled`, switched on and off by a reload), listening on a
   loopback address only, for the users of `obiectl` only and behind a

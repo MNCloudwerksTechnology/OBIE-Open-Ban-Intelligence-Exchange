@@ -51,6 +51,11 @@ func (m *memOverrides) get(key string) (admin.OverrideResponse, bool) {
 	return o, ok
 }
 
+func (m *memOverrides) has(key string) bool {
+	_, ok := m.get(key)
+	return ok
+}
+
 func (m *memOverrides) Delete(_ context.Context, ind obieproto.Indicator) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -79,6 +84,9 @@ func startFakeAdmin(t *testing.T) string {
 			d := admin.DecisionResponse{Indicator: ind, State: admin.StateNone, Reason: "no active verdicts"}
 			if strings.HasPrefix(ind.Value, "10.") {
 				d.State, d.Reason = admin.StateAllowed, "allow-listed: built-in range 10.0.0.0/8 (private (RFC 1918)); verdicts: no active verdicts"
+			} else if strings.HasPrefix(ind.Value, "45.10.") && overrides.has("cidr:45.10.0.0/16") {
+				d.State, d.Reason = admin.StateAllowed, "operator force-allow override on cidr:45.10.0.0/16; verdicts: no active verdicts"
+				d.Sovereignty = &admin.SovereigntyResponse{Applied: true, Effect: "allow", Rule: "force_allow", Source: "override", Match: "cidr:45.10.0.0/16"}
 			} else if o, ok := overrides.get(ind.Key()); ok && o.Action == admin.ActionForceBlock {
 				d.State, d.Reason = admin.StateBlock, "operator force-block override on "+ind.Key()+"; verdicts: no active verdicts"
 			}
@@ -113,9 +121,25 @@ func TestOverrideCommands(t *testing.T) {
 	// A force-block on a protected address is stored, with a warning.
 	out, stderr = ctl(ExitOK, "block", "--note", "oops", "10.0.0.5")
 	if !strings.Contains(out, "Decision now: allowed") ||
-		stderr != "obiectl: warning: the force-block does not take effect: allow-listed: built-in range 10.0.0.0/8 (private (RFC 1918)); verdicts: no active verdicts\n" {
+		!strings.HasPrefix(stderr, "obiectl block: warning: the force-block does not take effect: allow-listed: built-in range 10.0.0.0/8 (private (RFC 1918)); verdicts: no active verdicts\n") ||
+		!strings.Contains(stderr, "\n  Why:  protected addresses") ||
+		!strings.HasSuffix(stderr, "\n  Next: the override is kept but has no effect; remove it: sudo obiectl --socket "+socket+" unoverride 10.0.0.5\n") {
 		t.Errorf("block of a private address:\n%s%s", out, stderr)
 	}
+	// A force-block below an always-allow override names that override;
+	// the commands keep the socket.
+	ctl(ExitOK, "allow", "45.10.0.0/16")
+	_, stderr = ctl(ExitOK, "block", "45.10.20.30")
+	if !strings.HasPrefix(stderr, "obiectl block: warning: the force-block does not take effect: operator force-allow override on cidr:45.10.0.0/16") ||
+		!strings.Contains(stderr, "\n  Why:  an always-allow override beats every other rule") ||
+		!strings.Contains(stderr, "\n  Next: to block it, remove the always-allow override: sudo obiectl --socket "+socket+" unoverride 45.10.0.0/16; "+
+			"then sudo obiectl --socket "+socket+" explain 45.10.20.30 shows whether another one still beats the block\n") ||
+		!strings.HasSuffix(stderr, "\n  Next: otherwise remove this block, which has no effect: sudo obiectl --socket "+socket+" unoverride 45.10.20.30\n") {
+		t.Errorf("block below an allow override:\n%s", stderr)
+	}
+	ctl(ExitOK, "unoverride", "45.10.20.30")
+	ctl(ExitOK, "unoverride", "45.10.0.0/16")
+
 	out, _ = ctl(ExitOK, "allow", "185.0.0.0/24")
 	if !strings.HasPrefix(out, "Override set: force_allow on cidr:185.0.0.0/24, until removed.\n") {
 		t.Errorf("allow:\n%s", out)
@@ -148,8 +172,8 @@ func TestOverrideCommands(t *testing.T) {
 	if out, _ = ctl(ExitOK, "unoverride", "--json", "10.0.0.5"); !strings.Contains(out, `"state": "allowed"`) {
 		t.Errorf("unoverride --json:\n%s", out)
 	}
-	_, stderr = ctl(ExitFailure, "block", "example.org")
-	if !strings.Contains(stderr, "invalid indicator") || !strings.Contains(stderr, "obied answered 400 Bad Request") {
+	_, stderr = ctl(ExitUsage, "block", "example.org")
+	if !strings.Contains(stderr, `"example.org" is not an IP address or range`) || !strings.Contains(stderr, "Next: give an IPv4 or IPv6 address") {
 		t.Errorf("block of a name: %q", stderr)
 	}
 }
@@ -160,20 +184,19 @@ func TestOverrideUsage(t *testing.T) {
 		code   int
 		stderr string
 	}{
-		"allow without argument":  {[]string{"allow"}, ExitUsage, "want 1 argument, got 0"},
-		"block with two":          {[]string{"block", "185.0.0.1", "185.0.0.2"}, ExitUsage, "want 1 argument, got 2"},
+		"allow without argument":  {[]string{"allow"}, ExitUsage, "missing the address or range"},
+		"block with two":          {[]string{"block", "185.0.0.1", "185.0.0.2"}, ExitUsage, "expects one address or range, got 2 arguments"},
 		"block bad ttl":           {[]string{"block", "185.0.0.1", "--ttl", "soon"}, ExitUsage, `invalid --ttl "soon"`},
 		"block zero ttl":          {[]string{"block", "185.0.0.1", "--ttl", "0s"}, ExitUsage, "positive duration"},
-		"block unknown flag":      {[]string{"block", "185.0.0.1", "--mode", "enforce"}, ExitUsage, "flag provided but not defined"},
-		"allow help":              {[]string{"allow", "--help"}, ExitOK, "Never block the address or range"},
-		"block help":              {[]string{"block", "-h"}, ExitOK, "but never the built-in ranges"},
-		"unoverride help":         {[]string{"unoverride", "--help"}, ExitOK, "Usage: obiectl unoverride <ip | cidr>"},
+		"block unknown flag":      {[]string{"block", "185.0.0.1", "--mode", "enforce"}, ExitUsage, "unknown flag --mode"},
 		"overrides argument":      {[]string{"overrides", "all"}, ExitUsage, `unexpected argument "all"`},
 		"allow not running":       {[]string{"allow", "185.0.0.1"}, ExitFailure, "obied is not running"},
 		"overrides not running":   {[]string{"overrides"}, ExitFailure, "obied is not running"},
 		"unoverride not running":  {[]string{"unoverride", "185.0.0.1"}, ExitFailure, "obied is not running"},
-		"unoverride two":          {[]string{"unoverride", "a", "b"}, ExitUsage, "want 1 argument, got 2"},
-		"unoverride unknown flag": {[]string{"unoverride", "--ttl", "1h", "185.0.0.1"}, ExitUsage, "flag provided but not defined"},
+		"unoverride two":          {[]string{"unoverride", "a", "b"}, ExitUsage, "expects one address or range, got 2 arguments: a b"},
+		"unoverride unknown flag": {[]string{"unoverride", "--ttl", "1h", "185.0.0.1"}, ExitUsage, "unknown flag --ttl"},
+		"allow too broad":         {[]string{"allow", "10.0.0.0/7"}, ExitUsage, "obiectl allow: \"10.0.0.0/7\" is broader than /16\n  Why:  OBIE acts on ranges of at most /16 in IPv4 and /32 in IPv6"},
+		"block too broad":         {[]string{"block", "2a01::/31"}, ExitUsage, "\"2a01::/31\" is broader than /32\n  Why:  OBIE acts on ranges of at most /16 in IPv4 and /32 in IPv6, so that no verdict can target large parts of the address space\n  Next: give a narrower range, such as 203.0.113.0/24, or single addresses\n"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer

@@ -3,10 +3,9 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
-	"flag"
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 	"text/tabwriter"
@@ -20,95 +19,51 @@ import (
 // says otherwise.
 const requestTimeout = 10 * time.Second
 
-// command is an obiectl subcommand.
-type command struct {
-	summary string
-	run     func(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int
-}
-
-var commands = map[string]command{
-	"status":     {summary: "show the node status", run: runStatus},
-	"identity":   {summary: "show the node's peer ID and key fingerprint", run: runCtlIdentity},
-	"peers":      {summary: "list the connected mesh peers", run: runPeers},
-	"explain":    {summary: "explain the decision on an address or CIDR range", run: runExplain},
-	"decisions":  {summary: "list the decisions (--state block|none|allowed)", run: runDecisions},
-	"allow":      {summary: "force-allow an address or range: never block it", run: runAllow},
-	"block":      {summary: "force-block an address or range, whatever its score", run: runBlock},
-	"overrides":  {summary: "list the operator overrides", run: runOverrides},
-	"unoverride": {summary: "remove the override of an address or range", run: runUnoverride},
-	"report":     {summary: "publish a signed verdict on an attacking address or CIDR range", run: runReport},
-	"revoke":     {summary: "revoke this node's verdict by event ID, address or CIDR range", run: runRevoke},
-	"indicators": {summary: "list the indicators with active verdicts", run: runIndicators},
-	"show":       {summary: "show every active verdict on an address or CIDR range", run: runShow},
-	"enforced":   {summary: "list the entries the enforcement backend currently applies", run: runEnforced},
-	"console":    {summary: "show the web console's address and sign-in token (--rotate: issue a new one)", run: runConsole},
-}
-
 // RunCtl runs obiectl with args and returns the process exit code.
 func RunCtl(args []string, stdout, stderr io.Writer) int {
-	const program = "obiectl"
-	fs := newFlagSet(program, stderr)
-	socket := fs.String("socket", config.Default().Admin.Socket, "path of the obied admin `socket`")
-	timeout := fs.Duration("timeout", requestTimeout, "give up on obied after this `duration`, e.g. 5s")
-	fs.Usage = func() { ctlUsage(fs) }
-	if code, done := parse(fs, program, args, true, stdout, stderr); done {
+	const program = ctlName
+	fs := newFlagSet(program)
+	socket := fs.String("socket", config.Default().Admin.Socket, "path of the node's admin `socket`, admin.socket in its configuration")
+	timeout := fs.Duration("timeout", requestTimeout, "give up on the node after this `duration`, e.g. 5s")
+	if code, done := parse(fs, args, stdout, stderr); done {
 		return code
 	}
 	if *timeout <= 0 {
-		_, _ = fmt.Fprintf(stderr, "%s: --timeout must be positive\n", program)
+		usageProblem(program, fmt.Sprintf("--timeout must be positive, e.g. 5s, got %s", *timeout)).write(stderr, program)
 		return ExitUsage
 	}
+	t := ctlTool()
 	if fs.NArg() == 0 {
-		_, _ = fmt.Fprintf(stderr, "%s: missing command\n", program)
-		fs.Usage()
+		t.overview(stderr)
 		return ExitUsage
 	}
 	name := fs.Arg(0)
-	cmd, ok := commands[name]
-	if !ok {
-		_, _ = fmt.Fprintf(stderr, "%s: unknown command %q\n", program, name)
-		fs.Usage()
+	if name == "help" {
+		return t.runHelp(fs.Args()[1:], stdout, stderr)
+	}
+	cmds := ctlCommands()
+	i := slices.IndexFunc(cmds, func(c command) bool { return c.name == name })
+	if i < 0 {
+		t.unknownCommand(stderr, name)
 		return ExitUsage
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	return cmd.run(ctx, admin.NewClient(*socket), fs.Args()[1:], stdout, stderr)
-}
-
-func ctlUsage(fs *flag.FlagSet) {
-	out := fs.Output()
-	_, _ = fmt.Fprintf(out, "Usage: obiectl [flags] <command> [command flags]\n\nCommands:\n")
-	names := make([]string, 0, len(commands))
-	for name := range commands {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		_, _ = fmt.Fprintf(out, "  %-11s %s\n", name, commands[name].summary)
-	}
-	_, _ = fmt.Fprintf(out, "\nFlags:\n")
-	fs.PrintDefaults()
+	ctx = withInvocation(ctx, invocation{args: fs.Args(), timeout: *timeout})
+	return cmds[i].run(ctx, admin.NewClient(*socket), fs.Args()[1:], stdout, stderr)
 }
 
 func runStatus(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
 	const program = "obiectl status"
-	fs := newFlagSet(program, stderr)
-	asJSON := fs.Bool("json", false, "print the status as JSON")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return ExitOK
-		}
-		return ExitUsage
-	}
-	if fs.NArg() > 0 {
-		_, _ = fmt.Fprintf(stderr, "%s: unexpected argument %q\n", program, fs.Arg(0))
-		fs.Usage()
-		return ExitUsage
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the status as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
+		return code
 	}
 
 	status, err := client.Status(ctx)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(ctx, stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -120,23 +75,11 @@ func runStatus(ctx context.Context, client *admin.Client, args []string, stdout,
 		_, _ = fmt.Fprintf(stderr, "obiectl: writing status: %v\n", err)
 		return ExitIOError
 	}
+	if !*asJSON && !status.Ready {
+		_, _ = fmt.Fprintf(stderr, "%s: the node is not ready; sudo obied self-check says what to do about each subsystem "+
+			"that is not, and sudo journalctl -u obied -n 50 shows the node's log\n", program)
+	}
 	return ExitOK
-}
-
-// reportClientError explains a failed admin API call.
-func reportClientError(stderr io.Writer, err error) {
-	var apiErr *admin.APIError
-	if errors.As(err, &apiErr) {
-		_, _ = fmt.Fprintf(stderr, "obiectl: %s (obied answered %s)\n", apiErr.Message, apiErr.Status)
-		if hint := apiErrorHint(apiErr); hint != "" {
-			_, _ = fmt.Fprintf(stderr, "obiectl: %s\n", hint)
-		}
-		return
-	}
-	_, _ = fmt.Fprintf(stderr, "obiectl: %v\n", err)
-	if errors.Is(err, admin.ErrDaemonNotRunning) {
-		_, _ = fmt.Fprintln(stderr, "obiectl: start obied, or point --socket at its admin.socket")
-	}
 }
 
 func writeJSON(w io.Writer, v any) error {
@@ -164,7 +107,7 @@ func writeStatusTable(w io.Writer, s *admin.StatusResponse) error {
 	}
 	_, _ = fmt.Fprintf(tw, "Mode:\t%s\n", mode)
 	_, _ = fmt.Fprintf(tw, "Version:\t%s\n", s.Version)
-	_, _ = fmt.Fprintf(tw, "Uptime:\t%s\n", s.Uptime().Truncate(time.Second))
+	_, _ = fmt.Fprintf(tw, "Uptime:\t%s\n", formatDuration(s.Uptime()))
 	_, _ = fmt.Fprintf(tw, "Ready:\t%s\n", yesNo(s.Ready))
 	if err := tw.Flush(); err != nil {
 		return err

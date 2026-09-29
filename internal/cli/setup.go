@@ -45,6 +45,9 @@ type setupEnv struct {
 	// euid is the user running the assistant; userName names it.
 	euid     func() int
 	userName func() string
+	// terminal reports whether the operator's input and output are a
+	// terminal, where questions may be asked.
+	terminal func() bool
 }
 
 func hostSetupEnv() setupEnv {
@@ -55,7 +58,14 @@ func hostSetupEnv() setupEnv {
 		groupExists:   func(name string) bool { _, err := user.LookupGroup(name); return err == nil },
 		euid:          os.Geteuid,
 		userName:      func() string { return lookupUserName(os.Geteuid()) },
+		terminal:      func() bool { return isTerminal(os.Stdin) && isTerminal(os.Stdout) },
 	}
+}
+
+// isTerminal reports whether f is a terminal (a character device).
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // lookupUserName returns the name of the user with uid, or the uid.
@@ -84,49 +94,51 @@ func runSetup(args []string, stdout, stderr io.Writer) int {
 func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env setupEnv) int {
 	const program = "obied setup"
 	defaults := setup.Defaults()
-	flags := newFlagSet(program, stderr)
+	flags := newFlagSet(program)
 	configPath := flags.String("config", config.DefaultPath, "configuration `file` to write")
 	nonInteractive := flags.Bool("non-interactive", false, "ask nothing: take the answers from the flags below")
 	stateDir := flags.String("state-dir", defaults.StateDir, "state `directory` of the node (node.state_dir)")
 	auditLog := flags.String("audit-log", defaults.AuditLog, "audit log `file` (audit.path), or none")
 	var peers, allows repeatable
 	flags.Var(&peers, "peer", "a peer to connect to and trust: `address[,name=NAME][,weight=0..1]` (weight "+
-		strconv.FormatFloat(setup.DefaultWeight, 'f', -1, 64)+" unless given); repeat for more peers")
-	mode := flags.String("mode", string(defaults.Mode), "observe (recommended: block nothing) or enforce")
-	flags.Var(&allows, "allow", "an `address or network` never to block; repeat for more")
+		strconv.FormatFloat(setup.DefaultWeight, 'f', -1, 64)+" unless given); repeat for more peers (default: no peers)")
+	mode := flags.String("mode", string(defaults.Mode), "observe or enforce; observe, which blocks nothing, is recommended at first")
+	flags.Var(&allows, "allow", "an `address or network` never to block; repeat for more (default: none besides the protected addresses)")
 	force := flags.Bool("force", false, "replace an existing configuration file; the old one is kept as a backup")
-	flags.Usage = func() { setupUsage(flags) }
-	if code, done := parseCommand(flags, program, args, stderr); done {
+	if code, done := parseNoArgs(flags, args, stdout, stderr); done {
 		return code
 	}
 	path, err := filepath.Abs(*configPath)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		usageProblem(program, err.Error()).write(stderr, program)
 		return ExitUsage
 	}
 	if !*nonInteractive {
 		if given := setFlags(flags, answerFlags); len(given) > 0 {
-			_, _ = fmt.Fprintf(stderr, "%s: --%s answers a question up front and needs --non-interactive\n", program, given[0])
+			usageProblem(program, "--"+given[0]+" answers a question up front and needs --non-interactive").write(stderr, program)
+			return ExitUsage
+		}
+		// Questions in a pipe or a file would go unseen.
+		if !env.terminal() {
+			problem{id: "setup-no-terminal", what: "obied setup asks questions, but its input or output is not a terminal",
+				why: "questions written into a pipe or a file would go unseen",
+				next: []string{"run it in a terminal: sudo obied setup" + config.PathFlag(path),
+					"or give the answers as flags with --non-interactive (see obied setup --help)"}}.write(stderr, program)
 			return ExitUsage
 		}
 	}
 	// Before any question: a path the file cannot be written to fails now,
 	// not after the last answer.
 	if err := setup.CheckPath(path); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		what, next, _ := strings.Cut(err.Error(), "; ")
+		if next == "" {
+			next = "choose another file: --config <file>"
+		}
+		problem{id: "setup-path-refused", what: what, next: []string{next}}.write(stderr, program)
 		return ExitFailure
 	}
 	if err := env.checkWritable(path); err != nil {
-		var pathErr *fs.PathError
-		if errors.As(err, &pathErr) {
-			err = pathErr.Err
-		}
-		_, _ = fmt.Fprintf(stderr, "%s: cannot write %s as user %s: %v\n", program, path, env.userName(), err)
-		if env.euid() == 0 {
-			_, _ = fmt.Fprintf(stderr, "%s: choose a place it can write with --config FILE\n", program)
-		} else {
-			_, _ = fmt.Fprintf(stderr, "%s: run it as root: sudo obied setup%s\n", program, config.PathFlag(path))
-		}
+		setupWriteProblem(path, err, env).write(stderr, program)
 		return ExitFailure
 	}
 	existing := describeExisting(path)
@@ -135,12 +147,13 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 	replace := *force
 	if *nonInteractive {
 		if answers, err = answersFromFlags(*stateDir, *auditLog, *mode, peers, allows); err != nil {
-			_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+			usageProblem(program, err.Error()).write(stderr, program)
 			return ExitUsage
 		}
 		if existing != "" && !replace {
-			_, _ = fmt.Fprintf(stderr, "%s: %s exists already (%s); pass --force to replace it (the old one is kept as a backup)\n",
-				program, path, existing)
+			problem{id: "setup-file-exists", what: fmt.Sprintf("%s exists already (%s)", path, existing),
+				why:  "obied setup never replaces a configuration without your consent",
+				next: []string{"to replace it, add --force; the old file is kept as a backup"}}.write(stderr, program)
 			return ExitFailure
 		}
 	} else {
@@ -149,8 +162,10 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 		answers, ok, err = a.run(path, existing)
 		switch {
 		case errors.Is(err, errInputEnded):
-			_, _ = fmt.Fprintf(stderr, "\n%s: the input ended before every question was answered; nothing was written.\n", program)
-			_, _ = fmt.Fprintf(stderr, "%s: to set up without questions, give the answers as flags with --non-interactive (see obied setup --help)\n", program)
+			_, _ = io.WriteString(stderr, "\n")
+			problem{id: "setup-input-ended", what: "the input ended before every question was answered; nothing was written",
+				next: []string{"to set up without questions, give the answers as flags with --non-interactive (see obied setup --help)"}}.
+				write(stderr, program)
 			return ExitFailure
 		case err != nil:
 			_, _ = fmt.Fprintf(stderr, "\n%s: %v\n", program, err)
@@ -164,6 +179,23 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 	return writeSetup(program, path, answers, replace, stdout, stderr, env)
 }
 
+// setupWriteProblem explains that the configuration cannot be written to
+// path, because of err.
+func setupWriteProblem(path string, err error, env setupEnv) problem {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		err = pathErr.Err
+	}
+	p := problem{id: "setup-cannot-write", what: fmt.Sprintf("cannot write %s as user %s: %v", path, env.userName(), err)}
+	if env.euid() == 0 {
+		p.next = []string{"choose a place it can write: --config <file>"}
+	} else {
+		p.why = "the configuration directory belongs to root"
+		p.next = []string{"run it as root: sudo obied setup" + config.PathFlag(path)}
+	}
+	return p
+}
+
 // setFlags returns which of names were given on the command line.
 func setFlags(fs *flag.FlagSet, names []string) []string {
 	var given []string
@@ -175,24 +207,6 @@ func setFlags(fs *flag.FlagSet, names []string) []string {
 		}
 	})
 	return given
-}
-
-func setupUsage(fs *flag.FlagSet) {
-	out := fs.Output()
-	_, _ = fmt.Fprintf(out, `Usage: obied setup [--config file]
-       obied setup --non-interactive [answer flags] [--force]
-
-Writes the configuration of this node after asking a few questions:
-where it keeps its state and audit log, which peers it connects to and
-how much it trusts them, whether it starts in observe mode, and which
-addresses it must never block. Every question offers a safe default. An
-existing configuration file is only replaced after you agree; the old one
-is kept as a backup. With --non-interactive the answers come from the
-flags, and the same answers always write the same file.
-
-Flags:
-`)
-	fs.PrintDefaults()
 }
 
 // answersFromFlags builds the answers given as flags.
@@ -264,7 +278,8 @@ func writeSetup(program, path string, a setup.Answers, replace bool, stdout, std
 		_, _ = fmt.Fprintf(stdout, "The previous file is kept as %s.\n", backup)
 	}
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		problem{id: "setup-write-failed", what: "cannot write the configuration: " + err.Error(),
+			next: []string{"check the directory, its permissions and free space, then run obied setup again"}}.write(stderr, program)
 		return ExitFailure
 	}
 	if !env.groupExists(env.group) {
@@ -275,7 +290,7 @@ func writeSetup(program, path string, a setup.Answers, replace bool, stdout, std
 		_, _ = fmt.Fprintf(stdout, "\n%s\n", note)
 	}
 	if addr, ok := env.session(); ok && !a.Protects(addr) {
-		_, _ = fmt.Fprintf(stdout, "\n%s", session.LockoutWarning(addr, a.Mode == config.ModeEnforce))
+		_, _ = fmt.Fprintf(stdout, "\n%s", session.LockoutWarning(addr, a.Mode == config.ModeEnforce, "sudo obiectl"))
 	}
 	if _, err = io.WriteString(stdout, nextSteps(path)); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: writing the next steps: %v\n", program, err)
