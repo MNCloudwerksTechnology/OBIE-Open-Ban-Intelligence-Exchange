@@ -134,6 +134,42 @@ func TestCheckFirewall(t *testing.T) {
 		"sudo systemctl reload obied", "sudo obied self-check")
 }
 
+// TestChecksWhenTheNodeRefusesTheUser checks that the checks which ask the
+// node say that this user may not ask it, rather than that it does not run.
+func TestChecksWhenTheNodeRefusesTheUser(t *testing.T) {
+	h := newTestHost(t, federatedConfig)
+	h.env.Euid = func() int { return 1000 }
+	h.node.statusErr = fmt.Errorf("%w on admin socket %s: run as root", os.ErrPermission, h.socket)
+	h.dialer.up["198.51.100.20:4001"] = true
+	h.dialer.up["obie.partner.example:4001"] = true
+	c := h.run(t, "peers")
+	assertCheck(t, c, Warning, "cannot ask the node which peers are connected as user alice", "sudo obied self-check")
+	if len(c.Details) != 3 || c.Details[0] != "every peer in mesh.bootstrap answers (2 configured)" {
+		t.Errorf("details = %q", c.Details)
+	}
+
+	h.writeConfig(t, "trust:\n  publishers:\n    - {peer_id: "+friendID+", name: friend, weight: 1}\n")
+	c = h.run(t, "peers")
+	assertCheck(t, c, Warning, "cannot ask the node which peers are connected", "sudo obied self-check")
+	if len(c.Details) != 1 || c.Details[0] != "1 peer trusted, none in mesh.bootstrap: they connect to this node" {
+		t.Errorf("details = %q", c.Details)
+	}
+
+	h.installFail2Ban(t, true)
+	h.commands["fail2ban-client"] = func([]string) ([]byte, error) { return []byte(fail2banDump), nil }
+	c = h.run(t, "fail2ban")
+	assertCheck(t, c, Warning, "cannot ask the node whether bans reach it as user alice", "sudo obied self-check")
+	if strings.Contains(strings.Join(append(c.Details, c.NextSteps...), "\n"), "start the node") {
+		t.Errorf("the check asks to start a node that may run: %+v", c)
+	}
+
+	h.session = netip.MustParseAddr("85.10.0.7")
+	assertCheck(t, h.run(t, "session"), Warning, "which OBIE does not protect", "sudo obiectl allow 85.10.0.7", "sudo obied self-check")
+	if c := h.run(t, "session"); len(c.Details) != 1 || c.Details[0] != "cannot ask the node about overrides of 85.10.0.7 as user alice" {
+		t.Errorf("details = %q", c.Details)
+	}
+}
+
 func TestCheckSession(t *testing.T) {
 	h := newTestHost(t, "")
 	assertCheck(t, h.run(t, "session"), OK, "no SSH session found")

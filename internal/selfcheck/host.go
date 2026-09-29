@@ -96,6 +96,9 @@ func (r *run) jails(client string, lookErr error) (int, finding) {
 // reportsFinding says whether bans reach the node: it holds verdicts of
 // its own, or the action logged what the node answered to the last one.
 func (r *run) reportsFinding() finding {
+	if r.denied() {
+		return r.cannotAsk("whether bans reach it")
+	}
 	if !r.running() {
 		return warn("whether bans reach the node shows only while it runs", "start the node, then run the self-check again")
 	}
@@ -222,10 +225,16 @@ func (r *run) checkSession() Check {
 	next := fmt.Sprintf("protect it: add %s to allowlist.cidrs in %s and reload: sudo systemctl reload obied; "+
 		"on a running node also at once: sudo obiectl allow %s --note \"my SSH session\"",
 		netip.PrefixFrom(addr, addr.BitLen()), r.env.ConfigPath, addr)
-	if enforcing {
-		return newCheck(id, name, problem(text, next))
+	f := problem(text, next)
+	if !enforcing {
+		f = warn(text+" once the node enforces", next)
 	}
-	return newCheck(id, name, warn(text+" once the node enforces", next))
+	if r.denied() {
+		// The allow-list of the configuration does not protect it; an
+		// override on the running node might.
+		return newCheck(id, name, f, r.cannotAsk("about overrides of "+addr.String()))
+	}
+	return newCheck(id, name, f)
 }
 
 // protection says whether addr is never blocked, and why: as the running

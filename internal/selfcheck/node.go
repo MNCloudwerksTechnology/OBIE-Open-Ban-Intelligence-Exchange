@@ -53,6 +53,15 @@ func (r *run) queryNode() {
 // running reports whether the node answered.
 func (r *run) running() bool { return r.statusErr == nil }
 
+// denied reports whether the node may run but this user may not ask it.
+func (r *run) denied() bool { return deniedByNode(r.statusErr) }
+
+// cannotAsk is the finding of a check that needs to ask the node what, when
+// this user may not ask it.
+func (r *run) cannotAsk(what string) finding {
+	return warn(fmt.Sprintf("cannot ask the node %s as user %s", what, r.me()), asRoot)
+}
+
 // deniedByNode reports whether err means that this user may not use the
 // admin socket: the kernel refused the connection, or obied the user.
 func deniedByNode(err error) bool {
@@ -163,13 +172,18 @@ func (r *run) checkPeers() Check {
 			connected[p.PeerID] = true
 		}
 	}
+	var findings []finding
 	if len(bootstrap) == 0 {
-		return newCheck(id, name, r.publishersOnly(publishers, connected))
+		findings = append(findings, r.publishersOnly(publishers, connected))
+	} else {
+		probes := r.probePeers(bootstrap, publishers)
+		findings = append(findings, r.peersSummary(probes, connected))
+		for _, p := range probes {
+			findings = append(findings, r.peerFinding(p, connected[p.peerID]))
+		}
 	}
-	probes := r.probePeers(bootstrap, publishers)
-	findings := []finding{r.peersSummary(probes, connected)}
-	for _, p := range probes {
-		findings = append(findings, r.peerFinding(p, connected[p.peerID]))
+	if r.denied() {
+		findings = append(findings, r.cannotAsk("which peers are connected"))
 	}
 	return newCheck(id, name, findings...)
 }
@@ -178,8 +192,11 @@ func (r *run) checkPeers() Check {
 // have to connect to this node.
 func (r *run) publishersOnly(publishers []config.Publisher, connected map[string]bool) finding {
 	if !r.running() {
-		return ok(fmt.Sprintf("%s trusted, none in mesh.bootstrap: they connect to this node, which shows once it runs",
-			plural(len(publishers), "peer")))
+		text := fmt.Sprintf("%s trusted, none in mesh.bootstrap: they connect to this node", plural(len(publishers), "peer"))
+		if !r.denied() {
+			text += ", which shows once it runs"
+		}
+		return ok(text)
 	}
 	n := 0
 	for _, p := range publishers {
@@ -264,6 +281,9 @@ func (r *run) peersSummary(probes []peerProbe, connected map[string]bool) findin
 			if p.err != nil {
 				return warn(fmt.Sprintf("not every peer in mesh.bootstrap answers (%d configured)", len(probes)), nextReach)
 			}
+		}
+		if r.denied() {
+			return ok(fmt.Sprintf("every peer in mesh.bootstrap answers (%d configured)", len(probes)))
 		}
 		return ok(fmt.Sprintf("%s in mesh.bootstrap; whether they connect shows once the node runs", plural(len(probes), "peer")))
 	}
