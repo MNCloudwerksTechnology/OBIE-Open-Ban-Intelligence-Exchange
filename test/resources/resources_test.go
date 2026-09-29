@@ -34,6 +34,7 @@ var (
 	idleFor    = flag.Duration("resources.idle", 2*time.Minute, "how long the idle node is measured")
 	verdicts   = flag.String("resources.verdicts", "10000,100000", "comma-separated, ascending: the verdicts the measured node holds at each measurement under load")
 	rate       = flag.Float64("resources.rate", 100, "reports per second each of the two publishing nodes sends")
+	window     = flag.Duration("resources.window", 30*time.Second, "the last part of each load phase whose CPU time is measured")
 	restFor    = flag.Duration("resources.rest", 2*time.Minute, "how long the node is measured at rest after the load")
 	gomaxprocs = flag.Int("resources.gomaxprocs", 1, "GOMAXPROCS of every node: the CPUs of the host it models")
 	outFile    = flag.String("resources.out", "", "file the results are also written to, as Markdown")
@@ -87,12 +88,17 @@ type node struct {
 // until A holds each number of verdicts in -resources.verdicts; and at
 // rest afterwards. It records A's resident memory (RSS, and its peak in
 // the phase), its CPU time as a share of one CPU, and the disk its state
-// directory and audit log take. A runs in enforce mode with the dryrun
-// backend, so it keeps every block it decides without a firewall.
+// directory and audit log take. The CPU time of a load phase is measured
+// over its last -resources.window only, because it grows with the
+// verdicts A holds. A runs in enforce mode with the dryrun backend, so it
+// keeps every block it decides without a firewall.
 func TestResources(t *testing.T) {
 	targets, err := parseTargets(*verdicts)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if *rate <= 0 || *gomaxprocs < 1 || *window <= 0 {
+		t.Fatalf("-resources.rate (%g), -resources.gomaxprocs (%d) and -resources.window (%s) must be positive", *rate, *gomaxprocs, *window)
 	}
 	obied, err := filepath.Abs(filepath.Join(*binDir, "obied"))
 	if err != nil {
@@ -118,11 +124,19 @@ func TestResources(t *testing.T) {
 	for _, target := range targets {
 		phase = startPhase(t, a)
 		// Each address is reported by both publishers: two verdicts on A.
+		// The last addresses, sent in the window, are the measured ones.
 		want := (target + 1) / 2
-		if err := sendLoad(publishers, sent, want, *rate); err != nil {
-			t.Fatal(err)
+		measured := max(sent, want-int(*rate*window.Seconds()))
+		for _, part := range [][2]int{{sent, measured}, {measured, want}} {
+			if part[0] == measured {
+				phase.startCPU(t, a)
+			}
+			accepted := metricNow(t, a, acceptedEvents)
+			if err := sendLoad(publishers, part[0], part[1], *rate); err != nil {
+				t.Fatal(err)
+			}
+			awaitAccepted(t, a, accepted+float64(2*(part[1]-part[0])))
 		}
-		awaitAccepted(t, a, phase.accepted+float64(2*(want-sent)))
 		sent = want
 		rows = append(rows, phase.end(t, a, fmt.Sprintf("receiving %g verdicts/s", 2**rate)))
 	}
@@ -413,7 +427,7 @@ func addrAt(base netip.Addr, i int) string {
 func awaitAccepted(t *testing.T, a *node, want float64) {
 	t.Helper()
 	err := poll(drainBound, func(ctx context.Context) error {
-		got, err := a.metric(ctx, `obie_events_received_total{outcome="accepted"}`)
+		got, err := a.metric(ctx, acceptedEvents)
 		if err == nil && got < want {
 			err = fmt.Errorf("accepted %.0f events, want %.0f", got, want)
 		}
@@ -424,31 +438,37 @@ func awaitAccepted(t *testing.T, a *node, want float64) {
 	}
 }
 
-// phase is the start of a measured phase.
+// acceptedEvents counts the events a node accepted from its peers.
+const acceptedEvents = `obie_events_received_total{outcome="accepted"}`
+
+// phase is a measured phase: when its CPU time is measured from, and that
+// CPU time.
 type phase struct {
-	at       time.Time
-	cpu      time.Duration
-	accepted float64
+	at  time.Time
+	cpu time.Duration
 }
 
-// startPhase resets the measured node's peak RSS and notes its CPU time
-// and accepted events.
+// startPhase resets the measured node's peak RSS and starts measuring its
+// CPU time.
 func startPhase(t *testing.T, a *node) *phase {
 	t.Helper()
-	pid := a.cmd.Process.Pid
 	// Writing 5 to clear_refs resets the peak RSS (VmHWM) to the current RSS.
-	if err := os.WriteFile(fmt.Sprintf("/proc/%d/clear_refs", pid), []byte("5"), 0); err != nil {
+	if err := os.WriteFile(fmt.Sprintf("/proc/%d/clear_refs", a.cmd.Process.Pid), []byte("5"), 0); err != nil {
 		t.Fatal(err)
 	}
-	cpu, err := cpuTime(pid)
+	p := &phase{}
+	p.startCPU(t, a)
+	return p
+}
+
+// startCPU measures the phase's CPU time from now on.
+func (p *phase) startCPU(t *testing.T, a *node) {
+	t.Helper()
+	cpu, err := cpuTime(a.cmd.Process.Pid)
 	if err != nil {
 		t.Fatal(err)
 	}
-	accepted, err := metricNow(a, `obie_events_received_total{outcome="accepted"}`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &phase{at: time.Now(), cpu: cpu, accepted: accepted}
+	p.at, p.cpu = time.Now(), cpu
 }
 
 // row is the measurement of one phase.
@@ -472,12 +492,8 @@ func (p *phase) end(t *testing.T, a *node, name string) row {
 	if r.rss, r.peak, err = memory(pid); err != nil {
 		t.Fatal(err)
 	}
-	if r.verdicts, err = metricNow(a, "obie_store_active_verdicts"); err != nil {
-		t.Fatal(err)
-	}
-	if r.blocks, err = metricNow(a, `obie_decisions{state="block"}`); err != nil {
-		t.Fatal(err)
-	}
+	r.verdicts = metricNow(t, a, "obie_store_active_verdicts")
+	r.blocks = metricNow(t, a, `obie_decisions{state="block"}`)
 	if r.state, err = diskUsage(filepath.Join(a.dir, "state")); err != nil {
 		t.Fatal(err)
 	}
@@ -569,11 +585,17 @@ func diskUsage(path string) (uint64, error) {
 	return total, err
 }
 
-// metricNow returns a sample of the node's /metrics.
-func metricNow(n *node, sample string) (float64, error) {
+// metricNow returns a sample of the node's /metrics, failing t if it
+// cannot.
+func metricNow(t *testing.T, n *node, sample string) float64 {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
-	return n.metric(ctx, sample)
+	v, err := n.metric(ctx, sample)
+	if err != nil {
+		t.Fatalf("node %s: %v", n.name, err)
+	}
+	return v
 }
 
 // metric returns the value of the sample name (with labels) on the node's
@@ -597,8 +619,12 @@ func (n *node) metric(ctx context.Context, sample string) (float64, error) {
 	if err := sc.Err(); err != nil {
 		return 0, err
 	}
-	// A gauge with labels appears only once it was set.
-	return 0, nil
+	// A sample with labels appears only once it was set; one without is
+	// always there, so its absence is an error (e.g. a renamed metric).
+	if strings.Contains(sample, "{") {
+		return 0, nil
+	}
+	return 0, fmt.Errorf("/metrics has no sample %s", sample)
 }
 
 // poll calls check until it succeeds or bound elapsed; it returns the
@@ -636,7 +662,7 @@ func describeHost(version string) string {
 // table formats the rows as a Markdown table.
 func table(rows []row) string {
 	var b strings.Builder
-	b.WriteString("| Phase | Verdicts held | Blocks | RSS | Peak RSS | CPU (share of one CPU) | State directory | Audit log |\n")
+	b.WriteString("| Phase | Verdicts held | Blocks | RSS | Peak RSS | CPU (share of one core) | State directory | Audit log |\n")
 	b.WriteString("|---|---:|---:|---:|---:|---:|---:|---:|\n")
 	for _, r := range rows {
 		fmt.Fprintf(&b, "| %s | %.0f | %.0f | %.0f MiB | %.0f MiB | %.1f %% | %.0f MiB | %.1f MiB |\n",
