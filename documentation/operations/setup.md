@@ -164,7 +164,9 @@ protect, the report ends with a banner:
 In observe mode this is a warning; in enforce mode it is a problem. Add the
 address, or better the network you administer from, to `allowlist.cidrs`
 and reload the node. The self-check finds the address also when you run it
-through `sudo` or `su`.
+through `sudo` or `su`. Inside `tmux` or `screen`, a window keeps the
+address of the login that opened it, which may not be the one you work
+from now: run the self-check and the assistant from a fresh SSH login.
 
 ### Run it without root
 
