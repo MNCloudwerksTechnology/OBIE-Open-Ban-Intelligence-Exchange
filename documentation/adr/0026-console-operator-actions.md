@@ -149,11 +149,18 @@ things need a decision:
 
 - `gossip.Publish` stores the node's own event first, as before. If no peer
   is on the topic, it **holds** the event instead of publishing it to
-  nobody, and publishes every held event, in order, as soon as a peer joins
-  the topic; an event that has expired by then is dropped. At most 10,000
-  events are held (the oldest is dropped, with a warning); they are held in
-  memory only, so a restart before a peer is reachable does not send them —
-  they still count on this node. `Mesh.Held` tells whether an event waits.
+  nobody; while events are held, later ones wait behind them, so none
+  overtakes another. As soon as a peer joins the topic, the node sends the
+  held events in order, **16 every 2 seconds**: GossipSub drops what exceeds
+  its per-peer queue of 32 messages, and a peer ignores this node's events
+  beyond its `mesh.rate_limit.publisher` bucket (10 a second, burst 50 by
+  default), both unseen, so a burst would lose most of a long backlog. A
+  batch that fails, or a join the peer watcher misses, is retried every 2
+  seconds while events are held; nothing ticks while none are. An event
+  about to expire is dropped. At most 10,000 events are held (the oldest is
+  dropped, with a warning); they are held in memory only, so a restart
+  before a peer is reachable does not send them — they still count on this
+  node. `Mesh.Held` tells whether an event waits.
 - The console's outcome says so: "No peer is reachable now. The verdict is
   stored and counts on this node; it will be sent as soon as a peer is
   reachable (unless obied restarts before)." `obiectl report` benefits

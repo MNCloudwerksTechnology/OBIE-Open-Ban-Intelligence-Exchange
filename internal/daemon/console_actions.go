@@ -244,6 +244,7 @@ func (a *consoleActions) Do(ctx context.Context, req console.ActionRequest, acto
 	ctx = audit.WithOrigin(ctx, origin)
 	out := console.ActionOutcome{}
 	out.Range, _ = sovereignty.PrefixOf(act.ind)
+	held := false
 	switch req.Kind {
 	case console.ActionAllow, console.ActionBlock:
 		o, err := a.overrides.Set(ctx, act.ind, string(act.override.Action), req.TTL, req.Note)
@@ -270,7 +271,7 @@ func (a *consoleActions) Do(ctx context.Context, req console.ActionRequest, acto
 			return console.ActionOutcome{}, actionError(err)
 		}
 		out.EventIDs, out.Coalesced = []string{res.Event.ID}, res.Coalesced
-		out.Held = !res.Coalesced && a.mesh.Held(res.Event.ID)
+		held = !res.Coalesced && a.mesh.Held(res.Event.ID)
 	case console.ActionRevoke:
 		events, err := a.verdicts.Revoke(ctx, act.revocation)
 		if err != nil {
@@ -278,12 +279,13 @@ func (a *consoleActions) Do(ctx context.Context, req console.ActionRequest, acto
 		}
 		for _, ev := range events {
 			out.EventIDs = append(out.EventIDs, ev.ID)
-			out.Held = out.Held || a.mesh.Held(ev.ID)
+			held = held || a.mesh.Held(ev.ID)
 		}
 	}
-	if !out.Held {
-		out.Peers = a.mesh.TopicPeers()
-	}
+	// An event held while a peer is on the topic only waits behind others
+	// that were held, and goes out within seconds: it is as good as sent.
+	out.Peers = a.mesh.TopicPeers()
+	out.Held = held && out.Peers == 0
 	a.engine.Flush()
 	d, err := a.engine.Explain(act.ind)
 	if err != nil {

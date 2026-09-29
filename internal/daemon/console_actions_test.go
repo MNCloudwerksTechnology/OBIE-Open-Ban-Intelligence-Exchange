@@ -34,8 +34,10 @@ type publishingMesh struct {
 	mu    sync.Mutex
 	peers int
 	held  map[string]bool
-	// down is why the mesh does not run; nil while it runs.
-	down error
+	// down is why the mesh does not run; nil while it runs. queued holds
+	// every event, as behind earlier held ones.
+	down   error
+	queued bool
 }
 
 func (m *publishingMesh) Ready() error {
@@ -58,7 +60,7 @@ func (m *publishingMesh) Publish(_ context.Context, ev *obieproto.Event) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.peers == 0 {
+	if m.peers == 0 || m.queued {
 		m.held[ev.ID] = true
 	}
 	return nil
@@ -277,6 +279,16 @@ func TestConsoleReportAndRevoke(t *testing.T) {
 	if err != nil || len(out.EventIDs) != 1 || out.Held || out.Peers != 3 || out.Decision.State == "block" {
 		t.Errorf("Do(revoke) = %+v, %v", out, err)
 	}
+	// Held behind other events while a peer is on the topic, a report is
+	// as good as sent.
+	f.mesh.mu.Lock()
+	f.mesh.queued = true
+	f.mesh.mu.Unlock()
+	out, err = f.actions.Do(context.Background(), console.ActionRequest{Kind: console.ActionReport, Address: "85.10.0.9",
+		Report: console.ReportDetails{Protocol: "ssh", Reason: "password_bruteforce", Events: 1}}, alice)
+	if err != nil || !f.mesh.Held(out.EventIDs[0]) || out.Held || out.Peers != 3 {
+		t.Errorf("Do(report behind held events) = %+v, %v", out, err)
+	}
 	_, err = f.actions.Review(revoke)
 	wantActionError(t, "revoke without verdict", err, http.StatusNotFound, "this node has no active verdict on ipv4:85.10.0.8")
 
@@ -289,7 +301,7 @@ func TestConsoleReportAndRevoke(t *testing.T) {
 			}
 		}
 	}
-	if strings.Join(actions, ",") != "local-report,revocation" {
+	if strings.Join(actions, ",") != "local-report,revocation,local-report" {
 		t.Errorf("records = %v", actions)
 	}
 }

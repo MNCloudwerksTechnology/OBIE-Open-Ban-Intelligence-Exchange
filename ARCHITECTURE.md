@@ -204,8 +204,10 @@ Only the packages that exist today are listed in detail; the remaining
   through peer scoring), duplicates and rate-limited events are ignored,
   accepted ones are stored and relayed. `Mesh.Publish` stores an event of
   the node first, then publishes it; while no peer is on the topic it holds
-  the event instead (at most 10,000, in memory) and publishes the held
-  events in order when a peer joins, dropping those about to expire
+  the event instead (at most 10,000, in memory), and later events wait
+  behind held ones; once a peer is on the topic it sends them in order, 16
+  every 2 seconds (below GossipSub's per-peer queue and the default
+  publisher rate limit), dropping those about to expire
   (`Mesh.Held`, `Mesh.TopicPeers`; ADR 0026). Outcomes are counted in
   `obie_events_received_total` and reported through the `gossip.Metrics`
   interface (ADR 0009).

@@ -8,11 +8,19 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/crypto"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
 // newClockedNode is newNode with a clock ahead of time.Now by *ahead.
 func newClockedNode(t *testing.T, ahead *atomic.Int64) *node {
+	t.Helper()
+	return newNodeWith(t, ahead, defaultLimit.Publisher)
+}
+
+// newNodeWith is newNode with a clock ahead of time.Now by *ahead and the
+// publisher rate limit publishers.
+func newNodeWith(t *testing.T, ahead *atomic.Int64, publishers config.TokenBucket) *node {
 	t.Helper()
 	p := newPublisher(t)
 	key, err := crypto.UnmarshalEd25519PrivateKey(p.key)
@@ -22,8 +30,8 @@ func newClockedNode(t *testing.T, ahead *atomic.Int64) *node {
 	n := &node{publisher: p, host: newHost(t, key), store: newStore(t), metrics: &countingMetrics{}}
 	n.gossip, err = New(n.host, Options{
 		Store:          n.store,
-		PublisherLimit: defaultLimit.Publisher,
-		PeerLimit:      defaultLimit.Peer,
+		PublisherLimit: publishers,
+		PeerLimit:      config.TokenBucket{EventsPerSecond: 1000, Burst: 1000},
 		Metrics:        n.metrics,
 		Now:            func() time.Time { return time.Now().Add(time.Duration(ahead.Load())) },
 	}, discardLogger())
@@ -140,5 +148,56 @@ func TestHeldEventsExpireAndOverflow(t *testing.T) {
 		if !a.has(ev.ID) {
 			t.Errorf("event %s is not in the local store", ev.ID)
 		}
+	}
+}
+
+// setInterval sets how often n sends a batch of held events.
+func (n *node) setInterval(d time.Duration) {
+	n.gossip.pubMu.Lock()
+	n.gossip.heldInterval = d
+	n.gossip.pubMu.Unlock()
+	n.gossip.wakeUp()
+}
+
+// TestHeldEventsGoOutInBatches: many held events go out in paced batches,
+// all of them, and events published while some are held wait behind them
+// instead of overtaking them (review findings F2, F3).
+func TestHeldEventsGoOutInBatches(t *testing.T) {
+	var ahead atomic.Int64
+	a := newClockedNode(t, &ahead)
+	a.setInterval(time.Hour) // one batch, then nothing until the test says
+	var held []*obieproto.Event
+	for range 70 {
+		ev := a.verdict(t, time.Now(), 3600)
+		a.publish(t, ev)
+		held = append(held, ev)
+	}
+	// The peer accepts far more than a batch at once, so every event lost
+	// would be lost by the sender.
+	b := newNodeWith(t, &ahead, config.TokenBucket{EventsPerSecond: 1000, Burst: 1000})
+	connect(t, a.host, b.host, a.gossip.topic, b.gossip.topic)
+	waitFor(t, propagationDeadline, "the first batch on the peer", func() bool { return b.has(held[heldBatch-1].ID) })
+	if a.gossip.Held(held[heldBatch-1].ID) || !a.gossip.Held(held[heldBatch].ID) || b.has(held[heldBatch].ID) {
+		t.Fatalf("after one batch: event %d held %v, event %d held %v", heldBatch-1, a.gossip.Held(held[heldBatch-1].ID),
+			heldBatch, a.gossip.Held(held[heldBatch].ID))
+	}
+	// With a peer on the topic, a new event waits behind the held ones.
+	late := a.verdict(t, time.Now(), 3600)
+	a.publish(t, late)
+	if !a.gossip.Held(late.ID) {
+		t.Error("a new event overtook the held ones")
+	}
+
+	a.setInterval(50 * time.Millisecond)
+	waitFor(t, propagationDeadline, "every held event on the peer", func() bool {
+		for _, ev := range append(held, late) {
+			if !b.has(ev.ID) {
+				return false
+			}
+		}
+		return true
+	})
+	if a.gossip.Held(late.ID) || len(a.gossip.held) != 0 {
+		t.Errorf("%d events still held", len(a.gossip.held))
 	}
 }
