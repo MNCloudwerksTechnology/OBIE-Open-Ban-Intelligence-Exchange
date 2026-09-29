@@ -60,8 +60,8 @@ jobs:
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       # TestFail2BanAcceptsAction checks the Fail2Ban action with
-      # `fail2ban-client -t` (a command of the quick start); it is skipped
-      # without Fail2Ban.
+      # `fail2ban-client -t` (a command of the getting-started tutorial); it
+      # is skipped without Fail2Ban.
       - name: Install Fail2Ban
         run: |
           if ! command -v fail2ban-client >/dev/null; then
@@ -165,10 +165,10 @@ jobs:
           GOCACHE="$(mktemp -d)" make release VERSION=0.0.0-ci
           diff "$RUNNER_TEMP/SHA256SUMS" dist/release/SHA256SUMS
 
-      # The install commands of documentation/operations/quickstart.md, on
-      # the tarball just built: verify, extract, install (staged below
-      # DESTDIR, without root and systemd) and check the installed config.
-      - name: quickstart steps on the release tarball
+      # The install commands of documentation/getting-started.md, on the
+      # tarball just built: verify, extract, install (staged below DESTDIR,
+      # without root and systemd) and check the installed config.
+      - name: install steps on the release tarball
         run: |
           cp dist/release/obie-0.0.0-ci-linux-amd64.tar.gz dist/release/SHA256SUMS "$RUNNER_TEMP/"
           cd "$RUNNER_TEMP"

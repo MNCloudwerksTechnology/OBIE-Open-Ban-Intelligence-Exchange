@@ -7,8 +7,9 @@ and the server and tells you, for everything that is not right, what to
 do next. Both come with every release. Run them as root: the configuration,
 the node's state and its admin interface are closed to other users.
 
-The [quick start](quickstart.md) uses both. This page explains what they
-ask, what they check and how to use them in scripts.
+The [getting-started tutorial](../getting-started.md) uses both. This
+page explains what they ask, what they check and how to use them in
+scripts.
 
 ## Set up the node
 
@@ -51,7 +52,7 @@ replaced file is kept as `/etc/obie/obie.yaml.bak` (or `.bak.1`, `.bak.2`,
 
 When it has written the file, the assistant tells you what to do next:
 start the node, run the self-check and open the
-[tutorial](quickstart.md#3-connect-fail2ban) where it goes on with
+[tutorial](../getting-started.md#6-connect-fail2ban) where it goes on with
 Fail2Ban. If your SSH session comes from an address the new configuration
 does not protect, it warns you of a lockout first. For another file than
 `/etc/obie/obie.yaml`, the commands it shows name that file, and the first

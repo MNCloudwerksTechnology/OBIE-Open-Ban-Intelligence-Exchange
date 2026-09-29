@@ -10,7 +10,9 @@ answer the rest. **Deciding whether it fits?**
 this release does and does not do, what it needs and which risks remain.
 **Want to see it work first?** [Try OBIE in a sandbox](documentation/sandbox.md):
 four [nodes](documentation/glossary.md#node) on your own computer, step by
-step, and nothing is ever blocked.
+step, and nothing is ever blocked. **Ready to install?**
+[Get started](documentation/getting-started.md) takes you from nothing to
+a running node on your server in about 30 minutes.
 
 **Shared intelligence, sovereign enforcement.** OBIE lets servers you run
 tell each other which addresses attack them, and lets each server decide
@@ -112,9 +114,10 @@ sudo obied self-check
 ```
 
 The self-check says for everything that is not right what to do next
-([Set up and check a node](documentation/operations/setup.md)). The
-[quick start](documentation/operations/quickstart.md) takes it from here:
-connect Fail2Ban, check it works and switch to enforcement. To
+([Set up and check a node](documentation/operations/setup.md)).
+[Get started](documentation/getting-started.md) takes it from here, step
+by step with the output of every command: connect Fail2Ban, see the first
+verdict, connect a peer and, once you trust it, switch to enforcement. To
 watch OBIE work on your own computer first, without touching any
 firewall, [try it in a sandbox](documentation/sandbox.md).
 
@@ -127,7 +130,7 @@ firewall, [try it in a sandbox](documentation/sandbox.md).
 | Watching OBIE work on your own computer, step by step, without touching a firewall | [Try OBIE in a sandbox](documentation/sandbox.md) |
 | Can a peer lock me out? What is shared? What if it crashes? | [FAQ](documentation/faq.md) |
 | Every OBIE term in one or two sentences | [Glossary](documentation/glossary.md) |
-| First node, step by step | [Quick start](documentation/operations/quickstart.md) |
+| First node on your server, step by step, with the output of every command | [Get started](documentation/getting-started.md) |
 | Setting up a node with a few questions, and checking it | [Set up and check a node](documentation/operations/setup.md) |
 | Every configuration key | [Configuration reference](documentation/operations/configuration.md) |
 | Every command, its flags and examples (also `man obiectl`, `obiectl help <command>`) | [Command-line reference](documentation/operations/cli.md) |

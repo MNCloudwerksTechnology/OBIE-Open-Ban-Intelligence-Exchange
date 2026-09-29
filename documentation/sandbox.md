@@ -604,8 +604,8 @@ unnoticed ([ADR 0029](adr/0029-sandbox-and-checked-walkthrough.md)).
   just saw.
 - [What OBIE can and cannot do yet](capabilities.md) says whether it fits
   your servers.
-- [Quick start](operations/quickstart.md): your first real node, safely in
-  observe mode.
+- [Get started](getting-started.md): your first real node, safely in
+  observe mode, step by step.
 - [Web console](operations/console.md): every page of the console.
 - [Federation](operations/federation.md): connecting your node with a
   friend's.

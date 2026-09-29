@@ -331,7 +331,7 @@ Before you tag:
    versions the action works with, besides the fuzzing and the soak test
    above.
 3. Set the new version in the install commands of the README and the
-   [quick start](documentation/operations/quickstart.md), and turn
+   [getting-started tutorial](documentation/getting-started.md), and turn
    `[Unreleased]` in the [changelog](CHANGELOG.md) into the release.
 
 Then tag the merged commit on `main`

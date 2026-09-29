@@ -17,7 +17,7 @@ publisher you trust can get addresses blocked on your host. Read the
 [threat model](../../SECURITY.md#threat-model) before you choose weights.
 
 This page federates your node with a friend's node, both installed as in
-the [quick start](quickstart.md). Everything is configured by hand in
+[Get started](../getting-started.md). Everything is configured by hand in
 v0.1: there is no discovery and no public mesh.
 
 ## Exchange peer IDs and addresses

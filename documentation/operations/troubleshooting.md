@@ -87,9 +87,11 @@ them while the node runs in [enforce mode](../glossary.md#enforce-mode),
 because it re-applies its decisions at start.
 
 To prevent it: keep the allow-list complete *before* switching to
-`enforce` ([quick start, step 5](quickstart.md#5-enforce)), keep a console
-path, and consider `enforce.nftables.teardown_on_stop: true`, so that
-stopping the service lifts every block.
+`enforce`
+([Get started, step 10](../getting-started.md#10-switch-to-enforcement-optional)),
+keep a console path, and consider
+`enforce.nftables.teardown_on_stop: true`, so that stopping the service
+lifts every block.
 
 ## Nothing is enforced
 

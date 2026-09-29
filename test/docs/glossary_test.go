@@ -72,7 +72,7 @@ var glossaryGuides = []string{
 	"documentation/faq.md",
 	"documentation/capabilities.md",
 	"documentation/sandbox.md",
-	"documentation/operations/quickstart.md",
+	"documentation/getting-started.md",
 	"documentation/operations/setup.md",
 	"documentation/operations/federation.md",
 	"documentation/operations/install.md",

@@ -160,7 +160,7 @@ and runs next to your existing tools.
 - [What OBIE can and cannot do yet](capabilities.md).
 - [Try it safely](sandbox.md): watch it work on your computer, blocking
   nothing.
-- [Quick start](operations/quickstart.md): a first node, safely in observe
+- [Get started](getting-started.md): a first node, safely in observe
   mode.
 - [Threat model](../SECURITY.md#threat-model): the risks that remain.
 
