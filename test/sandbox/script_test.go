@@ -14,9 +14,11 @@ import (
 
 // fakeDocker stands in for docker in the script's tests. FAKE_INFO makes
 // `docker info` succeed (ok), fail as for a user outside the docker group
-// (denied) or as for a stopped daemon (down); FAKE_COMPOSE=missing makes
-// `docker compose` fail; FAKE_UP=port makes `docker compose up` fail with
-// Docker's error for a taken port. Every call is appended to FAKE_LOG.
+// (denied), as for a stopped daemon (down) or as for a stopped daemon with
+// an older Docker CLI (old-down); FAKE_COMPOSE=missing makes
+// `docker compose` fail; FAKE_PS=running makes the sandbox run already;
+// FAKE_UP=port makes `docker compose up` fail with Docker's error for a
+// taken port. Every call is appended to FAKE_LOG.
 const fakeDocker = `#!/bin/sh
 echo "$*" >>"$FAKE_LOG"
 case $1 in
@@ -24,6 +26,7 @@ info)
 	case $FAKE_INFO in
 	denied) echo "permission denied while trying to connect to the docker API at unix:///var/run/docker.sock" >&2; exit 1 ;;
 	down) echo "failed to connect to the docker API at unix:///var/run/docker.sock; check if the path is correct and if the daemon is running: dial unix /var/run/docker.sock: connect: no such file or directory" >&2; exit 1 ;;
+	old-down) printf 'ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?\nerrors pretty printing info\n' >&2; exit 1 ;;
 	esac
 	exit 0 ;;
 compose) [ "$FAKE_COMPOSE" != missing ] || { echo "docker: unknown command: docker compose" >&2; exit 1; } ;;
@@ -35,6 +38,7 @@ case "$*" in
 		echo "Error response from daemon: failed to set up container networking: driver failed programming external connectivity on endpoint obie-sandbox-node2-1 (0f00): Bind for 127.0.0.1:9402 failed: port is already allocated"
 		exit 1
 	} ;;
+*" ps -q"*) [ "$FAKE_PS" != running ] || echo 0f00 ;;
 *" exec -T "*" obiectl peers --json"*) printf '{"peer_id": "a"}\n{"peer_id": "b"}\n{"peer_id": "c"}\n' ;;
 *" exec -T "*" obiectl console --json"*) printf '{\n  "token": "token-of-%s"\n}\n' "$8" ;;
 *" port node1 9466"*) echo "127.0.0.1:${OBIE_SANDBOX_CONSOLE1:-9401}" ;;
@@ -187,6 +191,15 @@ func TestSandboxExecRunsInTheNode(t *testing.T) {
 	}
 }
 
+// TestSandboxLogsShowsTheNodes checks that ./sandbox logs shows what the
+// named node logged, without color codes.
+func TestSandboxLogsShowsTheNodes(t *testing.T) {
+	run := runScript(t, nil, "logs", "node3")
+	if run.code != 0 || !run.called(" -p obie-sandbox logs --no-color --tail 100 node3") {
+		t.Errorf("./sandbox logs: exit status %d, calls %q", run.code, run.calls)
+	}
+}
+
 // TestSandboxMessages checks what the script says when it cannot start:
 // every problem names what went wrong and the next step, on standard
 // error, with exit status 1, and a mistake on the command line exits 2.
@@ -244,6 +257,29 @@ func TestSandboxRemovesAHalfStartedSandbox(t *testing.T) {
 	run := runScript(t, []string{"FAKE_UP=port", "OBIE_SANDBOX_PORT=" + strconv.Itoa(freePort(t))}, "up")
 	if !run.called(" down --volumes --rmi all --remove-orphans") {
 		t.Errorf("a failed start did not remove the sandbox: %q", run.calls)
+	}
+}
+
+// TestSandboxKeepsARunningSandbox checks that a start on other ports that
+// fails on a taken port leaves a sandbox that already ran alone: its keys
+// and state are the user's.
+func TestSandboxKeepsARunningSandbox(t *testing.T) {
+	run := runScript(t, []string{"FAKE_PS=running", "FAKE_UP=port", "OBIE_SANDBOX_PORT=" + strconv.Itoa(freePort(t))}, "up")
+	if run.code != 1 || !strings.Contains(run.stderr, "sandbox: port 9402 on 127.0.0.1 is taken by another program") {
+		t.Errorf("exit status %d, want 1 and the taken port:\n%s", run.code, run.stderr)
+	}
+	if run.called(" down ") {
+		t.Errorf("a failed start removed the sandbox that already ran: %q", run.calls)
+	}
+}
+
+// TestSandboxSaysWhyWithAnOlderDocker checks that the Why: line is
+// Docker's error, not the line older Docker CLIs add after it.
+func TestSandboxSaysWhyWithAnOlderDocker(t *testing.T) {
+	run := runScript(t, []string{"FAKE_INFO=old-down"}, "up")
+	want := "  Why: ERROR: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?\n"
+	if run.code != 1 || !strings.Contains(run.stderr, want) {
+		t.Errorf("exit status %d, want 1 and %q:\n%s", run.code, want, run.stderr)
 	}
 }
 

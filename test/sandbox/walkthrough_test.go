@@ -115,7 +115,9 @@ func parseWalkthrough(page string) walkthrough {
 				w.problems = append(w.problems, fmt.Sprintf("line %d: an output block follows no command", start))
 			}
 		case anyFence.MatchString(line):
+			// The check would skip it, and a step in it would never run.
 			flushPending()
+			w.problems = append(w.problems, fmt.Sprintf("line %d: a code block opened with %q; commands go in sh blocks, their output in text blocks", i+1, strings.TrimSpace(line)))
 			_, i = fenced(lines, i)
 		case strings.HasPrefix(line, consoleLead):
 			flushPending()

@@ -98,6 +98,20 @@ func TestWalkthroughTellsTheStory(t *testing.T) {
 	}
 }
 
+// TestParseWalkthroughRejectsOtherBlocks checks that a code block the
+// check would not run is a mistake in the page's form, not skipped.
+func TestParseWalkthroughRejectsOtherBlocks(t *testing.T) {
+	page := "# Try OBIE in a sandbox\n\n## Start the sandbox\n\n" +
+		"```console\n./sandbox exec node3 obiectl decisions\n```\n\n" +
+		"```text\nNo decisions.\n```\n"
+	w := parseWalkthrough(page)
+	if len(w.steps) != 0 || !slices.ContainsFunc(w.problems, func(p string) bool {
+		return strings.Contains(p, "line 5: a code block opened with \"```console\"")
+	}) {
+		t.Errorf("a console block gave the steps %+v and the problems %q; want no step and the block named as a problem", w.steps, w.problems)
+	}
+}
+
 // troubles are the problems the troubleshooting section shows, by heading,
 // and how the script's test provokes each.
 var troubles = []struct {

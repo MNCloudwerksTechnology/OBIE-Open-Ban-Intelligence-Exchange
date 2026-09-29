@@ -66,7 +66,8 @@ port ends with a message that says what to do.
 - **The walkthrough is the test.** `documentation/sandbox.md` follows fixed
   rules: a shell block with one `./sandbox` command, followed by a text
   block, is a step and its expected output; a shell block of `git clone`
-  and `cd` alone prepares; a paragraph that starts with
+  and `cd` alone prepares; any other kind of code block is a mistake, so
+  that no step escapes the check; a paragraph that starts with
   `**In the console:**` names one console page, and every phrase it sets
   in bold must be on that page. `make sandbox-check` (build tag `sandbox`,
   run in CI with the lab's smoke test) starts a sandbox under its own
@@ -97,5 +98,9 @@ port ends with a message that says what to do.
   checkout, since Git for Windows' default `core.autocrlf` would break
   them in the containers.
 - The consoles are reachable from the sandbox's own network, the stranger
-  included, through the forwarders; the token still protects them. That is
+  included, through the forwarders; the token still protects them. Every
+  connection through a forwarder reaches the console as `nonroot`, so the
+  console's local-user check (ADR 0019) cannot tell the users of the host
+  apart: any account on the workstation reaches the sign-in page, and only
+  the token protects the console; the walkthrough says so. That is
   acceptable for a sandbox and does not apply to real nodes.

@@ -14,8 +14,8 @@ Nothing on your computer is blocked, at any step. Every node runs in
 nothing. The containers have no permission to change any firewall, and
 the sandbox never asks for root.
 
-An automated test runs every `./sandbox` command on this page on every
-change to OBIE, and compares its output with what this page shows. Only
+An automated test runs every `./sandbox` command this page shows with its
+output, on every change to OBIE, and compares the output with the page. Only
 what changes from run to run differs in yours:
 [peer IDs](glossary.md#peer-id), event IDs, times, latencies, container
 addresses and tokens.
@@ -27,8 +27,7 @@ addresses and tokens.
   Engine. Docker Desktop on macOS or Windows and rootless Docker should
   work too, but nobody has tested them yet. On Windows, run the commands
   below in WSL 2: `./sandbox` is a shell script.
-- A user who may use Docker. `docker compose version` must work without
-  `sudo`.
+- A user who may use Docker: `docker info` must work without `sudo`.
 - `git`, to get OBIE's source code. The sandbox builds OBIE from it.
 - The ports 9401, 9402 and 9403 on `127.0.0.1` free, for the web consoles.
   [Other ports](#a-console-port-is-taken) work too.
@@ -114,9 +113,18 @@ the stranger: node3 does not know it, but lets it connect.
 
 The same story is visible in the web consoles, one per trusted node. Open
 <http://127.0.0.1:9403/> in a browser on this computer and sign in with
-node3's token from the output of `./sandbox up`; `./sandbox console node3`
-shows it again. Keep the console open next to your terminal: each step
-below says where to look.
+node3's token from the output of `./sandbox up`. This shows it again:
+
+```sh
+./sandbox console node3
+```
+
+```text
+node3  http://127.0.0.1:9403/  token F2Qw4odM8CrkBvx9ZDQKZtFQPTkUp9E8EV5yEqHFykg
+```
+
+Keep the console open next to your terminal: each step below says where
+to look.
 
 **In the console:** node3's **Peers** page, <http://127.0.0.1:9403/peers>,
 lists node1 and node2 as **Trusted publisher** and the stranger with
@@ -393,8 +401,8 @@ No entries applied.
 ```
 
 **In the console:** node3's **Activity** page,
-<http://127.0.0.1:9403/activity>, tells the whole story, newest first. Its
-top entry is **Block removed** for 1.2.3.4, with **Cause: revoke**.
+<http://127.0.0.1:9403/activity>, tells the whole story, newest first. It
+shows **Block removed** for 1.2.3.4, with **Cause: revoke**.
 
 ## 7. The stranger tries to get an address blocked, and fails
 
@@ -483,9 +491,11 @@ network, the nodes' keys and data, and the images it built:
 The sandbox is removed: its containers, network, volumes and images.
 ```
 
-Docker keeps the base images it downloaded to build OBIE and its build
-cache, which make the next start fast. `docker builder prune` and
-`docker image prune` remove them.
+Docker keeps its build cache and the base images it downloaded to build
+OBIE (`golang`, `busybox` and `gcr.io/distroless/static-debian12`), which
+make the next start fast. `docker builder prune` removes the build cache;
+`docker image ls` lists the base images, and `docker image rm` removes
+those that nothing else of yours needs.
 
 ## When the sandbox does not start
 
@@ -564,6 +574,10 @@ If a node does not start or connect, `./sandbox up` says which;
   once, without waiting for a second report, and keeps blocking it as
   long as its own verdict lasts. Had node2 run like that, it would still
   block 1.2.3.4 after node1 took its report back in step 6.
+- **Who may sign in to a console.** On a server, only the node's
+  operators reach its web console. The sandbox publishes each console on
+  a port of `127.0.0.1`, so anyone logged in to your computer reaches its
+  sign-in page; only the token lets them in.
 - **Docker's own rules.** The sandbox's nodes never touch a firewall, but
   Docker itself adds the forwarding rules its container network and the
   published console ports need, as for any container, and removes them
@@ -572,9 +586,9 @@ If a node does not start or connect, `./sandbox up` says which;
 
 ## How this page is tested
 
-`make sandbox-check` runs every `./sandbox` command on this page in order,
-against a sandbox of its own, and compares each output with the output
-shown here. It opens every console page this page links and checks that
+`make sandbox-check` runs every `./sandbox` command this page shows with
+its output, in order, against a sandbox of its own, and compares each
+output with the output shown here. It opens every console page this page links and checks that
 it shows what is set in bold, and after `./sandbox down` it checks that
 nothing of the sandbox is left. The messages under
 [When the sandbox does not start](#when-the-sandbox-does-not-start) are

@@ -18,6 +18,8 @@ trusted="node1 node2 node3"
 nodes="$trusted stranger"
 # timeout is how long up waits for the nodes to connect, in seconds.
 timeout=${OBIE_SANDBOX_TIMEOUT:-60}
+# running is yes if the sandbox already ran when up was called.
+running=no
 
 export OBIE_SANDBOX_PROJECT="$project"
 
@@ -70,16 +72,19 @@ check_docker() {
 		"Next: install Docker Engine (https://docs.docker.com/engine/install/) or Docker Desktop, then run ./sandbox up again." \
 		"      Rootless Docker needs no root at all: https://docs.docker.com/engine/security/rootless/"
 	if ! err=$(docker info 2>&1 >/dev/null); then
+		# The last line says what is wrong; older Docker CLIs add a line
+		# that says nothing after it.
+		why=$(echo "$err" | grep -v '^errors pretty printing info$' | tail -n 1)
 		case $err in
 		*"permission denied"* | *"Permission denied"*)
 			fail "your user may not use Docker." \
-				"Why: $(echo "$err" | tail -n 1)" \
+				"Why: $why" \
 				"Next: add yourself to the group docker (sudo usermod -aG docker \"\$USER\", then log in again)," \
 				"      or use rootless Docker (https://docs.docker.com/engine/security/rootless/). The sandbox itself needs no sudo."
 			;;
 		*)
 			fail "Docker is installed but does not answer." \
-				"Why: $(echo "$err" | tail -n 1)" \
+				"Why: $why" \
 				"Next: start Docker (sudo systemctl start docker, or open Docker Desktop), then run ./sandbox up again."
 			;;
 		esac
@@ -125,9 +130,12 @@ listening() {
 }
 
 # check_ports makes sure the console ports are free, unless this sandbox
-# already runs and holds them itself.
+# already runs and holds them itself; it sets running then.
 check_ports() {
-	[ -z "$(compose ps -q 2>/dev/null)" ] || return 0
+	if [ -n "$(compose ps -q 2>/dev/null)" ]; then
+		running=yes
+		return 0
+	fi
 	for p in "$OBIE_SANDBOX_CONSOLE1" "$OBIE_SANDBOX_CONSOLE2" "$OBIE_SANDBOX_CONSOLE3"; do
 		if listening "$p"; then
 			port_taken "$p"
@@ -137,7 +145,8 @@ check_ports() {
 
 # start builds and starts the sandbox, showing Docker's progress. If
 # Docker fails because a port is taken, it says so and removes what it
-# started; otherwise it leaves the containers for their logs.
+# started, but never a sandbox that already ran; otherwise it leaves the
+# containers for their logs.
 start() {
 	log=$(mktemp)
 	trap 'rm -f "$log" "$log.status"' EXIT
@@ -150,7 +159,9 @@ start() {
 	taken=$(grep -E 'address already in use|port is already allocated' "$log" |
 		sed -n 's/.*127\.0\.0\.1:\([0-9][0-9]*\).*/\1/p' | head -n 1)
 	if [ -n "$taken" ]; then
-		compose down --volumes --rmi all --remove-orphans >/dev/null 2>&1 || true
+		if [ "$running" = no ]; then
+			compose down --volumes --rmi all --remove-orphans >/dev/null 2>&1 || true
+		fi
 		port_taken "$taken"
 	fi
 	fail "Docker could not start the sandbox; its messages are above." \

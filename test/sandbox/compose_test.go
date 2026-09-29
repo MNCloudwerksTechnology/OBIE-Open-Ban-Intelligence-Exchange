@@ -18,6 +18,12 @@ type composeService struct {
 	NetworkMode string   `yaml:"network_mode"`
 	Ports       []string `yaml:"ports"`
 	User        string   `yaml:"user"`
+	Volumes     []string `yaml:"volumes"`
+	Devices     []string `yaml:"devices"`
+	Pid         string   `yaml:"pid"`
+	Ipc         string   `yaml:"ipc"`
+	UsernsMode  string   `yaml:"userns_mode"`
+	Cgroup      string   `yaml:"cgroup"`
 }
 
 // initCaps are the only capabilities a container of the sandbox may keep:
@@ -30,13 +36,15 @@ var initCaps = []string{"CHOWN", "DAC_OVERRIDE", "FOWNER"}
 const projectImage = "${OBIE_SANDBOX_PROJECT:-obie-sandbox}:"
 
 // TestComposeCannotTouchTheHost checks packaging/sandbox/compose.yaml: no
-// container shares the host's network, is privileged or keeps a
-// capability beyond what the init container needs, every container runs
-// with no-new-privileges, the consoles are published on 127.0.0.1 only,
-// and every image is named after the project.
+// container shares the host's network or another namespace of the host,
+// mounts a host path or device, is privileged or keeps a capability
+// beyond what the init container needs, every container runs with
+// no-new-privileges, the consoles are published on 127.0.0.1 only, and
+// every image is named after the project.
 func TestComposeCannotTouchTheHost(t *testing.T) {
 	var file struct {
 		Services map[string]composeService `yaml:"services"`
+		Volumes  map[string]any            `yaml:"volumes"`
 	}
 	if err := yaml.Unmarshal([]byte(readRepoFile(t, "packaging/sandbox/compose.yaml")), &file); err != nil {
 		t.Fatal(err)
@@ -53,6 +61,15 @@ func TestComposeCannotTouchTheHost(t *testing.T) {
 	for name, s := range file.Services {
 		if s.Privileged || s.NetworkMode == "host" {
 			t.Errorf("%s: privileged %v, network_mode %q; want neither privileged nor host networking", name, s.Privileged, s.NetworkMode)
+		}
+		if s.Pid == "host" || s.Ipc == "host" || s.UsernsMode == "host" || s.Cgroup == "host" || len(s.Devices) > 0 {
+			t.Errorf("%s: pid %q, ipc %q, userns_mode %q, cgroup %q, devices %q; want no namespace and no device of the host",
+				name, s.Pid, s.Ipc, s.UsernsMode, s.Cgroup, s.Devices)
+		}
+		for _, v := range s.Volumes {
+			if _, named := file.Volumes[strings.SplitN(v, ":", 2)[0]]; !named {
+				t.Errorf("%s: volume %q is no named volume of the sandbox; a host path must not be mounted", name, v)
+			}
 		}
 		if !slices.Equal(s.CapDrop, []string{"ALL"}) {
 			t.Errorf("%s: cap_drop %q, want [ALL]", name, s.CapDrop)

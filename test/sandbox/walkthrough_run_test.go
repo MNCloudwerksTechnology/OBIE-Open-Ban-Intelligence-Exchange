@@ -260,8 +260,9 @@ func docker(t *testing.T, args ...string) string {
 var projectFilter = "label=com.docker.compose.project=" + checkProject
 
 // checkIsolation checks every container of the running sandbox: none is
-// privileged, shares the host's network or keeps a capability beyond what
-// the init container needs to hand files to nonroot.
+// privileged, shares a namespace of the host, mounts a host path or
+// device, or keeps a capability beyond what the init container needs to
+// hand files to nonroot.
 func checkIsolation(t *testing.T) {
 	t.Helper()
 	ids := strings.Fields(docker(t, "ps", "-aq", "--filter", projectFilter))
@@ -271,11 +272,17 @@ func checkIsolation(t *testing.T) {
 	var containers []struct {
 		Name       string
 		HostConfig struct {
-			Privileged  bool
-			NetworkMode string
-			CapAdd      []string
-			CapDrop     []string
+			Privileged   bool
+			NetworkMode  string
+			PidMode      string
+			IpcMode      string
+			UsernsMode   string
+			CgroupnsMode string
+			Devices      []json.RawMessage
+			CapAdd       []string
+			CapDrop      []string
 		}
+		Mounts []struct{ Type, Source string }
 	}
 	if err := json.Unmarshal([]byte(docker(t, append([]string{"inspect"}, ids...)...)), &containers); err != nil {
 		t.Fatal(err)
@@ -284,6 +291,15 @@ func checkIsolation(t *testing.T) {
 		hc := c.HostConfig
 		if hc.Privileged || hc.NetworkMode == "host" || !slices.Contains(hc.CapDrop, "ALL") {
 			t.Errorf("%s: privileged %v, network %s, dropped capabilities %q", c.Name, hc.Privileged, hc.NetworkMode, hc.CapDrop)
+		}
+		if hc.PidMode == "host" || hc.IpcMode == "host" || hc.UsernsMode == "host" || hc.CgroupnsMode == "host" || len(hc.Devices) > 0 {
+			t.Errorf("%s: pid %q, ipc %q, userns %q, cgroupns %q, %d devices; want no namespace and no device of the host",
+				c.Name, hc.PidMode, hc.IpcMode, hc.UsernsMode, hc.CgroupnsMode, len(hc.Devices))
+		}
+		for _, m := range c.Mounts {
+			if m.Type != "volume" {
+				t.Errorf("%s mounts %s %s; want named volumes only", c.Name, m.Type, m.Source)
+			}
 		}
 		for _, capability := range hc.CapAdd {
 			if !slices.Contains(initCaps, strings.TrimPrefix(capability, "CAP_")) {
