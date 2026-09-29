@@ -157,7 +157,13 @@ func (a *consoleActions) Review(req console.ActionRequest) (console.ActionReview
 			return console.ActionReview{}, actionError(fmt.Errorf("%w: this node has no active verdict on %s", verdicts.ErrNotFound, key))
 		}
 	case console.ActionReport:
+		// The verdict the report refreshes is the one the plan read, so the
+		// plan and the verdict shown agree.
 		pl := act.plan
+		r.Verdict = nil
+		if pl.Current != nil {
+			r.Verdict = ownVerdictOf(pl.Current)
+		}
 		r.Planned = &console.PlannedVerdict{Action: pl.Verdict.Verdict.SuggestedAction, Confidence: pl.Verdict.Verdict.Confidence,
 			TTL: time.Duration(pl.Verdict.Verdict.TTLSeconds) * time.Second, Refreshes: pl.Current != nil && !pl.Coalesced,
 			Coalesced: pl.Coalesced}

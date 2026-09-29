@@ -95,8 +95,9 @@ things need a decision:
 ### Concurrency and sessions
 
 - **No silent overwrite.** The confirmation carries a fingerprint of the
-  address's state: its override (action, times, note) and this node's
-  active verdict (event ID). The `POST` compares it with the current state
+  address's state: its override (action, times, note), this node's
+  active verdict (event ID) and, for a report, whether it would refresh
+  that verdict or only be added to its next refresh. The `POST` compares it with the current state
   before acting; if another tab, `obiectl` or the mesh changed it, nothing is
   carried out and the confirmation is shown again with the current state
   and a warning (409). Console actions run one at a time, so the check and

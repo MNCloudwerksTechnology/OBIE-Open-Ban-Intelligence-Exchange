@@ -121,8 +121,12 @@ func (w *consequenceWriter) report() []consequence {
 	}
 	var out []consequence
 	if pl.Coalesced {
-		out = append(out, consequence{Text: fmt.Sprintf("You reported %s less than a minute ago, so nothing is published now: %s added to the next refresh of your verdict issued %s.",
-			w.addr, plural(int(rep.Events), "event is", "events are"), stamp(w.review.Verdict.IssuedAt).Text)})
+		issued := ""
+		if v := w.review.Verdict; v != nil {
+			issued = " issued " + stamp(v.IssuedAt).Text
+		}
+		out = append(out, consequence{Text: fmt.Sprintf("You reported %s less than a minute ago, so nothing is published now: %s added to the next refresh of your verdict%s.",
+			w.addr, plural(int(rep.Events), "event is", "events are"), issued)})
 	} else {
 		verdict := fmt.Sprintf("a signed %s verdict on %s (%s %s, %s, confidence %s, for %s)", pl.Action, w.addr,
 			rep.Protocol, rep.Reason, plural(int(rep.Events), "event", "events"), score(pl.Confidence), spanText(pl.TTL))

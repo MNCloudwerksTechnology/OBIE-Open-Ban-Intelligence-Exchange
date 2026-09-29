@@ -557,6 +557,17 @@ func TestSpanText(t *testing.T) {
 	}
 }
 
+// TestCoalescedReportWithoutVerdict: the words of a coalesced report do
+// not need the verdict it is coalesced into.
+func TestCoalescedReportWithoutVerdict(t *testing.T) {
+	w := consequenceWriter{review: &ActionReview{Range: netip.MustParsePrefix("198.51.100.7/32"),
+		Planned: &PlannedVerdict{Coalesced: true}}, req: ActionRequest{Kind: ActionReport, Report: ReportDetails{Events: 2}},
+		now: time.Now(), addr: "198.51.100.7"}
+	if got := w.report(); len(got) == 0 || !strings.Contains(got[0].Text, "2 events are added to the next refresh of your verdict.") {
+		t.Errorf("coalesced report = %+v", got)
+	}
+}
+
 // TestStateToken: the fingerprint changes with the override and this
 // node's verdict, and only with them.
 func TestStateToken(t *testing.T) {
@@ -577,6 +588,14 @@ func TestStateToken(t *testing.T) {
 		if stateToken(&r) == t0 {
 			t.Errorf("%s: the token did not change", name)
 		}
+	}
+	// A report that would refresh the verdict is not one that would only
+	// be added to its next refresh (after the coalescing window passed).
+	coalesced, refreshed := base, base
+	coalesced.Planned = &PlannedVerdict{Coalesced: true}
+	refreshed.Planned = &PlannedVerdict{Refreshes: true}
+	if stateToken(&coalesced) == stateToken(&refreshed) {
+		t.Error("the token ignores whether a report is coalesced")
 	}
 	a, b := base, base
 	a.Override = &Override{Action: "force_allow", Note: "a"}

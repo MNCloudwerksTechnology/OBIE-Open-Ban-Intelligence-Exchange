@@ -542,8 +542,10 @@ func actorOf(r *http.Request) Actor {
 }
 
 // stateToken is a fingerprint of what an action acts on — the override on
-// the address and this node's active verdict — so that a confirmation
-// shown before another change is not carried out over it (ADR 0026).
+// the address, this node's active verdict, and whether a report would
+// refresh that verdict or only be added to its next refresh — so that a
+// confirmation shown before another change is not carried out over it
+// (ADR 0026).
 func stateToken(r *ActionReview) string {
 	h := sha256.New()
 	_, _ = fmt.Fprintf(h, "obie-console-action\x00%s\x00", r.Range)
@@ -552,6 +554,9 @@ func stateToken(r *ActionReview) string {
 	}
 	if v := r.Verdict; v != nil {
 		_, _ = fmt.Fprintf(h, "verdict\x00%s\x00", v.EventID)
+	}
+	if pl := r.Planned; pl != nil {
+		_, _ = fmt.Fprintf(h, "planned\x00%t\x00%t\x00", pl.Refreshes, pl.Coalesced)
 	}
 	return base64.RawURLEncoding.EncodeToString(h.Sum(nil)[:18])
 }
