@@ -247,7 +247,7 @@ func defaultPorts(t *testing.T) []string {
 	return slices.Compact(ports)
 }
 
-// threatModel is the full threat model the overview's risks summarise.
+// threatModel is the full threat model the overview's risks summarize.
 const threatModel = "../SECURITY.md#threat-model"
 
 // threatContext is the threat model's introduction, not a threat.
@@ -263,10 +263,10 @@ var answers = []string{"**Yes**", "**No**", "**Not yet**"}
 // word of their lead.
 var scenarioKinds = []string{"VPS", "hosting provider", "homelab"}
 
-// TestRisksSummariseEveryThreat checks that "Remaining risks" links the
-// full threat model and summarises each of its threats in a short item
+// TestRisksSummarizeEveryThreat checks that "Remaining risks" links the
+// full threat model and summarizes each of its threats in a short item
 // that links the threat's section, so a new threat cannot be left out.
-func TestRisksSummariseEveryThreat(t *testing.T) {
+func TestRisksSummarizeEveryThreat(t *testing.T) {
 	doc := readRepoFile(t, capabilitiesPath)
 	risks, ok := section(doc, "Remaining risks")
 	if !ok {
@@ -286,7 +286,7 @@ func TestRisksSummariseEveryThreat(t *testing.T) {
 		}
 		target := "../SECURITY.md#" + anchor(threat)
 		if !slices.Contains(links, target) {
-			t.Errorf("\"Remaining risks\" does not summarise %q (no link to %s)", threat, target)
+			t.Errorf("\"Remaining risks\" does not summarize %q (no link to %s)", threat, target)
 		}
 	}
 	for _, block := range prose(risks) {

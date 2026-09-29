@@ -42,7 +42,7 @@ func TestReleaseRefusesStaleCapabilities(t *testing.T) {
 	} {
 		t.Run(tc.version, func(t *testing.T) {
 			out := t.TempDir()
-			cmd := exec.Command("sh", "release.sh", out)
+			cmd := exec.Command("sh", "release.sh", out) // #nosec G204 -- runs release.sh into a temporary directory.
 			// GO=false: the first build fails, unless the overview stopped
 			// the script before.
 			cmd.Env = append(os.Environ(), "VERSION="+tc.version, "GO=false", "CYCLONEDX_GOMOD=/nonexistent")
