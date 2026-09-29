@@ -39,6 +39,8 @@ const textPairs: [string, string][] = [
   ['on-accent', 'accent-hover'],
   ['on-accent', 'accent-active'],
   ['code-text', 'code-bg'],
+  // The demo's "never blocked" state (sections/mesh-demo/server-card.scss).
+  ['success', 'surface'],
 ];
 const nonTextPairs: [string, string][] = [
   ['accent-text', 'bg'],

@@ -126,6 +126,17 @@ describe('Home page', () => {
     headings.slice(1).forEach((level, i) => expect(level - headings[i]).toBeLessThanOrEqual(1));
   });
 
+  it('shows the three-node demo in "how it works", after the six steps', () => {
+    const how = page.querySelector(`section#${LANDING_CONTENT_EN.howItWorks.id}`);
+    const demo = how?.querySelector('app-mesh-demo');
+    expect(demo?.querySelector('h3')?.textContent).toBe(LANDING_CONTENT_EN.howItWorks.demo.heading);
+    expect(demo?.querySelector('.toolbar')).not.toBeNull();
+    const cards = how?.querySelector('.card-grid');
+    expect(cards && demo && cards.compareDocumentPosition(demo)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
   it('describes the diagram for screen readers', () => {
     const svg = page.querySelector('svg[role="img"]');
     expect(svg?.getAttribute('aria-labelledby')).toBe('flow-title flow-desc');

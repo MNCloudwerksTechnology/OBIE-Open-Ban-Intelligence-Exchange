@@ -2,12 +2,13 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 
 import { LANDING_CONTENT } from '../content/landing.content';
 import { FlowDiagram } from './flow-diagram';
+import { MeshDemo } from './mesh-demo/mesh-demo';
 
-/** The v0.1 flow as a diagram and six numbered steps. */
+/** The v0.1 flow as a diagram, six numbered steps and the step-by-step demo. */
 @Component({
   selector: 'app-how-it-works',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FlowDiagram],
+  imports: [FlowDiagram, MeshDemo],
   template: `
     <section class="section" [id]="how.id" aria-labelledby="how-heading">
       <div class="container">
@@ -25,6 +26,10 @@ import { FlowDiagram } from './flow-diagram';
           }
         </ol>
         <p class="note">{{ how.note }}</p>
+        <!-- Prerendered in full; its code loads once the browser is idle (ADR 0028). -->
+        @defer (hydrate on idle) {
+          <app-mesh-demo />
+        }
         <a class="next-step" [href]="how.nextStep.href" rel="noopener">{{ how.nextStep.label }}</a>
       </div>
     </section>
