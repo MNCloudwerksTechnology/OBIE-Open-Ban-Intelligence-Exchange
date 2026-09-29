@@ -31,10 +31,13 @@ performance budget and make no third-party request.
   step *n* is the replay of the events of steps 1 to *n*, so jumping,
   going back and rapid clicks always show a consistent state.
 - **Tests pin the numbers to the documentation.** The scenario's settings
-  are checked against `documentation/examples/obie.yaml` and the Fail2Ban
-  confidence; where the demo deviates (threshold 1.2 instead of 1.8, as the
-  federation guide suggests for three to five nodes), the demo says so.
-  Tests fix the outcome of every step: who blocks, who only watches.
+  are checked against `documentation/examples/obie.yaml`, the Fail2Ban
+  confidence and the federation guide; where the demo deviates (threshold
+  1.2 instead of 1.8, as the federation guide suggests for three to five
+  nodes, and servers that block instead of only observing), the demo says
+  so. Tests fix the outcome of every step: who blocks, who only watches.
+  The rule itself is a copy: its tests mirror the cases of the Go engine,
+  but nothing compares the two automatically.
 - **Copy in the content file, behaviour in the demo.** Captions, labels and
   the settings sentence live in `landing.content.ts` under
   `howItWorks.demo` (ADR 0012), so the operator reviews and changes the
@@ -45,14 +48,18 @@ performance budget and make no third-party request.
   JavaScript and search engines get. After hydration it becomes
   interactive, and the same list stays available as a text version. The
   component is in a `@defer (hydrate on idle)` block, so its code is a lazy
-  chunk and the initial JavaScript does not grow.
+  chunk and the initial JavaScript grows only by the demo's copy. The
+  interactive layout has another height than the list; when the demo is
+  above the viewport at the switch (a link to `/#contact`), the page scrolls
+  by the difference, so the visitor's target stays in place.
 - **No library, no canvas.** The map is inline SVG, hidden from assistive
   technology; the state of every server is HTML text (state, score,
   reporters). Animation is CSS only and runs only with
   `prefers-reduced-motion: no-preference`; nothing waits for an animation
   to end.
-- **Autoplay only on request.** It never starts on its own; it stops at the
-  last step, on any manual navigation, when the demo leaves the viewport
+- **Autoplay only on request.** It never starts on its own; it shows a step
+  for 0.4 s per word of its text (at least 8 s), and stops at the last
+  step, on any manual navigation, when the demo leaves the viewport
   (IntersectionObserver) and when the tab is hidden. The demo stores
   nothing and reports nothing: no cookies, no storage, no requests.
 
@@ -67,7 +74,11 @@ performance budget and make no third-party request.
 
 ## Consequences
 
-- When the node's decision rule or its defaults change, the demo's tests
-  fail until the demo is updated, which is intended.
+- When the node's documented defaults change, the demo's tests fail until
+  the demo is updated, which is intended.
 - The rule exists twice (Go and TypeScript). The TypeScript copy only
-  serves the illustration and never decides anything on a node.
+  serves the illustration and never decides anything on a node; a change
+  to `internal/decision` has to be carried over by hand.
+- A visitor who looks at the demo at the moment it hydrates sees the list
+  turn into the interactive demo. Hydration comes when the browser is idle,
+  shortly after load, while the demo is usually still below the fold.

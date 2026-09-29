@@ -208,12 +208,14 @@ office address, in ten steps
   `scenario.spec.ts` fixes who blocks and who watches at every step and
   checks the settings against `documentation/examples/obie.yaml` and the
   federation guide; it fails when the node's defaults change, so the demo
-  is updated with them.
+  is updated with them. A change to the rule in `internal/decision` has to
+  be carried over to `decision-rule.ts` by hand.
 - **In a talk.** Previous and Next (also the arrow keys while a control has
-  focus), a button per step, Restart, and Play, which shows each step for
-  10 seconds (`AUTOPLAY_STEP_MS`). Autoplay starts only on request and
-  pauses on any step the presenter picks, at the last step, when the demo
-  scrolls out of view and when the tab is hidden.
+  focus), a button per step, Restart, and Play, which shows each step long
+  enough to read it (`autoplayDelay`: 0.4 s per word, at least 8 s).
+  Autoplay starts only on request and pauses on any step the presenter
+  picks, at the last step, when the demo scrolls out of view and when the
+  tab is hidden.
 - **Without JavaScript, and for search engines,** the prerendered page shows
   the ten steps as an ordered list; the interactive demo offers the same list
   under "All ten steps as text". With reduced motion, steps change without
@@ -221,7 +223,9 @@ office address, in ten steps
 - **Checks.** `mesh-demo/*.spec.ts` (rule, scenario, component: navigation,
   every step's state, autoplay, reduced motion, the prerendered list, axe at
   every step) and, in a real browser under the production Content Security
-  Policy, `MeshDemoBrowserTest` (no JavaScript, hydration, reduced motion).
+  Policy, `MeshDemoBrowserTest` (no JavaScript, hydration without console
+  errors, reduced motion, no sideways scrolling at 360 px, only same-origin
+  requests, and a link below the demo staying on its target).
   Screenshots at 360 and 1440 px: [`docs/screenshots/wp-1759/`](docs/screenshots/wp-1759/).
 
 ## Inquiry API
