@@ -1,32 +1,41 @@
 # Web console
 
-The web console is a window onto a running node, in your browser, from
-which you can also [act](#act-from-the-console) on what you see: allow,
-block, remove an override, report or revoke, each after a confirmation. It is built into `obied`, loads nothing from outside the node and
+The web console is a window onto a running [node](../glossary.md#node),
+in your browser, from which you can also [act](#act-from-the-console) on
+what you see: allow, block, remove an [override](../glossary.md#override),
+report or [revoke](../glossary.md#revocation), each after a confirmation.
+It is built into `obied`, loads nothing from outside the node and
 works offline. It is **off by default** and, when on, reachable **only
 from the node's own host**, only by the local users who may run `obiectl`,
 and only with a token that `obied` keeps in memory. Its security model and
 the threats it was designed against are in
 [ADR 0019](../adr/0019-local-web-console.md).
 
-Every page shows the node, its mode (observe or enforce) and its health:
-*Starting*, *Ready*, *Degraded* (naming the subsystem and why) or
-*Shutting down*. The first page, the [overview](#the-overview), tells you
-within seconds whether the node is healthy and what it is doing; the
-[activity timeline](#the-activity-timeline) shows what the node did and
-does, live; the
-[peers view](#the-peers-view) shows every peer the node knows and the
-trust placed in it; the [decisions view](#the-decisions-view) lists every
-address the node decided on and [explains](#why-an-address-is-or-is-not-blocked)
-why it is or is not blocked; the [firewall view](#the-firewall-view) shows
-what the firewall applies; the [verdicts view](#the-verdicts-view) shows
-what this node told the mesh and what the mesh told it; the
-[overrides view](#the-overrides-view), the
-[allow-list view](#the-allow-list-view) and the
-[configuration view](#the-configuration-view) show every rule you set and
-the configuration the node runs with. [Act from the
-console](#act-from-the-console) says how to fix a false positive in
-seconds, and how to keep the console strictly read-only.
+Every page shows the node, whether it runs in
+[observe mode](../glossary.md#observe-mode) or
+[enforce mode](../glossary.md#enforce-mode), and its health: *Starting*,
+*Ready*, *Degraded* (naming the subsystem and why) or *Shutting down*. The
+first page, the [overview](#the-overview), tells you within seconds
+whether the node is healthy and what it is doing. The other pages show:
+
+- what the node did and does, live: the
+  [activity timeline](#the-activity-timeline);
+- every [peer](../glossary.md#peer) the node knows and the trust placed in
+  it: the [peers view](#the-peers-view);
+- every address the node decided on, and
+  [why](#why-an-address-is-or-is-not-blocked) it is or is not blocked: the
+  [decisions view](#the-decisions-view);
+- what the firewall applies: the [firewall view](#the-firewall-view);
+- the [verdicts](../glossary.md#verdict) this node told the mesh and those
+  the mesh told it: the [verdicts view](#the-verdicts-view);
+- every override and [allow-list](../glossary.md#allow-list) entry you
+  set, and the configuration the node runs with: the
+  [overrides view](#the-overrides-view), the
+  [allow-list view](#the-allow-list-view) and the
+  [configuration view](#the-configuration-view).
+
+[Act from the console](#act-from-the-console) says how to fix a false
+positive in seconds, and how to keep the console strictly read-only.
 
 ## Switch it on
 
@@ -94,7 +103,8 @@ numbers and decides what needs attention is recorded in
   warnings first, then notes (see the table below). Without conditions the
   section is not shown.
 - **Key numbers.** Connected peers (and how many of the configured
-  `mesh.bootstrap` peers), held indicators with their active verdicts,
+  `mesh.bootstrap` peers), held [indicators](../glossary.md#indicator)
+  with their active verdicts,
   decisions by state (`block`, `none`, `allowed`), the entries the firewall
   applies, and active overrides. Each number links to the view that
   details it — *Peers connected* to the [peers view](#the-peers-view),
@@ -224,7 +234,8 @@ own — never the node itself. How the view reads its data is recorded in
   the last dial failed, and the peer's page says why. The node dials only
   bootstrap peers: a trusted publisher that is not in `mesh.bootstrap`
   connects only if it dials this node.
-- **Trust weight.** The weight its verdicts carry in decisions: its
+- **[Trust weight](../glossary.md#trust-weight).** The weight its
+  verdicts carry in decisions: its
   `trust.publishers` weight, or the *default weight*
   (`trust.default_weight`, 0 unless set) for a peer that is not listed.
   A weight of 0 is marked *No influence on decisions*: the node holds the
@@ -282,9 +293,10 @@ decisions, is recorded in
   consensus*, the *allow-list*, a *protected address* (built-in, this
   node's own or a bootstrap peer's), or the operator's *force-block* or
   *force-allow*.
-- **Score** against `decision.threshold` and **Publishers** (those whose
-  verdict counts) against `decision.quorum`, each with whether it is
-  reached.
+- **Score** against the [threshold](../glossary.md#threshold)
+  (`decision.threshold`) and **Publishers** (those whose verdict counts)
+  against the [quorum](../glossary.md#quorum) (`decision.quorum`), each
+  with whether it is reached.
 - **Reason.** What the verdicts are about — the evidence reason and the
   attacked protocol, for example *password_bruteforce (ssh)* — the most
   counting first, and how many active verdicts there are.
