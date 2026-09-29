@@ -141,9 +141,9 @@ everything when it fails.
   other peers, what it published in the meantime does not reach you later:
   v0.1 has no general catch-up, so a block a peer withdrew in the meantime
   stays until it expires.
-- **Your own unsent reports.** Reports your node was still holding for a
-  peer when it crashed are not sent after the restart. They still count on
-  your node.
+- **Your own unsent reports.** Reports and withdrawals your node was
+  still holding for a peer when it crashed are not sent after the restart.
+  They still take effect on your own node.
 
 In observe mode a crash does not touch your firewall at all, because OBIE
 has not changed it. To remove every OBIE block whenever the service stops,

@@ -125,11 +125,12 @@ obied` dials at once.
 
 What this node reports or [revokes](../glossary.md#revocation) while no
 peer is connected is not lost: it counts on this node at once, and the
-node holds it in memory and sends it, in order, as soon as a peer joins — 16 events every 2 seconds, so that
-peers do not drop a long backlog (`obied` logs `no peer is on the topic;
-the event is held and sent when one joins`, and later `the held events
-were sent`). A restart before then drops what is held; the
-verdicts still count on this node, and a new report sends them again.
+node holds it in memory and sends it, in order, as soon as a peer joins —
+16 events every 2 seconds, so that peers do not drop a long backlog
+(`obied` logs `no peer is on the topic; the event is held and sent when
+one joins`, and later `the held events were sent`). A restart before then
+drops what is held; the verdicts still count on this node, and a new
+report sends them again.
 Verdicts about to expire within a minute are not sent any more.
 
 ## Fail2Ban reports do not arrive

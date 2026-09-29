@@ -58,9 +58,8 @@ it with a production firewall, and start in
   [allow-list](documentation/glossary.md#allow-list) entry, the
   configuration it runs with, and a live timeline of what it does, in a
   browser on its own host, behind a token only its operator can obtain;
-  from there the
-  operator allows, blocks, reports or revokes after a confirmation that
-  says what will happen.
+  from there the operator allows, blocks, reports or revokes after a
+  confirmation that says what will happen.
 
 ## What it does not do yet
 
