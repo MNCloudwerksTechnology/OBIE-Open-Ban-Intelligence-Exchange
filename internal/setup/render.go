@@ -18,6 +18,16 @@ const ReferenceURL = "https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-In
 // its default. The same answers always render the same bytes. The result
 // is checked with config.Parse, so it is a configuration obied accepts.
 func Render(a Answers, path string) ([]byte, error) {
+	// The mode is written unquoted, as the example writes it, so it must be
+	// one of the modes; the path appears in comments, so it must not end
+	// them.
+	if a.Mode != config.ModeObserve && a.Mode != config.ModeEnforce {
+		return nil, fmt.Errorf("the answers do not make a valid configuration: node.mode must be %s or %s, got %q",
+			config.ModeObserve, config.ModeEnforce, a.Mode)
+	}
+	if strings.ContainsFunc(path, func(r rune) bool { return r < ' ' || r == 0x7f || r == 0x85 || r == 0x2028 || r == 0x2029 }) {
+		return nil, fmt.Errorf("the configuration path %q holds a line break or another control character", path)
+	}
 	var b strings.Builder
 	w := func(format string, args ...any) { fmt.Fprintf(&b, format, args...) }
 

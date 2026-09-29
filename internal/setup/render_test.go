@@ -137,4 +137,12 @@ func TestRenderRejectsInvalidAnswers(t *testing.T) {
 	if _, err := Render(a, testPath); err == nil || !strings.Contains(err.Error(), "node.state_dir") {
 		t.Errorf("Render with a relative state directory: %v", err)
 	}
+	a = Defaults()
+	a.Mode = "observe\nadmin:\n  socket: /tmp/evil.sock"
+	if _, err := Render(a, testPath); err == nil || !strings.Contains(err.Error(), "node.mode") {
+		t.Errorf("Render with a mode that is none: %v", err)
+	}
+	if _, err := Render(Defaults(), "/tmp/obie.yaml\nadmin: {socket: /tmp/evil.sock}"); err == nil {
+		t.Error("Render accepted a path with a line break")
+	}
 }
