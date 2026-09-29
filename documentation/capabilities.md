@@ -134,3 +134,64 @@ node of three, while its two peers send it verdicts:
   Those are the versions of Ubuntu 22.04 to 26.04, Debian 12 and 13, Alpine
   3.22 and Rocky Linux 9. Fail2Ban 0.10 reports bans too, but its verdicts
   then last 7 days instead of the ban time.
+
+## Remaining risks
+
+OBIE 0.1.0 guards against the obvious ways others could misuse your
+firewall, but some risks remain. The
+[threat model](../SECURITY.md#threat-model) describes each one, how OBIE
+limits it and what is left. In short:
+
+- **A peer you trust can get the wrong address blocked.** If enough peers
+  you trust agree, or you lower the quorum to one, they can block any
+  public address on your server, even by mistake. Nothing limits how much
+  one peer reports, and the blocked party cannot appeal
+  (threat model: [poisoning by a trusted peer](../SECURITY.md#poisoning-by-a-trusted-peer)).
+- **Anyone who reaches the OBIE port can connect.** Their verdicts count
+  for nothing unless you trust them, but they use bandwidth, processor time
+  and disk. Open the port only to your peers
+  (threat model: [fake peers](../SECURITY.md#sybil-peers)).
+- **A node that was offline can miss a withdrawal.** It keeps the withdrawn
+  verdict until the verdict expires, and someone can send it the old
+  verdict again until then. The clocks of all nodes must be right
+  (threat model: [replay](../SECURITY.md#replay)).
+- **A stolen key speaks in your name.** Whoever steals your node's secret
+  key is trusted like you until every peer removes your identity by hand
+  (threat model: [key theft](../SECURITY.md#key-theft)).
+- **A flood can push out real warnings.** An attacker with many fake nodes
+  can fill your node's store, so that verdicts of peers you trust make room
+  (threat model: [resource exhaustion](../SECURITY.md#resource-exhaustion)).
+- **OBIE cannot know every address you depend on.** Anything that is not
+  protected or on your allow-list can be blocked: your office behind a
+  router, your monitoring, a content delivery network, or everybody behind
+  one shared address. Start in observe mode and fill the allow-list first
+  (threat model: [allow-list gaps](../SECURITY.md#self-dos-via-allow-list-gaps)).
+- **The web console trusts your workstation.** When you reach it through
+  SSH, other users of your workstation can reach it too, and only the
+  sign-in token protects it
+  (threat model: [local web console](../SECURITY.md#local-web-console)).
+- **Your peers learn about your servers.** Every verdict tells them which
+  of your services was attacked, and they see your server's address.
+  Attacker addresses can be personal data, for example under the GDPR
+  (threat model: [privacy leakage](../SECURITY.md#privacy-leakage)).
+
+OBIE's code is fuzzed and checked by static analysis before every release
+([performance](operations/performance.md)), but no independent security
+audit has been done yet.
+
+## Is OBIE for me?
+
+Find the situation closest to yours. **Yes** means OBIE 0.1.0 does it.
+**Not yet** means something it needs is missing, but planned. **No** means
+it is missing and not planned.
+
+| Your situation | Answer | Why |
+|---|---|---|
+| **One Linux VPS, and someone you trust who runs OBIE too.** | **Yes** | Connect your two nodes. Start with only your own detections blocking; let your peer's verdicts block once you trust them ([federation](operations/federation.md#choose-trust-weights-and-quorum)). |
+| **One Linux VPS, and nobody to exchange warnings with.** | **Not yet** | On its own, OBIE adds little to Fail2Ban, and there is no public network of nodes to join until automatic peer discovery arrives. |
+| **Several Linux servers of your own.** | **Yes** | Each server's node warns the others, and you decide how many must agree before one blocks. |
+| **A small hosting provider with many Linux servers.** | **Yes** | Start in observe mode, and put your customers' and your monitoring's addresses on the allow-list before you block. Remember that blocking an address shared by many users blocks all of them. |
+| **A homelab behind a home router, next to a friend's server on the internet.** | **Yes** | Your node connects out to your friend's, so you open no port at home. If neither of you can accept connections, it does not work yet. |
+| **Servers with a firewall managed by firewalld, Docker or iptables-nft.** | **Yes** | OBIE adds its own firewall table and never changes theirs. |
+| **Servers that run Windows, macOS or BSD.** | **No** | OBIE runs on Linux only. A Linux router or firewall in front of those servers can run OBIE and block for them. |
+| **Only containers, such as managed Kubernetes, without access to the host's firewall.** | **No** | The container image only observes. Blocking needs OBIE on the host itself. |

@@ -99,7 +99,7 @@ func headingAnchors(doc string) map[string]bool {
 		if inCode || m == nil {
 			continue
 		}
-		slug := strings.ReplaceAll(slugDrop.ReplaceAllString(strings.ToLower(m[1]), ""), " ", "-")
+		slug := anchor(m[1])
 		if n := seen[slug]; n > 0 {
 			anchors[slug+"-"+strconv.Itoa(n)] = true
 		} else {
@@ -108,4 +108,10 @@ func headingAnchors(doc string) map[string]bool {
 		seen[slug]++
 	}
 	return anchors
+}
+
+// anchor returns the GitHub anchor of a heading, before any suffix that
+// tells equal headings apart.
+func anchor(heading string) string {
+	return strings.ReplaceAll(slugDrop.ReplaceAllString(strings.ToLower(heading), ""), " ", "-")
 }

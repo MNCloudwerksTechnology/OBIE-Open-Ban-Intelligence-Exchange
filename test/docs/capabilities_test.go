@@ -1,6 +1,7 @@
 package docs
 
 import (
+	"maps"
 	"net"
 	"regexp"
 	"slices"
@@ -19,6 +20,8 @@ var capabilitySections = []string{
 	"What it can do",
 	"What it cannot do yet",
 	"What it needs",
+	"Remaining risks",
+	"Is OBIE for me?",
 }
 
 // Status labels of what the release can do.
@@ -233,6 +236,83 @@ func defaultPorts(t *testing.T) []string {
 	}
 	slices.Sort(ports)
 	return slices.Compact(ports)
+}
+
+// threatModel is the full threat model the overview's risks summarise.
+const threatModel = "../SECURITY.md#threat-model"
+
+// threatContext is the threat model's introduction, not a threat.
+const threatContext = "What OBIE protects and whom it trusts"
+
+// maxRiskWords keeps each risk of the summary short.
+const maxRiskWords = 70
+
+// Answers of "Is OBIE for me?".
+var answers = []string{"**Yes**", "**No**", "**Not yet**"}
+
+// scenarioKinds are situations the scenarios must cover (WP-1692), by a
+// word of their lead.
+var scenarioKinds = []string{"VPS", "hosting provider", "homelab"}
+
+// TestRisksSummariseEveryThreat checks that "Remaining risks" links the
+// full threat model and summarises each of its threats in a short item
+// that links the threat's section, so a new threat cannot be left out.
+func TestRisksSummariseEveryThreat(t *testing.T) {
+	doc := readRepoFile(t, capabilitiesPath)
+	risks, ok := section(doc, "Remaining risks")
+	if !ok {
+		t.Fatal("the overview has no section \"Remaining risks\"")
+	}
+	links := relativeLinks(risks)
+	if !slices.Contains(links, threatModel) {
+		t.Errorf("\"Remaining risks\" does not link the threat model %s", threatModel)
+	}
+	model, ok := section(readRepoFile(t, "SECURITY.md"), "Threat model")
+	if !ok {
+		t.Fatal("SECURITY.md has no section \"Threat model\"")
+	}
+	for _, threat := range headings(model, 3) {
+		if threat == threatContext {
+			continue
+		}
+		target := "../SECURITY.md#" + anchor(threat)
+		if !slices.Contains(links, target) {
+			t.Errorf("\"Remaining risks\" does not summarise %q (no link to %s)", threat, target)
+		}
+	}
+	for _, block := range prose(risks) {
+		if n := len(words(plain(block))); n > maxRiskWords {
+			t.Errorf("a risk takes %d words, want at most %d: %q", n, maxRiskWords, strings.Join(strings.Fields(plain(block)), " "))
+		}
+	}
+}
+
+// TestScenariosHaveClearAnswers checks "Is OBIE for me?": 5 to 8
+// situations, among them a single VPS, a small hosting provider and a
+// homelab, each answered with a plain yes, no or not yet and a reason.
+func TestScenariosHaveClearAnswers(t *testing.T) {
+	doc := readRepoFile(t, capabilitiesPath)
+	body, ok := section(doc, "Is OBIE for me?")
+	if !ok {
+		t.Fatal("the overview has no section \"Is OBIE for me?\"")
+	}
+	rows := rowsByLead(t, body, 3)
+	if len(rows) < 5 || len(rows) > 8 {
+		t.Errorf("\"Is OBIE for me?\" has %d situations, want 5 to 8", len(rows))
+	}
+	for _, kind := range scenarioKinds {
+		if !slices.ContainsFunc(slices.Collect(maps.Keys(rows)), func(lead string) bool { return strings.Contains(lead, kind) }) {
+			t.Errorf("no situation mentions %q", kind)
+		}
+	}
+	for lead, row := range rows {
+		if !slices.Contains(answers, row[1]) {
+			t.Errorf("%q: answer %q, want one of %q", lead, row[1], answers)
+		}
+		if row[2] == "" {
+			t.Errorf("%q gives no reason", lead)
+		}
+	}
 }
 
 // TestCapabilitiesArePlainLanguage keeps the overview readable for
