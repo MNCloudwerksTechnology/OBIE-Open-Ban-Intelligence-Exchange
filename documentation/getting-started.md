@@ -471,8 +471,9 @@ what this server detects. Come back when someone gives you the address of
 their node; step 9 works either way.
 
 A peer is a node run by someone you know, such as a friend or a second
-server of yours. Tell its operator how to reach your node: your server's
-public address and your node's peer ID. This shows the peer ID:
+server of yours. Tell its [operator](glossary.md#operator) how to reach
+your node: your server's public address and your node's peer ID. This
+shows the peer ID:
 
 ```sh
 sudo obiectl identity
@@ -625,7 +626,7 @@ Let the node observe for a few days, and review what it would block from
 time to time. These lists show what is active right now: a verdict from
 Fail2Ban lasts as long as its ban, so later they show other addresses, or
 none. The audit log `/var/log/obie/audit.jsonl` keeps every decision.
-Once you switch it on, the [web console](operations/console.md) shows the
+Once you switch the [web console](operations/console.md) on, it shows the
 same in a browser. If a decision looks wrong,
 [Nothing is enforced](operations/troubleshooting.md#nothing-is-enforced)
 explains every reason.
@@ -744,8 +745,8 @@ sudo systemctl start obied
 ### Switch enforcement on
 
 Set enforce mode, and let the node block through nftables. Run the second
-command only once: the section it adds stays when you go back to observe
-mode.
+command only if `/etc/obie/obie.yaml` has no `enforce:` section yet: the
+section stays when you go back to observe mode.
 
 ```sh
 sudo sed -i 's/^  mode: observe$/  mode: enforce/' /etc/obie/obie.yaml
