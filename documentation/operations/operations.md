@@ -167,8 +167,16 @@ sudo systemctl disable --now obied
 sudo obied teardown-firewall
 sudo rm /etc/systemd/system/obied.service /usr/local/bin/obied /usr/local/bin/obiectl
 sudo rm -f /etc/fail2ban/action.d/obie.conf
+cd /usr/local/share && sudo rm -f man/man1/obied.1 man/man1/obiectl.1 \
+  bash-completion/completions/obied bash-completion/completions/obiectl \
+  zsh/site-functions/_obied zsh/site-functions/_obiectl \
+  fish/vendor_completions.d/obied.fish fish/vendor_completions.d/obiectl.fish
 sudo systemctl daemon-reload
 ```
+
+The `cd /usr/local/share` line removes the manual pages and shell
+completions that `install.sh` put there (below `$PREFIX/share` if you
+installed with another `PREFIX`).
 
 `obied teardown-firewall` deletes the nftables table `inet obie` with
 every block; it does nothing if there is none. Skip it and the blocks stay

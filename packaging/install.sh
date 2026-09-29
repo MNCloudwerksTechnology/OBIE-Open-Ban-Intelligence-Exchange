@@ -6,15 +6,18 @@
 #   sudo ./install.sh
 #
 # It creates the system user and group obie, installs obied and obiectl
-# into $PREFIX/bin, the example configuration as /etc/obie/obie.yaml (only
-# if there is none; the current example always goes to
+# into $PREFIX/bin, their manual pages and bash, zsh and fish completions
+# below $PREFIX/share, the example configuration as /etc/obie/obie.yaml
+# (only if there is none; the current example always goes to
 # /etc/obie/obie.yaml.example), the systemd unit obied.service and, if
 # Fail2Ban is installed, its action obie.conf. Running it again upgrades
-# the binaries, the unit and the action and changes nothing else, so it is
-# also the upgrade path. It never starts or restarts obied.
+# the binaries, the manual pages, the completions, the unit and the action
+# and changes nothing else, so it is also the upgrade path. It never starts
+# or restarts obied.
 #
 # Environment:
-#   PREFIX   installation prefix of the binaries (default /usr/local)
+#   PREFIX   installation prefix of the binaries, manual pages and
+#            completions (default /usr/local)
 #   DESTDIR  stage everything below this directory instead of /, e.g. for
 #            packaging; user and group, ownership and systemctl are skipped
 set -eu
@@ -24,6 +27,7 @@ DESTDIR=${DESTDIR:-}
 src=$(cd "$(dirname "$0")" && pwd)
 
 bindir="$DESTDIR$PREFIX/bin"
+sharedir="$DESTDIR$PREFIX/share"
 confdir="$DESTDIR/etc/obie"
 unitdir="$DESTDIR/etc/systemd/system"
 f2bdir="$DESTDIR/etc/fail2ban/action.d"
@@ -53,8 +57,18 @@ case "$PREFIX" in
 	;;
 esac
 
+# The manual pages and completion scripts, below share/ in the tarball and
+# below $PREFIX/share once installed, where man and the shells look for them.
+docs="man/man1/obied.1 man/man1/obiectl.1
+bash-completion/completions/obied bash-completion/completions/obiectl
+zsh/site-functions/_obied zsh/site-functions/_obiectl
+fish/vendor_completions.d/obied.fish fish/vendor_completions.d/obiectl.fish"
+
 for f in bin/obied bin/obiectl etc/obie.yaml systemd/obied.service fail2ban/action.d/obie.conf; do
 	[ -f "$src/$f" ] || die "$src/$f is missing; run install.sh from an extracted release tarball"
+done
+for f in $docs; do
+	[ -f "$src/share/$f" ] || die "$src/share/$f is missing; run install.sh from an extracted release tarball"
 done
 if [ -z "$DESTDIR" ] && [ "$(id -u)" -ne 0 ]; then
 	die "must run as root (or with DESTDIR set)"
@@ -80,6 +94,12 @@ for b in obied obiectl; do
 	install -m 0755 "$src/bin/$b" "$bindir/$b"
 done
 log "installed obied and obiectl into $bindir"
+
+for f in $docs; do
+	install -d -m 0755 "$sharedir/${f%/*}"
+	install -m 0644 "$src/share/$f" "$sharedir/$f"
+done
+log "installed the manual pages and bash, zsh and fish completions below $sharedir"
 
 # obie.yaml is readable by root and the obie group only: it may name
 # internal networks. An existing obie.yaml is never touched.
@@ -127,4 +147,5 @@ install.sh: done. Next steps:
        $PREFIX/bin/obied self-check
   4. Use obiectl as root or as a member of the group obie:
      usermod -aG obie <user>; obiectl status
+  Every command explains itself: obiectl --help, man obiectl
 EOF
