@@ -20,13 +20,13 @@ means it shows what it would block and never blocks anything.
 | **Share what Fail2Ban catches.** Each ban of a [Fail2Ban](glossary.md#fail2ban) jail you choose becomes a signed warning, a [verdict](glossary.md#verdict), for the servers you exchange warnings with. The log lines stay on your server. | Supported | [Fail2Ban guide](guides/fail2ban.md): one extra line per jail |
 | **Exchange warnings only with [peers](glossary.md#peer) you choose.** Your [node](glossary.md#node), the OBIE program on your server, connects to the peers you name: a friend's server, a partner's, or your own. There is no central service and no account. | Supported | [Federation](operations/federation.md) |
 | **Block only when enough trusted peers agree.** You give each peer a [trust weight](glossary.md#trust-weight). Your node blocks an address only when the weighted verdicts reach a [threshold](glossary.md#threshold) and enough different peers agree, the [quorum](glossary.md#quorum). With the default settings, one peer alone can never get an address blocked. Your node shows why it blocks an address, or why not. | Supported | [Choose trust weights and quorum](operations/federation.md#choose-trust-weights-and-quorum) |
-| **Keep the last word.** Always allow or always block any address with an [override](glossary.md#override), and put the networks you depend on on the [allow-list](glossary.md#allow-list). Your server's own addresses, internal networks and your peers are protected from the start. | Supported | [Override the mesh](operations/operations.md#override-the-mesh), [quick start, step 5](operations/quickstart.md#5-enforce) |
+| **Keep the last word.** Always allow or always block any address with an [override](glossary.md#override), and put the networks you depend on on the [allow-list](glossary.md#allow-list). Your server's own addresses, internal networks and the peers you told your node to connect to are protected from the start. | Supported | [Override the mesh](operations/operations.md#override-the-mesh), [quick start, step 5](operations/quickstart.md#5-enforce) |
 | **Watch before you block.** A new node starts in [observe mode](glossary.md#observe-mode): it decides and lists what it would block, but does not touch your firewall. | Supported | [Quick start, step 2](operations/quickstart.md#2-start-in-observe-mode) |
 | **Block attackers in your firewall.** In [enforce mode](glossary.md#enforce-mode), your node blocks through its own [nftables](glossary.md#nftables) table and never changes the rules your administrators made. Every block ends on its own when its verdicts expire. | Off by default | [Quick start, step 5](operations/quickstart.md#5-enforce), [nftables guide](guides/nftables.md) |
 | **Take back a report.** A [revocation](glossary.md#revocation) withdraws a verdict of your node from the peers it reaches. | Supported | [Fail2Ban guide](guides/fail2ban.md#remove), [federation](operations/federation.md#leave-a-federation) |
 | **See how the node is doing.** Health checks and metrics for your monitoring (Prometheus), and a Grafana dashboard. They are only reachable on the server itself unless you open them. | Supported | [Monitoring](operations/monitoring.md#metrics) |
 | **Keep an audit trail.** A log of every decision, override and report, in a format security tools (SIEM) read. | Off by default | [Audit log](operations/monitoring.md#audit-log) |
-| **Look into the node in a browser.** A web console shows the node's health, peers, decisions and verdicts, and lets you allow, block, report or withdraw after a confirmation. Only the node's operators can sign in, on the server itself. | Off by default | [Web console](operations/console.md) |
+| **Look into the node in a browser.** A web console shows the node's health, peers, decisions and verdicts, and lets you allow, block, report or withdraw after a confirmation. It listens only on the server itself, and only the node's operators can sign in. | Off by default | [Web console](operations/console.md) |
 | **Try it without touching a firewall.** Three nodes on a laptop, or the container image, show OBIE at work and block nothing real. | Observe only | [Three-node lab](../packaging/compose/README.md), [container image](operations/install.md#run-the-container-image) |
 | **Keep your server running if OBIE fails.** OBIE is not in the path of your traffic. If it stops, existing blocks still end on time and Fail2Ban keeps working. | Supported | [FAQ](faq.md#what-happens-if-obie-crashes) |
 
@@ -65,8 +65,8 @@ a date. **No plan yet** means nobody has planned it.
   checked with systemd 255 (Ubuntu 24.04). Without systemd, you have to
   start the node yourself; no guide covers that yet.
 - **A Linux kernel with nftables**, only for blocking in enforce mode. The
-  `nft` command is not needed. Blocking is tested on Linux 7.0; older
-  kernels are not tested.
+  `nft` command is not needed. Blocking is tested on Linux 7.0, the
+  kernel of the test machine.
 - **Docker**, only for the container image or the three-node lab.
 
 ### Privileges
@@ -85,7 +85,7 @@ a date. **No plan yet** means nobody has planned it.
 
 | Port | Reachable from | Used for |
 |---|---|---|
-| 4001, TCP and UDP | your peers | The connections between nodes. Of every two nodes, at least one must accept connections on it. |
+| 4001, TCP and UDP | your peers | The connections between nodes. Of every two peers, at least one must accept connections on it. |
 | 9464, TCP | this server only | Health checks and metrics. Open it to your monitoring if you use them. |
 | 9465, TCP | this server only | The web console, if you switch it on. Reach it from your workstation through SSH. |
 
@@ -111,9 +111,10 @@ node of three, while its two peers send it verdicts:
 | 100,000 verdicts, at rest | 349 MiB | 2 % | 87 MiB |
 
 - **Memory grows with the verdicts your node holds**, by about 3 MiB per
-  1,000. A verdict lives as long as its ban, or 7 days for a permanent
-  ban. Five peers that each ban 300 addresses a day send about 10,000
-  verdicts a week.
+  1,000. A verdict from Fail2Ban lives as long as its ban: 10 minutes
+  with Fail2Ban's default, 7 days for a permanent ban. Five peers that
+  each ban 300 addresses a day for a week keep about 10,000 verdicts on
+  your node.
 - **200 verdicts a second is far more than a small federation sends.**
   The processor numbers come from a fast desktop core; a small server's
   core is slower.
