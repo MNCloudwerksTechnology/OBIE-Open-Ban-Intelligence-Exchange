@@ -26,6 +26,22 @@ tools and every warning and error of the log, with what it means and what
 to do. Every command explains itself: `obiectl --help`,
 `obiectl help <command>`, `man obiectl`.
 
+## The installation fails
+
+The requirements check or the installation of
+[Get started](../getting-started.md) stops with an error.
+
+| What you see | Cause and fix |
+|--------------|---------------|
+| `ps -p 1 -o comm=` prints another program than `systemd` | The server does not run systemd, which the installed service needs. OBIE runs without it, but you have to start `obied` yourself, and no guide covers that yet ([what OBIE needs](../capabilities.md#what-it-needs)). |
+| `fail2ban-client: command not found` | Fail2Ban is not installed. Go on without it, or install it first ([Get started without Fail2Ban](../getting-started.md#if-this-server-has-no-fail2ban)). |
+| `curl: (22) The requested URL returned error: 404` | There is no file of that name. Check the version, which appears twice in the address (`v0.1.0` and `0.1.0`), and the processor (`amd64` or `arm64`, from `uname -m`). |
+| `curl: (6) Could not resolve host` or `(7) Failed to connect` | The server cannot reach GitHub. Download the two files on another computer and copy them over, for example with `scp`. |
+| `sha256sum` says `FAILED`, or `no file was verified` | The archive is incomplete, or its name does not match `SHA256SUMS`. Download both files again, into an empty directory. |
+| `tar` says `Cannot open: No such file or directory` | The archive is not in the current directory. Run `tar` where you downloaded it. |
+| `install.sh: must run as root` | Run it with `sudo`. |
+| `install.sh: … is missing; run install.sh from an extracted release tarball` | The archive was not unpacked completely. Remove the directory `obie-<version>-linux-<arch>` and run `tar` again. |
+
 ## Locked out
 
 You cannot reach the host any more, and suspect OBIE blocked you.
