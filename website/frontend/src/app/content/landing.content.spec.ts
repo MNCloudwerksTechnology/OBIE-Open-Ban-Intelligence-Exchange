@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { DEMO_SETTINGS, NODE_DEFAULTS, SCENARIO } from '../sections/mesh-demo/scenario';
 import { LandingContent } from './landing-content.model';
 import {
   CONTACT_ID,
@@ -70,6 +71,109 @@ describe('Landing page content', () => {
       ([key]) => key !== 'title' && key !== 'description',
     );
     expect(labels.length).toBeLessThanOrEqual(12);
+  });
+
+  describe('three-node demo', () => {
+    const demo = content.howItWorks.demo;
+    const words = (text: string) => text.trim().split(/\s+/).length;
+
+    it('tells the story in the ten steps of the scenario, in order', () => {
+      expect(demo.steps.length).toBe(SCENARIO.steps.length);
+      expect(demo.steps.map((step) => step.title)).toEqual([
+        'Meet the neighbourhood',
+        'The bot hits server A',
+        'A shares a signed report',
+        'One voice is not enough',
+        'The bot moves on to server B',
+        'C is protected before the attack arrives',
+        'The scanner only hits server C',
+        'Someone tries to abuse the mesh',
+        'Mistakes can be undone',
+        'Recap',
+      ]);
+    });
+
+    it('keeps every caption to at most 40 words', () => {
+      for (const step of demo.steps) {
+        expect(words(step.caption), step.title).toBeLessThanOrEqual(40);
+      }
+    });
+
+    it('says it is an illustration, not live data', () => {
+      expect(demo.illustration).toMatch(/^Illustration\b/);
+      expect(demo.illustration).toContain('not live data from the network');
+    });
+
+    it('names the settings it uses and the default threshold it deviates from', () => {
+      const number = (value: number) => value.toFixed(1);
+      expect(demo.settings).toContain(`score of ${number(DEMO_SETTINGS.threshold)}, its threshold`);
+      expect(demo.settings).toContain(`threshold is ${number(NODE_DEFAULTS.threshold)}`);
+      expect(demo.settings).toContain('at least two reporters, its quorum');
+      expect(DEMO_SETTINGS.quorum).toBe(2);
+      expect(demo.settings).toContain(`confidence of ${NODE_DEFAULTS.fail2banConfidence}`);
+    });
+
+    it('marks every later feature it mentions as planned', () => {
+      const planned = demo.steps.flatMap((step) => (step.planned ? [step.planned] : []));
+      for (const text of planned) {
+        expect(text).toMatch(/\bplanned\b/);
+      }
+      for (const feature of [/automatically/, /track record/, /different networks/, /appeal/]) {
+        expect(
+          planned.some((text) => feature.test(text)),
+          String(feature),
+        ).toBe(true);
+      }
+      expect(demo.labels.planned).toBe('Planned');
+    });
+
+    it('shows what a report carries and what stays on the server', () => {
+      expect(Object.keys(demo.report.fields)).toEqual([
+        'address',
+        'reason',
+        'events',
+        'fingerprint',
+        'suggestion',
+        'confidence',
+        'signature',
+      ]);
+      expect(demo.report.kept.join(' ')).toMatch(/log lines.*user names.*customer data/);
+      const reasons = SCENARIO.steps.flatMap((step) =>
+        step.events.flatMap((event) => ('report' in event ? [event.report.reason] : [])),
+      );
+      for (const reason of reasons) {
+        expect(demo.report.reasons[reason], reason).toBeTruthy();
+      }
+    });
+
+    it('names the payment service on the safety list of server A', () => {
+      const [server] = SCENARIO.servers;
+      expect(server.safetyList).toEqual(['payment']);
+      expect(demo.servers.a.safetyList).toContain(demo.subjects.payment.name.toLowerCase());
+    });
+
+    it('fills in every placeholder the demo uses', () => {
+      expect(demo.controls.stepOf).toMatch(/\{n\}.*\{total\}/);
+      expect(demo.controls.goTo).toMatch(/\{n\}.*\{title\}/);
+      expect(demo.controls.announcement).toMatch(/\{n\}.*\{total\}.*\{title\}.*\{caption\}/);
+      expect(demo.labels.score).toMatch(/\{score\}.*\{threshold\}/);
+      expect(demo.labels.reporters).toMatch(/\{count\}.*\{quorum\}/);
+      expect(demo.labels.anyoneElse).toContain('{weight}');
+      expect(demo.labels.copies).toContain('{n}');
+      expect(demo.report.heading).toContain('{server}');
+      expect(demo.report.keptHeading).toContain('{server}');
+      expect(demo.report.signatureValue).toContain('{receivers}');
+      expect(demo.report.suggestionValue).toContain('{duration}');
+      expect(demo.report.eventCount).toContain('{n}');
+    });
+
+    it('closes with three takeaways, GitHub and getting started', () => {
+      expect(demo.recap.takeaways.length).toBe(3);
+      expect(demo.recap.actions.map((action) => action.href)).toEqual([
+        REPOSITORY_URL,
+        `#${content.getStarted.id}`,
+      ]);
+    });
   });
 
   it('condenses the manifesto into five or six principles', () => {

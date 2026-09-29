@@ -92,6 +92,124 @@ export interface HowItWorksContent extends SectionBase {
   readonly steps: readonly Card[];
   readonly note: string;
   readonly diagram: DiagramContent;
+  readonly demo: MeshDemoContent;
+}
+
+/**
+ * Copy of the step-by-step demo with three servers (ADR 0028). The story's
+ * numbers and events live in `sections/mesh-demo/scenario.ts`; placeholders
+ * in braces, e.g. `{n}`, are filled in by the demo.
+ */
+export interface MeshDemoContent {
+  readonly heading: string;
+  readonly intro: string;
+  /** Says that the demo is an illustration, not live data from the network. */
+  readonly illustration: string;
+  /** The decision settings the demo uses and how they differ from the defaults. */
+  readonly settings: string;
+  /** One per step of the scenario, in the same order. */
+  readonly steps: readonly DemoStepContent[];
+  readonly servers: Readonly<Record<'a' | 'b' | 'c', DemoServerContent>>;
+  readonly rogue: DemoActorContent;
+  readonly subjects: Readonly<Record<'bot' | 'office' | 'scanner' | 'payment', DemoActorContent>>;
+  /** Text of each state a subject can have on a server. */
+  readonly states: Readonly<Record<'unknown' | 'watching' | 'blocked' | 'safe', string>>;
+  /** Why a subject has its state. */
+  readonly causes: Readonly<
+    Record<'none' | 'below-bar' | 'agreement' | 'own-detection' | 'safety-list', string>
+  >;
+  readonly labels: DemoLabels;
+  readonly controls: DemoControls;
+  /** What a report carries and what stays on the server, shown when A shares. */
+  readonly report: DemoReportContent;
+  /** The last step's takeaways and calls to action. */
+  readonly recap: { readonly takeaways: readonly string[]; readonly actions: readonly Link[] };
+}
+
+export interface DemoStepContent {
+  readonly title: string;
+  /** At most 40 words; terms are explained where they first appear. */
+  readonly caption: string;
+  /** Why the step matters, shown below the caption. */
+  readonly note?: string;
+  /** A related feature of a later release, shown with the "planned" label. */
+  readonly planned?: string;
+}
+
+export interface DemoActorContent {
+  readonly name: string;
+  /** Short label on the map and in score sums. */
+  readonly short: string;
+}
+
+export interface DemoServerContent extends DemoActorContent {
+  readonly operator: string;
+  /** What the server's safety list holds. */
+  readonly safetyList: string;
+}
+
+export interface DemoLabels {
+  readonly trusts: string;
+  /** Weight of anyone not on the trust list; `{weight}` is the number. */
+  readonly anyoneElse: string;
+  readonly safetyList: string;
+  /** `{score}` and `{threshold}`. */
+  readonly score: string;
+  /** `{count}` and `{quorum}`. */
+  readonly reporters: string;
+  /** Marks a state the current step changed. */
+  readonly changed: string;
+  readonly turnedAway: string;
+  /** `{n}` copies of the same report. */
+  readonly copies: string;
+  readonly planned: string;
+  readonly note: string;
+}
+
+export interface DemoControls {
+  readonly label: string;
+  readonly restart: string;
+  readonly previous: string;
+  readonly next: string;
+  readonly play: string;
+  readonly pause: string;
+  readonly steps: string;
+  /** `{n}` and `{total}`. */
+  readonly stepOf: string;
+  /** Accessible name of a step button: `{n}` and `{title}`. */
+  readonly goTo: string;
+  /** Announced on every step change: `{n}`, `{total}`, `{title}` and `{caption}`. */
+  readonly announcement: string;
+  /** Summary of the disclosure with all steps as text. */
+  readonly transcript: string;
+  /** Name of the list of servers. */
+  readonly servers: string;
+}
+
+export interface DemoReportContent {
+  /** `{server}` is the sender. */
+  readonly heading: string;
+  readonly fields: {
+    readonly address: string;
+    readonly reason: string;
+    readonly events: string;
+    readonly fingerprint: string;
+    readonly suggestion: string;
+    readonly confidence: string;
+    readonly signature: string;
+  };
+  /** Plain words for `evidence.reason` codes. */
+  readonly reasons: Readonly<Record<string, string>>;
+  /** `{n}`. */
+  readonly eventCount: string;
+  readonly fingerprintNote: string;
+  /** `{duration}`. */
+  readonly suggestionValue: string;
+  /** `{receivers}` check the signature. */
+  readonly signatureValue: string;
+  /** `{server}` keeps these. */
+  readonly keptHeading: string;
+  readonly kept: readonly string[];
 }
 
 /** Labels of the "how it works" diagram (at most 5 nodes and 12 labels). */
