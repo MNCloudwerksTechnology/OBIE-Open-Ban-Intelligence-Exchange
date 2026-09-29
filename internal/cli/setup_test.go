@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/setup"
 )
 
@@ -32,6 +33,7 @@ func testSetupEnv(sessionAddr string) setupEnv {
 		checkWritable: setup.CheckWritable,
 		group:         "obie-test-no-such-group",
 		groupExists:   func(string) bool { return true },
+		euid:          func() int { return 1000 },
 		userName:      func() string { return "alice" },
 	}
 }
@@ -137,16 +139,17 @@ func TestSetupEnterTakesSafeDefaults(t *testing.T) {
 			t.Errorf("written file lacks %q:\n%s", want, written)
 		}
 	}
-	assertNextSteps(t, stdout)
+	assertNextSteps(t, stdout, path)
 	info, err := os.Stat(path)
 	if err != nil || info.Mode().Perm() != setup.FileMode {
 		t.Errorf("file mode = %v, %v; want %04o", info.Mode(), err, setup.FileMode)
 	}
 }
 
-// assertNextSteps checks the steps after a successful setup: start the
-// service, run the self-check, open the tutorial.
-func assertNextSteps(t *testing.T, stdout string) {
+// assertNextSteps checks the steps after a successful setup of the file at
+// path: start the service, run the self-check of that file, open the
+// tutorial.
+func assertNextSteps(t *testing.T, stdout, path string) {
 	t.Helper()
 	i := strings.Index(stdout, "Next steps:")
 	if i < 0 {
@@ -154,10 +157,26 @@ func assertNextSteps(t *testing.T, stdout string) {
 	}
 	rest := stdout[i:]
 	start := strings.Index(rest, "sudo systemctl enable --now obied")
-	check := strings.Index(rest, "sudo obied self-check")
+	check := strings.Index(rest, "sudo obied self-check"+config.PathFlag(path)+"\n")
 	tutorial := strings.Index(rest, TutorialURL)
 	if start < 0 || check < start || tutorial < check {
 		t.Errorf("next steps are not start, self-check, tutorial:\n%s", rest)
+	}
+}
+
+// TestNextSteps checks that the next steps select the file written: the
+// self-check checks it, and the shipped service, which reads the default
+// file, is changed before it starts.
+func TestNextSteps(t *testing.T) {
+	steps := nextSteps(config.DefaultPath)
+	if strings.Contains(steps, "systemctl edit") || !strings.Contains(steps, "       sudo obied self-check\n") {
+		t.Errorf("next steps for the default file:\n%s", steps)
+	}
+	steps = nextSteps("/srv/obie.yaml")
+	edit := strings.Index(steps, "The shipped\n     service reads /etc/obie/obie.yaml, so first set both --config in it")
+	start := strings.Index(steps, "sudo systemctl edit --full obied\n       sudo systemctl enable --now obied")
+	if edit < 0 || start < edit || !strings.Contains(steps, "       sudo obied self-check --config /srv/obie.yaml\n") {
+		t.Errorf("next steps for another file:\n%s", steps)
 	}
 }
 
@@ -222,7 +241,7 @@ func TestSetupNonInteractiveNeedsForce(t *testing.T) {
 	if code != ExitOK || readText(t, path+".bak") != first || !strings.Contains(readText(t, path), "mode: enforce") {
 		t.Errorf("run with --force: exit code %d\n%s\n%s", code, stdout, stderr)
 	}
-	assertNextSteps(t, stdout)
+	assertNextSteps(t, stdout, path)
 }
 
 // TestSetupWithoutPermission checks that the assistant says it needs root
@@ -232,14 +251,36 @@ func TestSetupWithoutPermission(t *testing.T) {
 	env.checkWritable = func(string) error {
 		return &fs.PathError{Op: "write", Path: "/etc/obie", Err: syscall.EACCES}
 	}
-	code, stdout, stderr := runSetupTest(t, env, "\n\n\n\n\n\n", "--config", "/etc/obie/obie.yaml")
-	if code != ExitFailure || stdout != "" {
-		t.Errorf("exit code %d, stdout %q", code, stdout)
-	}
-	for _, want := range []string{"cannot write /etc/obie/obie.yaml as user alice: permission denied", "run it as root: sudo obied setup"} {
-		if !strings.Contains(stderr, want) {
-			t.Errorf("stderr lacks %q: %s", want, stderr)
+	for path, want := range map[string][]string{
+		"/etc/obie/obie.yaml": {"cannot write /etc/obie/obie.yaml as user alice: permission denied", "run it as root: sudo obied setup\n"},
+		"/srv/obie.yaml":      {"cannot write /srv/obie.yaml as user alice", "run it as root: sudo obied setup --config /srv/obie.yaml\n"},
+	} {
+		code, stdout, stderr := runSetupTest(t, env, "\n\n\n\n\n\n", "--config", path)
+		if code != ExitFailure || stdout != "" {
+			t.Errorf("%s: exit code %d, stdout %q", path, code, stdout)
 		}
+		for _, w := range want {
+			if !strings.Contains(stderr, w) {
+				t.Errorf("stderr lacks %q: %s", w, stderr)
+			}
+		}
+	}
+}
+
+// TestSetupAsRootWithoutPermission checks that root, who cannot write the
+// file either (on a read-only file system), is not told to run it as root.
+func TestSetupAsRootWithoutPermission(t *testing.T) {
+	env := testSetupEnv("")
+	env.euid = func() int { return 0 }
+	env.userName = func() string { return "root" }
+	env.checkWritable = func(string) error {
+		return &fs.PathError{Op: "write", Path: "/etc/obie", Err: syscall.EROFS}
+	}
+	code, stdout, stderr := runSetupTest(t, env, "", "--config", "/etc/obie/obie.yaml")
+	if code != ExitFailure || stdout != "" || strings.Contains(stderr, "as root") ||
+		!strings.Contains(stderr, "cannot write /etc/obie/obie.yaml as user root: read-only file system") ||
+		!strings.Contains(stderr, "choose a place it can write with --config FILE") {
+		t.Errorf("exit code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 }
 

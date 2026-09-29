@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/session"
 )
 
@@ -24,7 +25,7 @@ func WriteText(w io.Writer, r Report) error {
 	fmt.Fprintf(&b, "OBIE self-check of %s (obied %s, as %s)\n\n", r.Config, r.Version, as)
 	if !r.Root {
 		fmt.Fprintf(&b, "Note: this runs as %s, not as root, so some checks cannot look everywhere and\n"+
-			"say so. For a complete check: sudo obied self-check\n\n", r.User)
+			"say so. For a complete check: sudo obied self-check%s\n\n", r.User, config.PathFlag(r.Config))
 	}
 	width := 0
 	for _, c := range r.Checks {

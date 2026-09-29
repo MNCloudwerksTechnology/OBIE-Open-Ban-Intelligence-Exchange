@@ -114,6 +114,23 @@ func TestRenderIsCommentedAndStable(t *testing.T) {
 	}
 }
 
+// TestRenderNamesItsPath checks that the commands in the header of a file
+// written elsewhere than the default select that file.
+func TestRenderNamesItsPath(t *testing.T) {
+	data, err := Render(Defaults(), "/srv/my obie.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"#   sudo obied --config '/srv/my obie.yaml' --check-config\n",
+		"#   sudo obied self-check --config '/srv/my obie.yaml'\n",
+	} {
+		if !strings.Contains(string(data), want) {
+			t.Errorf("rendered file lacks %q:\n%s", want, data)
+		}
+	}
+}
+
 // TestRenderQuotesAnswers checks that no answer can add keys or comments.
 func TestRenderQuotesAnswers(t *testing.T) {
 	a := federated(t)

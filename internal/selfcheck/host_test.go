@@ -112,8 +112,9 @@ func TestCheckFirewall(t *testing.T) {
 
 	h.writeConfigWith(t, "  mode: enforce\n", "enforce:\n  backend: nftables\n")
 	assertCheck(t, h.run(t, "firewall"), OK, "nftables is available")
+	// Refused to root: the capability is missing, as in a container.
 	h.nftErr = fmt.Errorf("%w: operation not permitted", nft.ErrPermission)
-	assertCheck(t, h.run(t, "firewall"), Problem, "nftables cannot be used", "modprobe nf_tables")
+	assertCheck(t, h.run(t, "firewall"), Problem, "nftables cannot be used", "CAP_NET_ADMIN")
 	h.env.Euid = func() int { return 1000 }
 	assertCheck(t, h.run(t, "firewall"), Warning, "cannot check nftables as user alice", "sudo obied self-check")
 	h.nftErr = errors.New("protocol not supported")

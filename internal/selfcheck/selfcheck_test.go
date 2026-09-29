@@ -245,11 +245,12 @@ func TestCheckConfigUnreadable(t *testing.T) {
 	if err := os.Chmod(h.config, 0); err != nil {
 		t.Fatal(err)
 	}
-	assertCheck(t, h.run(t, "config"), Warning, "cannot read "+h.config+" as user alice", "sudo obied self-check")
+	// The next step checks the same file: h.config is not the default one.
+	assertCheck(t, h.run(t, "config"), Warning, "cannot read "+h.config+" as user alice", "sudo obied self-check --config "+h.config)
 	assertCheck(t, h.run(t, "identity"), Warning, "not checked", "sudo obied self-check")
 	// Stopped, and whether it ran before cannot be seen.
 	assertCheck(t, h.run(t, "node"), Warning, "the node is not running, and whether it has run before cannot be told as user alice",
-		"sudo obied self-check; to start the node: sudo systemctl enable --now obied")
+		"sudo obied self-check --config "+h.config+"; to start the node: sudo systemctl enable --now obied")
 }
 
 func TestCheckIdentity(t *testing.T) {

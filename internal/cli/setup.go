@@ -42,7 +42,8 @@ type setupEnv struct {
 	// host has it.
 	group       string
 	groupExists func(name string) bool
-	// userName names the user running the assistant.
+	// euid is the user running the assistant; userName names it.
+	euid     func() int
 	userName func() string
 }
 
@@ -52,6 +53,7 @@ func hostSetupEnv() setupEnv {
 		checkWritable: setup.CheckWritable,
 		group:         setupGroup,
 		groupExists:   func(name string) bool { _, err := user.LookupGroup(name); return err == nil },
+		euid:          os.Geteuid,
 		userName:      func() string { return lookupUserName(os.Geteuid()) },
 	}
 }
@@ -120,7 +122,11 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 			err = pathErr.Err
 		}
 		_, _ = fmt.Fprintf(stderr, "%s: cannot write %s as user %s: %v\n", program, path, env.userName(), err)
-		_, _ = fmt.Fprintf(stderr, "%s: run it as root: sudo obied setup\n", program)
+		if env.euid() == 0 {
+			_, _ = fmt.Fprintf(stderr, "%s: choose a place it can write with --config FILE\n", program)
+		} else {
+			_, _ = fmt.Fprintf(stderr, "%s: run it as root: sudo obied setup%s\n", program, config.PathFlag(path))
+		}
 		return ExitFailure
 	}
 	existing := describeExisting(path)
@@ -271,21 +277,32 @@ func writeSetup(program, path string, a setup.Answers, replace bool, stdout, std
 	if addr, ok := env.session(); ok && !a.Protects(addr) {
 		_, _ = fmt.Fprintf(stdout, "\n%s", session.LockoutWarning(addr, a.Mode == config.ModeEnforce))
 	}
-	_, err = fmt.Fprintf(stdout, `
-Next steps:
-  1. Start the node (if it runs already, restart it instead):
-       sudo systemctl enable --now obied
-       sudo systemctl restart obied
-  2. Check the node and this server; every problem comes with what to do:
-       sudo obied self-check
-  3. Open the tutorial and go on with connecting Fail2Ban:
-       %s
-`, TutorialURL)
-	if err != nil {
+	if _, err = io.WriteString(stdout, nextSteps(path)); err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: writing the next steps: %v\n", program, err)
 		return ExitIOError
 	}
 	return ExitOK
+}
+
+// nextSteps tells the operator what to do after writing the configuration
+// file at path: start the node, check it, go on with the tutorial.
+func nextSteps(path string) string {
+	start := "Start the node (if it runs already, restart it instead):\n"
+	if path != config.DefaultPath {
+		start = "Start the node (if it runs already, restart it instead). The shipped\n" +
+			"     service reads " + config.DefaultPath + ", so first set both --config in it\n" +
+			"     to this file:\n" +
+			"       sudo systemctl edit --full obied\n"
+	}
+	return fmt.Sprintf(`
+Next steps:
+  1. %s       sudo systemctl enable --now obied
+       sudo systemctl restart obied
+  2. Check the node and this server; every problem comes with what to do:
+       sudo obied self-check%s
+  3. Open the tutorial and go on with connecting Fail2Ban:
+       %s
+`, start, config.PathFlag(path), TutorialURL)
 }
 
 // errInputEnded means the input ended before every question was answered.

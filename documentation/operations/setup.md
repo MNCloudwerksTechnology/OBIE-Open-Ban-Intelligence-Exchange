@@ -53,7 +53,10 @@ When it has written the file, the assistant tells you what to do next:
 start the node, run the self-check and open the
 [tutorial](quickstart.md#3-connect-fail2ban) where it goes on with
 Fail2Ban. If your SSH session comes from an address the new configuration
-does not protect, it warns you of a lockout first.
+does not protect, it warns you of a lockout first. For another file than
+`/etc/obie/obie.yaml`, the commands it shows name that file, and the first
+step says to set it in the shipped service, which reads
+`/etc/obie/obie.yaml`.
 
 Run as another user than root, the assistant says so before it asks
 anything:

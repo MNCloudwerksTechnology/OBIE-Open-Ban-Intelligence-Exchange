@@ -229,7 +229,9 @@ func (r *run) loadConfig() {
 func (r *run) me() string { return r.env.UserName(r.env.Euid()) }
 
 // asRoot is the next step when the check lacks the privileges to look.
-const asRoot = "run the self-check as root: sudo obied self-check"
+func (r *run) asRoot() string {
+	return "run the self-check as root: sudo obied self-check" + config.PathFlag(r.env.ConfigPath)
+}
 
 // cfgDenied reports whether the configuration, or a file it names, is
 // closed to the user the check runs as, who is not root.
@@ -242,7 +244,7 @@ func (r *run) cfgDenied() bool {
 func (r *run) notChecked(id, name string) Check {
 	next := "fix the configuration first, then run the self-check again"
 	if r.cfgDenied() {
-		next = asRoot
+		next = r.asRoot()
 	}
 	return newCheck(id, name, warn("not checked: the configuration could not be loaded", next))
 }

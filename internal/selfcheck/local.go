@@ -28,10 +28,10 @@ func (r *run) checkConfig() Check {
 			"create one: sudo obied setup"))
 	case r.cfgDenied() && r.cfg == nil:
 		// install.sh makes the file root:obie 0640: closed to others by design.
-		return newCheck(id, name, warn(fmt.Sprintf("cannot read %s as user %s", path, r.me()), asRoot))
+		return newCheck(id, name, warn(fmt.Sprintf("cannot read %s as user %s", path, r.me()), r.asRoot()))
 	case r.cfgDenied():
 		return newCheck(id, name, warn(fmt.Sprintf("%s is valid, but its allow-list files cannot be read as user %s: %v",
-			path, r.me(), err), asRoot))
+			path, r.me(), err), r.asRoot()))
 	case errors.As(err, &cfgErr):
 		c := newCheck(id, name, problem(fmt.Sprintf("%s is invalid: %s", path, plural(len(cfgErr.Problems), "problem")),
 			fmt.Sprintf("fix the keys named here, then check the file: sudo obied --config %s --check-config", path)))
@@ -97,7 +97,7 @@ func (r *run) checkIdentity() Check {
 		r.keyPeerID = key.PeerID()
 		return newCheck(id, name, ok(fmt.Sprintf("%s exists and only %s can read it; the node's peer ID is %s", path, svc, key.PeerID())))
 	case errors.Is(err, fs.ErrPermission):
-		return newCheck(id, name, warn(fmt.Sprintf("cannot look into %s as user %s", stateDir, r.me()), asRoot))
+		return newCheck(id, name, warn(fmt.Sprintf("cannot look into %s as user %s", stateDir, r.me()), r.asRoot()))
 	case errors.Is(err, fs.ErrNotExist):
 		started, known := r.started()
 		if known && !started {
@@ -143,9 +143,9 @@ func (r *run) socketFinding(socket, gid, group string) finding {
 		return ok(fmt.Sprintf("the admin socket %s appears when the node runs; only root, %s and the group %s may use it",
 			socket, r.env.ServiceUser, group))
 	case errors.Is(err, fs.ErrPermission):
-		return warn(fmt.Sprintf("cannot look at the admin socket %s as user %s", socket, r.me()), asRoot)
+		return warn(fmt.Sprintf("cannot look at the admin socket %s as user %s", socket, r.me()), r.asRoot())
 	case err != nil:
-		return warn(fmt.Sprintf("cannot look at the admin socket %s: %v", socket, err), asRoot)
+		return warn(fmt.Sprintf("cannot look at the admin socket %s: %v", socket, err), r.asRoot())
 	case info.Mode().Type() != fs.ModeSocket:
 		return problem(fmt.Sprintf("%s is not a socket, so obied cannot start its admin interface", socket),
 			fmt.Sprintf("remove it: obied creates the socket at its start; check admin.socket in %s", r.env.ConfigPath))

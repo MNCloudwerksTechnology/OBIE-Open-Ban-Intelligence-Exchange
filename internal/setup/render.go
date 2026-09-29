@@ -40,9 +40,9 @@ func Render(a Answers, path string) ([]byte, error) {
 	w("#\n")
 	w("# After a change, check the file, restart the node and check the node:\n")
 	w("#\n")
-	w("#   sudo obied --config %s --check-config\n", path)
+	w("#   sudo obied --config %s --check-config\n", config.QuotePath(path))
 	w("#   sudo systemctl restart obied\n")
-	w("#   sudo obied self-check\n")
+	w("#   sudo obied self-check%s\n", config.PathFlag(path))
 
 	w("\nnode:\n")
 	w("  # The node's identity key (its name on the network: back it up) and its\n")

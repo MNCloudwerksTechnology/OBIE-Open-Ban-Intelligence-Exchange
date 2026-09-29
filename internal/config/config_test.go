@@ -40,6 +40,22 @@ func wantProblem(t *testing.T, err error, path, msg string) Problem {
 	return Problem{}
 }
 
+// TestPathFlag checks the --config flag of the commands shown to the
+// operator: none for the default file, else the path as one shell word.
+func TestPathFlag(t *testing.T) {
+	for path, want := range map[string]string{
+		DefaultPath:            "",
+		"/etc/obie/node2.yaml": " --config /etc/obie/node2.yaml",
+		"/srv/my obie.yaml":    " --config '/srv/my obie.yaml'",
+		"/srv/$HOME.yaml":      " --config '/srv/$HOME.yaml'",
+		"/srv/it's.yaml":       ` --config '/srv/it'\''s.yaml'`,
+	} {
+		if got := PathFlag(path); got != want {
+			t.Errorf("PathFlag(%q) = %q, want %q", path, got, want)
+		}
+	}
+}
+
 func TestParseEmptyYieldsDefaults(t *testing.T) {
 	for name, input := range map[string]string{
 		"empty":         "",

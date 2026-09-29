@@ -59,7 +59,7 @@ func (r *run) denied() bool { return deniedByNode(r.statusErr) }
 // cannotAsk is the finding of a check that needs to ask the node what, when
 // this user may not ask it.
 func (r *run) cannotAsk(what string) finding {
-	return warn(fmt.Sprintf("cannot ask the node %s as user %s", what, r.me()), asRoot)
+	return warn(fmt.Sprintf("cannot ask the node %s as user %s", what, r.me()), r.asRoot())
 }
 
 // deniedByNode reports whether err means that this user may not use the
@@ -101,12 +101,12 @@ func (r *run) checkNode() Check {
 			// Stopped is a problem only after the first start, which this
 			// user cannot see.
 			return newCheck(id, name, warn(fmt.Sprintf("the node is not running, and whether it has run before cannot be told as user %s", r.me()),
-				asRoot+"; to start the node: sudo systemctl enable --now obied"))
+				r.asRoot()+"; to start the node: sudo systemctl enable --now obied"))
 		}
 		return newCheck(id, name, problem(fmt.Sprintf("the node is not running: nothing answers on %s", r.socket),
 			"start it: sudo systemctl start obied; if it stops again, see why: sudo journalctl -u obied -n 20"))
 	case deniedByNode(err):
-		return newCheck(id, name, warn(fmt.Sprintf("cannot ask the node as user %s: %v", r.me(), err), asRoot))
+		return newCheck(id, name, warn(fmt.Sprintf("cannot ask the node as user %s: %v", r.me(), err), r.asRoot()))
 	default:
 		return newCheck(id, name, problem(fmt.Sprintf("cannot ask the node: %v", err),
 			"check that it runs: sudo systemctl status obied; sudo journalctl -u obied -n 20"))

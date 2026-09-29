@@ -77,7 +77,7 @@ func (r *run) jails(client string, lookErr error) (int, finding) {
 	if err != nil {
 		next := "check the Fail2Ban configuration: sudo fail2ban-client -t"
 		if r.env.Euid() != 0 {
-			next = asRoot
+			next = r.asRoot()
 		}
 		return 0, warn(fmt.Sprintf("cannot list the jails with fail2ban-client -d: %v", err), next)
 	}
@@ -196,7 +196,10 @@ func (r *run) nftablesFinding() finding {
 	case err == nil:
 		return ok("nftables is available: the node can block through its own table inet obie")
 	case errors.Is(err, nft.ErrPermission) && r.env.Euid() != 0:
-		return warn(fmt.Sprintf("cannot check nftables as user %s", r.me()), asRoot)
+		return warn(fmt.Sprintf("cannot check nftables as user %s", r.me()), r.asRoot())
+	case errors.Is(err, nft.ErrPermission):
+		return problem(fmt.Sprintf("nftables cannot be used even by root: %v", err),
+			"give obied CAP_NET_ADMIN (the shipped systemd unit does; a container needs it granted, e.g. --cap-add NET_ADMIN), or stay in observe mode")
 	}
 	return problem(fmt.Sprintf("nftables cannot be used: %v", err),
 		"use a Linux kernel with nftables (load it with: sudo modprobe nf_tables), or stay in observe mode")

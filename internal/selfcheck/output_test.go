@@ -53,6 +53,16 @@ Result: 1 problem, 1 warning, 1 OK. Fix the problems, then run the self-check ag
 		!strings.HasSuffix(got, "Result: 0 problems, 0 warnings, 1 OK. Everything checked is fine.\n") {
 		t.Errorf("root report:\n%s", got)
 	}
+
+	r = testReport()
+	r.Config = "/srv/obie.yaml"
+	buf.Reset()
+	if err := WriteText(&buf, r); err != nil {
+		t.Fatal(err)
+	}
+	if got := buf.String(); !strings.Contains(got, "For a complete check: sudo obied self-check --config /srv/obie.yaml\n") {
+		t.Errorf("report of another file:\n%s", got)
+	}
 }
 
 func TestWriteJSON(t *testing.T) {
