@@ -53,6 +53,14 @@ func TestBashCompletion(t *testing.T) {
 		{"obied", []string{"setup", "--mode", ""}, "observe enforce"},
 		{"obied", []string{"self-check", "--j"}, "--json"},
 		{"obied", []string{"help", "tear"}, "teardown-firewall"},
+		// bash splits --flag=value into the words --flag, = and value.
+		{"obiectl", []string{"--socket", "=", "/run/obie/obie.sock", "st"}, "status"},
+		{"obiectl", []string{"decisions", "--state", "="}, "block none allowed"},
+		{"obiectl", []string{"decisions", "--state", "=", "al"}, "allowed"},
+		{"obiectl", []string{"--timeout", "=", "5s", "decisions", "--json", "=", "true", "--st"}, "--state"},
+		// Flags in place of a command run the node.
+		{"obied", []string{"--"}, "--check-config --config --version --help"},
+		{"obied", []string{"--config", "/etc/obie/obie.yaml", "--ch"}, "--check-config"},
 	} {
 		script := writeScript(t, tc.tool, "bash")
 		words := append([]string{tc.tool}, tc.words...)
@@ -87,6 +95,36 @@ func TestZshCompletion(t *testing.T) {
 		out, err := cmd.CombinedOutput()
 		if err != nil || strings.TrimSpace(string(out)) != "_"+tool {
 			t.Errorf("%s: %v\n%s", tool, err, out)
+		}
+	}
+}
+
+// TestCompletionOfArgumentsAndRepeatedFlags checks the scripts of the shells
+// that are not driven here: zsh completes flags after a command's argument
+// and offers a flag again that may be repeated; fish finds the command past
+// the values of the global flags.
+func TestCompletionOfArgumentsAndRepeatedFlags(t *testing.T) {
+	var zshCtl, zshDaemon, fish bytes.Buffer
+	for w, args := range map[*bytes.Buffer][]string{&zshCtl: {"obiectl", "zsh"}, &zshDaemon: {"obied", "zsh"}, &fish: {"obiectl", "fish"}} {
+		if err := WriteCompletion(w, args[0], args[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, want := range []string{"\t\tblock)\n\t\t\t_arguments \\\n", "'1:address or range: '\n", "'1:event ID, address or range: '\n", "'1:completion:(bash zsh fish)'"} {
+		if !strings.Contains(zshCtl.String(), want) {
+			t.Errorf("obiectl zsh completion lacks %q", want)
+		}
+	}
+	for _, want := range []string{"'*--peer=[", "'*--allow=[", "'--config=[path to the YAML configuration file]:config:_files'"} {
+		if !strings.Contains(zshDaemon.String(), want) {
+			t.Errorf("obied zsh completion lacks %q", want)
+		}
+	}
+	for _, want := range []string{"\t\t\tcase --socket --timeout\n\t\t\t\tset -e words[1]\n",
+		"complete -c obiectl -n 'not __obiectl_command >/dev/null' -a status ",
+		"complete -c obiectl -n '__obiectl_command_is decisions' -l state -x -a 'block none allowed' "} {
+		if !strings.Contains(fish.String(), want) {
+			t.Errorf("obiectl fish completion lacks %q", want)
 		}
 	}
 }

@@ -70,29 +70,36 @@ func TestIdentityProblems(t *testing.T) {
 	dir := newStateDir(t)
 	key := identity.Path(dir)
 	_, err := identity.Load(dir)
-	checkProblem(t, identityProblem(dir, err), "identity-missing", "this node has no identity yet: "+key+" does not exist",
+	checkProblem(t, identityProblem(dir, "", err), "identity-missing", "this node has no identity yet: "+key+" does not exist",
 		"the node creates its identity key the first time it starts",
 		"sudo systemctl enable --now obied", "sudo -u obie obied keygen", "restore the key from your backup to "+key)
+	// The commands it suggests keep the state directory the user named.
+	checkProblem(t, identityProblem(dir, " --state-dir ./node-a", err), "identity-missing", "this node has no identity yet",
+		"", "sudo -u obie obied keygen --state-dir ./node-a")
 
 	gone := filepath.Join(dir, "gone")
 	_, err = identity.Load(gone)
-	checkProblem(t, identityProblem(gone, err), "identity-missing", "this node has no identity yet: its state directory "+gone+" does not exist",
+	checkProblem(t, identityProblem(gone, "", err), "identity-missing", "this node has no identity yet: its state directory "+gone+" does not exist",
 		"state directory and identity key", "--state-dir <directory>")
 
 	denied := fmt.Errorf("read key file: %w", fs.ErrPermission)
-	checkProblem(t, identityProblem(dir, denied), "identity-unreadable", "cannot read the identity key in "+dir,
+	checkProblem(t, identityProblem(dir, "", denied), "identity-unreadable", "cannot read the identity key in "+dir,
 		"belongs to the user the node runs as", "with sudo in front of it")
 
 	insecure := fmt.Errorf("%w: %s has mode 0644 and is accessible by group or others; fix with: chmod 600 %s", identity.ErrInsecure, key, key)
-	checkProblem(t, identityProblem(dir, insecure), "identity-unusable", "insecure key file: "+key+" has mode 0644 and is accessible by group or others",
+	checkProblem(t, identityProblem(dir, "", insecure), "identity-unusable", "insecure key file: "+key+" has mode 0644 and is accessible by group or others",
 		"", "fix with: chmod 600 "+key)
-	checkProblem(t, identityProblem(dir, errors.New("boom")), "identity-unusable", "boom", "", "sudo obied self-check")
+	checkProblem(t, identityProblem(dir, "", errors.New("boom")), "identity-unusable", "boom", "", "sudo obied self-check")
 }
 
 func TestKeygenAndStateDirProblems(t *testing.T) {
-	checkProblem(t, keygenProblem("/var/lib/obie", fmt.Errorf("write key file: %w", fs.ErrPermission)), "keygen-failed",
+	checkProblem(t, keygenProblem("/var/lib/obie", "", fmt.Errorf("write key file: %w", fs.ErrPermission)), "keygen-failed",
 		"cannot create the identity key in /var/lib/obie: write key file: permission denied",
 		"must belong to the user the node runs as", "sudo -u obie obied keygen")
+	// Replacing a key names the state directory the user named, never the
+	// default one of another node.
+	checkProblem(t, keygenProblem("./node-a", " --state-dir ./node-a", identity.ErrKeyExists), "identity-exists",
+		"node-a/node.key exists already", "", "obied identity --state-dir ./node-a shows its peer ID", "obied keygen --state-dir ./node-a --force")
 	newer := fmt.Errorf("%w: /var/lib/obie/FORMAT has format 9, but obied dev only understands format 1 or older; run a newer obied", statedir.ErrNewerFormat)
 	checkProblem(t, stateDirProblem(newer), "state-dir-unusable", "state directory has a newer format: /var/lib/obie/FORMAT has format 9", "", "run a newer obied")
 	checkProblem(t, stateDirProblem(errors.New("read FORMAT: boom")), "state-dir-unusable", "read FORMAT: boom", "", "sudo obied self-check")
@@ -108,7 +115,7 @@ func TestTeardownProblems(t *testing.T) {
 func TestStartNext(t *testing.T) {
 	for err, want := range map[error]string{
 		fmt.Errorf("mesh: listen: %w", syscall.EADDRINUSE):       "another process uses the address",
-		fmt.Errorf("admin socket: %w", fs.ErrPermission):         "obied lacks a permission: start it as the service",
+		fmt.Errorf("admin socket: %w", fs.ErrPermission):         "obied lacks a permission for what the error names: run it as the service",
 		errors.New("something else"):                             "sudo obied self-check names what is wrong",
 		fmt.Errorf("x: %w", fmt.Errorf("y: %w", syscall.EACCES)): "obied lacks a permission",
 	} {

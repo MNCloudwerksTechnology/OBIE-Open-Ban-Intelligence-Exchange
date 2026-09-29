@@ -55,7 +55,10 @@ not say what to do next.
   durations use days where they are long, and there is no colour: labels
   are words. Every listing command has `--json`. Long listings print a
   summary first and at most `--limit` rows (100 by default), blocks
-  first; `--limit 0` and `--json` give everything. `obied setup` asks its
+  first; `--limit 0` and `--json` give everything. `obiectl indicators`
+  keeps the paging the node already has: its `--limit` is the page size
+  and `--cursor` the next page, in the table and in `--json` alike, since
+  JSON outputs stay as they are. `obied setup` asks its
   questions only on a terminal; otherwise it points to
   `--non-interactive`, so piped output never contains a prompt.
 - **Completion and manual pages ship with the release.** Both tools

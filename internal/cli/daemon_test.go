@@ -53,6 +53,8 @@ func TestRunDaemonCheckConfig(t *testing.T) {
 			wantStdout: "obied run: configuration " + valid + " is valid\n"},
 		{name: "version needs no config", args: []string{"--version", "--config", missing}, wantCode: ExitOK,
 			wantStdout: "obied dev\n"},
+		{name: "run version is the tool's", args: []string{"run", "--version"}, wantCode: ExitOK,
+			wantStdout: "obied dev\n"},
 		{name: "unknown command", args: []string{"start"}, wantCode: ExitUsage,
 			wantStderr: []string{`unknown command "start"`, "Manage: set up, run and look after the node"}},
 		{name: "run with argument", args: []string{"run", "now"}, wantCode: ExitUsage,

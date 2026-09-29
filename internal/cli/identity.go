@@ -21,6 +21,16 @@ func stateDirFlags(fs *flag.FlagSet) (configPath, stateDir *string) {
 	return configPath, stateDir
 }
 
+// stateDirWhere returns the flags that locate the state directory, as the
+// user gave them, for the commands a message suggests: "" for the
+// defaults.
+func stateDirWhere(configPath, stateDir string) string {
+	if stateDir != "" {
+		return " --state-dir " + config.QuotePath(stateDir)
+	}
+	return config.PathFlag(configPath)
+}
+
 // resolveStateDir returns stateDir if set, else node.state_dir of the
 // configuration file.
 func resolveStateDir(configPath, stateDir string) (string, error) {
@@ -54,7 +64,7 @@ func runKeygen(args []string, stdout, stderr io.Writer) int {
 	}
 	key, err := identity.Create(stateDir, *force)
 	if err != nil {
-		keygenProblem(stateDir, err).write(stderr, program)
+		keygenProblem(stateDir, stateDirWhere(*configPath, *stateDirFlag), err).write(stderr, program)
 		return ExitFailure
 	}
 	_, _ = fmt.Fprintf(stderr, "%s: wrote a new node key to %s\n", program, identity.Path(stateDir))
@@ -80,7 +90,7 @@ func runIdentity(args []string, stdout, stderr io.Writer) int {
 
 	key, err := identity.Load(stateDir)
 	if err != nil {
-		identityProblem(stateDir, err).write(stderr, program)
+		identityProblem(stateDir, stateDirWhere(*configPath, *stateDirFlag), err).write(stderr, program)
 		return ExitFailure
 	}
 	return printIdentity(stdout, stderr, program, admin.NewIdentityResponse(key), *asJSON)

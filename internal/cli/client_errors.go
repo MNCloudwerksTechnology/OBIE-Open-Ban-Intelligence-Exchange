@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
 )
 
 // reportClientError explains on stderr why program could not do what it
@@ -24,6 +25,7 @@ func reportClientError(stderr io.Writer, program string, client *admin.Client, e
 // clientProblem explains a failed call of program to the node's admin
 // socket: what went wrong, why and what to do next.
 func clientProblem(program, socket string, err error) problem {
+	ctl := ctlCommandLine(socket)
 	var apiErr *admin.APIError
 	switch {
 	case errors.Is(err, admin.ErrDaemonNotRunning):
@@ -33,15 +35,24 @@ func clientProblem(program, socket string, err error) problem {
 	case errors.Is(err, context.DeadlineExceeded):
 		return problem{id: "node-timeout", what: "obied did not answer in time (--timeout)",
 			why: "the node is busy, still starting, or stuck",
-			next: []string{"try again with more time: sudo obiectl --timeout 30s " + commandOf(program),
-				"see whether the node is ready and what it logs: sudo obiectl --timeout 30s status; sudo journalctl -u obied -n 50"}}
+			next: []string{"try again with more time: " + ctl + " --timeout 30s " + commandOf(program),
+				"see whether the node is ready and what it logs: " + ctl + " --timeout 30s status; sudo journalctl -u obied -n 50"}}
 	case errors.Is(err, admin.ErrNoOverride):
-		return problem{id: "no-override", what: err.Error(), next: []string{"see which overrides there are: sudo obiectl overrides"}}
+		return problem{id: "no-override", what: err.Error(), next: []string{"see which overrides there are: " + ctl + " overrides"}}
 	case errors.As(err, &apiErr):
 		return apiProblem(program, socket, apiErr)
 	}
 	return problem{id: "node-unreachable", what: fmt.Sprintf("cannot talk to obied: %v", err),
 		next: []string{"check the node and its admin socket: sudo obied self-check"}}
+}
+
+// ctlCommandLine is how a next step runs obiectl against socket: with
+// --socket unless it is the default.
+func ctlCommandLine(socket string) string {
+	if socket == config.Default().Admin.Socket {
+		return "sudo obiectl"
+	}
+	return "sudo obiectl --socket " + config.QuotePath(socket)
 }
 
 // notRunningProblem explains that nothing answers on socket.
@@ -76,18 +87,18 @@ func permissionProblem(socket string) problem {
 
 // apiProblem explains a refusal of the admin API.
 func apiProblem(program, socket string, e *admin.APIError) problem {
-	msg := e.Message
+	msg, ctl := e.Message, ctlCommandLine(socket)
 	switch e.StatusCode {
 	case http.StatusForbidden:
 		return permissionProblem(socket)
 	case http.StatusUnprocessableEntity:
-		return protectedProblem(strings.TrimPrefix(msg, "refused: "))
+		return protectedProblem(ctl, strings.TrimPrefix(msg, "refused: "))
 	case http.StatusNotFound:
 		p := problem{id: "not-found", what: strings.TrimPrefix(msg, "not found: ")}
 		if commandOf(program) == "revoke" {
-			p.next = []string{"see what this node has reported: sudo obiectl indicators --mine"}
+			p.next = []string{"see what this node has reported: " + ctl + " indicators --mine"}
 		} else {
-			p.next = []string{"check the address or ID; sudo obiectl decisions lists what the node knows"}
+			p.next = []string{"check the address or ID; " + ctl + " decisions lists what the node knows"}
 		}
 		return p
 	case http.StatusBadRequest:
@@ -95,7 +106,7 @@ func apiProblem(program, socket string, e *admin.APIError) problem {
 			next: []string{"check the arguments: " + program + " --help"}}
 	case http.StatusServiceUnavailable:
 		return problem{id: "node-unavailable", what: msg, why: "the node is still starting, or one of its parts failed",
-			next: []string{"see which part is not ready and why: sudo obiectl status; sudo journalctl -u obied -n 50"}}
+			next: []string{"see which part is not ready and why: " + ctl + " status; sudo journalctl -u obied -n 50"}}
 	case http.StatusInternalServerError:
 		return problem{id: "node-failed", what: msg, next: []string{"see why in the node's log: sudo journalctl -u obied -n 50"}}
 	}
@@ -106,13 +117,13 @@ func apiProblem(program, socket string, e *admin.APIError) problem {
 // protectedProblem explains that the node refused to report an address
 // because it is protected or allow-listed. msg is the node's refusal, the
 // address and the rule, then after "; " why it refuses, which the problem
-// says itself.
-func protectedProblem(msg string) problem {
+// says itself. ctl is how the next steps run obiectl.
+func protectedProblem(ctl, msg string) problem {
 	what, _, _ := strings.Cut(msg, "; ")
 	p := problem{id: "address-protected", what: "nothing was reported: " + what,
 		why: "OBIE never reports private, loopback, link-local and other special-purpose addresses, " +
 			"nor the networks on your allow-list, so that no node blocks them because of you",
-		next: []string{"nothing needs to be done if this is right; sudo obiectl explain <address> shows the rule that protects it"}}
+		next: []string{"nothing needs to be done if this is right; " + ctl + " explain <address> shows the rule that protects it"}}
 	if strings.Contains(msg, "allow-listed") {
 		p.next = append(p.next, "if the address should not be protected, remove it from allowlist.cidrs and reload: sudo systemctl reload obied")
 	}

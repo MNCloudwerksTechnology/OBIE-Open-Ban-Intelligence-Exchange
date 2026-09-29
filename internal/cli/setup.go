@@ -102,7 +102,7 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 	var peers, allows repeatable
 	flags.Var(&peers, "peer", "a peer to connect to and trust: `address[,name=NAME][,weight=0..1]` (weight "+
 		strconv.FormatFloat(setup.DefaultWeight, 'f', -1, 64)+" unless given); repeat for more peers (default: no peers)")
-	mode := flags.String("mode", string(defaults.Mode), "observe (recommended: block nothing) or enforce")
+	mode := flags.String("mode", string(defaults.Mode), "observe or enforce; observe, which blocks nothing, is recommended at first")
 	flags.Var(&allows, "allow", "an `address or network` never to block; repeat for more (default: none besides the protected addresses)")
 	force := flags.Bool("force", false, "replace an existing configuration file; the old one is kept as a backup")
 	if code, done := parseNoArgs(flags, args, stdout, stderr); done {
@@ -122,7 +122,7 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 		if !env.terminal() {
 			problem{id: "setup-no-terminal", what: "obied setup asks questions, but its input or output is not a terminal",
 				why: "questions written into a pipe or a file would go unseen",
-				next: []string{"run it in a terminal: sudo obied setup",
+				next: []string{"run it in a terminal: sudo obied setup" + config.PathFlag(path),
 					"or give the answers as flags with --non-interactive (see obied setup --help)"}}.write(stderr, program)
 			return ExitUsage
 		}

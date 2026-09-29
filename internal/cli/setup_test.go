@@ -396,6 +396,7 @@ func TestSetupAsksOnlyOnATerminal(t *testing.T) {
 	code, stdout, stderr := runSetupTest(t, env, "\n\n\n\n\n\n", "--config", path)
 	if code != ExitUsage || stdout != "" ||
 		!strings.HasPrefix(stderr, "obied setup: obied setup asks questions, but its input or output is not a terminal\n") ||
+		!strings.Contains(stderr, "Next: run it in a terminal: sudo obied setup --config "+path+"\n") ||
 		!strings.Contains(stderr, "Next: or give the answers as flags with --non-interactive") {
 		t.Errorf("exit code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}

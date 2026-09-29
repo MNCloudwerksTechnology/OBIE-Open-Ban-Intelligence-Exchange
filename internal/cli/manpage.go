@@ -84,6 +84,9 @@ func WriteManPage(w io.Writer, toolName, version, date string) error {
 	var b strings.Builder
 	fmt.Fprintf(&b, ".\\\" Manual page of %s, generated from its help by packaging/gendocs.\n", t.name)
 	fmt.Fprintf(&b, ".TH %s 1 %s %s \"OBIE Manual\"\n", strings.ToUpper(t.name), roffQuote(date), roffQuote("OBIE "+version))
+	// Commands and paths in the text must stay whole to be copied: no
+	// hyphenation, no stretched spaces.
+	b.WriteString(".nh\n.ad l\n")
 	fmt.Fprintf(&b, ".SH NAME\n%s \\- %s\n", t.name, roffText(t.summary))
 	b.WriteString(".SH SYNOPSIS\n")
 	for i, u := range t.usage {
@@ -111,7 +114,7 @@ func WriteManPage(w io.Writer, toolName, version, date string) error {
 		}
 	}
 	if fs := t.flags(""); hasFlags(fs) {
-		b.WriteString(".SH \"GLOBAL FLAGS\"\nThey go before the command.\n")
+		fmt.Fprintf(&b, ".SH FLAGS\n%s.\n", roffText(t.flagsIntro))
 		writeRoffFlags(&b, fs)
 	}
 	b.WriteString(".SH \"EVERY COMMAND\"\n")

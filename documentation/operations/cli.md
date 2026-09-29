@@ -44,6 +44,14 @@ self-check checks it and says what to do about anything that is not right.
 Help on a command: obied help \<command\>, or obied \<command\> --help.
 The running node is controlled with obiectl: obiectl --help.
 
+Flags in place of a command run the node, as obied run does:
+
+| Flag | What it does |
+|------|--------------|
+| `--check-config` | only check the configuration: exit 0 if it is valid, 1 if not (default: off) |
+| `--config file` | path to the YAML configuration file (default: /etc/obie/obie.yaml) |
+| `--version` | print the version and exit |
+
 ### obied self-check
 
 Check the node and this server; every problem comes with the next step.
@@ -129,9 +137,9 @@ flags, and the same answers always write the same file.
 | `--audit-log file` | audit log file (audit.path), or none (default: /var/log/obie/audit.jsonl) |
 | `--config file` | configuration file to write (default: /etc/obie/obie.yaml) |
 | `--force` | replace an existing configuration file; the old one is kept as a backup (default: off) |
-| `--mode string` | observe (recommended: block nothing) or enforce (default: observe) |
+| `--mode string` | observe or enforce; observe, which blocks nothing, is recommended at first (default: observe) |
 | `--non-interactive` | ask nothing: take the answers from the flags below (default: off) |
-| `--peer address\[,name=NAME\]\[,weight=0..1\]` | a peer to connect to and trust: address\[,name=NAME\]\[,weight=0..1\] (weight 0.8 unless given); repeat for more peers (default: no peers) |
+| `--peer address[,name=NAME][,weight=0..1]` | a peer to connect to and trust: address\[,name=NAME\]\[,weight=0..1\] (weight 0.8 unless given); repeat for more peers (default: no peers) |
 | `--state-dir directory` | state directory of the node (node.state_dir) (default: /var/lib/obie) |
 
 Examples:
@@ -295,7 +303,7 @@ blocks (enforce mode) or only observes. Then sudo obiectl decisions --state bloc
 lists what it blocks, or would block in observe mode.
 Help on a command: obiectl help \<command\>, or obiectl \<command\> --help.
 
-The global flags go before the command:
+Global flags, before the command:
 
 | Flag | What it does |
 |------|--------------|
@@ -457,13 +465,14 @@ obiectl indicators [--mine | --publisher <peer ID>] [--limit <n>] [--cursor <cur
 
 Lists the active verdicts the node holds, one row per verdict, grouped by
 address or range, a page at a time. When more follow, the last line says
-how to get the next page.
+how to get the next page. Unlike the other listings, --limit is the size
+of a page and --json holds one page too, with next_cursor for the next.
 
 | Flag | What it does |
 |------|--------------|
 | `--cursor cursor` | continue after this cursor from the previous page (default: the first page) |
 | `--json` | print the indicators as JSON, for scripts (default: off) |
-| `--limit size` | page size (default 100, at most 1000) |
+| `--limit size` | page size, in the table and in --json; 0 is the node's default of 100, at most 1000 |
 | `--mine` | list only the verdicts of this node (default: off) |
 | `--publisher peer ID` | list only the verdicts of the publisher with this peer ID (default: every publisher) |
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 )
 
 func runAllow(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
@@ -54,12 +55,29 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 		return ExitIOError
 	}
 	if res.Warning != "" {
-		problem{id: "block-protected", what: "warning: " + res.Warning,
-			why: "protected addresses, such as private networks, this node's own addresses and its bootstrap peers, " +
-				"are never blocked, not even by an override, so that OBIE cannot cut this server off",
-			next: []string{"the override is kept but has no effect; remove it: sudo obiectl unoverride " + indicator}}.write(stderr, program)
+		blockWarning(indicator, res).write(stderr, program)
 	}
 	return ExitOK
+}
+
+// blockWarning explains why the force-block on indicator that res reports
+// does not take effect: an always-allow override that beats it, or a
+// protected address.
+func blockWarning(indicator string, res *admin.OverrideResult) problem {
+	if s := res.Decision.Sovereignty; s != nil && s.Rule == string(sovereignty.RuleForceAllow) && s.Match != "" {
+		match := s.Match
+		if ind, err := admin.ParseIndicator(s.Match); err == nil {
+			match = ind.Value
+		}
+		return problem{id: "block-overruled", what: "warning: " + res.Warning,
+			why: "an always-allow override beats every other rule, also an always-block override",
+			next: []string{"to block it, remove the always-allow override: sudo obiectl unoverride " + match,
+				"otherwise remove this block, which has no effect: sudo obiectl unoverride " + indicator}}
+	}
+	return problem{id: "block-protected", what: "warning: " + res.Warning,
+		why: "protected addresses, such as private networks, this node's own addresses and its bootstrap peers, " +
+			"are never blocked, not even by an override, so that OBIE cannot cut this server off",
+		next: []string{"the override is kept but has no effect; remove it: sudo obiectl unoverride " + indicator}}
 }
 
 func runOverrides(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {

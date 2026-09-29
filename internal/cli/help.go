@@ -57,6 +57,9 @@ type commandHelp struct {
 	// values are the fixed values of flags, by flag name, for the shell
 	// completion.
 	values map[string][]string
+	// operand names the command's argument, e.g. "address or range", for
+	// the shell completion; "" if it takes none.
+	operand string
 }
 
 // tool describes one of the binaries: its purpose, its commands and where a
@@ -74,6 +77,12 @@ type tool struct {
 	// globalFlags says whether the tool has flags of its own, given before
 	// the command.
 	globalFlags bool
+	// bareCommand is the command that flags in place of a command run, e.g.
+	// run for obied: its flags are then the tool's own; "" if there is none.
+	bareCommand string
+	// flagsIntro introduces the tool's own flags in the overview, the
+	// manual page and the CLI reference.
+	flagsIntro string
 	// run runs the tool with args, without signal handling.
 	run func(args []string, stdout, stderr io.Writer) int
 }
@@ -107,12 +116,15 @@ func (t *tool) names() []string {
 // flags returns the flag set of the command called name, or of the tool
 // itself for ""; nil if it has none.
 func (t *tool) flags(name string) *flag.FlagSet {
+	if name == "" && !t.globalFlags {
+		if t.bareCommand == "" {
+			return nil
+		}
+		name = t.bareCommand
+	}
 	args := []string{"--help"}
-	switch {
-	case name != "":
+	if name != "" {
 		args = []string{name, "--help"}
-	case !t.globalFlags:
-		return nil
 	}
 	rec := &flagRecorder{}
 	t.run(args, rec, io.Discard)
@@ -179,7 +191,7 @@ func (t *tool) writeOverview(b *strings.Builder) {
 		}
 	}
 	if fs := t.flags(""); fs != nil {
-		b.WriteString("\nGlobal flags, before the command:\n")
+		fmt.Fprintf(b, "\n%s:\n", t.flagsIntro)
 		writeFlags(b, fs)
 	}
 	fmt.Fprintf(b, "\n%s\n", t.start)
@@ -437,6 +449,9 @@ func (t *tool) overview(w io.Writer) {
 // runHelp runs "<tool> help [command]": the overview, or the help of the
 // command, on stdout.
 func (t *tool) runHelp(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 1 && isHelpFlag(args[0]) {
+		args = nil
+	}
 	switch {
 	case len(args) == 0:
 		var b strings.Builder

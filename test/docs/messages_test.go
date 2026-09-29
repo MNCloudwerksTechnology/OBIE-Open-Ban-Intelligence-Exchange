@@ -1,6 +1,8 @@
 package docs
 
 import (
+	"errors"
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -152,8 +154,8 @@ func (p goPackage) where(n ast.Node) string {
 }
 
 // problemIDs returns the ID of every problem the command-line tools
-// explain (internal/cli, type problem). An ID must be a string literal, so
-// that this test can find it.
+// explain (internal/cli, type problem). Every problem literal must name its
+// ID as a non-empty string literal, so that this test can find it.
 func problemIDs(t *testing.T) map[string]string {
 	t.Helper()
 	pkg := parseDir(t, "internal/cli")
@@ -167,29 +169,40 @@ func problemIDs(t *testing.T) map[string]string {
 			if typ, ok := lit.Type.(*ast.Ident); !ok || typ.Name != "problem" {
 				return true
 			}
-			for _, elt := range lit.Elts {
-				kv, ok := elt.(*ast.KeyValueExpr)
-				if !ok {
-					continue
-				}
-				if key, ok := kv.Key.(*ast.Ident); !ok || key.Name != "id" {
-					continue
-				}
-				value, ok := kv.Value.(*ast.BasicLit)
-				if !ok || value.Kind != token.STRING {
-					t.Errorf("%s: a problem's id must be a string literal", pkg.where(kv))
-					continue
-				}
-				id, err := strconv.Unquote(value.Value)
-				if err != nil {
-					t.Fatal(err)
-				}
-				ids[id] = pkg.where(kv)
+			id, err := problemID(lit)
+			if err != nil {
+				t.Errorf("%s: %v", pkg.where(lit), err)
+				return true
 			}
+			ids[id] = pkg.where(lit)
 			return true
 		})
 	}
 	return ids
+}
+
+// problemID returns the id of the problem literal lit, or why it has none
+// this test can read.
+func problemID(lit *ast.CompositeLit) (string, error) {
+	for _, elt := range lit.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			return "", errors.New("a problem literal must name its fields, starting with id")
+		}
+		if key, ok := kv.Key.(*ast.Ident); !ok || key.Name != "id" {
+			continue
+		}
+		value, ok := kv.Value.(*ast.BasicLit)
+		if !ok || value.Kind != token.STRING {
+			return "", errors.New("a problem's id must be a string literal")
+		}
+		id, err := strconv.Unquote(value.Value)
+		if err != nil || id == "" {
+			return "", fmt.Errorf("a problem's id must not be empty: %s", value.Value)
+		}
+		return id, nil
+	}
+	return "", errors.New("a problem needs an id with a row in " + messagesPath)
 }
 
 // logMessages returns every warning and error message the node logs with

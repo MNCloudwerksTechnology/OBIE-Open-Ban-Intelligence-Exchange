@@ -77,6 +77,16 @@ func TestManPages(t *testing.T) {
 				}
 			}
 		}
+		// In a terminal of 80 columns, no command or path in the text is
+		// broken with a hyphen (U+2010).
+		narrow := exec.Command("groff", "-man", "-Tutf8", "-rLL=78n") // #nosec G204 -- a fixed command.
+		narrow.Stdin = strings.NewReader(page)
+		if out, err = narrow.Output(); err != nil {
+			t.Fatal(err)
+		}
+		if i := strings.Index(string(out), "\u2010"); i >= 0 {
+			t.Errorf("%s(1) hyphenates words: %q", name, string(out)[max(0, i-40):i+3])
+		}
 	}
 	if err := WriteManPage(&bytes.Buffer{}, "nft", "0.1.0", "2026-09-29"); err == nil {
 		t.Error("unknown tool: no error")

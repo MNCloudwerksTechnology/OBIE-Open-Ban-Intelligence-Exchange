@@ -183,6 +183,8 @@ func TestVerdictCommandsUsage(t *testing.T) {
 		"report bad action":       {[]string{"report", "--protocol", "ssh", "--reason", "x", "--action", "nuke", "85.10.0.7"}, ExitUsage, `--action must be ban or watch, got "nuke"`},
 		"report not an address":   {[]string{"report", "--protocol", "ssh", "--reason", "x", "85.10.0"}, ExitUsage, `"85.10.0" is not an IP address or range`},
 		"revoke not a target":     {[]string{"revoke", "1b4e28ba"}, ExitUsage, `"1b4e28ba" is neither an event ID nor an IP address or range`},
+		"revoke too broad":        {[]string{"revoke", "85.10.0.0/15"}, ExitUsage, `"85.10.0.0/15" is broader than /16`},
+		"report single cidr":      {[]string{"report", "--protocol", "ssh", "--reason", "x", "cidr:85.10.0.7/32"}, ExitUsage, `"85.10.0.7/32" is a single address`},
 		"show not an address":     {[]string{"show", "example.org"}, ExitUsage, `"example.org" is not an IP address or range`},
 		"report ip and argument":  {[]string{"report", "--ip", "85.10.0.7", "85.10.0.8"}, ExitUsage, "either with --ip or as the argument"},
 		"report two evidences":    {[]string{"report", "--evidence-file", "log", "--evidence-from-stdin", "--ip", "85.10.0.7"}, ExitUsage, "only one of --evidence-file and --evidence-from-stdin"},
@@ -309,7 +311,7 @@ func TestObiectlVerdictsAgainstInProcessDaemon(t *testing.T) {
 	}
 	_, errOut = ctl(ExitFailure, "revoke", "85.10.0.7")
 	if errOut != "obiectl revoke: this node has no active verdict on ipv4:85.10.0.7\n"+
-		"  Next: see what this node has reported: sudo obiectl indicators --mine\n" {
+		"  Next: see what this node has reported: sudo obiectl --socket "+n.socket+" indicators --mine\n" {
 		t.Errorf("second revoke stderr = %q", errOut)
 	}
 	var revs admin.RevocationsResponse

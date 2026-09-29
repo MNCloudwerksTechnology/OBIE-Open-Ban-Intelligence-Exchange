@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
 )
 
 func TestProblemWrite(t *testing.T) {
@@ -41,6 +42,8 @@ func TestClientProblems(t *testing.T) {
 		t.Fatalf("the group of %s cannot be told", stale)
 	}
 	me := currentUserName()
+	// The next steps run obiectl against the socket it was given.
+	ctl := "sudo obiectl --socket " + stale
 	notRunning := fmt.Errorf("%w: nothing is listening on admin socket", admin.ErrDaemonNotRunning)
 	api := func(code int, msg string) error {
 		return &admin.APIError{Method: "POST", Path: "/v1/x", StatusCode: code, Status: fmt.Sprintf("%d %s", code, http.StatusText(code)), Message: msg}
@@ -71,12 +74,12 @@ func TestClientProblems(t *testing.T) {
 		{name: "unknown socket group", program: "obiectl status", socket: missing, err: fs.ErrPermission, id: "admin-permission-denied",
 			why: "only root and members of the group that owns the socket may control the node", next: []string{"join the group that owns " + missing}},
 		{name: "timeout", program: "obiectl decisions", socket: stale, err: fmt.Errorf("get: %w", context.DeadlineExceeded), id: "node-timeout",
-			what: "obied did not answer in time (--timeout)", why: "busy", next: []string{"sudo obiectl --timeout 30s decisions"}},
+			what: "obied did not answer in time (--timeout)", why: "busy", next: []string{ctl + " --timeout 30s decisions", ctl + " --timeout 30s status"}},
 		{name: "not a public address", program: "obiectl report", socket: stale,
 			err: api(http.StatusUnprocessableEntity, "refused: ipv4:10.0.0.1 is not a public address: 10.0.0.1/32 overlaps special-purpose range 10.0.0.0/8; "+
 				"OBIE never publishes internal or special-purpose addresses"),
 			id: "address-protected", what: "nothing was reported: ipv4:10.0.0.1 is not a public address: 10.0.0.1/32 overlaps special-purpose range 10.0.0.0/8",
-			why: "OBIE never reports private", next: []string{"sudo obiectl explain <address> shows the rule that protects it"}},
+			why: "OBIE never reports private", next: []string{ctl + " explain <address> shows the rule that protects it"}},
 		{name: "address from an example", program: "obiectl report", socket: stale,
 			err: api(http.StatusUnprocessableEntity, "refused: ipv4:203.0.113.7 is not a public address: 203.0.113.7/32 overlaps special-purpose range 203.0.113.0/24; "+
 				"OBIE never publishes internal or special-purpose addresses"),
@@ -88,19 +91,21 @@ func TestClientProblems(t *testing.T) {
 			next: []string{"remove it from allowlist.cidrs and reload: sudo systemctl reload obied"}},
 		{name: "nothing to revoke", program: "obiectl revoke", socket: stale,
 			err: api(http.StatusNotFound, "not found: this node has no active verdict on ipv4:85.10.0.7"), id: "not-found",
-			what: "this node has no active verdict on ipv4:85.10.0.7", next: []string{"sudo obiectl indicators --mine"}},
+			what: "this node has no active verdict on ipv4:85.10.0.7", next: []string{ctl + " indicators --mine"}},
 		{name: "not found", program: "obiectl show", socket: stale, err: api(http.StatusNotFound, "no such thing"), id: "not-found",
-			what: "no such thing", next: []string{"sudo obiectl decisions"}},
+			what: "no such thing", next: []string{ctl + " decisions"}},
 		{name: "no override", program: "obiectl unoverride", socket: stale, err: fmt.Errorf("%w on 85.10.0.7", admin.ErrNoOverride),
-			id: "no-override", what: "no override on 85.10.0.7", next: []string{"sudo obiectl overrides"}},
+			id: "no-override", what: "no override on 85.10.0.7", next: []string{ctl + " overrides"}},
 		{name: "invalid request", program: "obiectl report", socket: stale, err: api(http.StatusBadRequest, "invalid request: ttl: must not be negative"),
 			id: "request-invalid", what: "the node refused the request: ttl: must not be negative", next: []string{"obiectl report --help"}},
 		{name: "unavailable", program: "obiectl explain", socket: stale, err: api(http.StatusServiceUnavailable, "the decision engine is not available"),
-			id: "node-unavailable", what: "the decision engine is not available", why: "still starting", next: []string{"sudo obiectl status"}},
+			id: "node-unavailable", what: "the decision engine is not available", why: "still starting", next: []string{ctl + " status"}},
 		{name: "internal error", program: "obiectl report", socket: stale, err: api(http.StatusInternalServerError, "reporting failed; see the obied log"),
 			id: "node-failed", what: "reporting failed; see the obied log", next: []string{"sudo journalctl -u obied -n 50"}},
 		{name: "other status", program: "obiectl report", socket: stale, err: api(http.StatusTeapot, "tea"),
 			id: "node-error", what: "the node answered 418 I'm a teapot: tea", next: []string{"journalctl"}},
+		{name: "default socket", program: "obiectl decisions", socket: config.Default().Admin.Socket, err: context.DeadlineExceeded,
+			id: "node-timeout", what: "obied did not answer in time", next: []string{"try again with more time: sudo obiectl --timeout 30s decisions"}},
 		{name: "other error", program: "obiectl status", socket: stale, err: errors.New("decode response: unexpected EOF"),
 			id: "node-unreachable", what: "cannot talk to obied: decode response: unexpected EOF", next: []string{"sudo obied self-check"}},
 	}

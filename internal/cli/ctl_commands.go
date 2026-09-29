@@ -33,6 +33,7 @@ blocks (enforce mode) or only observes. Then sudo obiectl decisions --state bloc
 lists what it blocks, or would block in observe mode.
 Help on a command: obiectl help <command>, or obiectl <command> --help.`,
 		globalFlags: true,
+		flagsIntro:  "Global flags, before the command",
 		run:         RunCtl,
 	}
 	for _, c := range ctlCommands() {
@@ -108,7 +109,7 @@ others. --json always has every decision.`,
 			values: map[string][]string{"state": {"block", "none", "allowed"}},
 		}, run: runDecisions},
 		{commandHelp: commandHelp{
-			name: "explain", group: groupLook,
+			name: "explain", group: groupLook, operand: "address or range",
 			summary: "explain why an address or range is or is not blocked",
 			usage:   []string{"[--json] <address | range>"},
 			description: `Shows the decision on the address or range and the reason for it: the
@@ -127,14 +128,15 @@ address may also be written as an indicator key, such as ipv4:203.0.113.7.`,
 			usage:   []string{"[--mine | --publisher <peer ID>] [--limit <n>] [--cursor <cursor>] [--json]"},
 			description: `Lists the active verdicts the node holds, one row per verdict, grouped by
 address or range, a page at a time. When more follow, the last line says
-how to get the next page.`,
+how to get the next page. Unlike the other listings, --limit is the size
+of a page and --json holds one page too, with next_cursor for the next.`,
 			examples: []example{
 				{"See what this node has reported itself:", "sudo obiectl indicators --mine"},
 				{"See what one peer has reported:", "sudo obiectl indicators --publisher " + peerIDExample},
 			},
 		}, run: runIndicators},
 		{commandHelp: commandHelp{
-			name: "show", group: groupLook,
+			name: "show", group: groupLook, operand: "address or range",
 			summary: "show every active verdict on one address or range",
 			usage:   []string{"[--json] <address | range>"},
 			description: `Lists the active verdicts on the address or range from every publisher,
@@ -167,7 +169,7 @@ what the kernel holds.`,
 			},
 		}, run: runEnforced},
 		{commandHelp: commandHelp{
-			name: "allow", group: groupDecide,
+			name: "allow", group: groupDecide, operand: "address or range",
 			summary: "always allow an address or range: never block it",
 			usage:   []string{"<address | range> [--ttl <duration>] [--note <text>] [--json]"},
 			description: `Sets an override that never blocks the address or range, whatever the mesh
@@ -181,7 +183,7 @@ unoverride, or until --ttl ends it.`,
 			},
 		}, run: runAllow},
 		{commandHelp: commandHelp{
-			name: "block", group: groupDecide,
+			name: "block", group: groupDecide, operand: "address or range",
 			summary: "always block an address or range, whatever its score",
 			usage:   []string{"<address | range> [--ttl <duration>] [--note <text>] [--json]"},
 			description: `Sets an override that blocks the address or range whatever the mesh
@@ -194,7 +196,7 @@ nothing is blocked, but the decision shows it.`,
 			},
 		}, run: runBlock},
 		{commandHelp: commandHelp{
-			name: "unoverride", group: groupDecide,
+			name: "unoverride", group: groupDecide, operand: "address or range",
 			summary: "remove your override of an address or range",
 			usage:   []string{"<address | range> [--json]"},
 			description: `Removes the override set with obiectl allow or obiectl block. The node then
@@ -205,7 +207,7 @@ shows the decision now.`,
 			},
 		}, run: runUnoverride},
 		{commandHelp: commandHelp{
-			name: "report", group: groupReport,
+			name: "report", group: groupReport, operand: "address or range",
 			summary: "publish a signed verdict on an attacking address or range",
 			usage: []string{
 				"--protocol <service> --reason <class> [flags] <address | range>",
@@ -230,7 +232,7 @@ next refresh of the verdict; later reports refresh it.`,
 			values: map[string][]string{"action": {"ban", "watch"}},
 		}, run: runReport},
 		{commandHelp: commandHelp{
-			name: "revoke", group: groupReport,
+			name: "revoke", group: groupReport, operand: "event ID, address or range",
 			summary: "withdraw a verdict this node published",
 			usage:   []string{"[--reason <reason>] [--json] <event ID | address | range>"},
 			description: `Revokes this node's own active verdict with that event ID, or its verdicts

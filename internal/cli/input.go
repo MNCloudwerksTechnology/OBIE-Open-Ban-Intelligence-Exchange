@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -17,11 +19,28 @@ const addressExamples = "an IPv4 or IPv6 address such as 203.0.113.7 or 2001:db8
 // checks what it can before it asks the node.
 func checkAddress(program, s string, stderr io.Writer) bool {
 	if _, err := admin.ParseIndicator(s); err != nil {
-		problem{id: "invalid-address", what: fmt.Sprintf("%q is not an IP address or range", s),
-			next: []string{"give " + addressExamples}}.write(stderr, program)
+		addressProblem(s, err, "is not an IP address or range", "give "+addressExamples).write(stderr, program)
 		return false
 	}
 	return true
+}
+
+// addressProblem explains why s, which admin.ParseIndicator rejected with
+// err, cannot be used: with the reason when s is an address or range that
+// OBIE does not act on, e.g. one broader than /16, else as notAddress.
+func addressProblem(s string, err error, notAddress, next string) problem {
+	p := problem{id: "invalid-address", what: fmt.Sprintf("%q %s", s, notAddress), next: []string{next}}
+	var fieldErr *obieproto.FieldError
+	if !errors.As(err, &fieldErr) || fieldErr.Field != "indicator.value" {
+		return p
+	}
+	p.what = fieldErr.Detail
+	if strings.Contains(fieldErr.Detail, "is broader than") {
+		p.why = fmt.Sprintf("OBIE acts on ranges of at most /%d in IPv4 and /%d in IPv6, so that no verdict "+
+			"can target large parts of the address space", obieproto.MinIPv4Prefix, obieproto.MinIPv6Prefix)
+		p.next = []string{"give a narrower range, such as 203.0.113.0/24, or single addresses"}
+	}
+	return p
 }
 
 // parseAddressArg parses the flags of a command that takes one address or
@@ -41,9 +60,9 @@ func checkRevokeTarget(program, s string, stderr io.Writer) bool {
 		return true
 	}
 	if _, err := admin.ParseIndicator(s); err != nil {
-		problem{id: "invalid-address", what: fmt.Sprintf("%q is neither an event ID nor an IP address or range", s),
-			next: []string{"give the event ID of a verdict of this node, such as 1b4e28ba-2fa1-41d2-883f-0016d3cca427 " +
-				"(sudo obiectl show <address> lists them), or " + addressExamples}}.write(stderr, program)
+		addressProblem(s, err, "is neither an event ID nor an IP address or range",
+			"give the event ID of a verdict of this node, such as 1b4e28ba-2fa1-41d2-883f-0016d3cca427 "+
+				"(sudo obiectl show <address> lists them), or "+addressExamples).write(stderr, program)
 		return false
 	}
 	return true

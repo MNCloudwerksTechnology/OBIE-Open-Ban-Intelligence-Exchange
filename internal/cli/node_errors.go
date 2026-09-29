@@ -65,8 +65,9 @@ func allowlistProblem(path string, err error) problem {
 }
 
 // identityProblem explains why the node's identity key in stateDir cannot
-// be read.
-func identityProblem(stateDir string, err error) problem {
+// be read. where are the flags that located stateDir, e.g. " --state-dir
+// ./node-a", for the commands it suggests.
+func identityProblem(stateDir, where string, err error) problem {
 	keyFile := identity.Path(stateDir)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -80,7 +81,7 @@ func identityProblem(stateDir string, err error) problem {
 		return problem{id: "identity-missing", what: "this node has no identity yet: " + keyFile + " does not exist",
 			why: "the node creates its identity key the first time it starts",
 			next: []string{"start the node once: sudo systemctl enable --now obied",
-				"or create the key now, as the user the node runs as: sudo -u obie obied keygen", restore}}
+				"or create the key now, as the user the node runs as: sudo -u obie obied keygen" + where, restore}}
 	case errors.Is(err, fs.ErrPermission):
 		return problem{id: "identity-unreadable",
 			what: fmt.Sprintf("cannot read the identity key in %s as user %s: permission denied", stateDir, currentUserName()),
@@ -99,16 +100,16 @@ func identityProblem(stateDir string, err error) problem {
 }
 
 // keygenProblem explains why the identity key could not be created in
-// stateDir.
-func keygenProblem(stateDir string, err error) problem {
+// stateDir; where are the flags that located it, as for identityProblem.
+func keygenProblem(stateDir, where string, err error) problem {
 	if errors.Is(err, identity.ErrKeyExists) {
 		return problem{id: "identity-exists", what: identity.Path(stateDir) + " exists already: this node has an identity",
-			next: []string{"keep it; obied identity shows its peer ID",
-				"to replace it, which gives the node a new peer ID that its peers must be told: obied keygen --force"}}
+			next: []string{"keep it; obied identity" + where + " shows its peer ID",
+				"to replace it, which gives the node a new peer ID that its peers must be told: obied keygen" + where + " --force"}}
 	}
 	return problem{id: "keygen-failed", what: fmt.Sprintf("cannot create the identity key in %s: %v", stateDir, err),
 		why:  "the key and its directory must belong to the user the node runs as",
-		next: []string{"create it as that user: sudo -u obie obied keygen"}}
+		next: []string{"create it as that user: sudo -u obie obied keygen" + where}}
 }
 
 // stateDirProblem explains why the state directory cannot be used.
@@ -141,8 +142,9 @@ func startNext(err error) string {
 	case errors.Is(err, syscall.EADDRINUSE):
 		return "another process uses the address: stop it, or change mesh.listen, metrics.listen or console.listen; " + always
 	case errors.Is(err, fs.ErrPermission):
-		return "obied lacks a permission: start it as the service, which has the rights it needs, " +
-			"sudo systemctl start obied; " + always
+		return "obied lacks a permission for what the error names: run it as the service, sudo systemctl start obied, " +
+			"which runs as the user obie with the rights it needs; if the service fails, what the error names must belong " +
+			"to obie and lie below /var/lib/obie, /var/log/obie or /run/obie, the only places the service may write; " + always
 	}
 	return always
 }

@@ -11,7 +11,8 @@ import (
 // RFC 3339 in UTC, spans of time are given to the second with days for long
 // ones, labels are words and never only a color, and a long listing starts
 // with a summary and shows at most --limit rows. Output for programs is
-// --json, which is always complete.
+// --json, which is complete; only obiectl indicators pages it, as the node
+// does, with --limit as the page size and --cursor.
 
 // formatTime writes t as every table and message does: RFC 3339 in UTC.
 func formatTime(t time.Time) string {

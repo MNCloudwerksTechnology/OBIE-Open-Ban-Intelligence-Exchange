@@ -168,7 +168,9 @@ func parse(fs *flag.FlagSet, args []string, stdout, stderr io.Writer) (code int,
 		return flagError(fs, err, stdout, stderr), true
 	}
 	if *showVersion {
-		if _, err := fmt.Fprintln(stdout, version.String(fs.Name())); err != nil {
+		// The version is the tool's, also for obied run --version.
+		toolName, _, _ := strings.Cut(fs.Name(), " ")
+		if _, err := fmt.Fprintln(stdout, version.String(toolName)); err != nil {
 			_, _ = fmt.Fprintf(stderr, "%s: writing version: %v\n", fs.Name(), err)
 			return ExitIOError, true
 		}

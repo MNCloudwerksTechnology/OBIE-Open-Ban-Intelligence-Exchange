@@ -122,7 +122,7 @@ func TestKeygenRefusesOverwrite(t *testing.T) {
 		t.Fatalf("second keygen: exit code = %d, stdout %q", code, stdout)
 	}
 	if !strings.Contains(stderr, "node.key exists already: this node has an identity\n") ||
-		!strings.Contains(stderr, "Next: to replace it, which gives the node a new peer ID that its peers must be told: obied keygen --force") {
+		!strings.Contains(stderr, "Next: to replace it, which gives the node a new peer ID that its peers must be told: obied keygen --state-dir "+stateDir+" --force") {
 		t.Errorf("stderr = %q", stderr)
 	}
 	if !bytes.Equal(before, readKeyFile(t, stateDir)) {

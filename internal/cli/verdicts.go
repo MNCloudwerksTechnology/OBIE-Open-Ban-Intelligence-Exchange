@@ -160,7 +160,7 @@ func runIndicators(ctx context.Context, client *admin.Client, args []string, std
 	asJSON := fs.Bool("json", false, "print the indicators as JSON, for scripts")
 	publisher := fs.String("publisher", "", "list only the verdicts of the publisher with this `peer ID` (default: every publisher)")
 	mine := fs.Bool("mine", false, "list only the verdicts of this node")
-	limit := fs.Int("limit", 0, "page `size` (default 100, at most 1000)")
+	limit := fs.Int("limit", 0, "page `size`, in the table and in --json; 0 is the node's default of 100, at most 1000")
 	cursor := fs.String("cursor", "", "continue after this `cursor` from the previous page (default: the first page)")
 	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
 		return code

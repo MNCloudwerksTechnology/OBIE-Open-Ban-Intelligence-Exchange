@@ -43,8 +43,8 @@ obiectl status: obied is not running: there is no admin socket /run/obie/obie.so
    rather than guessed.
 3. Each `Next:` line is one thing to do, the most likely first. Commands
    are complete and can be copied, with `sudo` where they need root, and
-   settings are named by their key in `obie.yaml`, such as
-   `admin.socket_group`.
+   keep the `--config`, `--state-dir` or `--socket` you gave. Settings are
+   named by their key in `obie.yaml`, such as `admin.socket_group`.
 4. A usage mistake, such as an unknown flag, a missing argument or an
    address that is none, is one line and where the help is.
 5. The node logs JSON lines. `msg` says what happened and what the node
@@ -79,11 +79,17 @@ obiectl status: obied is not running: there is no admin socket /run/obie/obie.so
 - Errors go to standard error. The exit status is 0 on success, 1 when the
   command failed (also for an invalid configuration), 2 for a usage
   mistake and 3 when the output could not be written.
-- Every listing command has `--json`, which is always complete and keeps
-  its field names; scripts use it. Tables are for people and may change.
+- Every listing command has `--json`, which keeps its field names; scripts
+  use it. Tables are for people and may change.
 - Long listings, such as thousands of decisions, start with a summary,
   show blocks first and at most `--limit` rows (100 by default), and say
-  below the table how to see the rest: `--limit 0` or `--json`.
+  below the table how to see the rest: `--limit 0` or `--json`, which
+  are complete.
+- `obiectl indicators` is the exception: the node hands out verdicts a
+  page at a time, so `--limit` is the size of a page (0 is the node's
+  default of 100, at most 1000), in the table and in `--json` alike, and
+  `--cursor` fetches the next page. The last line of the table, and
+  `next_cursor` in `--json`, name the cursor.
 - Nothing asks a question unless it runs in a terminal. `obied setup`
   refuses to ask into a pipe and points to `--non-interactive`.
 
@@ -113,10 +119,10 @@ shortened here; the tools print them in full.
 |----|-------|----------------|--------------------------|
 | `usage` | every command | a flag or argument mistake, e.g. `obiectl report: --protocol is missing: name the attacked service, e.g. --protocol ssh` or `unexpected argument "x"` | Next: see how to use it, `<command> --help`. Exit status 2. |
 | `unknown-command` | both tools | `unknown command "statu"; did you mean "status"?`, then the commands grouped by task | Next: choose one of them; `help <command>` explains it. Exit status 2. |
-| `invalid-address` | `obiectl allow`, `block`, `unoverride`, `explain`, `show`, `report`, `revoke` | `"10.0.0.300" is not an IP address or range`; for `revoke`, `… is neither an event ID nor an IP address or range` | Next: give an address such as `203.0.113.7` or `2001:db8::7`, or a range such as `203.0.113.0/24`. Checked before the node is asked; exit status 2. |
+| `invalid-address` | `obiectl allow`, `block`, `unoverride`, `explain`, `show`, `report`, `revoke` | `"10.0.0.300" is not an IP address or range`; for `revoke`, `… is neither an event ID nor an IP address or range`; for a range OBIE does not act on, the reason, e.g. `"10.0.0.0/8" is broader than /16` | Next: give an address such as `203.0.113.7` or `2001:db8::7`, or a range such as `203.0.113.0/24`. For a range that is too broad, Why: OBIE acts on ranges of at most /16 in IPv4 and /32 in IPv6; Next: a narrower range or single addresses. Checked before the node is asked; exit status 2. |
 | `node-not-running` | `obiectl` | `obied is not running: there is no admin socket /run/obie/obie.sock`, or `… nothing answers on the admin socket …` | Why: the node was not started, has stopped, or uses another socket. Next: `sudo systemctl start obied`; if it does not stay up, `sudo journalctl -u obied -n 20` or `sudo obied self-check`; another socket: `obiectl --socket <path>`. |
 | `admin-permission-denied` | `obiectl` | `permission denied: user alice may not use the admin socket /run/obie/obie.sock` | Why: only root and members of the group `obie` (`admin.socket_group`) may control the node. Next: run it with `sudo`, or join the group: `sudo usermod -aG obie alice`, then log in again. |
-| `node-timeout` | `obiectl` | `obied did not answer in time (--timeout)` | Why: the node is busy, still starting, or stuck. Next: `sudo obiectl --timeout 30s <command>`; `sudo obiectl status` and `sudo journalctl -u obied -n 50`. |
+| `node-timeout` | `obiectl` | `obied did not answer in time (--timeout)` | Why: the node is busy, still starting, or stuck. Next: `sudo obiectl --timeout 30s <command>`; `sudo obiectl status` and `sudo journalctl -u obied -n 50`. With `--socket`, the commands keep it. |
 | `node-unreachable` | `obiectl` | `cannot talk to obied: <error>` | Next: `sudo obied self-check` checks the node and its admin socket. |
 | `node-unavailable` | `obiectl` | the node's answer that a part is not available yet | Why: the node is still starting, or one of its parts failed. Next: `sudo obiectl status` shows which; `sudo journalctl -u obied -n 50`. |
 | `node-failed` | `obiectl` | the node's answer that the request failed inside it | Next: see why in the node's log, `sudo journalctl -u obied -n 50`. |
@@ -126,6 +132,7 @@ shortened here; the tools print them in full.
 | `no-override` | `obiectl unoverride` | `no override on 203.0.113.7` | Next: `sudo obiectl overrides` lists your overrides. |
 | `address-protected` | `obiectl report` | `nothing was reported: 192.168.1.9 is not a public address: …`, or `… overlaps the allow-listed network …` | Why: OBIE never reports private, loopback, link-local and other special-purpose addresses, nor the networks on your allow-list. Next: nothing, if this is right; `sudo obiectl explain <address>` shows the rule; to report it after all, remove it from `allowlist.cidrs` and reload. For an address reserved for examples, such as `203.0.113.7` from the help: report the attacking address from your log instead. |
 | `block-protected` | `obiectl block` | `warning: …`, the override is kept but has no effect | Why: protected addresses are never blocked, not even by an override, so that OBIE cannot cut this server off. Next: remove it, `sudo obiectl unoverride <address>`. Exit status 0. |
+| `block-overruled` | `obiectl block` | `warning: the force-block does not take effect: operator force-allow override on cidr:198.51.100.0/24; …` | Why: an always-allow override beats every other rule, also an always-block override. Next: to block the address, remove the always-allow override it names, `sudo obiectl unoverride 198.51.100.0/24`; otherwise remove the block. Exit status 0. |
 | `evidence-unreadable` | `obiectl report` | `cannot use the evidence of --evidence-file: <error>` | Next: check the file, or pass the log lines on standard input: `grep <address> <log file> \| sudo obiectl report --evidence-from-stdin …`. |
 | `config-invalid` | `obied`, `obied --check-config`, `identity`, `keygen`, `teardown-firewall` | `the configuration /etc/obie/obie.yaml is invalid:`, then one `file:line: setting: problem` line per mistake; or `… cannot be read: <error>` when it is no YAML | Next: fix these settings, then `sudo obied --check-config`; every setting is described in `/etc/obie/obie.yaml.example` and in the [configuration reference](configuration.md). |
 | `config-missing` | as `config-invalid` | `the configuration file /etc/obie/obie.yaml does not exist` | Next: write it after a few questions, `sudo obied setup`, or name the file with `--config <file>`. |
@@ -134,7 +141,7 @@ shortened here; the tools print them in full.
 | `identity-missing` | `obied identity` | `this node has no identity yet: /var/lib/obie/node.key does not exist`, or `… its state directory /var/lib/obie does not exist` | Why: the node creates its identity key the first time it starts. Next: `sudo systemctl enable --now obied`; or `sudo -u obie obied keygen`; or restore the key from your backup; or name the state directory, `--state-dir <directory>`. |
 | `identity-unreadable` | `obied identity` | `cannot read the identity key in /var/lib/obie as user alice: permission denied` | Why: the key belongs to the user the node runs as, and nobody else may read it. Next: run it with `sudo`. |
 | `identity-unusable` | `obied identity` | `insecure key file …` (mode or owner wrong) or `corrupted key file …` | Next: the fix the message names, such as `chmod 600` on the key or restoring it from a backup; otherwise `sudo obied self-check`. |
-| `identity-exists` | `obied keygen` | `/var/lib/obie/node.key exists already: this node has an identity` | Next: keep it, `obied identity` shows its peer ID; to replace it, `obied keygen --force`, which gives the node a new peer ID that its peers must be told. |
+| `identity-exists` | `obied keygen` | `/var/lib/obie/node.key exists already: this node has an identity` | Next: keep it, `obied identity` shows its peer ID; to replace it, `obied keygen --force`, which gives the node a new peer ID that its peers must be told. Both keep the `--state-dir` or `--config` you gave. |
 | `keygen-failed` | `obied keygen` | `cannot create the identity key in /var/lib/obie: <error>` | Why: the key and its directory must belong to the user the node runs as. Next: `sudo -u obie obied keygen`. |
 | `state-dir-unusable` | `obied keygen` | `state directory has a newer format: …` or another problem with the state directory | Next: the fix the message names, such as running the newer `obied` again or restoring a backup; otherwise `sudo obied self-check`. |
 | `teardown-failed` | `obied teardown-firewall` | `cannot remove the table inet obie: the kernel refused`, or `… <error>` | Why: changing the firewall needs root (`CAP_NET_ADMIN`). Next: `sudo obied teardown-firewall`; otherwise `sudo nft delete table inet obie`. |

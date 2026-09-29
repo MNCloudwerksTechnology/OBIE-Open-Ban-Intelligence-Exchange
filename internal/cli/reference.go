@@ -18,6 +18,10 @@ var mdText = strings.NewReplacer(`\`, `\\`, "<", `\<`, ">", `\>`, "[", `\[`, "]"
 // mdCell escapes s for a cell of a Markdown table.
 func mdCell(s string) string { return strings.ReplaceAll(mdText(s), "|", `\|`) }
 
+// mdCodeCell writes s as code in a cell of a Markdown table: Markdown takes
+// code as it is, only the table needs its | escaped.
+func mdCodeCell(s string) string { return "`" + strings.ReplaceAll(s, "|", `\|`) + "`" }
+
 // mdAnchor is the anchor GitHub gives a heading of simple words.
 func mdAnchor(heading string) string {
 	return strings.ToLower(strings.ReplaceAll(heading, " ", "-"))
@@ -63,7 +67,7 @@ func writeToolReference(b *strings.Builder, t *tool) {
 	}
 	fmt.Fprintf(b, "\n%s\n", mdText(strings.TrimSpace(t.start)))
 	if fs := t.flags(""); hasFlags(fs) {
-		b.WriteString("\nThe global flags go before the command:\n\n")
+		fmt.Fprintf(b, "\n%s:\n\n", mdText(t.flagsIntro))
 		writeFlagTable(b, fs)
 	}
 	for _, c := range t.commands {
@@ -96,7 +100,7 @@ func writeFlagTable(b *strings.Builder, fs *flag.FlagSet) {
 		if arg != "" {
 			name += " " + arg
 		}
-		fmt.Fprintf(b, "| `%s` | %s |\n", mdCell(name), mdCell(usage+defaultText(f, usage)))
+		fmt.Fprintf(b, "| %s | %s |\n", mdCodeCell(name), mdCell(usage+defaultText(f, usage)))
 	})
 }
 

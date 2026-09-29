@@ -230,6 +230,8 @@ func TestOverviewGroupsCommandsByTask(t *testing.T) {
 			{nil, ExitUsage, false, ""},
 			{[]string{"--help"}, ExitOK, true, ""},
 			{[]string{"help"}, ExitOK, true, ""},
+			// help --help, where a usage mistake of help points, too.
+			{[]string{"help", "--help"}, ExitOK, true, ""},
 			{[]string{"frobnicate"}, ExitUsage, false, tl.name + `: unknown command "frobnicate"` + "\n  Next: choose one of the commands below"},
 		} {
 			var stdout, stderr bytes.Buffer
@@ -261,6 +263,16 @@ func TestOverviewGroupsCommandsByTask(t *testing.T) {
 			if !strings.Contains(out, "\nStart here: sudo ") || !strings.Contains(out, "Help on a command: "+tl.name+" help <command>") {
 				t.Errorf("%s %v: the overview does not say where to start:\n%s", tl.name, tc.args, out)
 			}
+			// The tool's own flags, such as obied --config, are listed with
+			// their defaults.
+			if !strings.Contains(out, "\n"+tl.flagsIntro+":\n") {
+				t.Errorf("%s %v: the overview does not introduce the flags with %q:\n%s", tl.name, tc.args, tl.flagsIntro, out)
+			}
+			tl.flags("").VisitAll(func(f *flag.Flag) {
+				if !strings.Contains(out, "\n  --"+f.Name) || (f.DefValue != "" && f.DefValue != "false" && !strings.Contains(out, f.DefValue)) {
+					t.Errorf("%s %v: the overview lacks --%s with its default %q:\n%s", tl.name, tc.args, f.Name, f.DefValue, out)
+				}
+			})
 			for _, line := range strings.Split(out, "\n") {
 				if len(line) > 100 {
 					t.Errorf("%s %v: line longer than 100 characters: %q", tl.name, tc.args, line)

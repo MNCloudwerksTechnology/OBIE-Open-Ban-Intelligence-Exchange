@@ -39,6 +39,8 @@ then sudo systemctl enable --now obied starts the node, and sudo obied
 self-check checks it and says what to do about anything that is not right.
 Help on a command: obied help <command>, or obied <command> --help.
 The running node is controlled with obiectl: obiectl --help.`,
+		bareCommand: "run",
+		flagsIntro:  "Flags in place of a command run the node, as obied run does",
 		run: func(args []string, stdout, stderr io.Writer) int {
 			return runDaemon(context.Background(), args, stdout, stderr)
 		},
