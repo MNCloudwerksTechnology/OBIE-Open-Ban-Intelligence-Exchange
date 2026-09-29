@@ -14,7 +14,7 @@ compose lab of ADR 0017 (`packaging/compose`) shows three nodes that
 trust each other, but it has no untrusted node, no web console and no
 guided story, and a node blocks its own reports at once (local
 autoblock), so one revocation cannot lift a block everywhere. The epic
-#1681 also requires that every command and output shown to users is
+(#1681) also requires that every command and output shown to users is
 checked automatically, and that a missing container runtime or a taken
 port ends with a message that says what to do.
 
@@ -35,8 +35,10 @@ port ends with a message that says what to do.
   The web console and the audit log (for the activity timeline) are on.
 - **Nothing on the host changes.** No host networking, no privileged
   container: every container drops every capability and runs with
-  `no-new-privileges`, so no node could program a firewall even if it
-  tried, and the `dryrun` backend never tries. The nodes share one bridge
+  `no-new-privileges`; only the one-shot init container, which has no
+  network, keeps the three it needs to hand the node directories to
+  `nonroot`. No node could program a firewall even if it tried, and the
+  `dryrun` backend never tries. The nodes share one bridge
   network; the consoles are published on `127.0.0.1` only. Docker itself
   adds and removes the forwarding rules of its networks and published
   ports, as for any container; the walkthrough says so. Only a user who may
@@ -49,7 +51,7 @@ port ends with a message that says what to do.
   send `Host: 127.0.0.1:<port>`, which the host check accepts, and the
   session cookie carries the port, so the three consoles do not sign each
   other out. The forwarder uses the `sandbox-init` image (busybox plus
-  obied), so the sandbox pulls no image of its own.
+  obied), so it needs no image beyond the two the sandbox builds.
 - **One script.** `packaging/sandbox/sandbox` has `up`, `exec`, `console`,
   `logs` and `down`. `up` first checks that Docker is installed, answers
   and has the Compose plugin, and that the console ports are free (with
