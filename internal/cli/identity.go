@@ -2,11 +2,9 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"text/tabwriter"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
@@ -31,7 +29,7 @@ func resolveStateDir(configPath, stateDir string) (string, error) {
 	}
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", configPath, err)
+		return "", err
 	}
 	return cfg.Node.StateDir, nil
 }
@@ -46,22 +44,17 @@ func runKeygen(args []string, stdout, stderr io.Writer) int {
 	}
 	stateDir, err := resolveStateDir(*configPath, *stateDirFlag)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		configProblem(*configPath, err).write(stderr, program)
 		return ExitInvalidConfig
 	}
 
 	if err := statedir.Check(stateDir, version.Version); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		stateDirProblem(err).write(stderr, program)
 		return ExitFailure
 	}
 	key, err := identity.Create(stateDir, *force)
-	if errors.Is(err, identity.ErrKeyExists) {
-		_, _ = fmt.Fprintf(stderr, "%s: %s already exists; pass --force to replace it (this changes the node's peer ID)\n",
-			program, identity.Path(stateDir))
-		return ExitFailure
-	}
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		keygenProblem(stateDir, err).write(stderr, program)
 		return ExitFailure
 	}
 	_, _ = fmt.Fprintf(stderr, "%s: wrote a new node key to %s\n", program, identity.Path(stateDir))
@@ -81,16 +74,13 @@ func runIdentity(args []string, stdout, stderr io.Writer) int {
 	}
 	stateDir, err := resolveStateDir(*configPath, *stateDirFlag)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		configProblem(*configPath, err).write(stderr, program)
 		return ExitInvalidConfig
 	}
 
 	key, err := identity.Load(stateDir)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
-		if errors.Is(err, os.ErrNotExist) {
-			_, _ = fmt.Fprintf(stderr, "%s: create the key with obied keygen, or start obied once\n", program)
-		}
+		identityProblem(stateDir, err).write(stderr, program)
 		return ExitFailure
 	}
 	return printIdentity(stdout, stderr, program, admin.NewIdentityResponse(key), *asJSON)

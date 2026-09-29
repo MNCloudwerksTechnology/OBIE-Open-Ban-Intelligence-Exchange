@@ -33,6 +33,10 @@ func runPeers(ctx context.Context, client *admin.Client, args []string, stdout, 
 		_, _ = fmt.Fprintf(stderr, "obiectl: writing peers: %v\n", err)
 		return ExitIOError
 	}
+	if !*asJSON && len(peers.Peers) == 0 {
+		_, _ = fmt.Fprintf(stderr, "%s: if this node should have peers, sudo obied self-check tests whether each configured peer "+
+			"answers, and documentation/operations/troubleshooting.md#no-peers lists the usual causes\n", program)
+	}
 	return ExitOK
 }
 

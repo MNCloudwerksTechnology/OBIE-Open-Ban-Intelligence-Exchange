@@ -177,12 +177,13 @@ lists every message and its fix.
 
 ## obied does not start
 
-`sudo systemctl status obied` and `sudo journalctl -u obied -n 20` show the reason
-in the `obied failed` line. Common ones:
+`sudo systemctl status obied` and `sudo journalctl -u obied -n 20` show the reason:
+a problem with the configuration comes with its next steps, anything else
+is in the `obied failed` line, whose `next` says what to do. Common ones:
 
 | Error | Fix |
 |-------|-----|
-| `invalid configuration:` followed by key paths | Fix that key; `obied --config /etc/obie/obie.yaml --check-config` lists every problem. |
+| `the configuration /etc/obie/obie.yaml is invalid:` followed by `file:line: setting: problem` lines | Fix those settings; `sudo obied --check-config` lists every problem. |
 | `… node.key has mode 0644 and is accessible by group or others` / `is owned by root` | The key was copied with the wrong mode or owner: `sudo chown obie:obie /var/lib/obie/node.key; sudo chmod 600 /var/lib/obie/node.key`. |
 | `chgrp admin socket to … operation not permitted` | `admin.socket_group` differs from the unit's `Group=`; make them equal ([install.md](install.md#the-service-sandbox)). |
 | `state directory has a newer format` | A newer `obied` used the state directory. Run that version again, or restore the backup taken before the upgrade. |

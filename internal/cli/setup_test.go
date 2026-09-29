@@ -231,7 +231,7 @@ func TestSetupNonInteractiveNeedsForce(t *testing.T) {
 	}
 	first := readText(t, path)
 	code, _, stderr := runSetupTest(t, env, "", "--config", path, "--non-interactive", "--mode", "enforce")
-	if code != ExitFailure || !strings.Contains(stderr, "exists already") || !strings.Contains(stderr, "pass --force") {
+	if code != ExitFailure || !strings.Contains(stderr, "exists already") || !strings.Contains(stderr, "Next: to replace it, add --force") {
 		t.Errorf("second run without --force: exit code %d: %s", code, stderr)
 	}
 	if readText(t, path) != first {
@@ -279,7 +279,7 @@ func TestSetupAsRootWithoutPermission(t *testing.T) {
 	code, stdout, stderr := runSetupTest(t, env, "", "--config", "/etc/obie/obie.yaml")
 	if code != ExitFailure || stdout != "" || strings.Contains(stderr, "as root") ||
 		!strings.Contains(stderr, "cannot write /etc/obie/obie.yaml as user root: read-only file system") ||
-		!strings.Contains(stderr, "choose a place it can write with --config FILE") {
+		!strings.Contains(stderr, "Next: choose a place it can write: --config <file>") {
 		t.Errorf("exit code %d, stdout %q, stderr %q", code, stdout, stderr)
 	}
 }

@@ -129,11 +129,12 @@ func runNode(ctx context.Context, reload <-chan struct{}, program string, args [
 	}
 
 	file, err := config.LoadFile(*configPath)
-	if err == nil {
-		_, err = sovereignty.ReadFiles(file.Config.Allowlist.Files)
-	}
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", program, *configPath, err)
+		configProblem(*configPath, err).write(stderr, program)
+		return ExitInvalidConfig
+	}
+	if _, err := sovereignty.ReadFiles(file.Config.Allowlist.Files); err != nil {
+		allowlistProblem(*configPath, err).write(stderr, program)
 		return ExitInvalidConfig
 	}
 	if *checkOnly {
@@ -152,7 +153,7 @@ func runNode(ctx context.Context, reload <-chan struct{}, program string, args [
 	log.Info("configuration loaded", "path", *configPath, "mode", cfg.Node.Mode)
 	opts := daemon.Options{Reload: reload, File: file, LoadConfig: func() (*config.File, error) { return config.LoadFile(*configPath) }}
 	if err := daemon.Run(ctx, cfg, logs, opts); err != nil {
-		log.Error("obied failed", "error", err)
+		log.Error("obied failed", "error", err, "next", startNext(err))
 		return ExitFailure
 	}
 	return ExitOK

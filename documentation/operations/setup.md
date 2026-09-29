@@ -63,7 +63,8 @@ anything:
 
 ```text
 obied setup: cannot write /etc/obie/obie.yaml as user alice: permission denied
-obied setup: run it as root: sudo obied setup
+  Why:  the configuration directory belongs to root
+  Next: run it as root: sudo obied setup
 ```
 
 ### Set up without questions

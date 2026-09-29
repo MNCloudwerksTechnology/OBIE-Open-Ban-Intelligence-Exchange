@@ -74,6 +74,10 @@ func runStatus(ctx context.Context, client *admin.Client, args []string, stdout,
 		_, _ = fmt.Fprintf(stderr, "obiectl: writing status: %v\n", err)
 		return ExitIOError
 	}
+	if !*asJSON && !status.Ready {
+		_, _ = fmt.Fprintf(stderr, "%s: the node is not ready; sudo obied self-check says what to do about each subsystem "+
+			"that is not, and sudo journalctl -u obied -n 50 shows the node's log\n", program)
+	}
 	return ExitOK
 }
 

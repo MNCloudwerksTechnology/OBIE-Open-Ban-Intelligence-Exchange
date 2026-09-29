@@ -100,32 +100,27 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 	}
 	path, err := filepath.Abs(*configPath)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		usageProblem(program, err.Error()).write(stderr, program)
 		return ExitUsage
 	}
 	if !*nonInteractive {
 		if given := setFlags(flags, answerFlags); len(given) > 0 {
-			_, _ = fmt.Fprintf(stderr, "%s: --%s answers a question up front and needs --non-interactive\n", program, given[0])
+			usageProblem(program, "--"+given[0]+" answers a question up front and needs --non-interactive").write(stderr, program)
 			return ExitUsage
 		}
 	}
 	// Before any question: a path the file cannot be written to fails now,
 	// not after the last answer.
 	if err := setup.CheckPath(path); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		what, next, _ := strings.Cut(err.Error(), "; ")
+		if next == "" {
+			next = "choose another file: --config <file>"
+		}
+		problem{id: "setup-path-refused", what: what, next: []string{next}}.write(stderr, program)
 		return ExitFailure
 	}
 	if err := env.checkWritable(path); err != nil {
-		var pathErr *fs.PathError
-		if errors.As(err, &pathErr) {
-			err = pathErr.Err
-		}
-		_, _ = fmt.Fprintf(stderr, "%s: cannot write %s as user %s: %v\n", program, path, env.userName(), err)
-		if env.euid() == 0 {
-			_, _ = fmt.Fprintf(stderr, "%s: choose a place it can write with --config FILE\n", program)
-		} else {
-			_, _ = fmt.Fprintf(stderr, "%s: run it as root: sudo obied setup%s\n", program, config.PathFlag(path))
-		}
+		setupWriteProblem(path, err, env).write(stderr, program)
 		return ExitFailure
 	}
 	existing := describeExisting(path)
@@ -134,12 +129,13 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 	replace := *force
 	if *nonInteractive {
 		if answers, err = answersFromFlags(*stateDir, *auditLog, *mode, peers, allows); err != nil {
-			_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+			usageProblem(program, err.Error()).write(stderr, program)
 			return ExitUsage
 		}
 		if existing != "" && !replace {
-			_, _ = fmt.Fprintf(stderr, "%s: %s exists already (%s); pass --force to replace it (the old one is kept as a backup)\n",
-				program, path, existing)
+			problem{id: "setup-file-exists", what: fmt.Sprintf("%s exists already (%s)", path, existing),
+				why:  "obied setup never replaces a configuration without your consent",
+				next: []string{"to replace it, add --force; the old file is kept as a backup"}}.write(stderr, program)
 			return ExitFailure
 		}
 	} else {
@@ -148,8 +144,10 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 		answers, ok, err = a.run(path, existing)
 		switch {
 		case errors.Is(err, errInputEnded):
-			_, _ = fmt.Fprintf(stderr, "\n%s: the input ended before every question was answered; nothing was written.\n", program)
-			_, _ = fmt.Fprintf(stderr, "%s: to set up without questions, give the answers as flags with --non-interactive (see obied setup --help)\n", program)
+			_, _ = io.WriteString(stderr, "\n")
+			problem{id: "setup-input-ended", what: "the input ended before every question was answered; nothing was written",
+				next: []string{"to set up without questions, give the answers as flags with --non-interactive (see obied setup --help)"}}.
+				write(stderr, program)
 			return ExitFailure
 		case err != nil:
 			_, _ = fmt.Fprintf(stderr, "\n%s: %v\n", program, err)
@@ -161,6 +159,23 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 		replace = existing != ""
 	}
 	return writeSetup(program, path, answers, replace, stdout, stderr, env)
+}
+
+// setupWriteProblem explains that the configuration cannot be written to
+// path, because of err.
+func setupWriteProblem(path string, err error, env setupEnv) problem {
+	var pathErr *fs.PathError
+	if errors.As(err, &pathErr) {
+		err = pathErr.Err
+	}
+	p := problem{id: "setup-cannot-write", what: fmt.Sprintf("cannot write %s as user %s: %v", path, env.userName(), err)}
+	if env.euid() == 0 {
+		p.next = []string{"choose a place it can write: --config <file>"}
+	} else {
+		p.why = "the configuration directory belongs to root"
+		p.next = []string{"run it as root: sudo obied setup" + config.PathFlag(path)}
+	}
+	return p
 }
 
 // setFlags returns which of names were given on the command line.
@@ -245,7 +260,8 @@ func writeSetup(program, path string, a setup.Answers, replace bool, stdout, std
 		_, _ = fmt.Fprintf(stdout, "The previous file is kept as %s.\n", backup)
 	}
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		problem{id: "setup-write-failed", what: "cannot write the configuration: " + err.Error(),
+			next: []string{"check the directory, its permissions and free space, then run obied setup again"}}.write(stderr, program)
 		return ExitFailure
 	}
 	if !env.groupExists(env.group) {

@@ -32,7 +32,7 @@ func runTeardownFirewall(args []string, stdout, stderr io.Writer) int {
 	if *onStop {
 		cfg, err := config.Load(*configPath)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", program, *configPath, err)
+			configProblem(*configPath, err).write(stderr, program)
 			return ExitInvalidConfig
 		}
 		if cfg.Enforce.Backend != config.BackendNFTables || !cfg.Enforce.NFTables.TeardownOnStop {
@@ -43,7 +43,7 @@ func runTeardownFirewall(args []string, stdout, stderr io.Writer) int {
 	ctx, cancel := context.WithTimeout(context.Background(), enforce.PassTimeout)
 	defer cancel()
 	if err := teardownFirewall(ctx); err != nil {
-		_, _ = fmt.Fprintf(stderr, "%s: %v\n", program, err)
+		teardownProblem(err).write(stderr, program)
 		return ExitFailure
 	}
 	_, _ = fmt.Fprintf(stderr, "%s: table inet %s removed; nothing is blocked by OBIE anymore\n", program, nft.Table)

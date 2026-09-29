@@ -20,8 +20,11 @@ import (
 type problem struct {
 	id   string
 	what string
-	why  string
-	next []string
+	// details list the particulars of what, e.g. every mistake in a
+	// configuration file, each on a line of its own below it.
+	details []string
+	why     string
+	next    []string
 }
 
 // write writes p as a message of program to w. A failing w cannot be
@@ -29,6 +32,9 @@ type problem struct {
 func (p problem) write(w io.Writer, program string) {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s: %s\n", program, p.what)
+	for _, d := range p.details {
+		fmt.Fprintf(&b, "  %s\n", d)
+	}
 	if p.why != "" {
 		fmt.Fprintf(&b, "  Why:  %s\n", p.why)
 	}
