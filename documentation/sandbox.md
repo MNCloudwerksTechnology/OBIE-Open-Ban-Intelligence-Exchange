@@ -588,9 +588,10 @@ If a node does not start or connect, `./sandbox up` says which;
 
 `make sandbox-check` runs every `./sandbox` command this page shows with
 its output, in order, against a sandbox of its own, and compares each
-output with the output shown here. It opens every console page this page links and checks that
-it shows what is set in bold, and after `./sandbox down` it checks that
-nothing of the sandbox is left. The messages under
+output with the output shown here. It opens every console page this page
+links and checks that it shows what is set in bold, and after
+`./sandbox down` it checks that nothing of the sandbox is left. The
+messages under
 [When the sandbox does not start](#when-the-sandbox-does-not-start) are
 compared with what `./sandbox up` says when a stand-in for Docker reports
 each problem, or when a program holds a console port. Continuous
