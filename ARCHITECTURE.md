@@ -51,7 +51,9 @@ its activity timeline, read from the audit trail and followed live, in
 [ADR 0025](documentation/adr/0025-console-activity-timeline.md) and its
 operator actions, confirmed, checked by the admin API's rules and audited
 with their origin, in
-[ADR 0026](documentation/adr/0026-console-operator-actions.md); the website
+[ADR 0026](documentation/adr/0026-console-operator-actions.md); the
+first-run setup assistant and the node self-check in
+[ADR 0027](documentation/adr/0027-setup-assistant-and-self-check.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -183,6 +185,17 @@ Only the packages that exist today are listed in detail; the remaining
   directory writable by group or others, stop `obied` with an error naming
   the fix. Subsystems receive an `identity.Identity`
   (`PeerID`, `PublicKey`, `Sign`) and never the private key (ADR 0005).
+- **First-run setup and self-check.** `obied setup` asks the essential
+  questions (state directory, audit log, peers with their trust weights,
+  observe or enforce, addresses never to block), or takes the same answers
+  as flags with `--non-interactive`, renders one short commented file
+  through a single function, validates it with `config.Parse` and never
+  replaces an existing file without consent (the old one is kept as
+  `<file>.bak`). `obied self-check` runs nine read-only checks
+  (configuration, identity, admin access, node, peers, clock, Fail2Ban,
+  firewall, the operator's SSH session address), reports each as `ok`,
+  `warning` or `problem` with the next step, as text or JSON, and exits 1
+  on any problem (ADR 0027).
 - **Mesh.** The `mesh` subsystem runs a go-libp2p host under the node
   identity (through a `crypto.PrivKey` adapter, so the private key still never
   leaves `internal/identity`), listening on `mesh.listen` over TCP and QUIC
