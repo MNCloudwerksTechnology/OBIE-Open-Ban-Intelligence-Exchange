@@ -70,7 +70,12 @@ func TestCheckFail2BanReports(t *testing.T) {
 	h := newTestHost(t, "")
 	h.installFail2Ban(t, true)
 	var args []string
-	h.commands["fail2ban-client"] = func(a []string) ([]byte, error) { args = a; return []byte(fail2banDump), nil }
+	h.commands["fail2ban-client"] = func(a []string) ([]byte, error) {
+		if args == nil {
+			args = a
+		}
+		return []byte(fail2banDump), nil
+	}
 	c := h.run(t, "fail2ban")
 	assertCheck(t, c, Warning, "whether bans reach the node shows only while it runs", "start the node")
 	if strings.Join(args, " ") != "-d" || len(c.Details) != 2 || c.Details[0] != "jails that report every ban to the node: sshd, nginx-http-auth" {
@@ -103,6 +108,38 @@ func TestCheckFail2BanReports(t *testing.T) {
 	}
 }
 
+// TestCheckFail2BanRunningJails checks that a jail whose configuration
+// has OBIE's action, while the running Fail2Ban does not use it yet, is
+// named with the fix: Fail2Ban adds an action to a running jail only on a
+// restart, not on a reload.
+func TestCheckFail2BanRunningJails(t *testing.T) {
+	h := newTestHost(t, "")
+	h.installFail2Ban(t, true)
+	running := map[string]string{
+		"sshd":            "The jail sshd has the following actions:\nnftables\n",
+		"nginx-http-auth": "The jail nginx-http-auth has the following actions:\nnftables, obie\n",
+	}
+	h.commands["fail2ban-client"] = func(a []string) ([]byte, error) {
+		if len(a) == 3 && a[0] == "get" && a[2] == "actions" {
+			return []byte(running[a[1]]), nil
+		}
+		return []byte(fail2banDump), nil
+	}
+	// The node runs and holds a verdict of its own, from nginx-http-auth.
+	h.node.status, h.node.statusErr = readyStatus("1.2.3", "observe"), nil
+	h.node.indicators = 1
+	assertCheck(t, h.run(t, "fail2ban"), Warning,
+		"Fail2Ban's configuration gives sshd OBIE's action, but the running jail does not use it yet, so its bans are not reported",
+		"restart Fail2Ban, which a reload does not replace: sudo systemctl restart fail2ban")
+
+	running["sshd"] = "The jail sshd has the following actions:\nnftables, obie\n"
+	assertCheck(t, h.run(t, "fail2ban"), OK, "jails that report every ban to the node: sshd, nginx-http-auth")
+
+	// A Fail2Ban that does not answer, or answers in another form, leaves
+	// the configuration to speak.
+	delete(running, "sshd")
+	assertCheck(t, h.run(t, "fail2ban"), OK, "jails that report every ban to the node: sshd, nginx-http-auth")
+}
 func TestCheckFirewall(t *testing.T) {
 	h := newTestHost(t, "")
 	assertCheck(t, h.run(t, "firewall"), OK, "not needed yet: in observe mode the node blocks nothing")

@@ -208,7 +208,8 @@ The first release, v0.1.0 "Stable Base".
   with the page
   ([ADR 0030](documentation/adr/0030-getting-started-tutorial-checked-on-a-systemd-host.md)).
   Connecting Fail2Ban restarts it, since `fail2ban-client reload` does not
-  add the action to a running jail.
+  add the action to a running jail; the self-check now says so when the
+  running Fail2Ban does not use the action its configuration adds.
 - **Testing.** An end-to-end test of report → block under quorum → revoke
   across several nodes, with an nftables variant in network namespaces.
   `make resources` measures one node's memory, CPU and disk in a mesh of

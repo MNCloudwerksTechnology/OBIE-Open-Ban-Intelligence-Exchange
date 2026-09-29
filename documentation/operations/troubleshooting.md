@@ -183,10 +183,11 @@ sudo journalctl -t obie-fail2ban -n 20
 | `obiectl exit code 127` (`not found`) | Fail2Ban cannot find `obiectl` on its `PATH`; set `obie[obiectl=/usr/local/bin/obiectl]`. |
 | `overlaps the allow-listed network` or `is not a public address` | Working as intended: `obied` never reports allow-listed or non-public addresses. |
 
-No message at all: check that the jail lists `obie` among its actions
-(`sudo fail2ban-client -d | grep "'obie'"`) and that Fail2Ban was
-reloaded. The [Fail2Ban guide](../guides/fail2ban.md#verify) has a
-step-by-step check.
+No message at all: check that the running jail uses the action.
+`sudo fail2ban-client get sshd actions` must list `obie`. If it does
+not, restart Fail2Ban (`sudo systemctl restart fail2ban`): a reload does
+not add an action to a jail that is already running. The
+[Fail2Ban guide](../guides/fail2ban.md#verify) has a step-by-step check.
 
 ## The web console does not open
 
