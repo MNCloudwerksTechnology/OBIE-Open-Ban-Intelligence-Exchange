@@ -61,6 +61,11 @@
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-sm);
 
+  // <button> brings the browser's own background, grey in the dark theme.
+  &.button--secondary {
+    background: var(--color-surface);
+  }
+
   svg {
     fill: none;
     stroke: currentColor;
