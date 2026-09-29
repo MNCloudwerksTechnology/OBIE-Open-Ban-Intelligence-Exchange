@@ -157,7 +157,7 @@ and runs next to your existing tools.
 - [Frequently asked questions](faq.md): lockouts, privacy, crashes, and
   how OBIE differs from blocklists.
 - [Glossary](glossary.md): every OBIE term, briefly explained.
-- [What version 0.1 does, and does not do yet](../README.md#what-v01-does).
+- [What OBIE can and cannot do yet](capabilities.md).
 - [Try it on a laptop](../packaging/compose/README.md): three nodes that
   block nothing real.
 - [Quick start](operations/quickstart.md): a first node, safely in observe

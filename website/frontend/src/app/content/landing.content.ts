@@ -17,11 +17,11 @@ const DOCS_URL = `${REPOSITORY_URL}/blob/develop`;
 export const LINKS = {
   repository: REPOSITORY_URL,
   introduction: `${DOCS_URL}/documentation/introduction.md`,
+  capabilities: `${DOCS_URL}/documentation/capabilities.md`,
   quickStart: `${DOCS_URL}/documentation/operations/quickstart.md`,
   spec: `${DOCS_URL}/documentation/spec/obie-0.1.md`,
   whitepaper: `${DOCS_URL}/documentation/whitepaper.md#1-introduction-the-centralization-trap`,
   manifesto: `${DOCS_URL}/documentation/whitepaper.md#2-the-obie-manifesto-principles-and-philosophy`,
-  architecture: `${DOCS_URL}/ARCHITECTURE.md#deviations-from-the-whitepaper`,
   exampleConfig: `${DOCS_URL}/documentation/examples/obie.yaml`,
   licence: `${DOCS_URL}/LICENSE.md`,
   issues: `${REPOSITORY_URL}/issues`,
@@ -277,8 +277,8 @@ export const LANDING_CONTENT_EN: LandingContent = {
       },
     ],
     details: {
-      label: 'How version 0.1 differs from the whitepaper',
-      href: LINKS.architecture,
+      label: 'What version 0.1 can and cannot do yet, and what it needs',
+      href: LINKS.capabilities,
     },
     nextStep: { label: 'Follow the progress on GitHub', href: LINKS.repository },
   },
@@ -471,6 +471,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
     github: { label: 'View on GitHub', href: LINKS.repository },
     links: [
       { label: 'What is OBIE?', href: LINKS.introduction },
+      { label: 'What OBIE can and cannot do', href: LINKS.capabilities },
       { label: 'Specification', href: LINKS.spec },
       { label: 'Security policy', href: LINKS.securityPolicy },
       { label: 'Impressum', href: LINKS.impressum },
