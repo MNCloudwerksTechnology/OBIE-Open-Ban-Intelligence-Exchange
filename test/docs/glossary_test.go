@@ -70,6 +70,7 @@ var glossaryGuides = []string{
 	"README.md",
 	"documentation/introduction.md",
 	"documentation/faq.md",
+	"documentation/capabilities.md",
 	"documentation/operations/quickstart.md",
 	"documentation/operations/federation.md",
 	"documentation/operations/install.md",
