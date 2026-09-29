@@ -502,6 +502,19 @@ func (b *Backend) Teardown(ctx context.Context) error {
 	return nil
 }
 
+// Probe checks, changing nothing, whether obied could program nftables
+// here: it lists the inet tables of the network namespace over netlink. A
+// refusal by the kernel yields ErrPermission.
+func Probe(ctx context.Context) error {
+	b := New(Options{}, slog.New(slog.DiscardHandler))
+	conn, err := b.newConn(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = findTable(conn)
+	return err
+}
+
 // newConn returns a netlink connection to the backend's network
 // namespace, bounded by ctx's deadline.
 func (b *Backend) newConn(ctx context.Context, opts ...nftables.ConnOption) (*nftables.Conn, error) {

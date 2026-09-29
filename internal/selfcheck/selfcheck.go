@@ -8,6 +8,7 @@ package selfcheck
 import (
 	"context"
 	"net"
+	"net/netip"
 	"os/user"
 	"slices"
 	"time"
@@ -71,6 +72,11 @@ type Report struct {
 	Checks []Check `json:"checks"`
 	// Summary counts the checks of each status.
 	Summary map[Status]int `json:"summary"`
+	// lockout is the operator's session address when it is not protected,
+	// for the banner of the text report; enforcing says whether the node
+	// blocks.
+	lockout   netip.Addr
+	enforcing bool
 }
 
 // finding is one observation of a check.
@@ -140,6 +146,20 @@ type Env struct {
 	Now func() time.Time
 	// Clock returns the kernel's view of the clock (KernelClock).
 	Clock func() (ClockState, error)
+
+	// LookPath finds a program on the PATH.
+	LookPath func(file string) (string, error)
+	// Command runs a program and returns its standard output.
+	Command func(ctx context.Context, name string, args ...string) ([]byte, error)
+	// Fail2BanDir is Fail2Ban's configuration directory.
+	Fail2BanDir string
+	// NFTables checks whether nftables can be used (nft.Probe).
+	NFTables func(ctx context.Context) error
+	// Session returns the address of the operator's SSH session.
+	Session func() (netip.Addr, bool)
+	// Allowlist is how the allow-list of the configuration learns about
+	// the host.
+	Allowlist sovereignty.Env
 }
 
 // run is one self-check: the environment and what the checks share.
@@ -156,6 +176,10 @@ type run struct {
 	node      NodeClient
 	status    *admin.StatusResponse
 	statusErr error
+	// lockout is the operator's session address when it is not protected;
+	// enforcing says whether the node blocks.
+	lockout   netip.Addr
+	enforcing bool
 }
 
 // Run runs every check and returns the report.
@@ -168,6 +192,7 @@ func Run(ctx context.Context, env Env) Report {
 		Summary: map[Status]int{OK: 0, Warning: 0, Problem: 0}}
 	for _, check := range []func() Check{
 		r.checkConfig, r.checkIdentity, r.checkAdmin, r.checkNode, r.checkPeers, r.checkClock,
+		r.checkFail2Ban, r.checkFirewall, r.checkSession,
 	} {
 		c := check()
 		report.Checks = append(report.Checks, c)
@@ -176,6 +201,7 @@ func Run(ctx context.Context, env Env) Report {
 			report.Status = c.Status
 		}
 	}
+	report.lockout, report.enforcing = r.lockout, r.enforcing
 	return report
 }
 

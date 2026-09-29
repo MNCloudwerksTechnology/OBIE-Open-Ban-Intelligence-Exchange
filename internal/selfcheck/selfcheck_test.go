@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 )
 
 // testHost is a node's files in a temporary directory, checked through a
@@ -25,6 +27,10 @@ type testHost struct {
 	node                          *fakeNode
 	dialer                        fakeDialer
 	clock                         ClockState
+	// commands are the programs on the fake PATH, by name.
+	commands map[string]func(args []string) ([]byte, error)
+	nftErr   error
+	session  netip.Addr
 }
 
 // newTestHost writes a configuration with the state directory and admin
@@ -78,12 +84,44 @@ func newTestHost(t *testing.T, extra string) *testHost {
 	}
 	h.clock = ClockState{Synced: true, MaxError: 12 * time.Millisecond}
 	h.env.Clock = func() (ClockState, error) { return h.clock, nil }
+	// No Fail2Ban, nftables available, no SSH session.
+	h.env.Fail2BanDir = filepath.Join(dir, "fail2ban")
+	h.env.LookPath = func(file string) (string, error) {
+		if h.commands[file] == nil {
+			return "", errors.New("executable file not found in $PATH")
+		}
+		return "/usr/bin/" + file, nil
+	}
+	h.commands = map[string]func(args []string) ([]byte, error){}
+	h.env.Command = func(_ context.Context, name string, args ...string) ([]byte, error) {
+		run := h.commands[filepath.Base(name)]
+		if run == nil {
+			return nil, errors.New("executable file not found in $PATH")
+		}
+		return run(args)
+	}
+	h.env.NFTables = func(context.Context) error { return h.nftErr }
+	h.env.Session = func() (netip.Addr, bool) { return h.session, h.session.IsValid() }
+	h.env.Allowlist = sovereignty.Env{
+		InterfaceAddrs: func() ([]netip.Addr, error) { return []netip.Addr{netip.MustParseAddr("192.0.2.10")}, nil },
+		LookupIP: func(context.Context, string, string) ([]netip.Addr, error) {
+			return []netip.Addr{netip.MustParseAddr("198.51.100.30")}, nil
+		},
+	}
 	return h
 }
 
 func (h *testHost) writeConfig(t *testing.T, extra string) {
 	t.Helper()
-	content := fmt.Sprintf("node:\n  state_dir: %s\nadmin:\n  socket: %s\n  socket_group: obie-test\n%s", h.stateDir, h.socket, extra)
+	h.writeConfigWith(t, "", extra)
+}
+
+// writeConfigWith writes the configuration with further YAML lines of the
+// node section, indented by two spaces, and further top-level sections.
+func (h *testHost) writeConfigWith(t *testing.T, nodeKeys, extra string) {
+	t.Helper()
+	content := fmt.Sprintf("node:\n  state_dir: %s\n%sadmin:\n  socket: %s\n  socket_group: obie-test\n%s",
+		h.stateDir, nodeKeys, h.socket, extra)
 	if err := os.WriteFile(h.config, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}

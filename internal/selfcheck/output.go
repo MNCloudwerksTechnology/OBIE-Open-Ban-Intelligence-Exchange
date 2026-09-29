@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/MNCloudwerksTechnology/obie/internal/session"
 )
 
 // labels are the status labels of the text report: words, so that nothing
@@ -37,6 +39,9 @@ func WriteText(w io.Writer, r Report) error {
 		for _, n := range c.NextSteps {
 			fmt.Fprintf(&b, "%sNext: %s\n", indent, n)
 		}
+	}
+	if r.lockout.IsValid() {
+		fmt.Fprintf(&b, "\n%s", session.LockoutWarning(r.lockout, r.enforcing))
 	}
 	fmt.Fprintf(&b, "\nResult: %s, %s, %d OK. %s\n",
 		plural(r.Summary[Problem], "problem"), plural(r.Summary[Warning], "warning"), r.Summary[OK], verdict(r.Status))
