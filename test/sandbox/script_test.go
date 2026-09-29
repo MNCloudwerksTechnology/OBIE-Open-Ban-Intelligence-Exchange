@@ -23,7 +23,7 @@ case $1 in
 info)
 	case $FAKE_INFO in
 	denied) echo "permission denied while trying to connect to the docker API at unix:///var/run/docker.sock" >&2; exit 1 ;;
-	down) echo "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?" >&2; exit 1 ;;
+	down) echo "failed to connect to the docker API at unix:///var/run/docker.sock; check if the path is correct and if the daemon is running: dial unix /var/run/docker.sock: connect: no such file or directory" >&2; exit 1 ;;
 	esac
 	exit 0 ;;
 compose) [ "$FAKE_COMPOSE" != missing ] || { echo "docker: unknown command: docker compose" >&2; exit 1; } ;;
@@ -203,7 +203,7 @@ func TestSandboxMessages(t *testing.T) {
 		{"not in the docker group", []string{"FAKE_INFO=denied"}, []string{"up"}, 1,
 			[]string{"sandbox: your user may not use Docker", "Why: permission denied", "sudo usermod -aG docker"}},
 		{"daemon not running", []string{"FAKE_INFO=down"}, []string{"up"}, 1,
-			[]string{"sandbox: Docker is installed but does not answer", "Is the docker daemon running?", "Next: start Docker"}},
+			[]string{"sandbox: Docker is installed but does not answer", "if the daemon is running", "Next: start Docker"}},
 		{"no compose plugin", []string{"FAKE_COMPOSE=missing"}, []string{"up"}, 1,
 			[]string{"sandbox: the Docker Compose plugin is missing", "Next: install the plugin"}},
 		{"port taken, seen by Docker", []string{"FAKE_UP=port", "OBIE_SANDBOX_PORT=" + strconv.Itoa(freePort(t))}, []string{"up"}, 1,
