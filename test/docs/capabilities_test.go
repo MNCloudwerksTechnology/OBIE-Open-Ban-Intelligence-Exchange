@@ -22,6 +22,7 @@ var capabilitySections = []string{
 	"What it needs",
 	"Remaining risks",
 	"Is OBIE for me?",
+	"How this page is kept current",
 }
 
 // Status labels of what the release can do.
@@ -88,6 +89,14 @@ var measurements = map[string]string{
 }
 
 var (
+	// describedRelease is how the overview names the release it describes,
+	// before its first section.
+	describedRelease = regexp.MustCompile(`\*\*OBIE (\d+\.\d+\.\d+)\*\*`)
+	// namedRelease is any mention of a release on the overview.
+	namedRelease = regexp.MustCompile(`OBIE (\d+\.\d+\.\d+)`)
+	// installedRelease is the release the README's install commands
+	// download.
+	installedRelease = regexp.MustCompile(`/releases/download/v(\d+\.\d+\.\d+)/`)
 	// releasePlatforms is the default of PLATFORMS in packaging/release.sh:
 	// the platforms a release is built for.
 	releasePlatforms = regexp.MustCompile(`platforms=\$\{PLATFORMS:-([^}]*)\}`)
@@ -312,6 +321,44 @@ func TestScenariosHaveClearAnswers(t *testing.T) {
 		if row[2] == "" {
 			t.Errorf("%q gives no reason", lead)
 		}
+	}
+}
+
+// releasing is the part of CONTRIBUTING.md that says how a release updates
+// the overview.
+const releasing = "../CONTRIBUTING.md#releasing"
+
+// TestCapabilitiesDescribeCurrentRelease checks that the overview names
+// the release it describes before its first section, that this is the
+// release the README installs, that it names no other release, and that
+// it says how it is kept current with every release (make release refuses
+// a version it does not name: TestReleaseRefusesStaleCapabilities in
+// packaging).
+func TestCapabilitiesDescribeCurrentRelease(t *testing.T) {
+	doc := readRepoFile(t, capabilitiesPath)
+	top, _, _ := strings.Cut(doc, "\n## ")
+	m := describedRelease.FindStringSubmatch(top)
+	if m == nil {
+		t.Fatal("the overview does not name the release it describes, as **OBIE x.y.z**, before its first section")
+	}
+	release := m[1]
+	installs := installedRelease.FindAllStringSubmatch(readRepoFile(t, "README.md"), -1)
+	if len(installs) == 0 {
+		t.Fatal("the README installs no release")
+	}
+	for _, in := range installs {
+		if in[1] != release {
+			t.Errorf("the README installs %s, but the overview describes OBIE %s", in[1], release)
+		}
+	}
+	for _, n := range namedRelease.FindAllStringSubmatch(doc, -1) {
+		if n[1] != release {
+			t.Errorf("the overview describes OBIE %s, but also names OBIE %s", release, n[1])
+		}
+	}
+	kept, _ := section(doc, "How this page is kept current")
+	if !slices.Contains(relativeLinks(kept), releasing) {
+		t.Errorf("\"How this page is kept current\" does not link %s", releasing)
 	}
 }
 

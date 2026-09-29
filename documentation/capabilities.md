@@ -195,3 +195,13 @@ it is missing and not planned.
 | **Servers with a firewall managed by firewalld, Docker or iptables-nft.** | **Yes** | OBIE adds its own firewall table and never changes theirs. |
 | **Servers that run Windows, macOS or BSD.** | **No** | OBIE runs on Linux only. A Linux router or firewall in front of those servers can run OBIE and block for them. |
 | **Only containers, such as managed Kubernetes, without access to the host's firewall.** | **No** | The container image only observes. Blocking needs OBIE on the host itself. |
+
+## How this page is kept current
+
+This page describes one release, named at the top, and changes with every
+release. Before a release, the maintainers update the statuses, plans,
+requirements and risks, measure the requirements again and record in the
+[changelog](../CHANGELOG.md) what changed
+([releasing](../CONTRIBUTING.md#releasing)). A release is not built until
+this page names it. The page for the release you run is in that release's
+source code.

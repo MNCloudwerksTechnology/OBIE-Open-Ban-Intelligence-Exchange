@@ -16,6 +16,9 @@
 # build ID; tar entries are sorted, owned by 0:0 and dated SOURCE_DATE_EPOCH,
 # and gzip stores no name or time. Needs GNU tar.
 #
+# A final VERSION (x.y.z) is refused unless documentation/capabilities.md,
+# the capability overview, describes it: every release updates it.
+#
 # Environment: VERSION (required, x.y.z[-pre]), GO, CYCLONEDX_GOMOD,
 # PLATFORMS (default "linux/amd64 linux/arm64"), SOURCE_DATE_EPOCH.
 set -eu
@@ -38,6 +41,16 @@ die() {
 if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
 	die "VERSION must look like 1.2.3 or 1.2.3-rc.1 (without a leading v), got '$version'"
 fi
+# Every release updates the capability overview for evaluators; a final
+# release is only built once the overview names it. Pre-releases (and CI's
+# 0.0.0-ci) are not checked.
+case "$version" in
+*-*) ;;
+*)
+	grep -qF "**OBIE $version**" "$root/documentation/capabilities.md" ||
+		die "documentation/capabilities.md does not describe OBIE $version; update it for the release (CONTRIBUTING.md, Releasing)"
+	;;
+esac
 tar --version 2>/dev/null | grep -q 'GNU tar' || die "GNU tar is required"
 if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
 	SOURCE_DATE_EPOCH=$(git -C "$root" log -1 --format=%ct)
