@@ -156,7 +156,7 @@ sudo journalctl -t obie-fail2ban -n 20
 | Message contains | Fix |
 |------------------|-----|
 | `obied is not running` | Start `obied`, or pass the right socket: `obie[socket=/path/to/obie.sock]` (`admin.socket`). |
-| `context deadline exceeded` | `obied` does not answer within 5 s; check `obiectl status` and the node's log. |
+| `obied did not answer in time` | `obied` does not answer within 5 s; check `obiectl status` and the node's log. |
 | `obiectl exit code 127` (`not found`) | Fail2Ban cannot find `obiectl` on its `PATH`; set `obie[obiectl=/usr/local/bin/obiectl]`. |
 | `overlaps the allow-listed network` or `is not a public address` | Working as intended: `obied` never reports allow-listed or non-public addresses. |
 

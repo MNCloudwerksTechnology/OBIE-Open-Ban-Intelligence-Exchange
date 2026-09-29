@@ -26,7 +26,7 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 	ttl := fs.String("ttl", "", "remove the override after this `duration`, e.g. 90m, 36h or 7d (default: never)")
 	note := fs.String("note", "", "why the override was set, shown by obiectl overrides and explain (default: no note)")
 	asJSON := fs.Bool("json", false, "print the result as JSON, for scripts")
-	indicator, code, done := parseOneArg(fs, args, "address or range", stdout, stderr)
+	indicator, code, done := parseAddressArg(fs, args, stdout, stderr)
 	if done {
 		return code
 	}
@@ -34,14 +34,14 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 	if *ttl != "" {
 		d, err := config.ParseDuration(*ttl)
 		if err != nil || d <= 0 {
-			_, _ = fmt.Fprintf(stderr, "%s: invalid --ttl %q: want a positive duration such as 90m, 36h or 7d\n", program, *ttl)
+			usageProblem(program, fmt.Sprintf("invalid --ttl %q: want a positive duration such as 90m, 36h or 7d", *ttl)).write(stderr, program)
 			return ExitUsage
 		}
 		req.TTLSeconds = int64(d.Std().Round(time.Second) / time.Second)
 	}
 	res, err := client.SetOverride(ctx, req)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -54,7 +54,10 @@ func runSetOverride(ctx context.Context, client *admin.Client, name, action stri
 		return ExitIOError
 	}
 	if res.Warning != "" {
-		_, _ = fmt.Fprintf(stderr, "obiectl: warning: %s\n", res.Warning)
+		problem{id: "block-protected", what: "warning: " + res.Warning,
+			why: "protected addresses, such as private networks, this node's own addresses and its bootstrap peers, " +
+				"are never blocked, not even by an override, so that OBIE cannot cut this server off",
+			next: []string{"the override is kept but has no effect; remove it: sudo obiectl unoverride " + indicator}}.write(stderr, program)
 	}
 	return ExitOK
 }
@@ -68,7 +71,7 @@ func runOverrides(ctx context.Context, client *admin.Client, args []string, stdo
 	}
 	resp, err := client.Overrides(ctx)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -87,13 +90,13 @@ func runUnoverride(ctx context.Context, client *admin.Client, args []string, std
 	const program = "obiectl unoverride"
 	fs := newFlagSet(program)
 	asJSON := fs.Bool("json", false, "print the result as JSON, for scripts")
-	indicator, code, done := parseOneArg(fs, args, "address or range", stdout, stderr)
+	indicator, code, done := parseAddressArg(fs, args, stdout, stderr)
 	if done {
 		return code
 	}
 	res, err := client.DeleteOverride(ctx, indicator)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {

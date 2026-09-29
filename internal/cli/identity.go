@@ -105,7 +105,7 @@ func runCtlIdentity(ctx context.Context, client *admin.Client, args []string, st
 	}
 	id, err := client.Identity(ctx)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	return printIdentity(stdout, stderr, "obiectl", *id, *asJSON)

@@ -113,7 +113,9 @@ func TestOverrideCommands(t *testing.T) {
 	// A force-block on a protected address is stored, with a warning.
 	out, stderr = ctl(ExitOK, "block", "--note", "oops", "10.0.0.5")
 	if !strings.Contains(out, "Decision now: allowed") ||
-		stderr != "obiectl: warning: the force-block does not take effect: allow-listed: built-in range 10.0.0.0/8 (private (RFC 1918)); verdicts: no active verdicts\n" {
+		!strings.HasPrefix(stderr, "obiectl block: warning: the force-block does not take effect: allow-listed: built-in range 10.0.0.0/8 (private (RFC 1918)); verdicts: no active verdicts\n") ||
+		!strings.Contains(stderr, "\n  Why:  protected addresses") ||
+		!strings.HasSuffix(stderr, "\n  Next: the override is kept but has no effect; remove it: sudo obiectl unoverride 10.0.0.5\n") {
 		t.Errorf("block of a private address:\n%s%s", out, stderr)
 	}
 	out, _ = ctl(ExitOK, "allow", "185.0.0.0/24")
@@ -148,8 +150,8 @@ func TestOverrideCommands(t *testing.T) {
 	if out, _ = ctl(ExitOK, "unoverride", "--json", "10.0.0.5"); !strings.Contains(out, `"state": "allowed"`) {
 		t.Errorf("unoverride --json:\n%s", out)
 	}
-	_, stderr = ctl(ExitFailure, "block", "example.org")
-	if !strings.Contains(stderr, "invalid indicator") || !strings.Contains(stderr, "obied answered 400 Bad Request") {
+	_, stderr = ctl(ExitUsage, "block", "example.org")
+	if !strings.Contains(stderr, `"example.org" is not an IP address or range`) || !strings.Contains(stderr, "Next: give an IPv4 or IPv6 address") {
 		t.Errorf("block of a name: %q", stderr)
 	}
 }

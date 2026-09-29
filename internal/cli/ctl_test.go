@@ -21,8 +21,11 @@ func TestStatusDaemonNotRunning(t *testing.T) {
 	if code := RunCtl([]string{"--socket", socket, "status"}, &stdout, &stderr); code != ExitFailure {
 		t.Errorf("exit code = %d, want %d", code, ExitFailure)
 	}
-	want := "obiectl: obied is not running: nothing is listening on admin socket " + socket + "\n" +
-		"obiectl: start obied, or point --socket at its admin.socket\n"
+	want := "obiectl status: obied is not running: there is no admin socket " + socket + "\n" +
+		"  Why:  the node was not started, has stopped, or uses another socket\n" +
+		"  Next: start it: sudo systemctl start obied\n" +
+		"  Next: if it does not stay up, see why: sudo journalctl -u obied -n 20, or sudo obied self-check\n" +
+		"  Next: if it listens on another socket (admin.socket), name that: obiectl --socket <path> status\n"
 	if stderr.String() != want || stdout.Len() != 0 {
 		t.Errorf("stderr = %q, want %q (stdout %q)", stderr.String(), want, stdout.String())
 	}

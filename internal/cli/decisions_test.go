@@ -225,8 +225,8 @@ func TestObiectlExplainAgainstInProcessDaemon(t *testing.T) {
 	}
 
 	var stdout, ctlStderr bytes.Buffer
-	if code := RunCtl([]string{"--socket", n.socket, "explain", "not-an-ip"}, &stdout, &ctlStderr); code != ExitFailure ||
-		!strings.Contains(ctlStderr.String(), "400 Bad Request") {
+	if code := RunCtl([]string{"--socket", n.socket, "explain", "not-an-ip"}, &stdout, &ctlStderr); code != ExitUsage ||
+		!strings.Contains(ctlStderr.String(), `obiectl explain: "not-an-ip" is not an IP address or range`) {
 		t.Errorf("explain of an invalid indicator: exit %d, stderr %q", code, ctlStderr.String())
 	}
 

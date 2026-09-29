@@ -3,7 +3,6 @@ package cli
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -63,7 +62,7 @@ func runStatus(ctx context.Context, client *admin.Client, args []string, stdout,
 
 	status, err := client.Status(ctx)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -76,22 +75,6 @@ func runStatus(ctx context.Context, client *admin.Client, args []string, stdout,
 		return ExitIOError
 	}
 	return ExitOK
-}
-
-// reportClientError explains a failed admin API call.
-func reportClientError(stderr io.Writer, err error) {
-	var apiErr *admin.APIError
-	if errors.As(err, &apiErr) {
-		_, _ = fmt.Fprintf(stderr, "obiectl: %s (obied answered %s)\n", apiErr.Message, apiErr.Status)
-		if hint := apiErrorHint(apiErr); hint != "" {
-			_, _ = fmt.Fprintf(stderr, "obiectl: %s\n", hint)
-		}
-		return
-	}
-	_, _ = fmt.Fprintf(stderr, "obiectl: %v\n", err)
-	if errors.Is(err, admin.ErrDaemonNotRunning) {
-		_, _ = fmt.Fprintln(stderr, "obiectl: start obied, or point --socket at its admin.socket")
-	}
 }
 
 func writeJSON(w io.Writer, v any) error {

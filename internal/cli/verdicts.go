@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"regexp"
 	"strings"
@@ -54,6 +53,9 @@ func runReport(ctx context.Context, client *admin.Client, args []string, stdout,
 	if done {
 		return code
 	}
+	if !checkAddress(program, target, stderr) {
+		return ExitUsage
+	}
 	evidenceFlag := "--evidence-file"
 	if *evidenceStdin {
 		evidenceFlag = "--evidence-from-stdin"
@@ -69,13 +71,17 @@ func runReport(ctx context.Context, client *admin.Client, args []string, stdout,
 	} else {
 		req.IP = target
 	}
+	if msg := reportFlagMistake(req, *confidence); msg != "" {
+		usageProblem(program, msg).write(stderr, program)
+		return ExitUsage
+	}
 	if flagSet(fs, "confidence") {
 		req.Confidence = confidence
 	}
 	if *ttl != "" {
 		d, err := config.ParseDuration(*ttl)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "%s: --ttl: %v\n", program, err)
+			usageProblem(program, "--ttl: "+err.Error()).write(stderr, program)
 			return ExitUsage
 		}
 		req.TTL = admin.TTL(d)
@@ -88,7 +94,9 @@ func runReport(ctx context.Context, client *admin.Client, args []string, stdout,
 	if *evidence != "" {
 		lines, err := readEvidence(*evidence)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", program, evidenceFlag, err)
+			problem{id: "evidence-unreadable", what: fmt.Sprintf("cannot use the evidence of %s: %v", evidenceFlag, err),
+				next: []string{"check the file, or pass the log lines about this address on standard input: " +
+					"grep <address> <log file> | sudo obiectl report --evidence-from-stdin ..."}}.write(stderr, program)
 			return ExitFailure
 		}
 		req.EvidenceLines = lines
@@ -96,7 +104,7 @@ func runReport(ctx context.Context, client *admin.Client, args []string, stdout,
 
 	resp, err := client.Report(ctx, req)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -120,6 +128,9 @@ func runRevoke(ctx context.Context, client *admin.Client, args []string, stdout,
 	if done {
 		return code
 	}
+	if !checkRevokeTarget(program, target, stderr) {
+		return ExitUsage
+	}
 	req := admin.RevocationRequest{Reason: *reason}
 	if eventIDPattern.MatchString(target) {
 		req.EventID = strings.ToLower(target)
@@ -128,7 +139,7 @@ func runRevoke(ctx context.Context, client *admin.Client, args []string, stdout,
 	}
 	resp, err := client.Revoke(ctx, req)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -161,14 +172,14 @@ func runIndicators(ctx context.Context, client *admin.Client, args []string, std
 	if *mine {
 		id, err := client.Identity(ctx)
 		if err != nil {
-			reportClientError(stderr, err)
+			reportClientError(stderr, program, client, err)
 			return ExitFailure
 		}
 		*publisher = id.PeerID
 	}
 	resp, err := client.Indicators(ctx, admin.IndicatorsQuery{Publisher: *publisher, Limit: *limit, Cursor: *cursor})
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -187,13 +198,13 @@ func runShow(ctx context.Context, client *admin.Client, args []string, stdout, s
 	const program = "obiectl show"
 	fs := newFlagSet(program)
 	asJSON := fs.Bool("json", false, "print the verdicts as JSON, for scripts")
-	target, code, done := parseOneArg(fs, args, "address or range", stdout, stderr)
+	target, code, done := parseAddressArg(fs, args, stdout, stderr)
 	if done {
 		return code
 	}
 	resp, err := client.Indicator(ctx, target)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -359,16 +370,4 @@ func ttlString(ev *obieproto.Event) string {
 		return "-"
 	}
 	return config.Duration(time.Duration(ev.Verdict.TTLSeconds) * time.Second).String()
-}
-
-// apiErrorHint explains common admin API refusals to the operator.
-func apiErrorHint(e *admin.APIError) string {
-	switch e.StatusCode {
-	case http.StatusForbidden:
-		return "run obiectl as root or as a member of the admin socket's group"
-	case http.StatusUnprocessableEntity:
-		return "nothing was published"
-	default:
-		return ""
-	}
 }

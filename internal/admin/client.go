@@ -40,6 +40,9 @@ func NewClient(socket string) *Client {
 	return &Client{socket: socket, http: &http.Client{Transport: transport}}
 }
 
+// Socket returns the path of the admin socket the client talks to.
+func (c *Client) Socket() string { return c.socket }
+
 // Status fetches the node status.
 func (c *Client) Status(ctx context.Context) (*StatusResponse, error) {
 	var resp StatusResponse

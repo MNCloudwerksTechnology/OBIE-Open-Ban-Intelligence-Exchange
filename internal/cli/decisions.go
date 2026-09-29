@@ -16,13 +16,13 @@ func runExplain(ctx context.Context, client *admin.Client, args []string, stdout
 	const program = "obiectl explain"
 	fs := newFlagSet(program)
 	asJSON := fs.Bool("json", false, "print the explanation as JSON, for scripts")
-	target, code, done := parseOneArg(fs, args, "address or range", stdout, stderr)
+	target, code, done := parseAddressArg(fs, args, stdout, stderr)
 	if done {
 		return code
 	}
 	d, err := client.Explain(ctx, target)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
@@ -47,7 +47,7 @@ func runDecisions(ctx context.Context, client *admin.Client, args []string, stdo
 	}
 	resp, err := client.Decisions(ctx, *state)
 	if err != nil {
-		reportClientError(stderr, err)
+		reportClientError(stderr, program, client, err)
 		return ExitFailure
 	}
 	if *asJSON {
