@@ -1,0 +1,247 @@
+#!/bin/sh
+# The OBIE sandbox: four nodes in containers on this computer, to watch
+# OBIE work without touching any firewall. documentation/sandbox.md walks
+# through it. Needs Docker with the Compose plugin, and no root.
+#
+# Usage: ./sandbox up | down | exec <node> <command>... | console <node> | logs [<node>]
+#
+# OBIE_SANDBOX_PORT (default 9401) is the host port of node1's console;
+# node2 and node3 use the next two. OBIE_SANDBOX_PROJECT (default
+# obie-sandbox) names the Compose project, so that a second sandbox can
+# run next to the first.
+set -eu
+
+here=$(cd "$(dirname "$0")" && pwd)
+project=${OBIE_SANDBOX_PROJECT:-obie-sandbox}
+port=${OBIE_SANDBOX_PORT:-9401}
+trusted="node1 node2 node3"
+nodes="$trusted stranger"
+# timeout is how long up waits for the nodes to connect, in seconds.
+timeout=${OBIE_SANDBOX_TIMEOUT:-60}
+
+export OBIE_SANDBOX_PROJECT="$project"
+
+compose() {
+	docker compose -f "$here/compose.yaml" -p "$project" "$@"
+}
+
+# problem prints a problem the way obied and obiectl do: what went wrong,
+# then indented Why: and Next: lines.
+problem() {
+	echo "sandbox: $1" >&2
+	shift
+	for line in "$@"; do
+		echo "  $line" >&2
+	done
+}
+
+# fail prints a problem and exits 1.
+fail() {
+	problem "$@"
+	exit 1
+}
+
+# usage_error prints a problem with the command line and exits 2.
+usage_error() {
+	problem "$1" "Next: see how to use it: ./sandbox help"
+	exit 2
+}
+
+usage() {
+	cat <<'EOF'
+sandbox: try OBIE on this computer, in containers, without touching any firewall
+
+Usage:
+  ./sandbox up                      start the sandbox: node1, node2, node3 and the stranger
+  ./sandbox exec <node> <command>   run a command in a node, e.g. ./sandbox exec node3 obiectl decisions
+  ./sandbox console <node>          show the address and sign-in token of node1, node2 or node3's web console
+  ./sandbox logs [<node>]           show what the nodes logged
+  ./sandbox down                    remove the sandbox completely
+
+The walkthrough is in documentation/sandbox.md.
+EOF
+}
+
+# check_docker makes sure Docker and its Compose plugin can be used, and
+# says how to fix it otherwise.
+check_docker() {
+	command -v docker >/dev/null 2>&1 || fail "Docker is not installed: there is no docker command." \
+		"Why: the sandbox runs its nodes in containers, and Docker runs them." \
+		"Next: install Docker Engine (https://docs.docker.com/engine/install/) or Docker Desktop, then run ./sandbox up again." \
+		"      Rootless Docker needs no root at all: https://docs.docker.com/engine/security/rootless/"
+	if ! err=$(docker info 2>&1 >/dev/null); then
+		case $err in
+		*"permission denied"* | *"Permission denied"*)
+			fail "your user may not use Docker." \
+				"Why: $(echo "$err" | tail -n 1)" \
+				"Next: add yourself to the group docker (sudo usermod -aG docker \"\$USER\", then log in again)," \
+				"      or use rootless Docker (https://docs.docker.com/engine/security/rootless/). The sandbox itself needs no sudo."
+			;;
+		*)
+			fail "Docker is installed but does not answer." \
+				"Why: $(echo "$err" | tail -n 1)" \
+				"Next: start Docker (sudo systemctl start docker, or open Docker Desktop), then run ./sandbox up again."
+			;;
+		esac
+	fi
+	docker compose version >/dev/null 2>&1 || fail "the Docker Compose plugin is missing: docker compose does not work." \
+		"Why: the sandbox is a Compose project (packaging/sandbox/compose.yaml)." \
+		"Next: install the plugin (package docker-compose-plugin, https://docs.docker.com/compose/install/linux/), then run ./sandbox up again."
+}
+
+# check_port_setting makes sure OBIE_SANDBOX_PORT leaves room for three
+# consoles on unprivileged ports, and exports the three ports for
+# compose.yaml.
+check_port_setting() {
+	case $port in
+	'' | *[!0-9]*) port_invalid ;;
+	esac
+	[ "$port" -ge 1024 ] && [ "$port" -le 65533 ] || port_invalid
+	export OBIE_SANDBOX_CONSOLE1="$port" OBIE_SANDBOX_CONSOLE2="$((port + 1))" OBIE_SANDBOX_CONSOLE3="$((port + 2))"
+}
+
+port_invalid() {
+	fail "OBIE_SANDBOX_PORT=$port is not a port the consoles can use." \
+		"Next: set it to a number from 1024 to 65533, e.g. OBIE_SANDBOX_PORT=9501 ./sandbox up"
+}
+
+# port_taken explains that another program holds a console port.
+port_taken() {
+	fail "port $1 on 127.0.0.1 is taken by another program, so the sandbox cannot publish a web console on it." \
+		"Why: the consoles of node1, node2 and node3 use the ports $OBIE_SANDBOX_CONSOLE1, $OBIE_SANDBOX_CONSOLE2 and $OBIE_SANDBOX_CONSOLE3." \
+		"Next: stop the program that uses port $1, or start the sandbox on three other ports, e.g. OBIE_SANDBOX_PORT=9501 ./sandbox up"
+}
+
+# listening reports whether a program listens on the TCP port $1, where
+# the tools to tell are installed; Docker's own error is the fallback.
+listening() {
+	if command -v ss >/dev/null 2>&1; then
+		[ -n "$(ss -Hltn "sport = :$1" 2>/dev/null)" ]
+	elif command -v lsof >/dev/null 2>&1; then
+		lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1
+	else
+		return 1
+	fi
+}
+
+# check_ports makes sure the console ports are free, unless this sandbox
+# already runs and holds them itself.
+check_ports() {
+	[ -z "$(compose ps -q 2>/dev/null)" ] || return 0
+	for p in "$OBIE_SANDBOX_CONSOLE1" "$OBIE_SANDBOX_CONSOLE2" "$OBIE_SANDBOX_CONSOLE3"; do
+		if listening "$p"; then
+			port_taken "$p"
+		fi
+	done
+}
+
+# start builds and starts the sandbox, showing Docker's progress. If
+# Docker fails because a port is taken, it says so and removes what it
+# started; otherwise it leaves the containers for their logs.
+start() {
+	log=$(mktemp)
+	trap 'rm -f "$log" "$log.status"' EXIT
+	{
+		status=0
+		compose up --detach --build --wait --wait-timeout "$timeout" 2>&1 || status=$?
+		echo "$status" >"$log.status"
+	} | tee "$log" >&2
+	[ "$(cat "$log.status")" -eq 0 ] && return 0
+	taken=$(grep -E 'address already in use|port is already allocated' "$log" |
+		sed -n 's/.*127\.0\.0\.1:\([0-9][0-9]*\).*/\1/p' | head -n 1)
+	if [ -n "$taken" ]; then
+		compose down --volumes --rmi all --remove-orphans >/dev/null 2>&1 || true
+		port_taken "$taken"
+	fi
+	fail "Docker could not start the sandbox; its messages are above." \
+		"Next: read what the nodes logged with ./sandbox logs, then run ./sandbox down and ./sandbox up again."
+}
+
+# peers prints how many peers node $1 is connected to.
+peers() {
+	compose exec -T "$1" obiectl peers --json 2>/dev/null | grep -c '"peer_id"' || true
+}
+
+# wait_for_mesh waits until every node is connected to all three others.
+wait_for_mesh() {
+	for node in $nodes; do
+		i=0
+		until [ "$(peers "$node")" -ge 3 ]; do
+			i=$((i + 1))
+			[ "$i" -lt "$timeout" ] || fail "$node did not connect to the other nodes within ${timeout}s." \
+				"Next: read its log with ./sandbox logs $node, then run ./sandbox down and ./sandbox up again."
+			sleep 1
+		done
+	done
+}
+
+# console_of prints the address and token of node $1's web console.
+console_of() {
+	case " $trusted " in
+	*" $1 "*) ;;
+	*) usage_error "$1 has no web console; node1, node2 and node3 have one" ;;
+	esac
+	published=$(compose port "$1" 9466 2>/dev/null) || fail "$1 is not running." "Next: start the sandbox with ./sandbox up"
+	token=$(compose exec -T "$1" obiectl console --json | sed -n 's/^ *"token": *"\([^"]*\)".*/\1/p')
+	echo "$1  http://$published/  token $token"
+}
+
+up() {
+	check_docker
+	check_port_setting
+	check_ports
+	start
+	wait_for_mesh
+	echo "The sandbox runs: node1, node2 and node3 trust each other; nobody trusts the stranger."
+	echo "Every node decides and lists what it blocks, and blocks nothing (enforce mode, dryrun backend)."
+	echo
+	echo "Web consoles, one per trusted node; sign in with the token:"
+	for node in $trusted; do
+		console_of "$node"
+	done
+	echo
+	echo "Next: follow the walkthrough in documentation/sandbox.md. Remove the sandbox with ./sandbox down"
+}
+
+down() {
+	check_docker
+	compose down --volumes --rmi all --remove-orphans
+	echo "The sandbox is removed: its containers, network, volumes and images."
+}
+
+main() {
+	[ $# -gt 0 ] || {
+		usage >&2
+		exit 2
+	}
+	cmd=$1
+	shift
+	case $cmd in
+	up | down)
+		[ $# -eq 0 ] || usage_error "$cmd takes no arguments"
+		"$cmd"
+		;;
+	exec)
+		[ $# -ge 2 ] || usage_error "exec needs a node and a command, e.g. ./sandbox exec node3 obiectl decisions"
+		check_docker
+		compose exec -T "$@"
+		;;
+	console)
+		[ $# -eq 1 ] || usage_error "console needs one node: node1, node2 or node3, e.g. ./sandbox console node3"
+		check_docker
+		console_of "$1"
+		;;
+	logs)
+		check_docker
+		compose logs --no-color --tail 100 "$@"
+		;;
+	help | -h | --help)
+		usage
+		;;
+	*)
+		usage_error "unknown command \"$cmd\""
+		;;
+	esac
+}
+
+main "$@"
