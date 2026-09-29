@@ -105,6 +105,7 @@ internal/           all non-public code (one package per concern listed above)
   ops/              /healthz, /readyz and Prometheus /metrics
   peercred/         local user of an admin socket or console connection; who may use them
   statedir/         state directory format version (<state_dir>/FORMAT); refuses newer formats
+  session/          address of the operator's SSH session, also behind sudo or su
   setup/            first-run assistant core: answers, the commented file they render to, writing it safely
   sovereignty/      allow-list (built-in, config, files, own and bootstrap addresses), override precedence
   store/            BadgerDB event and indicator state: dedupe, expiry, overrides
