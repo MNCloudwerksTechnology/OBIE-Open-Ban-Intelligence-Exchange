@@ -273,7 +273,7 @@ func TestActionWithRealObiectl(t *testing.T) {
 		socket, wantLogged string
 	}{
 		"obied down": {filepath.Join(socketDir, "missing.sock"), "obied is not running"},
-		"obied hung": {hung, "context deadline exceeded"},
+		"obied hung": {hung, "obied did not answer in time"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			env := newFakeEnv(t, 0, "")
