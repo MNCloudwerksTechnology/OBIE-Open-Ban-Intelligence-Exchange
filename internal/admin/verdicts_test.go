@@ -235,7 +235,8 @@ func TestReportEndpointPublishFailure(t *testing.T) {
 	f := newVerdictFixture(t)
 	f.pub.fail = errors.New("mesh not started")
 	rec := f.do(t, http.MethodPost, ReportsPath, sshBody)
-	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "see the obied log") ||
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "reporting failed; see the obied log") ||
+		!strings.Contains(f.logs.String(), "verdict request failed") || !strings.Contains(f.logs.String(), "reporting") ||
 		!strings.Contains(f.logs.String(), "mesh not started") {
 		t.Errorf("POST with failing mesh = %d %q; logs:\n%s", rec.Code, rec.Body.String(), f.logs.String())
 	}

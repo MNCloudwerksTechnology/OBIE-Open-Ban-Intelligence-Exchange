@@ -202,8 +202,8 @@ func TestSocketModeAndMissingGroup(t *testing.T) {
 	if fi.Mode().Type() != os.ModeSocket || fi.Mode().Perm() != SocketMode {
 		t.Errorf("socket mode = %v, want socket with %v", fi.Mode(), SocketMode)
 	}
-	if !strings.Contains(logs.String(), "admin socket group not found") {
-		t.Errorf("logs = %q, want a warning about the missing group", logs.String())
+	if !strings.Contains(logs.String(), "admin socket group not found") || !strings.Contains(logs.String(), "sudo groupadd --system obie-no-such-group") {
+		t.Errorf("logs = %q, want a warning about the missing group with the next step", logs.String())
 	}
 }
 

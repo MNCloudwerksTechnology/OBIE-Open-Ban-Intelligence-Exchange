@@ -19,7 +19,12 @@ sudo journalctl -u obied -n 50
 ```
 
 `obiectl status` names every subsystem that is not running or not ready,
-with its error. The log is JSON; errors have `"level":"ERROR"`.
+with its error. The log is JSON; errors have `"level":"ERROR"`, and a
+`next` attribute says what to do where you must act.
+[Messages of obied and obiectl](messages.md) lists every error of the two
+tools and every warning and error of the log, with what it means and what
+to do. Every command explains itself: `obiectl --help`,
+`obiectl help <command>`, `man obiectl`.
 
 ## Locked out
 

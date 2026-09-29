@@ -584,6 +584,9 @@ func TestFailureRetry(t *testing.T) {
 	if n := strings.Count(f.logs.String(), "enforcement failed; retrying"); n != 3 {
 		t.Errorf("logged %d failures", n)
 	}
+	if !strings.Contains(f.logs.String(), "sudo obied self-check") {
+		t.Errorf("the failures do not name the next step:\n%s", f.logs)
+	}
 }
 
 func TestBackoff(t *testing.T) {

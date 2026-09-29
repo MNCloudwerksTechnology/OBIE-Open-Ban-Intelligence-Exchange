@@ -315,7 +315,8 @@ func (r *Reconciler) loop(ctx context.Context, done chan<- struct{}) {
 				}
 				failures++
 				delay = r.backoff(failures)
-				r.log.Error("enforcement failed; retrying", "error", err, "failures", failures, "retry_in", delay.String())
+				r.log.Error("enforcement failed; retrying", "error", err, "failures", failures, "retry_in", delay.String(),
+					"next", "sudo obied self-check checks the firewall access; sudo obiectl enforced shows what is applied")
 			} else {
 				failures = 0
 				if r.deferredAdditions() {

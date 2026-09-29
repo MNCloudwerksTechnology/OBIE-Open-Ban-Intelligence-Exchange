@@ -42,9 +42,12 @@ not say what to do next.
   when it is known, and one or more next steps, each on its own `Why:` or
   `Next:` line, like the self-check's findings. Every problem has a
   stable ID, and `documentation/operations/messages.md` lists every ID
-  with its message and next steps. A test compares the IDs in the code
-  with the inventory in both directions, so a new message cannot ship
-  without an entry and a stale entry cannot stay.
+  with its message and next steps. The node's warnings and errors keep a
+  constant text and carry the next step in a `next` attribute where the
+  operator must act; the inventory lists them too. A test reads the IDs
+  and the log texts from the code and compares them with the inventory in
+  both directions, so a new message cannot ship without an entry and a
+  stale entry cannot stay.
 - **Checks before requests.** `obiectl` checks addresses, networks and the
   required report fields before it asks the node, so these mistakes are
   usage errors that name the flag, not refusals of the admin API.
@@ -68,7 +71,8 @@ not say what to do next.
 - A new command cannot ship without a summary, a group, at least one
   example that parses, and a documented default for every flag:
   `TestEveryCommandIsDocumented` fails otherwise. A new error message
-  needs an ID and a row in the message inventory.
+  needs an ID, and a new warning or error in the log a constant text; both
+  need a row in the message inventory (`TestMessageInventory`).
 - Scripts that relied on `obied` without arguments starting a node must
   use `obied run` or pass `--config`. Help text moved from standard error
   to standard output.

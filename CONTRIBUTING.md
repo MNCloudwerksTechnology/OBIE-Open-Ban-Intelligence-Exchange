@@ -104,6 +104,22 @@ source of truth.
   commented entry in `documentation/examples/obie.yaml` (a test enforces it).
 - Log only through component loggers from `internal/logging`, never through
   `slog.Default()`.
+- A new command of `obied` or `obiectl` is added to its tool's command
+  registry (`internal/cli/ctl_commands.go`, `internal/cli/daemon_commands.go`)
+  with its task group, a one-line summary, a description and at least one
+  realistic example; every flag's usage text says what it does, and every
+  listing command has `--json`. `TestEveryCommandIsDocumented` fails
+  otherwise. Regenerate the [command-line reference](documentation/operations/cli.md)
+  with `go run ./packaging/gendocs -reference documentation/operations/cli.md`
+  (`TestReferenceIsCurrent`); the manual pages and shell completions are
+  generated from the same registry at release time.
+- A message for people follows the rules in
+  [Messages of obied and obiectl](documentation/operations/messages.md):
+  an error of a command is a `problem` with an ID that says what went wrong,
+  why when known, and what to do next; a warning or error in the node's log
+  names the next step in a `next` attribute when the operator must act.
+  Each gets a row in that inventory (`TestMessageInventory`). Output uses
+  the glossary's words, RFC 3339 times in UTC and no colour.
 
 ## Privileged tests
 

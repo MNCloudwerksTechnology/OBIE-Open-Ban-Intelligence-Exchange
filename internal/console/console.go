@@ -237,7 +237,8 @@ func (c *Console) serve(cfg config.Console) bool {
 			c.log.Error("console not moved; it keeps serving at its old address", "listen", cfg.Listen,
 				"url", consoleURL(c.server.Addr()), "error", err)
 		} else {
-			c.log.Error("console not started; the node runs without it", "listen", cfg.Listen, "error", err)
+			c.log.Error("console not started; the node runs without it", "listen", cfg.Listen, "error", err,
+				"next", "free the address or choose another console.listen, then reload: sudo systemctl reload obied")
 		}
 		return false
 	}
@@ -245,7 +246,7 @@ func (c *Console) serve(cfg config.Console) bool {
 	c.log.Info("console serving", "url", consoleURL(srv.Addr()))
 	if c.policyErr != nil {
 		c.log.Warn("admin socket group not found; only root and obied's own user may use the console",
-			"group", c.policy.Group, "error", c.policyErr)
+			"group", c.policy.Group, "error", c.policyErr, "next", peercred.MissingGroupNext(c.policy.Group))
 		c.policyErr = nil // once
 	}
 	return true
