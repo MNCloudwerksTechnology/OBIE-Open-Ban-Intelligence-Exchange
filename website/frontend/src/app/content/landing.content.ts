@@ -153,6 +153,173 @@ export const LANDING_CONTENT_EN: LandingContent = {
       safetyList: 'safety list checked',
       block: 'block · expires',
     },
+    // The demo's story (ADR 0028). Its numbers come from
+    // sections/mesh-demo/scenario.ts and follow the node's decision rule;
+    // keep the settings sentence in step with it (tests check the numbers).
+    demo: {
+      heading: 'See it happen: three servers, step by step.',
+      intro:
+        'A short story with three OBIE servers, two attackers and one troublemaker. Step through it at your own pace and watch each server decide for itself.',
+      illustration:
+        'Illustration: made-up servers and example addresses, not live data from the network.',
+      settings:
+        'Here, a server blocks an address when the reports it trusts reach a combined score of 1.2, its threshold, from at least two reporters, its quorum. The federation guide suggests this for three to five servers; out of the box the threshold is 1.8. A Fail2Ban report has a confidence of 0.8. These servers block in their firewalls; a new server only watches (observe mode) until its operator switches blocking on.',
+      steps: [
+        {
+          title: 'Meet the neighbourhood',
+          caption:
+            'Three servers, each run by a different operator: a web shop (A), a university lab (B) and a homelab (C). They connect directly, with no central server. Each lists how much it trusts the others, from 0 to 1.',
+          planned: 'Peers are added by hand today. Finding them automatically is planned.',
+        },
+        {
+          title: 'The bot hits server A',
+          caption:
+            'A password-guessing bot works through server after server and starts with A. A’s own log watcher (such as Fail2Ban) blocks it at once: A needs nobody’s permission to protect itself. A colleague’s mistyped passwords get an office address blocked too.',
+        },
+        {
+          title: 'A shares a signed report',
+          caption:
+            'A sends B and C a short report: the address, what it did, how often and a fingerprint of the evidence. The logs themselves stay on A. A’s digital signature proves to B and C that the report is A’s.',
+        },
+        {
+          title: 'One voice is not enough',
+          caption:
+            'B and C record A’s reports but do not block. Each scores a report: its trust in the sender times how sure the sender is. One report stays below each server’s bar, and each wants two independent reporters.',
+          note: 'One mistaken or compromised server must never get an address blocked everywhere. The office address shows why.',
+        },
+        {
+          title: 'The bot moves on to server B',
+          caption:
+            'Next the bot tries B. B’s own detection catches it, and B blocks it at once. Its own report and A’s earlier one agree: two trusted voices.',
+        },
+        {
+          title: 'C is protected before the attack arrives',
+          caption:
+            'B shares its signed report with A and C. Together with A’s, two independent, trusted reports now pass C’s bar, so C blocks the bot. When the bot knocks on C minutes later, it is turned away at the door.',
+          planned:
+            'Today the quorum counts servers, not organisations. Checking that reporters come from different networks is planned.',
+        },
+        {
+          title: 'The scanner only hits server C',
+          caption:
+            'A web scanner probes C and nowhere else. C blocks it and reports it. A and B only watch: one reporter is not enough for them, and each weighs C by its own trust. Each server decides for itself.',
+        },
+        {
+          title: 'Someone tries to abuse the mesh',
+          caption:
+            'An unknown participant floods the servers with reports to get the shop’s payment service blocked. Nobody trusts it, so its reports weigh 0, however many it sends. And the service is on A’s safety list: never blocked, whatever anyone reports.',
+          planned:
+            'Trust that grows or shrinks with a peer’s track record is planned. Today each operator sets the numbers.',
+        },
+        {
+          title: 'Mistakes can be undone',
+          caption:
+            'A learns the office address is a colleague’s shared connection and withdraws its report with a signed revocation. A unblocks it; B and C drop it automatically. Blocks also end on their own: the scanner’s one-hour block has run out.',
+          planned: 'A way for the owner of a blocked address to appeal is planned.',
+        },
+        {
+          title: 'Recap',
+          caption:
+            'Shared intelligence, sovereign enforcement: servers warn each other early, and every server still decides for itself what to block.',
+        },
+      ],
+      servers: {
+        a: {
+          name: 'Server A',
+          short: 'A',
+          operator: 'Web shop',
+          safetyList: 'own networks, payment service',
+        },
+        b: {
+          name: 'Server B',
+          short: 'B',
+          operator: 'University lab',
+          safetyList: 'own networks, campus network',
+        },
+        c: {
+          name: 'Server C',
+          short: 'C',
+          operator: 'Homelab',
+          safetyList: 'own networks, home network',
+        },
+      },
+      rogue: { name: 'Unknown participant', short: 'R' },
+      subjects: {
+        bot: { name: 'Password bot', short: 'bot' },
+        office: { name: 'Office address', short: 'office' },
+        scanner: { name: 'Web scanner', short: 'scanner' },
+        payment: { name: 'Payment service', short: 'payment' },
+      },
+      states: {
+        unknown: 'Unknown',
+        watching: 'Watching, not blocked',
+        blocked: 'Blocked',
+        safe: 'Never blocked',
+      },
+      causes: {
+        none: 'no reports',
+        'below-bar': 'below the bar',
+        agreement: 'enough trusted reporters agree',
+        'own-detection': 'own detection',
+        'safety-list': 'on the safety list',
+      },
+      labels: {
+        trusts: 'Trusts',
+        anyoneElse: 'anyone else {weight}',
+        safetyList: 'Safety list',
+        score: 'Score {score} of {threshold} needed',
+        reporters: '{count} of {quorum} reporters',
+        changed: 'Changed',
+        turnedAway: 'turned away',
+        copies: '×{n}',
+        planned: 'Planned',
+        note: 'Why',
+      },
+      controls: {
+        label: 'Demo controls',
+        restart: 'Restart',
+        previous: 'Previous',
+        next: 'Next',
+        play: 'Play',
+        pause: 'Pause',
+        steps: 'Steps',
+        stepOf: 'Step {n} of {total}',
+        goTo: 'Step {n}: {title}',
+        announcement: 'Step {n} of {total}: {title}. {caption}',
+        transcript: 'All ten steps as text',
+        servers: 'What each server decides',
+      },
+      report: {
+        heading: 'What {server} shares',
+        fields: {
+          address: 'Address',
+          reason: 'What it did',
+          events: 'How often',
+          fingerprint: 'Evidence',
+          suggestion: 'Suggests',
+          confidence: 'Confidence',
+          signature: 'Signature',
+        },
+        reasons: { password_bruteforce: 'password guessing', web_scan: 'web scanning' },
+        eventCount: '{n} failed logins',
+        fingerprintNote: 'a fingerprint of the log lines; it cannot be turned back into them',
+        suggestionValue: 'block for {duration}',
+        signatureValue: 'Ed25519, checked by {receivers}',
+        keptHeading: 'What stays on {server}',
+        kept: ['the log lines themselves', 'user names and passwords', 'customer data'],
+      },
+      recap: {
+        takeaways: [
+          'Every server protects itself first.',
+          'Sharing lets others act earlier.',
+          'Nobody can order anyone else to block.',
+        ],
+        actions: [
+          { label: 'View on GitHub', href: LINKS.repository },
+          { label: 'Get started', href: '#get-started' },
+        ],
+      },
+    },
     nextStep: {
       label: 'Read the plain-language introduction: what OBIE is, in five minutes',
       href: LINKS.introduction,

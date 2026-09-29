@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
 	"github.com/MNCloudwerksTechnology/obie/internal/statedir"
 )
 
@@ -65,7 +66,9 @@ func freeAddr(t *testing.T) string {
 }
 
 // startDaemon runs obied for n in the background until ctx is canceled and
-// waits until its admin API answers. The returned channel yields the exit code.
+// waits until its admin API reports every subsystem running. The admin API
+// answers slightly before its own subsystem counts as running, since it is
+// the last to start. The returned channel yields the exit code.
 func startDaemon(ctx context.Context, t *testing.T, n testNode, stderr *bytes.Buffer, run func(ctx context.Context, args []string) int) <-chan int {
 	t.Helper()
 	exit := make(chan int, 1)
@@ -74,7 +77,7 @@ func startDaemon(ctx context.Context, t *testing.T, n testNode, stderr *bytes.Bu
 	client := admin.NewClient(n.socket)
 	deadline := time.Now().Add(10 * time.Second)
 	for {
-		if _, err := client.Status(ctx); err == nil {
+		if s, err := client.Status(ctx); err == nil && allRunning(s) {
 			return exit
 		}
 		select {
@@ -83,10 +86,20 @@ func startDaemon(ctx context.Context, t *testing.T, n testNode, stderr *bytes.Bu
 		default:
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("obied did not become reachable:\n%s", stderr.String())
+			t.Fatalf("obied did not become reachable with every subsystem running:\n%s", stderr.String())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+// allRunning reports whether every subsystem in s has started.
+func allRunning(s *admin.StatusResponse) bool {
+	for _, sub := range s.Subsystems {
+		if sub.State != lifecycle.StateRunning {
+			return false
+		}
+	}
+	return true
 }
 
 func waitExit(t *testing.T, exit <-chan int, stderr *bytes.Buffer) int {

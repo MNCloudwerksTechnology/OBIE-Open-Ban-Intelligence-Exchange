@@ -185,6 +185,49 @@ Keep the privacy policy true to the deployment and the code:
 - **New features that process personal data** (for example a new form
   field) need a matching change in the policy.
 
+## The three-node demo: captions and numbers
+
+"How it works" ends with a demo the visitor steps through: three servers,
+a password-guessing bot, a web scanner, a rogue participant and an innocent
+office address, in ten steps
+([ADR 0028](../documentation/adr/0028-website-mesh-demo.md)). Its code is in
+`frontend/src/app/sections/mesh-demo/`.
+
+- **Wording.** Every caption, label and the settings sentence are in
+  `landing.content.ts` under `howItWorks.demo`. Change the wording there;
+  the demo's behaviour does not change. Tests keep each caption to at most
+  40 words, the steps in the scenario's order and the numbers of the
+  settings sentence in line with the scenario. Mark anything the current
+  release does not do as `planned`.
+- **Story and numbers.** `mesh-demo/scenario.ts` holds the servers' trust
+  weights and settings, the example addresses and each step's events
+  (detections, reports, the rogue's flood, a revocation). What every server
+  shows is computed by `decision-rule.ts`, a copy of the node's decision
+  rule (`internal/decision`): score = Σ weight × confidence over distinct
+  reporters, threshold and quorum, local autoblock, safety list, expiry.
+  `scenario.spec.ts` fixes who blocks and who watches at every step and
+  checks the settings against `documentation/examples/obie.yaml` and the
+  federation guide; it fails when the node's defaults change, so the demo
+  is updated with them. A change to the rule in `internal/decision` has to
+  be carried over to `decision-rule.ts` by hand.
+- **In a talk.** Previous and Next (also the arrow keys while a control has
+  focus), a button per step, Restart, and Play, which shows each step long
+  enough to read it (`autoplayDelay`: 0.4 s per word, at least 8 s).
+  Autoplay starts only on request and pauses on any step the presenter
+  picks, at the last step, when the demo scrolls out of view and when the
+  tab is hidden.
+- **Without JavaScript, and for search engines,** the prerendered page shows
+  the ten steps as an ordered list; the interactive demo offers the same list
+  under "All ten steps as text". With reduced motion, steps change without
+  animation. The demo stores nothing and sends no requests.
+- **Checks.** `mesh-demo/*.spec.ts` (rule, scenario, component: navigation,
+  every step's state, autoplay, reduced motion, the prerendered list, axe at
+  every step) and, in a real browser under the production Content Security
+  Policy, `MeshDemoBrowserTest` (no JavaScript, hydration without console
+  errors, reduced motion, no sideways scrolling at 360 px, only same-origin
+  requests, and a link below the demo staying on its target).
+  Screenshots at 360 and 1440 px: [`docs/screenshots/wp-1759/`](docs/screenshots/wp-1759/).
+
 ## Inquiry API
 
 The inquiry form talks to two endpoints. Errors are
@@ -273,8 +316,9 @@ Design decisions: [ADR 0015](../documentation/adr/0015-website-seo-and-delivery.
   and `.gz` variants of the text assets. The back end serves those variants,
   gzips pages and API responses, sends hashed files (`*-<hash>.js|css`,
   `media/`) with a one-year `immutable` cache and everything else with
-  `no-cache`. The legal pages are loaded on demand, the inquiry form's code
-  right after the first paint, when the browser is idle.
+  `no-cache`. The legal pages are loaded on demand, the inquiry form's and
+  the three-node demo's code right after the first paint, when the browser
+  is idle.
 - **Accessibility checks.** `src/app/a11y.spec.ts` runs axe-core on every
   route in both themes (WCAG 2.1 A/AA and best practices); a new route must
   be added to its `ROUTES`. Colour contrast is checked on the tokens
