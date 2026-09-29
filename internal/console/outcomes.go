@@ -70,8 +70,12 @@ func outcomeNotice(kind string, out *ActionOutcome) actionNotice {
 // waitingText says when what, an event of out that waits, will be sent:
 // once a peer is reachable, or after the events waiting before it.
 func waitingText(what string, out *ActionOutcome) string {
-	if out.Peers == 0 {
+	if out.Peers == 0 && out.Backlog <= 1 {
 		return "No peer is reachable now: " + what + " will be sent as soon as one is (unless obied restarts before)."
+	}
+	if out.Peers == 0 {
+		return fmt.Sprintf("No peer is reachable now: %s will be sent with the %s waiting, %s once a peer is reachable "+
+			"(unless obied restarts before).", what, plural(out.Backlog, "event", "events"), withinText(out.BacklogWait))
 	}
 	return fmt.Sprintf("It waits behind events of this node held while no peer was reachable: %s will be sent to the %s "+
 		"with the %s waiting, %s (unless obied restarts before).", what, plural(out.Peers, "peer", "peers"),

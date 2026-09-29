@@ -556,7 +556,22 @@ func TestBacklogIsSaid(t *testing.T) {
 			t.Errorf("%s = %+v", name, got)
 		}
 	}
-	w.review.Backlog = 0
+	// Without a peer, the backlog is said too, counted from when one joins
+	// (review finding N3).
+	w.review.Peers = 0
+	for name, got := range map[string][]consequence{"report": w.report(), "revocation": w.revoke()} {
+		if len(got) < 2 || !strings.Contains(got[0].Text, "No peer is reachable now") ||
+			got[1].Text != "It goes out after the 300 events of this node that wait to be sent, within a minute once a peer is reachable. "+
+				"They wait in memory only: if obied restarts before, they are not sent." {
+			t.Errorf("%s without a peer = %+v", name, got)
+		}
+	}
+	held := outcomeNotice(ActionRevoke, &ActionOutcome{Range: w.review.Range, Held: true, Backlog: 3000, BacklogWait: 6 * time.Minute})
+	if len(held.Lines) == 0 || held.Lines[0] != "No peer is reachable now: the revocation will be sent with the 3,000 events waiting, "+
+		"within about 6 minutes once a peer is reachable (unless obied restarts before)." {
+		t.Errorf("held outcome = %+v", held)
+	}
+	w.review.Backlog, w.review.Peers = 0, 2
 	if got := w.report(); strings.Contains(got[1].Text, "wait to be sent") {
 		t.Errorf("a report without backlog = %+v", got)
 	}

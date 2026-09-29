@@ -136,6 +136,7 @@ func (w *consequenceWriter) report() []consequence {
 			out = append(out, w.backlog()...)
 		} else {
 			out = append(out, consequence{Level: "warning", Text: "This will issue " + verdict + ". " + unreachableText})
+			out = append(out, w.backlog()...)
 		}
 		if pl.Refreshes && w.review.Verdict != nil {
 			out = append(out, consequence{Text: "It replaces your verdict issued " + stamp(w.review.Verdict.IssuedAt).Text + ", adding its events."})
@@ -159,6 +160,7 @@ func (w *consequenceWriter) revoke() []consequence {
 		out = append(out, w.backlog()...)
 	} else {
 		out = append(out, consequence{Level: "warning", Text: "This will issue " + revocation + ". " + unreachableText})
+		out = append(out, w.backlog()...)
 	}
 	out = append(out, w.afterVerdicts(w.addr+" will be blocked"))
 	return append(out, consequence{Text: "A revoked verdict cannot be restored; report the address again to issue a new one."})
@@ -170,9 +172,13 @@ func (w *consequenceWriter) backlog() []consequence {
 	if w.review.Backlog == 0 {
 		return nil
 	}
+	when := withinText(w.review.BacklogWait)
+	if w.review.Peers == 0 {
+		when += " once a peer is reachable"
+	}
 	return []consequence{{Level: "warning", Text: fmt.Sprintf("It goes out after the %s that wait to be sent, %s. "+
 		"They wait in memory only: if obied restarts before, they are not sent.",
-		plural(w.review.Backlog, "event of this node", "events of this node"), withinText(w.review.BacklogWait))}}
+		plural(w.review.Backlog, "event of this node", "events of this node"), when)}}
 }
 
 // withinText says roughly how long d is, e.g. "within about 5 minutes".
