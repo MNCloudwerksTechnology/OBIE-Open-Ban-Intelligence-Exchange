@@ -88,7 +88,9 @@ func (r *run) jails(client string, lookErr error) (int, finding) {
 		}
 	}
 	if len(names) == 0 {
-		return 0, problem("no Fail2Ban jail uses OBIE's action, so no ban is reported", nextAddJail)
+		// As without Fail2Ban, the node works; the quick start connects a
+		// jail only after the first start.
+		return 0, warn("no Fail2Ban jail uses OBIE's action yet, so no ban is reported", nextAddJail)
 	}
 	return len(names), ok("jails that report every ban to the node: " + strings.Join(names, ", "))
 }
