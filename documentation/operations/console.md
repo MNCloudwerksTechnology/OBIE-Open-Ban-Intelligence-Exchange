@@ -28,8 +28,8 @@ whether the node is healthy and what it is doing. The other pages show:
 - what the firewall applies: the [firewall view](#the-firewall-view);
 - the [verdicts](../glossary.md#verdict) this node told the mesh and those
   the mesh told it: the [verdicts view](#the-verdicts-view);
-- every override and [allow-list](../glossary.md#allow-list) entry you
-  set, and the configuration the node runs with: the
+- every override and [allow-list](../glossary.md#allow-list) entry, and
+  the configuration the node runs with: the
   [overrides view](#the-overrides-view), the
   [allow-list view](#the-allow-list-view) and the
   [configuration view](#the-configuration-view).

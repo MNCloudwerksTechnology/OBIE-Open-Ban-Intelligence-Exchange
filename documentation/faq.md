@@ -40,7 +40,8 @@ can loosen the defaults, for example to a quorum of 1, so that a single peer
 is enough. The most likely way to lock yourself out is not a peer at all,
 but your own Fail2Ban banning your own address: your node's own detections
 block at once. Put your own addresses into Fail2Ban's `ignoreip` as well as
-on the allow-list, and keep a console that does not depend on the network;
+on the allow-list, and keep a way in that does not depend on the network,
+such as your hosting provider's console;
 [Locked out](operations/troubleshooting.md#locked-out) shows how to get back
 in and remove every OBIE block with one command.
 
@@ -134,9 +135,15 @@ everything when it fails.
 - **OBIE restarts by itself.** The shipped systemd service starts it again
   five seconds after a crash. The node reloads its stored verdicts,
   rebuilds its decisions and brings its firewall table back in line.
-- **What you miss:** verdicts and withdrawals your peers publish while your
-  node is down do not arrive later, so a block a peer withdrew in the
-  meantime stays until it expires; v0.1 has no catch-up.
+- **What you may miss.** A peer that has no other peer connected while
+  your node is down keeps its new verdicts and withdrawals in memory and
+  sends them once your node is back, unless it restarts first. If it had
+  other peers, what it published in the meantime does not reach you later:
+  v0.1 has no general catch-up, so a block a peer withdrew in the meantime
+  stays until it expires.
+- **Your own unsent reports.** Reports your node was still holding for a
+  peer when it crashed are not sent after the restart. They still count on
+  your node.
 
 In observe mode a crash does not touch your firewall at all, because OBIE
 has not changed it. To remove every OBIE block whenever the service stops,

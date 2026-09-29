@@ -10,9 +10,9 @@ answer the rest.
 **Shared intelligence, sovereign enforcement.** OBIE lets servers you run
 tell each other which addresses attack them, and lets each server decide
 for itself whether to block them. There is no central service: every
-[node](documentation/glossary.md#node) signs what it reports, trusts only the
-[peers](documentation/glossary.md#peer) its operator chose, and always has the last
-word over its own firewall.
+[node](documentation/glossary.md#node) signs what it reports, trusts only
+the [peers](documentation/glossary.md#peer) its operator chose, and always
+has the last word over its own firewall.
 
 OBIE is at **v0.1**, its first release. It works end to end, but it is
 young: read the [threat model](SECURITY.md#threat-model) before you trust
@@ -56,8 +56,9 @@ it with a production firewall, and start in
   and what the firewall applies, the verdicts it published and received,
   every [override](documentation/glossary.md#override) and
   [allow-list](documentation/glossary.md#allow-list) entry, the
-  configuration it runs with, and a live timeline of what it does, in a browser on its own
-  host, behind a token only its operator can obtain; from there the
+  configuration it runs with, and a live timeline of what it does, in a
+  browser on its own host, behind a token only its operator can obtain;
+  from there the
   operator allows, blocks, reports or revokes after a confirmation that
   says what will happen.
 

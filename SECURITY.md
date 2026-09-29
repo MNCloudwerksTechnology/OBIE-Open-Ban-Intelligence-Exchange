@@ -115,9 +115,10 @@ revoked, and an older verdict never replaces a newer one of the same
 publisher. Only a verdict's own publisher can revoke it.
 
 **Remaining risk.** Replay works within a verdict's lifetime on a node
-that never saw its revocation: v0.1 has no catch-up, so a node that was
-disconnected when the revocation was published keeps, or can be sent
-again, the revoked verdict until it expires. The same holds after the
+that never saw its revocation: v0.1 has no catch-up (a publisher sends
+its events later only if it had no peer at all when it published them), so
+a node that was disconnected when the revocation was published keeps, or
+can be sent again, the revoked verdict until it expires. The same holds after the
 event store (`/var/lib/obie/db`) is lost. Nodes need synchronised clocks;
 a clock far off drops valid events or keeps expired ones.
 

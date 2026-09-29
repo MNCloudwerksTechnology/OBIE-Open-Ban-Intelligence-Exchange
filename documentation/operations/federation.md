@@ -105,9 +105,12 @@ PEER ID                                               NAME    TRUST  BOOTSTRAP  
 peers)`, and `obie_peers_connected` is 1. If the peer does not appear, see
 [Troubleshooting](troubleshooting.md#no-peers).
 
-Verdicts reach a node only while it is connected. v0.1 has no catch-up:
-what your friend publishes while your node is down or disconnected does
-not arrive later, until the friend's Fail2Ban bans the address again.
+Verdicts reach a node only while it is connected. v0.1 has no general
+catch-up: what your friend publishes while your node is down or
+disconnected arrives later only if your node was the friend's only
+connected peer and the friend's `obied` did not restart in the meantime
+(it holds its own events until a peer is back). Otherwise it does not
+arrive until the friend's Fail2Ban bans the address again.
 
 ## Choose trust weights and quorum
 

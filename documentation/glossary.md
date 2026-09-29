@@ -93,7 +93,8 @@ table `inet obie` and leaves every other table alone.
 
 One running copy of OBIE on one server: the program `obied`, with its own
 identity, its own [trust weights](#trust-weight) and its own decisions.
-You control it with the command `obiectl`.
+You control it with the command `obiectl` or, if you switch it on, its
+local [web console](operations/console.md).
 
 ## Observe mode
 
