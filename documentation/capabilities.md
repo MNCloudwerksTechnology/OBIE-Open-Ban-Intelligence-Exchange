@@ -106,10 +106,12 @@ node of three, while its two peers send it verdicts:
 
 | Your node holds | Memory | Processor | Disk |
 |---|---:|---:|---:|
-| No verdicts, connected to 2 peers | 34 MiB | 0.2 % of one core | under 1 MiB |
-| 10,000 verdicts, receiving 200 a second | 123 MiB | 10 % | 17 MiB |
-| 100,000 verdicts, receiving 200 a second | 366 MiB, peaking at 514 MiB | 43 % | 87 MiB |
-| 100,000 verdicts, at rest | 349 MiB | 2 % | 87 MiB |
+| No verdicts, connected to 2 peers | 33 MiB | 0.2 % of one core | under 1 MiB |
+| 10,000 verdicts, receiving 200 a second | 123 MiB | 11 % | 17 MiB |
+| 100,000 verdicts, receiving 200 a second | 370 MiB, peaking at 491 MiB | 63 % | 87 MiB |
+| 100,000 verdicts, at rest | 362 MiB | 2.5 % | 87 MiB |
+| 1,000,000 verdicts, the default limit, receiving 200 a second | 2.9 GiB, peaking at 3.6 GiB | 100 % | 851 MiB |
+| 1,000,000 verdicts, at rest | 2.5 GiB | 25 % | 851 MiB |
 
 - **Memory grows with the verdicts your node holds**, by about 3 MiB per
   1,000. A verdict from Fail2Ban lives as long as its ban: 10 minutes
@@ -119,12 +121,19 @@ node of three, while its two peers send it verdicts:
 - **200 verdicts a second is far more than a small federation sends.**
   The processor numbers come from a fast desktop core; a small server's
   core is slower.
+- **The more verdicts your node holds, the more processor time each new
+  one costs.** Near 1,000,000, one core could not keep up with 200 a
+  second, and the node missed 0.5 % of them.
 - **Disk** counts the node's state and its audit log, if you switch it
   on. The audit log grows until you rotate it
   ([rotation](operations/monitoring.md#rotation)).
-- **Limits:** a node keeps at most 1,000,000 verdicts by default. On a
-  small server, lower that limit, `store.max_indicators`, to bound memory
-  and disk ([configuration](operations/configuration.md#store)).
+- **Limits:** a node keeps at most 1,000,000 verdicts by default, which
+  takes about 3 GiB of memory. On a small server, lower that limit,
+  `store.max_indicators`, to bound memory, processor time and disk
+  ([configuration](operations/configuration.md#store)). The firewall holds
+  at most 100,000 blocks by default; beyond that, the blocks with the
+  lowest score are left out and logged
+  ([configuration](operations/configuration.md#enforce)).
 
 ### Fail2Ban
 

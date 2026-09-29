@@ -145,30 +145,50 @@ phase and its CPU time from `/proc`, and the disk blocks of its state
 directory and audit log.
 
 Run on 2026-09-29 on the test machine above (AMD Ryzen 9 7950X3D, Linux
-7.0), `obied` built from `8087b05`, the code of the upcoming 0.1.0:
+7.0), `obied` built from `1b3edc3`, the code of the upcoming 0.1.0, up
+to the verdicts a node keeps by default (`make resources
+RESOURCESVERDICTS=10000,100000,1000000`, 91 minutes). The CPU share of a
+load phase is measured over its last 30 seconds:
 
 | Phase | Verdicts held | Blocks | RSS | Peak RSS | CPU (share of one core) | State directory | Audit log |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| idle for 2 min, 2 peers | 0 | 0 | 34 MiB | 34 MiB | 0.2 % | 0 MiB | 0.0 MiB |
-| receiving 200 verdicts/s | 10,000 | 5,000 | 123 MiB | 123 MiB | 9.7 % | 15 MiB | 2.2 MiB |
-| receiving 200 verdicts/s | 100,000 | 50,000 | 366 MiB | 514 MiB | 43.4 % | 65 MiB | 22.0 MiB |
-| at rest for 2 min | 100,000 | 50,000 | 349 MiB | 362 MiB | 2.2 % | 65 MiB | 22.0 MiB |
+| idle for 2 min, 2 peers | 0 | 0 | 33 MiB | 33 MiB | 0.2 % | 0 MiB | 0.0 MiB |
+| receiving 200 verdicts/s | 10,000 | 5,000 | 123 MiB | 123 MiB | 10.8 % | 15 MiB | 2.2 MiB |
+| receiving 200 verdicts/s | 100,000 | 50,000 | 370 MiB | 491 MiB | 63.2 % | 65 MiB | 22.0 MiB |
+| receiving 200 verdicts/s, 4,801 of them lost | 995,199 | 495,299 | 2,970 MiB | 3,675 MiB | 99.6 % | 633 MiB | 217.9 MiB |
+| at rest for 2 min | 995,199 | 495,299 | 2,578 MiB | 3,039 MiB | 25.0 % | 633 MiB | 217.9 MiB |
 
-An earlier run of the same code gave the same numbers within 3 %. How to
-read them:
+`make resources` with its defaults, up to 100,000 verdicts, run the same
+day on the same build, gave the same numbers within 8 %, and at rest for
+2 minutes with 100,000 verdicts: RSS 362 MiB, 2.5 % of a core, 65 MiB of
+state and 22.0 MiB of audit log. How to read them:
 
-- **Memory grows with the verdicts held**, by about 3.2 MiB per 1,000
-  once the node is at rest. The peak while receiving is higher: a Badger
-  memtable flush briefly holds the table it builds (see the soak test).
+- **Memory grows with the verdicts held**, by about 3 MiB per 1,000
+  once the node is at rest: 362 MiB with 100,000 verdicts, 2.5 GiB with
+  about 1,000,000, the default `store.max_indicators`. The peak while
+  receiving is up to a third higher (3.6 GiB at the cap); size a server
+  for the peak.
 - **CPU per received verdict grows with the decisions kept.** After every
   batch of decisions, the engine counts all it keeps for its metrics
   ([Console](#console): 11 ms at 1,000,000), so the same 200 verdicts a
-  second cost 9.7 % of a core at 10,000 verdicts and 43.4 % at 100,000. At
-  rest, the periodic sweeps and reconciliation take 2.2 %.
-- **Disk:** the state directory took about 0.7 KiB per verdict, the audit
-  log about 0.45 KiB per blocked address.
+  second cost 10.8 % of a core at 10,000 verdicts, 63.2 % at 100,000 and
+  the whole core near 1,000,000.
+- **A node that cannot keep up misses verdicts.** On the way to
+  1,000,000, A could no longer take in 200 verdicts a second, and 4,801 of
+  the phase's 900,000 (0.5 %) never arrived: GossipSub drops what a full
+  queue cannot take. Its peers do not send them again, so they never
+  count on A.
+- **At rest, the periodic work grows with what the node keeps:** 2.5 % of
+  a core with 100,000 verdicts, 25.0 % with 1,000,000.
+- **The firewall holds 100,000 blocks by default.** A decided 495,299
+  blocks; beyond `enforce.max_entries` the blocks with the lowest score
+  are left out and logged ([configuration](configuration.md#enforce)).
+- **Disk:** the state directory took about 0.65 KiB per verdict (65 MiB at
+  100,000, 633 MiB at 995,199), the audit log about 0.45 KiB per blocked
+  address.
 - **The core is fast.** A small cloud server's core is slower, so expect
-  higher CPU shares there; memory and disk do not depend on the processor.
+  higher CPU shares there, and a node that stops keeping up with fewer
+  verdicts; memory and disk do not depend on the processor.
 
 ## Console
 

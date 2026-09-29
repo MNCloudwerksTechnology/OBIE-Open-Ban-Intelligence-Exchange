@@ -76,7 +76,8 @@ store:
   # cannot fill the disk. When the store is full, the verdict that expires
   # first makes room (counted in obie_store_evictions_total); a new verdict
   # that would expire before all stored ones is refused instead. This node's
-  # own verdicts are never evicted. About 3 KiB of disk per verdict.
+  # own verdicts are never evicted. About 0.7 KiB of disk and 3 KiB of
+  # memory per verdict (measured in documentation/operations/performance.md).
   max_indicators: 1000000
 
 trust:
