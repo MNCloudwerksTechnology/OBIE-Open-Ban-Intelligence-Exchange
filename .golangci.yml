@@ -5,11 +5,13 @@ version: "2"
 run:
   timeout: 5m
   tests: true
-  # The soak test (make soak) and the resource measurement (make
-  # resources) are linted like every other test.
+  # The soak test (make soak), the resource measurement (make resources)
+  # and the sandbox walkthrough check (make sandbox-check) are linted like
+  # every other test.
   build-tags:
     - soak
     - resources
+    - sandbox
 
 linters:
   default: none
