@@ -143,7 +143,7 @@ func untilText(t *time.Time) string {
 	if t == nil {
 		return "until removed"
 	}
-	return "until " + t.UTC().Format(time.RFC3339)
+	return "until " + formatTime(*t)
 }
 
 // writeOverridesTable prints one row per override, in the order the daemon
@@ -158,10 +158,10 @@ func writeOverridesTable(w io.Writer, list []admin.OverrideResponse) error {
 	for _, o := range list {
 		expires := "never"
 		if o.ExpiresAt != nil {
-			expires = o.ExpiresAt.UTC().Format(time.RFC3339)
+			expires = formatTime(*o.ExpiresAt)
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", o.Indicator.Key(), o.Action, expires,
-			o.CreatedAt.UTC().Format(time.RFC3339), orDash(o.Note))
+			formatTime(o.CreatedAt), orDash(o.Note))
 	}
 	return tw.Flush()
 }

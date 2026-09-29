@@ -360,10 +360,6 @@ func publisherName(v admin.VerdictResponse) string {
 	return v.Event.Publisher.PeerID
 }
 
-func formatTime(t time.Time) string {
-	return t.UTC().Format(time.RFC3339)
-}
-
 // ttlString formats a verdict's TTL like the configuration does, e.g. "7d".
 func ttlString(ev *obieproto.Event) string {
 	if ev.Verdict == nil {

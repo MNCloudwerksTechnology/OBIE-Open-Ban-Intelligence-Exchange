@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"io"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -299,5 +300,41 @@ func TestHelpWriteError(t *testing.T) {
 	stderr.Reset()
 	if code := RunCtl([]string{"help"}, failingWriter{}, &stderr); code != ExitIOError {
 		t.Errorf("help: exit code %d, stderr %q", code, stderr.String())
+	}
+}
+
+// discouraged are words the help must not use: the glossary
+// (documentation/glossary.md) names these things differently.
+var discouraged = regexp.MustCompile(`(?i)\b(white|black)[ -]?list|\bban ?list|\bIOCs?\b|\bthreat score`)
+
+// TestHelpUsesGlossaryTerms checks the help of every command against the
+// glossary: the allow-list is written with a hyphen unless a configuration
+// key (allowlist.cidrs) is meant, and no synonym replaces a glossary term.
+func TestHelpUsesGlossaryTerms(t *testing.T) {
+	for _, tl := range tools() {
+		help := func(args ...string) string {
+			var stdout bytes.Buffer
+			tl.run(args, &stdout, io.Discard)
+			return stdout.String()
+		}
+		texts := []string{help("help")}
+		for _, c := range tl.commands {
+			texts = append(texts, help(c.name, "--help"))
+		}
+		for _, text := range texts {
+			if m := discouraged.FindString(text); m != "" {
+				t.Errorf("%s help uses %q, which the glossary calls differently:\n%s", tl.name, m, text)
+			}
+			for i := strings.Index(text, "allowlist"); i >= 0; {
+				if end := i + len("allowlist"); end >= len(text) || text[end] != '.' {
+					t.Errorf("%s help writes %q; the glossary term is allow-list (allowlist.<key> for a setting)", tl.name, text[max(0, i-20):min(len(text), end+20)])
+				}
+				next := strings.Index(text[i+1:], "allowlist")
+				if next < 0 {
+					break
+				}
+				i += 1 + next
+			}
+		}
 	}
 }

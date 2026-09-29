@@ -18,23 +18,32 @@ func TestWriteEnforcedTable(t *testing.T) {
 	resp := &admin.EnforcedResponse{Mode: "enforce", Entries: []admin.EnforcedEntry{
 		{Prefix: "198.51.100.0/24", ExpiresAt: now.Add(90*time.Minute + 500*time.Millisecond)},
 		{Prefix: "2001:db8::1/128", ExpiresAt: now.Add(-time.Second)},
+		{Prefix: "203.0.113.0/24", ExpiresAt: now.Add(3*24*time.Hour + 4*time.Hour)},
 	}}
-	if err := writeEnforcedTable(&out, resp, now); err != nil {
+	if err := writeEnforcedTable(&out, resp, now, 0); err != nil {
 		t.Fatal(err)
 	}
-	want := `PREFIX           EXPIRES               REMAINING
+	want := `Entries applied: 3
+
+PREFIX           EXPIRES               REMAINING
 198.51.100.0/24  2026-09-28T13:30:00Z  1h30m0s
 2001:db8::1/128  2026-09-28T11:59:59Z  0s
+203.0.113.0/24   2026-10-01T16:00:00Z  3d4h0m0s
 `
 	if out.String() != want {
 		t.Errorf("table =\n%s\nwant\n%s", out.String(), want)
+	}
+	out.Reset()
+	if err := writeEnforcedTable(&out, resp, now, 1); err != nil ||
+		!strings.HasSuffix(out.String(), "1h30m0s\n\nShowing 1 of 3 entries. See them all with --limit 0, or use --json.\n") {
+		t.Errorf("limited table =\n%s, %v", out.String(), err)
 	}
 	for mode, want := range map[string]string{
 		"enforce": "No entries applied.\n",
 		"observe": "No entries applied: the node is in observe mode.\n",
 	} {
 		out.Reset()
-		if err := writeEnforcedTable(&out, &admin.EnforcedResponse{Mode: mode}, now); err != nil || out.String() != want {
+		if err := writeEnforcedTable(&out, &admin.EnforcedResponse{Mode: mode}, now, 100); err != nil || out.String() != want {
 			t.Errorf("empty table in %s mode = %q, %v", mode, out.String(), err)
 		}
 	}
@@ -102,7 +111,7 @@ func TestObiectlEnforcedAgainstInProcessDaemon(t *testing.T) {
 		time.Until(resp.Entries[0].ExpiresAt) <= 0 {
 		t.Errorf("enforced = %+v", resp)
 	}
-	if out := ctl("enforced"); !strings.HasPrefix(out, "PREFIX") || !strings.Contains(out, "198.18.0.7/32") {
+	if out := ctl("enforced"); !strings.HasPrefix(out, "Entries applied: 1\n\nPREFIX") || !strings.Contains(out, "198.18.0.7/32") {
 		t.Errorf("enforced table:\n%s", out)
 	}
 	if out := ctl("status"); !strings.Contains(out, "enforcing via dryrun: 1 entries") {

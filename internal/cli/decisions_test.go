@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -73,19 +74,58 @@ func TestWriteDecisionsTable(t *testing.T) {
 	var out bytes.Buffer
 	watched := admin.DecisionResponse{Indicator: obieproto.Indicator{Kind: obieproto.KindCIDR, Value: "198.51.100.0/24", Scope: "/24"},
 		State: admin.StateNone, Score: 0.5, Contributors: 1, Reason: "below consensus"}
-	if err := writeDecisionsTable(&out, []admin.DecisionResponse{watched, explained}); err != nil {
+	allowed := admin.DecisionResponse{Indicator: obieproto.Indicator{Kind: obieproto.KindIPv4, Value: "85.10.0.1"},
+		State: admin.StateAllowed, Reason: "operator force-allow override"}
+	if err := writeDecisionsTable(&out, []admin.DecisionResponse{watched, explained, allowed}, 0); err != nil {
 		t.Fatal(err)
 	}
-	want := `INDICATOR             STATE  SCORE  PUBLISHERS  EXPIRES               REASON
-cidr:198.51.100.0/24  none   0.5    1           -                     below consensus
-ipv4:203.0.113.7      block  1.8    2           2026-09-28T13:00:00Z  consensus: score 1.8 >= threshold 1.8, 2 >= quorum 2
+	want := `Decisions: 3 (1 block, 1 allowed, 1 none)
+
+INDICATOR             STATE    SCORE  PUBLISHERS  EXPIRES               REASON
+ipv4:203.0.113.7      block    1.8    2           2026-09-28T13:00:00Z  consensus: score 1.8 >= threshold 1.8, 2 >= quorum 2
+ipv4:85.10.0.1        allowed  0      0           -                     operator force-allow override
+cidr:198.51.100.0/24  none     0.5    1           -                     below consensus
 `
 	if out.String() != want {
 		t.Errorf("table =\n%s\nwant\n%s", out.String(), want)
 	}
 	out.Reset()
-	if err := writeDecisionsTable(&out, nil); err != nil || out.String() != "No decisions.\n" {
+	if err := writeDecisionsTable(&out, []admin.DecisionResponse{watched, explained, allowed}, 2); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasSuffix(out.String(), " operator force-allow override\n\n"+
+		"Showing 2 of 3 decisions, blocks first. Narrow them down with --state block, allowed or none. "+
+		"See them all with --limit 0, or use --json.\n") || strings.Contains(out.String(), "cidr:198.51.100.0/24") {
+		t.Errorf("limited table =\n%s", out.String())
+	}
+	out.Reset()
+	if err := writeDecisionsTable(&out, nil, 100); err != nil || out.String() != "No decisions.\n" {
 		t.Errorf("no decisions: %q, %v", out.String(), err)
+	}
+}
+
+// TestLongListingsStayUsable lists thousands of decisions: a summary comes
+// first and a hundred rows follow unless --limit says otherwise.
+func TestLongListingsStayUsable(t *testing.T) {
+	ds := make([]admin.DecisionResponse, 5000)
+	for i := range ds {
+		ds[i] = admin.DecisionResponse{Indicator: obieproto.Indicator{Kind: obieproto.KindIPv4, Value: fmt.Sprintf("85.%d.%d.1", i/250, i%250)},
+			State: admin.StateNone, Reason: "below consensus"}
+	}
+	ds[4999].State = admin.StateBlock
+	var out bytes.Buffer
+	if err := writeDecisionsTable(&out, ds, defaultRows); err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
+	if lines[0] != "Decisions: 5000 (1 block, 0 allowed, 4999 none)" || !strings.HasPrefix(lines[3], "ipv4:85.19.249.1  block") ||
+		len(lines) != 3+defaultRows+2 || lines[len(lines)-1] != "Showing 100 of 5000 decisions, blocks first. "+
+		"Narrow them down with --state block, allowed or none. See them all with --limit 0, or use --json." {
+		t.Errorf("%d lines, first %q, fourth %q, last %q", len(lines), lines[0], lines[3], lines[len(lines)-1])
+	}
+	out.Reset()
+	if err := writeDecisionsTable(&out, ds, 0); err != nil || strings.Count(out.String(), "\n") != 3+5000 {
+		t.Errorf("--limit 0: %d lines, %v", strings.Count(out.String(), "\n"), err)
 	}
 }
 

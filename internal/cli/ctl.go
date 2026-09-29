@@ -106,7 +106,7 @@ func writeStatusTable(w io.Writer, s *admin.StatusResponse) error {
 	}
 	_, _ = fmt.Fprintf(tw, "Mode:\t%s\n", mode)
 	_, _ = fmt.Fprintf(tw, "Version:\t%s\n", s.Version)
-	_, _ = fmt.Fprintf(tw, "Uptime:\t%s\n", s.Uptime().Truncate(time.Second))
+	_, _ = fmt.Fprintf(tw, "Uptime:\t%s\n", formatDuration(s.Uptime()))
 	_, _ = fmt.Fprintf(tw, "Ready:\t%s\n", yesNo(s.Ready))
 	if err := tw.Flush(); err != nil {
 		return err

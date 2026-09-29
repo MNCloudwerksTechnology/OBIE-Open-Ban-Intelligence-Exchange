@@ -45,6 +45,9 @@ type setupEnv struct {
 	// euid is the user running the assistant; userName names it.
 	euid     func() int
 	userName func() string
+	// terminal reports whether the operator's input and output are a
+	// terminal, where questions may be asked.
+	terminal func() bool
 }
 
 func hostSetupEnv() setupEnv {
@@ -55,7 +58,14 @@ func hostSetupEnv() setupEnv {
 		groupExists:   func(name string) bool { _, err := user.LookupGroup(name); return err == nil },
 		euid:          os.Geteuid,
 		userName:      func() string { return lookupUserName(os.Geteuid()) },
+		terminal:      func() bool { return isTerminal(os.Stdin) && isTerminal(os.Stdout) },
 	}
+}
+
+// isTerminal reports whether f is a terminal (a character device).
+func isTerminal(f *os.File) bool {
+	info, err := f.Stat()
+	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
 // lookupUserName returns the name of the user with uid, or the uid.
@@ -106,6 +116,14 @@ func runSetupWith(args []string, stdin io.Reader, stdout, stderr io.Writer, env 
 	if !*nonInteractive {
 		if given := setFlags(flags, answerFlags); len(given) > 0 {
 			usageProblem(program, "--"+given[0]+" answers a question up front and needs --non-interactive").write(stderr, program)
+			return ExitUsage
+		}
+		// Questions in a pipe or a file would go unseen.
+		if !env.terminal() {
+			problem{id: "setup-no-terminal", what: "obied setup asks questions, but its input or output is not a terminal",
+				why: "questions written into a pipe or a file would go unseen",
+				next: []string{"run it in a terminal: sudo obied setup",
+					"or give the answers as flags with --non-interactive (see obied setup --help)"}}.write(stderr, program)
 			return ExitUsage
 		}
 	}

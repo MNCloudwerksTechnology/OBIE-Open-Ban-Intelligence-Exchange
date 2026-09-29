@@ -56,7 +56,7 @@ func writePeersTable(w io.Writer, peers []admin.PeerResponse) error {
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n", p.PeerID, orDash(p.Name),
 			strconv.FormatFloat(p.TrustWeight, 'g', -1, 64), yesNo(p.Bootstrap),
-			p.ConnectedSince.UTC().Format(time.RFC3339), latency, orDash(strings.Join(p.Addresses, ",")))
+			formatTime(p.ConnectedSince), latency, orDash(strings.Join(p.Addresses, ",")))
 	}
 	return tw.Flush()
 }

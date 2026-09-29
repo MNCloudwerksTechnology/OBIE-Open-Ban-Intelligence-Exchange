@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"io/fs"
 	"net/netip"
 	"os"
@@ -35,6 +36,7 @@ func testSetupEnv(sessionAddr string) setupEnv {
 		groupExists:   func(string) bool { return true },
 		euid:          func() int { return 1000 },
 		userName:      func() string { return "alice" },
+		terminal:      func() bool { return true },
 	}
 }
 
@@ -381,5 +383,26 @@ func TestSetupHelp(t *testing.T) {
 	}
 	if code, stdout, _ := runObied(t, "--help"); code != ExitOK || !strings.Contains(stdout, "  setup ") {
 		t.Errorf("obied --help does not list setup:\n%s", stdout)
+	}
+}
+
+// TestSetupAsksOnlyOnATerminal checks that the assistant asks nothing when
+// its input or output is not a terminal, so that no question ends up in a
+// pipe, and that --non-interactive still works there.
+func TestSetupAsksOnlyOnATerminal(t *testing.T) {
+	env := testSetupEnv("")
+	env.terminal = func() bool { return false }
+	path := filepath.Join(t.TempDir(), "obie.yaml")
+	code, stdout, stderr := runSetupTest(t, env, "\n\n\n\n\n\n", "--config", path)
+	if code != ExitUsage || stdout != "" ||
+		!strings.HasPrefix(stderr, "obied setup: obied setup asks questions, but its input or output is not a terminal\n") ||
+		!strings.Contains(stderr, "Next: or give the answers as flags with --non-interactive") {
+		t.Errorf("exit code %d, stdout %q, stderr %q", code, stdout, stderr)
+	}
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("a file was written: %v", err)
+	}
+	if code, _, stderr := runSetupTest(t, env, "", "--config", path, "--non-interactive"); code != ExitOK {
+		t.Errorf("--non-interactive: exit code %d, stderr %q", code, stderr)
 	}
 }

@@ -89,15 +89,20 @@ key itself. obied identity shows the same without a running node.`,
 		{commandHelp: commandHelp{
 			name: "decisions", group: groupLook,
 			summary: "list what the node decided for each address: block, allowed or none",
-			usage:   []string{"[--state block|none|allowed] [--json]"},
+			usage:   []string{"[--state block|none|allowed] [--limit <n>] [--json]"},
 			description: `Lists the node's decision on every address and range it holds verdicts or
 overrides for: block (it blocks the address, or would in observe mode),
 allowed (the allow-list or an override protects it) or none (not enough
 trusted publishers agree), with the score, the number of publishers, when
 the decision ends and why it was made. obiectl explain shows the details
-of one address.`,
+of one address.
+
+It starts with how many decisions there are in each state, then lists at
+most --limit of them, blocks first; the last line says how to see the
+others. --json always has every decision.`,
 			examples: []example{
 				{"See what the node blocks, or would block in observe mode:", "sudo obiectl decisions --state block"},
+				{"List every decision, however many there are:", "sudo obiectl decisions --limit 0"},
 				{"Every decision as JSON, for a script:", "sudo obiectl decisions --json"},
 			},
 			values: map[string][]string{"state": {"block", "none", "allowed"}},
@@ -152,10 +157,11 @@ ends and the note you gave it.`,
 		{commandHelp: commandHelp{
 			name: "enforced", group: groupLook,
 			summary: "list the blocks the firewall applies right now",
-			usage:   []string{"[--json]"},
+			usage:   []string{"[--limit <n>] [--json]"},
 			description: `Lists the addresses and ranges the enforcement backend applies, with when
-each block ends. In observe mode the list is empty. sudo nft list table
-inet obie shows what the kernel holds.`,
+each block ends: first how many there are, then at most --limit of them.
+In observe mode the list is empty. sudo nft list table inet obie shows
+what the kernel holds.`,
 			examples: []example{
 				{"See what the firewall blocks right now:", "sudo obiectl enforced"},
 			},
