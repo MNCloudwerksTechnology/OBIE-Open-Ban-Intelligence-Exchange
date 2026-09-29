@@ -90,8 +90,12 @@ port ends with a message that says what to do.
   that the walkthrough shows fails CI until the page shows the new output.
 - CI's packaging job takes about two minutes longer.
 - The sandbox needs Docker with the Compose plugin, and network access for
-  the first build. Podman and other runtimes are not tested; the script
-  names Docker's installation and rootless mode as the fix.
+  the first build. Only Docker Engine on Linux is tested; Docker Desktop
+  (macOS, Windows in WSL 2), rootless Docker and Podman are not, and the
+  walkthrough says so. The script names Docker's installation and rootless
+  mode as the fix. `.gitattributes` keeps the shell scripts LF in every
+  checkout, since Git for Windows' default `core.autocrlf` would break
+  them in the containers.
 - The consoles are reachable from the sandbox's own network, the stranger
   included, through the forwarders; the token still protects them. That is
   acceptable for a sandbox and does not apply to real nodes.

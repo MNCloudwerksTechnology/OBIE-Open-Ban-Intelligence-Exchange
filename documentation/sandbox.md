@@ -14,17 +14,19 @@ Nothing on your computer is blocked, at any step. Every node runs in
 nothing. The containers have no permission to change any firewall, and
 the sandbox never asks for root.
 
-Every command on this page is run by an automated test on every change to
-OBIE, and its output is compared with what this page shows. Only what
-changes from run to run differs in yours:
-[peer IDs](glossary.md#peer-id), event IDs, times and tokens.
+An automated test runs every `./sandbox` command on this page on every
+change to OBIE, and compares its output with what this page shows. Only
+what changes from run to run differs in yours:
+[peer IDs](glossary.md#peer-id), event IDs, times, latencies, container
+addresses and tokens.
 
 ## What you need
 
-- A computer with Linux, macOS or Windows, and
-  [Docker](https://docs.docker.com/get-started/get-docker/) with the
-  Compose plugin: Docker Engine on Linux, Docker Desktop elsewhere.
-  Rootless Docker works too.
+- A computer with [Docker](https://docs.docker.com/get-started/get-docker/)
+  and its Compose plugin. The sandbox is tested on Linux with Docker
+  Engine. Docker Desktop on macOS or Windows and rootless Docker should
+  work too, but nobody has tested them yet. On Windows, run the commands
+  below in WSL 2: `./sandbox` is a shell script.
 - A user who may use Docker. `docker compose version` must work without
   `sudo`.
 - `git`, to get OBIE's source code. The sandbox builds OBIE from it.
@@ -239,6 +241,20 @@ PREFIX      EXPIRES               REMAINING
 
 On a real server in enforce mode, this entry would drop every packet from
 1.2.3.4 in OBIE's own nftables table.
+
+node1 and node2 have the same two verdicts, so they block the address too.
+node1, for example:
+
+```sh
+./sandbox exec node1 obiectl enforced
+```
+
+```text
+Entries applied: 1
+
+PREFIX      EXPIRES               REMAINING
+1.2.3.4/32  2026-10-06T18:26:29Z  6d23h59m55s
+```
 
 **In the console:** node3's **Firewall** page,
 <http://127.0.0.1:9403/enforcement>, says **1 entry applied for 1
@@ -544,9 +560,10 @@ If a node does not start or connect, `./sandbox up` says which;
   observe mode: it decides and lists like the sandbox's nodes, but
   applies nothing, until you switch it to enforce mode.
 - **Blocking its own detections at once.** On a real server local
-  autoblock is on: the reporting node blocks at once, and a revocation
-  lifts the block on the other nodes, not on the one that still has its
-  own verdict.
+  autoblock is on: the node that detects an attack blocks the address at
+  once, without waiting for a second report, and keeps blocking it as
+  long as its own verdict lasts. Had node2 run like that, it would still
+  block 1.2.3.4 after node1 took its report back in step 6.
 - **Docker's own rules.** The sandbox's nodes never touch a firewall, but
   Docker itself adds the forwarding rules its container network and the
   published console ports need, as for any container, and removes them
@@ -555,12 +572,16 @@ If a node does not start or connect, `./sandbox up` says which;
 
 ## How this page is tested
 
-`make sandbox-check` runs every command on this page in order, against a
-sandbox of its own, and compares each output with the output shown here.
-It opens every console page this page links and checks that it shows what
-is set in bold, and after `./sandbox down` it checks that nothing of the
-sandbox is left. Continuous integration runs it on every change, so this
-page cannot go stale unnoticed ([ADR 0029](adr/0029-sandbox-and-checked-walkthrough.md)).
+`make sandbox-check` runs every `./sandbox` command on this page in order,
+against a sandbox of its own, and compares each output with the output
+shown here. It opens every console page this page links and checks that
+it shows what is set in bold, and after `./sandbox down` it checks that
+nothing of the sandbox is left. The messages under
+[When the sandbox does not start](#when-the-sandbox-does-not-start) are
+compared with what `./sandbox up` says when a stand-in for Docker reports
+each problem, or when a program holds a console port. Continuous
+integration runs both on every change, so this page cannot go stale
+unnoticed ([ADR 0029](adr/0029-sandbox-and-checked-walkthrough.md)).
 
 ## Where to go next
 

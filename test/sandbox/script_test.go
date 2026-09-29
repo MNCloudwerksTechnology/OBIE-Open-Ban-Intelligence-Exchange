@@ -271,6 +271,27 @@ func TestSandboxSeesATakenPortFirst(t *testing.T) {
 	}
 }
 
+// TestScriptsKeepLF checks that Git checks the sandbox's scripts out with
+// LF line endings, also with Git for Windows' default core.autocrlf: the
+// containers run them with busybox sh, which a CR breaks.
+func TestScriptsKeepLF(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	for _, name := range []string{"sandbox", "sandbox-init.sh"} {
+		path := filepath.ToSlash(filepath.Join("packaging", "sandbox", name))
+		cmd := exec.Command("git", "check-attr", "eol", "--", path) // #nosec G204 -- fixed repository paths.
+		cmd.Dir = repoRoot
+		out, err := cmd.Output()
+		if err != nil {
+			t.Skipf("not a Git checkout: %v", err)
+		}
+		if got, want := strings.TrimSpace(string(out)), path+": eol: lf"; got != want {
+			t.Errorf("git check-attr says %q, want %q: .gitattributes must keep %s LF", got, want, path)
+		}
+	}
+}
+
 var (
 	// sudoCall is sudo run as a command.
 	sudoCall = regexp.MustCompile(`(^|[;&|(]|\$\()\s*sudo\b`)

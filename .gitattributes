@@ -1,0 +1,5 @@
+# Shell scripts keep LF line endings in every checkout, also with Git for
+# Windows' default core.autocrlf: the sandbox and the lab copy their scripts
+# into Linux containers, where a CR breaks them.
+*.sh                    text eol=lf
+packaging/sandbox/sandbox text eol=lf
