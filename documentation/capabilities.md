@@ -29,7 +29,7 @@ means it shows what it would block and never blocks anything.
 | **See how the node is doing.** Health checks and metrics for your monitoring (Prometheus), and a Grafana dashboard. They are only reachable on the server itself unless you open them. | Supported | [Monitoring](operations/monitoring.md#metrics) |
 | **Keep an audit trail.** A log of every decision, override and report, in a format security tools (SIEM) read. | Off by default | [Audit log](operations/monitoring.md#audit-log) |
 | **Look into the node in a browser.** A web console shows the node's health, peers, decisions and verdicts, and lets you allow, block, report or withdraw after a confirmation. It listens only on the server itself, and only the node's operators can sign in. | Off by default | [Web console](operations/console.md) |
-| **Try it without touching a firewall.** Three nodes on a laptop, or the container image, show OBIE at work and block nothing real. | Observe only | [Three-node lab](../packaging/compose/README.md), [container image](operations/install.md#run-the-container-image) |
+| **Try it without touching a firewall.** A sandbox of four nodes on your computer walks you through reports, blocks, overrides and an untrusted node, step by step. It blocks nothing real, like the three-node lab and the container image. | Observe only | [Sandbox walkthrough](sandbox.md), [three-node lab](../packaging/compose/README.md), [container image](operations/install.md#run-the-container-image) |
 | **Keep your server running if OBIE fails.** OBIE is not in the path of your traffic. If it stops, existing blocks still end on time and Fail2Ban keeps working. | Supported | [FAQ](faq.md#what-happens-if-obie-crashes) |
 
 ## What it cannot do yet
@@ -69,7 +69,7 @@ a date. **No plan yet** means nobody has planned it.
 - **A Linux kernel with nftables**, only for blocking in enforce mode. The
   `nft` command is not needed. Blocking is tested on Linux 7.0, the
   kernel of the test machine.
-- **Docker**, only for the container image or the three-node lab.
+- **Docker**, only for the container image, the sandbox or the three-node lab.
 
 ### Privileges
 

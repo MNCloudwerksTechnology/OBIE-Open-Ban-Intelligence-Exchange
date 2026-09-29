@@ -8,6 +8,9 @@ what to block, and how you stay in control of it. The
 answer the rest. **Deciding whether it fits?**
 [What OBIE can and cannot do yet](documentation/capabilities.md) lists what
 this release does and does not do, what it needs and which risks remain.
+**Want to see it work first?** [Try OBIE in a sandbox](documentation/sandbox.md):
+four [nodes](documentation/glossary.md#node) on your own computer, step by
+step, and nothing is ever blocked.
 
 **Shared intelligence, sovereign enforcement.** OBIE lets servers you run
 tell each other which addresses attack them, and lets each server decide
@@ -112,8 +115,8 @@ The self-check says for everything that is not right what to do next
 ([Set up and check a node](documentation/operations/setup.md)). The
 [quick start](documentation/operations/quickstart.md) takes it from here:
 connect Fail2Ban, check it works and switch to enforcement. To
-try a three-node mesh on a laptop instead, run the
-[compose lab](packaging/compose/README.md).
+watch OBIE work on your own computer first, without touching any
+firewall, [try it in a sandbox](documentation/sandbox.md).
 
 ## Documentation
 
@@ -121,6 +124,7 @@ try a three-node mesh on a laptop instead, run the
 |-----|------|
 | What OBIE is and how it works, in plain language | [What is OBIE?](documentation/introduction.md) |
 | Whether OBIE fits your servers: what it can and cannot do, what it needs, the risks | [What OBIE can and cannot do yet](documentation/capabilities.md) |
+| Watching OBIE work on your own computer, step by step, without touching a firewall | [Try OBIE in a sandbox](documentation/sandbox.md) |
 | Can a peer lock me out? What is shared? What if it crashes? | [FAQ](documentation/faq.md) |
 | Every OBIE term in one or two sentences | [Glossary](documentation/glossary.md) |
 | First node, step by step | [Quick start](documentation/operations/quickstart.md) |
@@ -131,7 +135,7 @@ try a three-node mesh on a laptop instead, run the
 | Connecting to other nodes | [Federation](documentation/operations/federation.md) |
 | Day-2: metrics, audit log, upgrades, backup, uninstall | [Operations](documentation/operations/operations.md), [Monitoring](documentation/operations/monitoring.md) |
 | Looking into the node in a browser | [Web console](documentation/operations/console.md) |
-| Install options (tarball, container, lab) | [Installing and upgrading](documentation/operations/install.md) |
+| Install options (tarball, container, lab, sandbox) | [Installing and upgrading](documentation/operations/install.md) |
 | When something is wrong | [Troubleshooting](documentation/operations/troubleshooting.md) |
 | Fail2Ban and nftables | [Fail2Ban guide](documentation/guides/fail2ban.md), [nftables guide](documentation/guides/nftables.md) |
 | Risks and reporting a vulnerability | [SECURITY.md](SECURITY.md) |
@@ -150,6 +154,7 @@ make ci              # every check a change must pass
 make release VERSION=0.1.0   # reproducible tarballs, SBOMs, SHA256SUMS in dist/release/
 make image           # container image obie:<version>
 make lab-smoke       # three-node compose lab: start, check, remove
+make sandbox-check   # run the sandbox walkthrough and compare every output
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute. OBIE is

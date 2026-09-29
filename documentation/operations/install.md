@@ -1,12 +1,14 @@
 # Installing and upgrading OBIE
 
-OBIE ships in three forms (ADR 0017):
+OBIE ships in three forms (ADR 0017), and a sandbox to try it in
+(ADR 0029):
 
 | Form | For | Enforces with nftables |
 |------|-----|------------------------|
 | Release tarball + `install.sh` + systemd unit | production hosts | yes |
 | Container image | observe/dryrun [nodes](../glossary.md#node), Kubernetes, trying it out | no (dryrun) |
 | Compose lab (`packaging/compose`) | three nodes on a laptop in minutes | no (dryrun) |
+| Sandbox (`packaging/sandbox`) | watching OBIE work, guided step by step, with web consoles | no (dryrun) |
 
 New to OBIE? [What is OBIE?](../introduction.md) explains it in five
 minutes, and the [quick start](quickstart.md) walks through a first node
@@ -146,7 +148,10 @@ mesh (`mesh.bootstrap`, `trust.publishers`); keep `node.state_dir`,
 `admin.socket` and `admin.socket_group: nonroot`. Build it yourself with
 `make image` (tag `obie:<git describe>`).
 
-To try a mesh, start the [three-node lab](../../packaging/compose/README.md).
+To watch a mesh at work step by step, follow the
+[sandbox walkthrough](../sandbox.md); the
+[three-node lab](../../packaging/compose/README.md) is a plain mesh to
+experiment with.
 
 ## Upgrade
 
