@@ -639,7 +639,8 @@ cannot lock you out and that you know the way back.
 
 In [enforce mode](glossary.md#enforce-mode), the node blocks through its
 own table in the Linux firewall, [nftables](glossary.md#nftables), and
-never touches any other rule. Switch it on only once the review of step 9 looks right.
+never touches any other rule. Switch it on only once the review of step 9
+looks right.
 
 ### Protect your own access
 
