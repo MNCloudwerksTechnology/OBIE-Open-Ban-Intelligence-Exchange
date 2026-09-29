@@ -244,7 +244,7 @@ func writeSetup(program, path string, a setup.Answers, replace bool, stdout, std
 		var backup string
 		backup, err = setup.Write(path, data, setup.WriteOptions{Replace: replace, Group: env.group})
 		if err == nil {
-			_, _ = fmt.Fprintf(stdout, "\nWrote %s.\n", path)
+			_, _ = fmt.Fprintf(stdout, "Wrote %s.\n", path)
 			if backup != "" {
 				_, _ = fmt.Fprintf(stdout, "The previous file is kept as %s.\n", backup)
 			}

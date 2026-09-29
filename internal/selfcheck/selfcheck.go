@@ -43,6 +43,9 @@ func (s Status) rank() int {
 	}
 }
 
+// IDs are the IDs of the checks, in the order they run and are reported.
+var IDs = []string{"config", "identity", "admin", "node", "peers", "clock", "fail2ban", "firewall", "session"}
+
 // Check is the result of one check.
 type Check struct {
 	// ID names the check in machine-readable output; it never changes.

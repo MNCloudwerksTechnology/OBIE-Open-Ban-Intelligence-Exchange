@@ -56,11 +56,15 @@ sudo ./install.sh
 5. installs the Fail2Ban action as `/etc/fail2ban/action.d/obie.conf` if
    Fail2Ban is installed (see the [Fail2Ban guide](../guides/fail2ban.md)).
 
-It never starts obied. Review the configuration, then:
+It never starts obied. Write the configuration with the setup assistant,
+or review the installed one, then start the node and let it check itself
+([Set up and check a node](setup.md)):
 
 ```sh
+sudo obied setup
 sudo obied --config /etc/obie/obie.yaml --check-config
 sudo systemctl enable --now obied
+sudo obied self-check
 sudo usermod -aG obie "$USER"      # obiectl for your user (log in again)
 obiectl status
 ```

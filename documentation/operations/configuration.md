@@ -4,7 +4,9 @@
 --config <file>` for another). This page lists every key. The annotated
 [example configuration](../examples/obie.yaml), which `install.sh` installs
 as `/etc/obie/obie.yaml` and `/etc/obie/obie.yaml.example`, spells out the
-same keys with their defaults.
+same keys with their defaults. `obied setup` replaces it with a short file
+that sets only the keys its questions cover
+([Set up and check a node](setup.md)).
 
 A test (`TestConfigurationReferenceDocumentsEveryKey` in
 `internal/config`) keeps this page honest: every key of the configuration

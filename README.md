@@ -48,6 +48,10 @@ it with a production firewall, and start in
   only shows what it would block. In `enforce` mode it keeps the
   [nftables](documentation/guides/nftables.md) table `inet obie` exactly in
   line with its decisions, and never touches any other table.
+- **Helps you start.** `obied setup` asks the few questions that matter
+  and writes a commented configuration; `obied self-check` checks the
+  node and the host and says what to do about anything that is not right,
+  including an SSH session OBIE would not protect.
 - **Is operable.** Prometheus metrics, health endpoints, a JSON audit log
   of every decision for your SIEM, a
   [Grafana dashboard](documentation/operations/monitoring.md), static
@@ -95,9 +99,19 @@ tar -xzf obie-0.1.0-linux-amd64.tar.gz
 sudo ./obie-0.1.0-linux-amd64/install.sh
 ```
 
-The node is installed but not started, in observe mode. The
+The node is installed but not started, in observe mode. Answer a few
+questions to write its configuration, start it and let it check itself:
+
+```sh
+sudo obied setup
+sudo systemctl enable --now obied
+sudo obied self-check
+```
+
+The self-check says for everything that is not right what to do next
+([Set up and check a node](documentation/operations/setup.md)). The
 [quick start](documentation/operations/quickstart.md) takes it from here:
-start it, connect Fail2Ban, check it works and switch to enforcement. To
+connect Fail2Ban, check it works and switch to enforcement. To
 try a three-node mesh on a laptop instead, run the
 [compose lab](packaging/compose/README.md).
 
@@ -110,6 +124,7 @@ try a three-node mesh on a laptop instead, run the
 | Can a peer lock me out? What is shared? What if it crashes? | [FAQ](documentation/faq.md) |
 | Every OBIE term in one or two sentences | [Glossary](documentation/glossary.md) |
 | First node, step by step | [Quick start](documentation/operations/quickstart.md) |
+| Setting up a node with a few questions, and checking it | [Set up and check a node](documentation/operations/setup.md) |
 | Every configuration key | [Configuration reference](documentation/operations/configuration.md) |
 | Connecting to other nodes | [Federation](documentation/operations/federation.md) |
 | Day-2: metrics, audit log, upgrades, backup, uninstall | [Operations](documentation/operations/operations.md), [Monitoring](documentation/operations/monitoring.md) |

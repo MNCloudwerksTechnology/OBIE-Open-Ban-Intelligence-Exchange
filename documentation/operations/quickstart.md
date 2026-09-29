@@ -10,7 +10,7 @@ shows you, blocks attackers with nftables. Plan on half an hour. You need:
 - a console to the host that does not depend on its network (provider
   console, IPMI, KVM), in case you lock yourself out in step 5.
 
-The steps are: [install](#1-install), [start](#2-start-in-observe-mode) in
+The steps are: [install](#1-install), [set up and start](#2-set-up-and-start-in-observe-mode) in
 [observe mode](../glossary.md#observe-mode),
 [connect Fail2Ban](#3-connect-fail2ban), [verify](#4-verify),
 [enforce](#5-enforce). Connecting to other nodes comes afterwards, in
@@ -35,36 +35,43 @@ the configuration into `/etc/obie/obie.yaml`, the systemd unit and, as
 Fail2Ban is installed, the Fail2Ban action. It starts nothing. What it does
 in detail: [Installing and upgrading](install.md).
 
-## 2. Start in observe mode
+## 2. Set up and start in observe mode
 
-The installed configuration is the annotated
-[example](../examples/obie.yaml): every key at its default, `node.mode:
-observe`. In [observe mode](../glossary.md#observe-mode) the node decides
-and shows what it would block, but blocks nothing. Keep it that way for now;
-you only need to change something if port 4001 or 9464 is taken
-(`mesh.listen`, `metrics.listen`, see the [configuration
-reference](configuration.md)).
-
-It is worth turning on the audit log, which records every decision. Edit
-`/etc/obie/obie.yaml`:
-
-```yaml
-audit:
-  path: /var/log/obie/audit.jsonl
-```
-
-Check the file, start the node and ask it how it is:
+Let the setup assistant write the configuration. It asks five questions,
+explains each one and suggests a safe answer
+([what it asks](setup.md#set-up-the-node)):
 
 ```sh
-sudo obied --config /etc/obie/obie.yaml --check-config
+sudo obied setup
+```
+
+For this walkthrough, press Enter at every question to take the
+suggestion. The node then keeps its state in `/var/lib/obie`, records
+every decision in the audit log `/var/log/obie/audit.jsonl`, has no
+[peers](../glossary.md#peer) yet and starts in [observe mode](../glossary.md#observe-mode): it decides
+and shows what it would block, but blocks nothing. It also never blocks
+the address your SSH session comes from. The configuration `install.sh`
+installed is the unchanged example, so the assistant offers to replace it
+and keeps it as `/etc/obie/obie.yaml.bak`. You only need to change
+something by hand if port 4001 or 9464 is taken (`mesh.listen`,
+`metrics.listen`, see the [configuration reference](configuration.md)).
+
+Start the node and let it check itself:
+
+```sh
 sudo systemctl enable --now obied
+sudo obied self-check
 sudo obiectl status
 ```
 
-`--check-config` prints `obied: configuration /etc/obie/obie.yaml is valid`.
-`obiectl status` shows `Mode: OBSERVE`, `Ready: yes` and every subsystem
-`running`; `mesh` is `degraded: 0 peers connected` until you federate, which
-is fine. On its first start the node created its identity, an Ed25519 key in
+The self-check reports every check as `OK`, `WARNING` or `PROBLEM`, and
+says what to do next for each warning and problem
+([what it checks](setup.md#check-the-node)). On a new node there must be
+no problem; expect a warning for the peers, as the node works on its own
+until you federate, and for Fail2Ban until step 3. `obiectl status` shows
+`Mode: OBSERVE`, `Ready: yes` and every subsystem `running`; `mesh` is
+`degraded: 0 peers connected` until you federate, which is fine. On its
+first start the node created its identity, an Ed25519 key in
 `/var/lib/obie/node.key`. Its [peer ID](../glossary.md#peer-id) is how other
 nodes will know it:
 
@@ -123,7 +130,9 @@ exit code 1): …` must end with the refusal, `… is not a public address;
 OBIE never publishes internal or special-purpose addresses …`: the action
 reached `obied`. If it says `obied is not running` or `context deadline
 exceeded` instead, see
-[Troubleshooting](troubleshooting.md#fail2ban-reports-do-not-arrive).
+[Troubleshooting](troubleshooting.md#fail2ban-reports-do-not-arrive). The
+self-check reads the same log: its Fail2Ban line now names the jail and
+says that the last report reached the node and was refused as intended.
 
 After the next real ban, the address shows up as a verdict of this node
 and as a decision:
@@ -151,14 +160,17 @@ Before the node may touch the firewall in
 block. Loopback, private and link-local ranges, the node's own addresses and
 its bootstrap peers are always safe. Add everything else you cannot afford
 to lose: the networks you administer from, monitoring, your DNS resolvers
-and gateways, and the host's public address if it sits behind NAT. In
-`/etc/obie/obie.yaml`:
+and gateways, and the host's public address if it sits behind NAT. The
+file the assistant wrote, `/etc/obie/obie.yaml`, has the sections `node` and
+`allowlist` already: set the mode, add your networks next to the address of
+your SSH session in `cidrs`, and add the section `enforce`:
 
 ```yaml
 node:
   mode: enforce
 allowlist:
   cidrs:
+    - "85.10.3.20/32"   # your SSH session, added by obied setup
     - 198.51.100.0/24   # office and VPN
     - 192.0.2.53/32     # resolver
 enforce:
@@ -170,15 +182,19 @@ The backend is chosen at start, so restart the node:
 ```sh
 sudo obied --config /etc/obie/obie.yaml --check-config
 sudo systemctl restart obied
+sudo obied self-check
 sudo obiectl status
 sudo obiectl enforced
 sudo nft list table inet obie
 ```
 
-`obiectl status` now shows `Mode: ENFORCE`. `obiectl enforced` lists the
-addresses in the firewall, and `nft list table inet obie` shows them in the
-sets `obie_v4` and `obie_v6` of OBIE's own table. No other table is ever
-changed ([nftables guide](../guides/nftables.md)).
+The self-check's Firewall line must be `OK`. If the address of your SSH
+session is not protected, it reports a problem and ends with a banner that
+starts with `LOCKOUT RISK`: add the address to `allowlist.cidrs` before
+you go on. `obiectl status` now shows `Mode: ENFORCE`. `obiectl enforced`
+lists the addresses in the firewall, and `nft list table inet obie` shows
+them in the sets `obie_v4` and `obie_v6` of OBIE's own table. No other
+table is ever changed ([nftables guide](../guides/nftables.md)).
 
 To stop enforcing, set `node.mode: observe` again and reload; the node
 removes every block at once:
@@ -223,6 +239,8 @@ a test, file or CI step that does not exist.
 | `sha256sum -c --ignore-missing SHA256SUMS` | CI step `quickstart steps on the release tarball` |
 | `tar -xzf obie-` | CI step `quickstart steps on the release tarball` |
 | `./obie-0.1.0-linux-amd64/install.sh` | `TestInstallIsIdempotent`, CI step `quickstart steps on the release tarball` |
+| `obied setup` | `TestSetupInteractiveMatchesNonInteractive`, `TestSetupEnterTakesSafeDefaults`, CI step `quickstart steps on the release tarball` |
+| `obied self-check` | `TestSelfCheckBeforeFirstStart`, `TestSelfCheckAgainstInProcessDaemon` |
 | `obied --config /etc/obie/obie.yaml --check-config` | `TestRunDaemonCheckConfig`, `TestExampleConfigPassesCheckConfig`, CI step `quickstart steps on the release tarball` |
 | `systemctl enable --now obied` | `make check-unit` (the unit passes `systemd-analyze verify`), `TestUnitSandbox`, `TestRunDaemonPersistsIdentity` |
 | `systemctl stop obied` | `make check-unit`, `TestRunDaemonStopsOnSIGTERM` |

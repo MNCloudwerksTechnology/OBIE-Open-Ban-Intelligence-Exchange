@@ -107,8 +107,10 @@ func TestInstallIsIdempotent(t *testing.T) {
 	if got := readFile(t, filepath.Join(root, "etc/systemd/system/obied.service")); got != readFile(t, "systemd/obied.service") {
 		t.Error("the installed unit differs from packaging/systemd/obied.service with the default PREFIX")
 	}
-	if !strings.Contains(out, "systemctl enable --now obied") {
-		t.Errorf("output does not name the next steps:\n%s", out)
+	for _, step := range []string{"/usr/local/bin/obied setup", "systemctl enable --now obied", "/usr/local/bin/obied self-check"} {
+		if !strings.Contains(out, step) {
+			t.Errorf("output does not name the next step %q:\n%s", step, out)
+		}
 	}
 
 	// An operator's configuration survives a second run (an upgrade).

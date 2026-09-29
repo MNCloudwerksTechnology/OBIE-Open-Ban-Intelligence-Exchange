@@ -50,6 +50,17 @@ The first release, v0.1.0 "Stable Base".
 - **Observability.** Prometheus metrics, `/healthz` and `/readyz`, a
   Grafana dashboard, and a JSON-lines decision audit log with Elastic
   Common Schema fields ([monitoring](documentation/operations/monitoring.md)).
+- **Setup assistant and self-check.** `obied setup` asks where the node
+  keeps its state and audit log, which peers it connects to and how much
+  it trusts them, whether it starts in observe mode and which addresses it
+  must never block, and writes a short, commented configuration; it never
+  replaces an existing one without asking and keeps a backup.
+  `--non-interactive` takes the same answers as flags. `obied self-check`
+  checks the configuration, identity, admin access, node, peers, clock,
+  Fail2Ban, firewall and the operator's SSH session address, reports each
+  as OK, warning or problem with the next step, as text or JSON, and exits
+  1 on a problem ([guide](documentation/operations/setup.md),
+  [ADR 0027](documentation/adr/0027-setup-assistant-and-self-check.md)).
 - **Admin API and CLI.** A local Unix-socket API restricted to root, the
   service user and the `obie` group, and `obiectl` on top of it
   (`status`, `peers` and the commands above).

@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -177,7 +178,9 @@ func TestReportSumsUp(t *testing.T) {
 	}
 	counts := map[Status]int{}
 	worst := OK
+	var ids []string
 	for _, c := range report.Checks {
+		ids = append(ids, c.ID)
 		counts[c.Status]++
 		if c.Status.rank() > worst.rank() {
 			worst = c.Status
@@ -193,6 +196,9 @@ func TestReportSumsUp(t *testing.T) {
 	}
 	if report.Status != worst {
 		t.Errorf("status = %s, want %s", report.Status, worst)
+	}
+	if !slices.Equal(ids, IDs) {
+		t.Errorf("checks = %q, want %q", ids, IDs)
 	}
 }
 

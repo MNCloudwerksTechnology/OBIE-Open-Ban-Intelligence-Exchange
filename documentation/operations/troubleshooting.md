@@ -1,6 +1,17 @@
 # Troubleshooting
 
-Start with the [node's](../glossary.md#node) own view, then its log:
+Start with the self-check. It looks at the configuration, the identity,
+admin access, the [node](../glossary.md#node) itself, its
+[peers](../glossary.md#peer), the clock,
+Fail2Ban, the firewall and your SSH session, and names the next step for
+everything that is not right
+([Set up and check a node](setup.md#check-the-node)):
+
+```sh
+sudo obied self-check
+```
+
+Then look at the node's own view and its log:
 
 ```sh
 sudo obiectl status
