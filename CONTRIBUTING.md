@@ -302,9 +302,11 @@ Before you tag:
 2. Measure again what the page's requirements rest on, and record the
    results in
    [performance.md](documentation/operations/performance.md): `make
-   resources` for a node's memory, processor and disk, and `make
-   fail2ban-versions` (needs Docker) for the Fail2Ban versions the action
-   works with, besides the fuzzing and the soak test above.
+   resources RESOURCESVERDICTS=10000,100000,1000000` (about 90 minutes)
+   for a node's memory, processor and disk up to the verdicts it keeps by
+   default, and `make fail2ban-versions` (needs Docker) for the Fail2Ban
+   versions the action works with, besides the fuzzing and the soak test
+   above.
 3. Set the new version in the install commands of the README and the
    [quick start](documentation/operations/quickstart.md), and turn
    `[Unreleased]` in the [changelog](CHANGELOG.md) into the release.

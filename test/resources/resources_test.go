@@ -90,8 +90,9 @@ type node struct {
 // the phase), its CPU time as a share of one CPU, and the disk its state
 // directory and audit log take. The CPU time of a load phase is measured
 // over its last -resources.window only, because it grows with the
-// verdicts A holds. A runs in enforce mode with the dryrun backend, so it
-// keeps every block it decides without a firewall.
+// verdicts A holds. If A cannot keep up and loses events, the phase says
+// how many. A runs in enforce mode with the dryrun backend, so it keeps
+// every block it decides without a firewall.
 func TestResources(t *testing.T) {
 	targets, err := parseTargets(*verdicts)
 	if err != nil {
@@ -127,18 +128,34 @@ func TestResources(t *testing.T) {
 		// The last addresses, sent in the window, are the measured ones.
 		want := (target + 1) / 2
 		measured := max(sent, want-int(*rate*window.Seconds()))
+		lost := 0.0
 		for _, part := range [][2]int{{sent, measured}, {measured, want}} {
-			if part[0] == measured {
+			inWindow := part[0] == measured
+			if inWindow {
 				phase.startCPU(t, a)
 			}
 			accepted := metricNow(t, a, acceptedEvents)
 			if err := sendLoad(publishers, part[0], part[1], *rate); err != nil {
 				t.Fatal(err)
 			}
-			awaitAccepted(t, a, accepted+float64(2*(part[1]-part[0])))
+			// The window ends when A took the last event or, if it loses
+			// events, when the load ends: waiting for events that never
+			// arrive is not load.
+			if inWindow {
+				phase.stopCPU(t, a)
+			}
+			partLost := awaitAccepted(t, a, accepted+float64(2*(part[1]-part[0])))
+			if inWindow && partLost == 0 {
+				phase.stopCPU(t, a)
+			}
+			lost += partLost
 		}
 		sent = want
-		rows = append(rows, phase.end(t, a, fmt.Sprintf("receiving %g verdicts/s", 2**rate)))
+		name := fmt.Sprintf("receiving %g verdicts/s", 2**rate)
+		if lost > 0 {
+			name += fmt.Sprintf(", %.0f of them lost", lost)
+		}
+		rows = append(rows, phase.end(t, a, name))
 	}
 
 	phase = startPhase(t, a)
@@ -423,8 +440,11 @@ func addrAt(base netip.Addr, i int) string {
 	return netip.AddrFrom4(b).String()
 }
 
-// awaitAccepted waits until a accepted want events from its peers.
-func awaitAccepted(t *testing.T, a *node, want float64) {
+// awaitAccepted waits until a accepted want events from its peers and
+// returns how many it lost: those it has not accepted after drainBound. A
+// node whose processor cannot keep up loses events, because its peers drop
+// what it does not take in time.
+func awaitAccepted(t *testing.T, a *node, want float64) (lost float64) {
 	t.Helper()
 	err := poll(drainBound, func(ctx context.Context) error {
 		got, err := a.metric(ctx, acceptedEvents)
@@ -433,19 +453,26 @@ func awaitAccepted(t *testing.T, a *node, want float64) {
 		}
 		return err
 	})
-	if err != nil {
-		t.Fatalf("node %s: %v", a.name, err)
+	if err == nil {
+		return 0
 	}
+	// The last poll may have failed to read the metric: read it once more.
+	lost = max(0, want-metricNow(t, a, acceptedEvents))
+	if lost > 0 {
+		t.Logf("node %s: %v after %s: %.0f events lost", a.name, err, drainBound, lost)
+	}
+	return lost
 }
 
 // acceptedEvents counts the events a node accepted from its peers.
 const acceptedEvents = `obie_events_received_total{outcome="accepted"}`
 
 // phase is a measured phase: when its CPU time is measured from, and that
-// CPU time.
+// CPU time; and, if the measurement stopped before the phase's end, when
+// and at what CPU time.
 type phase struct {
-	at  time.Time
-	cpu time.Duration
+	at, until time.Time
+	cpu, used time.Duration
 }
 
 // startPhase resets the measured node's peak RSS and starts measuring its
@@ -469,6 +496,17 @@ func (p *phase) startCPU(t *testing.T, a *node) {
 		t.Fatal(err)
 	}
 	p.at, p.cpu = time.Now(), cpu
+	p.until = time.Time{}
+}
+
+// stopCPU ends the measurement of the phase's CPU time now.
+func (p *phase) stopCPU(t *testing.T, a *node) {
+	t.Helper()
+	cpu, err := cpuTime(a.cmd.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.until, p.used = time.Now(), cpu
 }
 
 // row is the measurement of one phase.
@@ -483,12 +521,12 @@ type row struct {
 // end measures the node at the end of the phase.
 func (p *phase) end(t *testing.T, a *node, name string) row {
 	t.Helper()
-	pid := a.cmd.Process.Pid
-	cpu, err := cpuTime(pid)
-	if err != nil {
-		t.Fatal(err)
+	if p.until.IsZero() {
+		p.stopCPU(t, a)
 	}
-	r := row{phase: name, cpu: float64(cpu-p.cpu) / float64(time.Since(p.at))}
+	r := row{phase: name, cpu: float64(p.used-p.cpu) / float64(p.until.Sub(p.at))}
+	pid := a.cmd.Process.Pid
+	var err error
 	if r.rss, r.peak, err = memory(pid); err != nil {
 		t.Fatal(err)
 	}
