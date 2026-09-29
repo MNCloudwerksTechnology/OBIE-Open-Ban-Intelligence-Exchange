@@ -155,6 +155,7 @@ make release VERSION=0.1.0   # reproducible tarballs, SBOMs, SHA256SUMS in dist/
 make image           # container image obie:<version>
 make lab-smoke       # three-node compose lab: start, check, remove
 make sandbox-check   # run the sandbox walkthrough and compare every output
+make tutorial-check  # run the getting-started tutorial on a systemd host in a container
 ```
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how to contribute. OBIE is

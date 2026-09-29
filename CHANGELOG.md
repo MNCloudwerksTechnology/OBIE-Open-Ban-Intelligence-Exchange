@@ -192,6 +192,23 @@ The first release, v0.1.0 "Stable Base".
   web console, with the output of every step. `make sandbox-check` runs
   the walkthrough in CI and compares every output with the page
   ([ADR 0029](documentation/adr/0029-sandbox-and-checked-walkthrough.md)).
+- **Getting-started tutorial.** [Get started with OBIE](documentation/getting-started.md)
+  takes a first-time installer from nothing to a working node on a real
+  server in ten steps, with no choice to make on the way: requirements,
+  installation, the setup assistant, observe mode, the self-check,
+  Fail2Ban, the first verdict, a peer, what would be blocked and,
+  optionally, enforcement, after protecting the reader's own access and
+  practising the way back. Each step says what it is for, shows the
+  expected output and where to turn when it differs. Separate sections
+  cover the container image and a server without Fail2Ban. It replaces
+  the quick start, and `obied setup` and the self-check point to it.
+  `make tutorial-check` runs every command of the page in CI, on Ubuntu
+  24.04 with systemd, Fail2Ban, OpenSSH and nftables in a container,
+  against the release built from the change, and compares every output
+  with the page
+  ([ADR 0030](documentation/adr/0030-getting-started-tutorial-checked-on-a-systemd-host.md)).
+  Connecting Fail2Ban restarts it, since `fail2ban-client reload` does not
+  add the action to a running jail.
 - **Testing.** An end-to-end test of report → block under quorum → revoke
   across several nodes, with an nftables variant in network namespaces.
   `make resources` measures one node's memory, CPU and disk in a mesh of
@@ -211,8 +228,6 @@ The first release, v0.1.0 "Stable Base".
   line with the default configuration, the threat model and the release.
   The [Fail2Ban guide](documentation/guides/fail2ban.md) now requires
   Fail2Ban 0.11: 0.10 does not pass the ban time to the action. A
-  [quick start](documentation/operations/quickstart.md)
-  whose every command is mapped to a test, a
   [configuration reference](documentation/operations/configuration.md)
   tested against the code, [federation](documentation/operations/federation.md),
   [operations](documentation/operations/operations.md) and
