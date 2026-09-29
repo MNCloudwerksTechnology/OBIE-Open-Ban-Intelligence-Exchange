@@ -145,13 +145,27 @@ The first release, v0.1.0 "Stable Base".
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
   hardened systemd unit, a distroless container image, and a three-node
   compose lab with a smoke test ([install](documentation/operations/install.md)).
+  `make release` refuses a final version that the capability overview
+  does not describe.
 - **Testing.** An end-to-end test of report → block under quorum → revoke
   across several nodes, with an nftables variant in network namespaces.
+  `make resources` measures one node's memory, CPU and disk in a mesh of
+  three `obied` processes; `make fail2ban-versions` sends a real ban and
+  unban through the Fail2Ban action with the Fail2Ban of current
+  distributions ([performance](documentation/operations/performance.md)).
 - **Documentation.** A plain-language introduction,
   [What is OBIE?](documentation/introduction.md), with a diagram of one
   attack from detection to firewall; an [FAQ](documentation/faq.md) on
   the fears that stop adoption; a [glossary](documentation/glossary.md)
-  that every guide links on first use. A
+  that every guide links on first use. For evaluators,
+  [What OBIE can and cannot do yet](documentation/capabilities.md): what
+  this release does (off-by-default features labelled as such), what it
+  does not do yet and whether that is planned, what it needs to run,
+  including measured memory, processor and disk use, the remaining risks,
+  and eight situations answered with yes, no or not yet; tests keep it in
+  line with the default configuration, the threat model and the release.
+  The [Fail2Ban guide](documentation/guides/fail2ban.md) now requires
+  Fail2Ban 0.11: 0.10 does not pass the ban time to the action. A
   [quick start](documentation/operations/quickstart.md)
   whose every command is mapped to a test, a
   [configuration reference](documentation/operations/configuration.md)

@@ -47,8 +47,13 @@ obiectl --socket /run/obie/obie.sock --timeout 5s report --ip <ip> \
 
 ## Requirements
 
-- Fail2Ban 0.10 or newer. Its actions run as root, which may use the admin
-  socket.
+- Fail2Ban 0.11 or newer. Its actions run as root, which may use the admin
+  socket. `make fail2ban-versions` sends a real ban and unban through the
+  action with the Fail2Ban of current distributions; the versions it
+  passed are listed in
+  [performance.md](../operations/performance.md#fail2ban-versions).
+  Fail2Ban 0.10 reports bans as well, but does not pass the ban time to the
+  action: the verdict then lives for `decision.default_ttl` (7 days).
 - `obied` running on the same host, and `obiectl` on Fail2Ban's `PATH`
   (usually `/usr/local/bin` or `/usr/bin`). Otherwise set the action's
   `obiectl` parameter to the absolute path.

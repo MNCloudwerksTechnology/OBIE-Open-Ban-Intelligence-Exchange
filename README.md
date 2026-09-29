@@ -5,7 +5,9 @@
 background needed. It explains what OBIE does, how your server decides
 what to block, and how you stay in control of it. The
 [FAQ](documentation/faq.md) and the [glossary](documentation/glossary.md)
-answer the rest.
+answer the rest. **Deciding whether it fits?**
+[What OBIE can and cannot do yet](documentation/capabilities.md) lists what
+this release does and does not do, what it needs and which risks remain.
 
 **Shared intelligence, sovereign enforcement.** OBIE lets servers you run
 tell each other which addresses attack them, and lets each server decide
@@ -74,7 +76,9 @@ it with a production firewall, and start in
 - **Linux only, nftables only.** No eBPF, iptables-legacy, BSD or Windows
   enforcement. The container image does not drive nftables.
 
-The [whitepaper](documentation/whitepaper.md) describes where OBIE is
+[What OBIE can and cannot do yet](documentation/capabilities.md) lists
+every gap, whether it is planned, and what OBIE needs to run. The
+[whitepaper](documentation/whitepaper.md) describes where OBIE is
 heading; [ARCHITECTURE.md](ARCHITECTURE.md#deviations-from-the-whitepaper)
 lists how v0.1 differs from it.
 
@@ -102,6 +106,7 @@ try a three-node mesh on a laptop instead, run the
 | For | Read |
 |-----|------|
 | What OBIE is and how it works, in plain language | [What is OBIE?](documentation/introduction.md) |
+| Whether OBIE fits your servers: what it can and cannot do, what it needs, the risks | [What OBIE can and cannot do yet](documentation/capabilities.md) |
 | Can a peer lock me out? What is shared? What if it crashes? | [FAQ](documentation/faq.md) |
 | Every OBIE term in one or two sentences | [Glossary](documentation/glossary.md) |
 | First node, step by step | [Quick start](documentation/operations/quickstart.md) |

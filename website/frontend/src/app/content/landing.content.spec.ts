@@ -122,10 +122,20 @@ describe('Landing page content', () => {
     expect(content.footer.links[0]).toEqual({ label: 'What is OBIE?', href: LINKS.introduction });
   });
 
-  it('links the footer to GitHub, introduction, spec, security policy, legal pages and licence', () => {
+  it('links the capability overview from the status section and the footer', () => {
+    expect(LINKS.capabilities).toBe(`${REPOSITORY_URL}/blob/develop/documentation/capabilities.md`);
+    expect(content.status.details.href).toBe(LINKS.capabilities);
+    expect(content.footer.links[1]).toEqual({
+      label: 'What OBIE can and cannot do',
+      href: LINKS.capabilities,
+    });
+  });
+
+  it('links the footer to GitHub, introduction, capabilities, spec, security policy, legal pages and licence', () => {
     expect(content.footer.github).toEqual({ label: 'View on GitHub', href: LINKS.repository });
     expect(content.footer.links.map((link) => link.href)).toEqual([
       LINKS.introduction,
+      LINKS.capabilities,
       LINKS.spec,
       LINKS.securityPolicy,
       LINKS.impressum,
@@ -221,6 +231,7 @@ describe('Landing page content', () => {
       .map((href) => href.slice(prefix.length).split('#')[0]);
     expect(files).toContain('SECURITY.md');
     expect(files).toContain('documentation/introduction.md');
+    expect(files).toContain('documentation/capabilities.md');
     for (const file of files) {
       expect(existsSync(resolve(repoRoot, file)), file).toBe(true);
     }

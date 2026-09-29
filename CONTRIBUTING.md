@@ -70,9 +70,8 @@ is a byte-identical copy for the public GitHub mirror — change both together;
 `.gitea/workflows/release.yml` (again with a byte-identical GitHub copy)
 runs only when a `v*` tag is pushed: it runs `make ci`, builds the release,
 pushes the multi-arch image and then attaches the tarballs, SBOMs and
-`SHA256SUMS` to the forge's release. To release, tag the merged commit on `main`
-(`git tag -a v0.1.0 -m "OBIE 0.1.0" && git push origin v0.1.0`); see
-[ADR 0017](documentation/adr/0017-packaging-and-state-format.md).
+`SHA256SUMS` to the forge's release. How to release is described under
+[Releasing](#releasing).
 
 `.gitea/workflows/website-release.yml` (byte-identical GitHub copy) runs
 only when a `website-v*` tag is pushed: it runs `make -C website ci` and the
@@ -288,6 +287,35 @@ make soak SOAKTIME=15m SOAKRATE=100
 Record the results of a full run in
 [`documentation/operations/performance.md`](documentation/operations/performance.md).
 
+## Releasing
+
+Every release also updates what evaluators read before they install OBIE.
+Before you tag:
+
+1. Bring [What OBIE can and cannot do yet](documentation/capabilities.md)
+   up to date: the version at the top, every status and plan, the
+   requirements and the remaining risks. `make release` refuses to build a
+   final version the page does not name
+   (`TestReleaseRefusesStaleCapabilities`), and
+   `TestCapabilitiesDescribeCurrentRelease` keeps the page on the release
+   the README installs.
+2. Measure again what the page's requirements rest on, and record the
+   results in
+   [performance.md](documentation/operations/performance.md): `make
+   resources RESOURCESVERDICTS=10000,100000,1000000` (about 90 minutes)
+   for a node's memory, processor and disk up to the verdicts it keeps by
+   default, and `make fail2ban-versions` (needs Docker) for the Fail2Ban
+   versions the action works with, besides the fuzzing and the soak test
+   above.
+3. Set the new version in the install commands of the README and the
+   [quick start](documentation/operations/quickstart.md), and turn
+   `[Unreleased]` in the [changelog](CHANGELOG.md) into the release.
+
+Then tag the merged commit on `main`
+(`git tag -a v0.1.0 -m "OBIE 0.1.0" && git push origin v0.1.0`); the
+release workflow builds and publishes it (see
+[ADR 0017](documentation/adr/0017-packaging-and-state-format.md)).
+
 ## Documentation
 
 - Newcomers start at [What is OBIE?](documentation/introduction.md). Keep
@@ -305,6 +333,12 @@ Record the results of a full run in
   `TestGuidesLinkGlossaryOnFirstUse` the first use of every term in
   `requiredTerms`.
 - Diagrams have a text alternative and do not rely on colour alone.
+- [What OBIE can and cannot do yet](documentation/capabilities.md) is the
+  evaluator's overview. Update it with every change that adds, removes or
+  switches on or off something it lists. `test/docs/capabilities_test.go`
+  checks it: a status follows `config.Default()`, a plan links where it is
+  planned, every threat of the threat model is summarised, and every
+  sentence stays short.
 - Relative links and their anchors must resolve
   (`TestRelativeLinksResolve`).
 
