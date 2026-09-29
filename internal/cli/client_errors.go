@@ -116,8 +116,17 @@ func protectedProblem(msg string) problem {
 	if strings.Contains(msg, "allow-listed") {
 		p.next = append(p.next, "if the address should not be protected, remove it from allowlist.cidrs and reload: sudo systemctl reload obied")
 	}
+	for _, r := range documentationRanges {
+		if strings.Contains(msg, "special-purpose range "+r) {
+			p.next = []string{"this address is reserved for examples, like those in the help; report the attacking address from your log instead"}
+		}
+	}
 	return p
 }
+
+// documentationRanges are reserved for examples (RFC 5737, RFC 3849): an
+// address in them was most likely copied from an example.
+var documentationRanges = []string{"192.0.2.0/24", "198.51.100.0/24", "203.0.113.0/24", "2001:db8::/32"}
 
 // commandOf returns the command of program, e.g. "status" for "obiectl
 // status".

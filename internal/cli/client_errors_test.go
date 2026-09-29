@@ -77,6 +77,11 @@ func TestClientProblems(t *testing.T) {
 				"OBIE never publishes internal or special-purpose addresses"),
 			id: "address-protected", what: "nothing was reported: ipv4:10.0.0.1 is not a public address: 10.0.0.1/32 overlaps special-purpose range 10.0.0.0/8",
 			why: "OBIE never reports private", next: []string{"sudo obiectl explain <address> shows the rule that protects it"}},
+		{name: "address from an example", program: "obiectl report", socket: stale,
+			err: api(http.StatusUnprocessableEntity, "refused: ipv4:203.0.113.7 is not a public address: 203.0.113.7/32 overlaps special-purpose range 203.0.113.0/24; "+
+				"OBIE never publishes internal or special-purpose addresses"),
+			id: "address-protected", what: "nothing was reported: ipv4:203.0.113.7 is not a public address",
+			why: "OBIE never reports private", next: []string{"reserved for examples", "the attacking address from your log"}},
 		{name: "allow-listed", program: "obiectl report", socket: stale,
 			err: api(http.StatusUnprocessableEntity, "refused: ipv4:85.20.0.1 overlaps the allow-listed network 85.20.0.0/16 (allowlist.cidrs); allow-listed addresses are never reported"),
 			id:  "address-protected", what: "nothing was reported: ipv4:85.20.0.1 overlaps the allow-listed network 85.20.0.0/16 (allowlist.cidrs)",
