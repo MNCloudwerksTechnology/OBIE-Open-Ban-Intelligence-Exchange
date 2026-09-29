@@ -93,8 +93,15 @@ func (r *run) checkNode() Check {
 		}
 		return c
 	case errors.Is(err, admin.ErrDaemonNotRunning):
-		if started, known := r.startedIfConfigured(); known && !started {
+		started, known := r.startedIfConfigured()
+		switch {
+		case known && !started:
 			return newCheck(id, name, warn("the node has not been started yet", "start it: sudo systemctl enable --now obied"))
+		case !known && r.env.Euid() != 0:
+			// Stopped is a problem only after the first start, which this
+			// user cannot see.
+			return newCheck(id, name, warn(fmt.Sprintf("the node is not running, and whether it has run before cannot be told as user %s", r.me()),
+				asRoot+"; to start the node: sudo systemctl enable --now obied"))
 		}
 		return newCheck(id, name, problem(fmt.Sprintf("the node is not running: nothing answers on %s", r.socket),
 			"start it: sudo systemctl start obied; if it stops again, see why: sudo journalctl -u obied -n 20"))
@@ -152,13 +159,24 @@ type peerProbe struct {
 func (r *run) checkPeers() Check {
 	const id, name = "peers", "Peers"
 	if r.cfg == nil {
-		return notChecked(id, name)
+		return r.notChecked(id, name)
 	}
-	bootstrap, publishers := r.cfg.Mesh.Bootstrap, r.cfg.Trust.Publishers
+	// A shared bootstrap list may name this node, which the node skips.
+	var bootstrap []string
+	var self []finding
+	selfID := r.selfPeerID()
+	for _, addr := range r.cfg.Mesh.Bootstrap {
+		if selfID != "" && peerIDOf(addr) == selfID {
+			self = append(self, ok(fmt.Sprintf("mesh.bootstrap names this node itself at %s, which the node skips", addr)))
+			continue
+		}
+		bootstrap = append(bootstrap, addr)
+	}
+	publishers := r.cfg.Trust.Publishers
 	if len(bootstrap) == 0 && len(publishers) == 0 {
-		return newCheck(id, name, warn("stand-alone node: no peers are configured, so the node acts only on what this server detects",
+		return newCheck(id, name, append([]finding{warn("stand-alone node: no peers are configured, so the node acts only on what this server detects",
 			"if that is what you want, there is nothing to do; to exchange verdicts with other nodes, run sudo obied setup again "+
-				"or see documentation/operations/federation.md"))
+				"or see documentation/operations/federation.md")}, self...)...)
 	}
 	connected := map[string]bool{}
 	if r.running() {
@@ -185,7 +203,32 @@ func (r *run) checkPeers() Check {
 	if r.denied() {
 		findings = append(findings, r.cannotAsk("which peers are connected"))
 	}
-	return newCheck(id, name, findings...)
+	return newCheck(id, name, append(findings, self...)...)
+}
+
+// selfPeerID returns this node's peer ID: as the running node tells it, or
+// else as the identity check read it from the key; "" if neither could.
+func (r *run) selfPeerID() string {
+	if r.running() {
+		ctx, cancel := context.WithTimeout(r.ctx, callTimeout)
+		defer cancel()
+		if id, err := r.node.Identity(ctx); err == nil {
+			return id.PeerID
+		}
+	}
+	return r.keyPeerID
+}
+
+// peerIDOf returns the peer ID at the end of a bootstrap address, or "".
+func peerIDOf(addr string) string {
+	m, err := ma.NewMultiaddr(addr)
+	if err != nil {
+		return ""
+	}
+	if _, last := ma.SplitLast(m); last != nil && last.Code() == ma.P_P2P {
+		return last.Value()
+	}
+	return ""
 }
 
 // publishersOnly judges trusted peers when mesh.bootstrap lists none: they
@@ -220,12 +263,7 @@ func (r *run) probePeers(bootstrap []string, publishers []config.Publisher) []pe
 	probes := make([]peerProbe, len(bootstrap))
 	var wg sync.WaitGroup
 	for i, addr := range bootstrap {
-		p := peerProbe{addr: addr}
-		if m, err := ma.NewMultiaddr(addr); err == nil {
-			if _, last := ma.SplitLast(m); last != nil {
-				p.peerID = last.Value()
-			}
-		}
+		p := peerProbe{addr: addr, peerID: peerIDOf(addr)}
 		p.label = names[p.peerID]
 		if p.label == "" {
 			p.label = p.peerID
@@ -294,14 +332,12 @@ func (r *run) peersSummary(probes []peerProbe, connected map[string]bool) findin
 		}
 	}
 	text := fmt.Sprintf("%d of %s in mesh.bootstrap connected; %d connected in all", n, plural(len(probes), "peer"), len(connected))
-	switch n {
-	case len(probes):
+	if n == len(probes) {
 		return ok(text)
-	case 0:
-		return problem(text, nextReach)
-	default:
-		return warn(text, nextReach)
 	}
+	// The node works without its peers, and dials them in the background,
+	// also right after its start: a warning, as for trusted peers.
+	return warn(text, nextReach)
 }
 
 // peerFinding describes one bootstrap peer.

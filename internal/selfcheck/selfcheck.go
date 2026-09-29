@@ -7,6 +7,8 @@ package selfcheck
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"net"
 	"net/netip"
 	"os/user"
@@ -179,6 +181,9 @@ type run struct {
 	node      NodeClient
 	status    *admin.StatusResponse
 	statusErr error
+	// keyPeerID is the peer ID of the node key, once the identity check
+	// read it.
+	keyPeerID string
 	// lockout is the operator's session address when it is not protected;
 	// enforcing says whether the node blocks.
 	lockout   netip.Addr
@@ -226,9 +231,18 @@ func (r *run) me() string { return r.env.UserName(r.env.Euid()) }
 // asRoot is the next step when the check lacks the privileges to look.
 const asRoot = "run the self-check as root: sudo obied self-check"
 
+// cfgDenied reports whether the configuration, or a file it names, is
+// closed to the user the check runs as, who is not root.
+func (r *run) cfgDenied() bool {
+	return r.env.Euid() != 0 && errors.Is(r.cfgErr, fs.ErrPermission)
+}
+
 // notChecked is the result of a check that needs the configuration when
 // it could not be loaded.
-func notChecked(id, name string) Check {
-	return newCheck(id, name, warn("not checked: the configuration could not be loaded",
-		"fix the configuration first, then run the self-check again"))
+func (r *run) notChecked(id, name string) Check {
+	next := "fix the configuration first, then run the self-check again"
+	if r.cfgDenied() {
+		next = asRoot
+	}
+	return newCheck(id, name, warn("not checked: the configuration could not be loaded", next))
 }

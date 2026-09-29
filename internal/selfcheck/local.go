@@ -26,8 +26,12 @@ func (r *run) checkConfig() Check {
 	case errors.Is(err, fs.ErrNotExist) && r.cfg == nil:
 		return newCheck(id, name, problem(fmt.Sprintf("there is no configuration file at %s", path),
 			"create one: sudo obied setup"))
-	case errors.Is(err, fs.ErrPermission) && r.cfg == nil:
-		return newCheck(id, name, problem(fmt.Sprintf("cannot read %s as user %s", path, r.me()), asRoot))
+	case r.cfgDenied() && r.cfg == nil:
+		// install.sh makes the file root:obie 0640: closed to others by design.
+		return newCheck(id, name, warn(fmt.Sprintf("cannot read %s as user %s", path, r.me()), asRoot))
+	case r.cfgDenied():
+		return newCheck(id, name, warn(fmt.Sprintf("%s is valid, but its allow-list files cannot be read as user %s: %v",
+			path, r.me(), err), asRoot))
 	case errors.As(err, &cfgErr):
 		c := newCheck(id, name, problem(fmt.Sprintf("%s is invalid: %s", path, plural(len(cfgErr.Problems), "problem")),
 			fmt.Sprintf("fix the keys named here, then check the file: sudo obied --config %s --check-config", path)))
@@ -77,7 +81,7 @@ func (r *run) serviceUID() (int, error) {
 func (r *run) checkIdentity() Check {
 	const id, name = "identity", "Identity"
 	if r.cfg == nil {
-		return notChecked(id, name)
+		return r.notChecked(id, name)
 	}
 	svc := r.env.ServiceUser
 	uid, err := r.serviceUID()
@@ -90,6 +94,7 @@ func (r *run) checkIdentity() Check {
 	key, err := identity.Verify(stateDir, uid)
 	switch {
 	case err == nil:
+		r.keyPeerID = key.PeerID()
 		return newCheck(id, name, ok(fmt.Sprintf("%s exists and only %s can read it; the node's peer ID is %s", path, svc, key.PeerID())))
 	case errors.Is(err, fs.ErrPermission):
 		return newCheck(id, name, warn(fmt.Sprintf("cannot look into %s as user %s", stateDir, r.me()), asRoot))
@@ -117,7 +122,7 @@ func (r *run) checkIdentity() Check {
 func (r *run) checkAdmin() Check {
 	const id, name = "admin", "Admin access"
 	if r.cfg == nil {
-		return notChecked(id, name)
+		return r.notChecked(id, name)
 	}
 	socket, group := r.cfg.Admin.Socket, r.cfg.Admin.SocketGroup
 	g, err := r.env.LookupGroup(group)

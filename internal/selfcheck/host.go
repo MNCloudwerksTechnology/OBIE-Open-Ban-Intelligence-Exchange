@@ -150,7 +150,7 @@ func (r *run) lastActionMessage() string {
 func (r *run) checkFirewall() Check {
 	const id, name = "firewall", "Firewall"
 	if r.cfg == nil {
-		return notChecked(id, name)
+		return r.notChecked(id, name)
 	}
 	var findings []finding
 	mode := r.cfg.Node.Mode
@@ -211,7 +211,7 @@ func (r *run) checkSession() Check {
 		return newCheck(id, name, ok("no SSH session found, so there is no remote address of yours to protect"))
 	}
 	if r.cfg == nil {
-		return notChecked(id, name)
+		return r.notChecked(id, name)
 	}
 	how, protected, err := r.protection(addr)
 	if err != nil {

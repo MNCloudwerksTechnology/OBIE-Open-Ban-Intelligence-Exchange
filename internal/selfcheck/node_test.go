@@ -125,9 +125,11 @@ func TestCheckPeersRunning(t *testing.T) {
 		t.Errorf("details = %q", c.Details)
 	}
 
+	// None connected: the node works on its own and keeps dialing, also
+	// right after its start, so it is no problem.
 	h.node.peers = nil
 	c = h.run(t, "peers")
-	assertCheck(t, c, Problem, "0 of 2 peers in mesh.bootstrap connected", "TCP and UDP port 4001", "check the peer ID")
+	assertCheck(t, c, Warning, "0 of 2 peers in mesh.bootstrap connected", "TCP and UDP port 4001", "check the peer ID")
 	if !strings.Contains(c.Details[0], "friend is not connected, although it answers at") {
 		t.Errorf("details = %q", c.Details)
 	}
@@ -137,6 +139,31 @@ func TestCheckPeersRunning(t *testing.T) {
 
 	h.node.peersErr = errors.New("boom")
 	assertCheck(t, h.run(t, "peers"), Warning, "cannot list the node's peers: boom", "sudo obiectl peers")
+}
+
+// TestCheckPeersSkipsThisNode checks that a bootstrap entry naming this
+// node, which the node skips, is neither probed nor counted: by the peer ID
+// of the key before the start, and of the running node after it.
+func TestCheckPeersSkipsThisNode(t *testing.T) {
+	h := newTestHost(t, "")
+	selfID := createKey(t, h.stateDir)
+	selfAddr := "/ip4/192.0.2.10/tcp/4001/p2p/" + selfID
+	h.writeConfig(t, "mesh:\n  bootstrap: ["+selfAddr+"]\n")
+	c := h.run(t, "peers")
+	assertCheck(t, c, Warning, "stand-alone node", "if that is what you want")
+	if len(c.Details) != 1 || c.Details[0] != "mesh.bootstrap names this node itself at "+selfAddr+", which the node skips" {
+		t.Errorf("details = %q", c.Details)
+	}
+
+	h.writeConfig(t, "mesh:\n  bootstrap:\n    - "+selfAddr+"\n    - /ip4/198.51.100.20/tcp/4001/p2p/"+friendID+"\n")
+	h.node.status, h.node.statusErr = readyStatus("1.2.3", "observe"), nil
+	h.node.identity.PeerID = selfID
+	h.node.peers = []admin.PeerResponse{{PeerID: friendID}}
+	c = h.run(t, "peers")
+	assertCheck(t, c, OK, "1 of 1 peer in mesh.bootstrap connected")
+	if len(c.Details) != 2 || !strings.Contains(c.Details[1], "names this node itself") {
+		t.Errorf("details = %q", c.Details)
+	}
 }
 
 func TestCheckPeersTrustedOnly(t *testing.T) {

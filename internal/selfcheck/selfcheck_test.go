@@ -233,10 +233,23 @@ func TestCheckConfigUnreadable(t *testing.T) {
 	}
 	h := newTestHost(t, "")
 	h.env.Euid = os.Geteuid
+	allowFile := filepath.Join(h.dir, "allow.txt")
+	if err := os.WriteFile(allowFile, []byte("192.0.2.0/24\n"), 0); err != nil {
+		t.Fatal(err)
+	}
+	// Closed to this user by design: a warning, as ADR 0027 has it, with the
+	// next step to look as root.
+	h.writeConfig(t, "allowlist:\n  files: ["+allowFile+"]\n")
+	assertCheck(t, h.run(t, "config"), Warning, "is valid, but its allow-list files cannot be read as user alice", "sudo obied self-check")
+
 	if err := os.Chmod(h.config, 0); err != nil {
 		t.Fatal(err)
 	}
-	assertCheck(t, h.run(t, "config"), Problem, "cannot read "+h.config+" as user alice", "sudo obied self-check")
+	assertCheck(t, h.run(t, "config"), Warning, "cannot read "+h.config+" as user alice", "sudo obied self-check")
+	assertCheck(t, h.run(t, "identity"), Warning, "not checked", "sudo obied self-check")
+	// Stopped, and whether it ran before cannot be seen.
+	assertCheck(t, h.run(t, "node"), Warning, "the node is not running, and whether it has run before cannot be told as user alice",
+		"sudo obied self-check; to start the node: sudo systemctl enable --now obied")
 }
 
 func TestCheckIdentity(t *testing.T) {
