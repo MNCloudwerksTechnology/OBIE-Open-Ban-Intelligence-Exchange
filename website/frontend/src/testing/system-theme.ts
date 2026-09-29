@@ -1,6 +1,9 @@
 // Test helpers: jsdom has no matchMedia, so tests install a fake one.
 
-/** A controllable `prefers-color-scheme: dark` media query. */
+const DARK = '(prefers-color-scheme: dark)';
+const REDUCED_MOTION = '(prefers-reduced-motion: reduce)';
+
+/** A controllable media query, e.g. `prefers-color-scheme: dark`. */
 export class FakeDarkQuery {
   private readonly listeners: ((event: { matches: boolean }) => void)[] = [];
 
@@ -10,22 +13,36 @@ export class FakeDarkQuery {
     this.listeners.push(listener);
   }
 
-  /** Simulates the visitor changing the system theme. */
+  /** Simulates the visitor changing the system setting. */
   change(matches: boolean): void {
     this.matches = matches;
     this.listeners.forEach((listener) => listener({ matches }));
   }
 }
 
-/** Installs a fake matchMedia (jsdom has none) and returns its dark query. */
-export function stubSystemTheme(dark: boolean): FakeDarkQuery {
-  const query = new FakeDarkQuery(dark);
+/**
+ * Installs a fake matchMedia (jsdom has none) that answers the two queries
+ * the site asks: the colour scheme and reduced motion (the demo, ADR 0028).
+ */
+export function stubMediaQueries(settings: { dark?: boolean; reducedMotion?: boolean }): {
+  dark: FakeDarkQuery;
+  reducedMotion: FakeDarkQuery;
+} {
+  const queries = {
+    dark: new FakeDarkQuery(settings.dark ?? false),
+    reducedMotion: new FakeDarkQuery(settings.reducedMotion ?? false),
+  };
   vi.stubGlobal(
     'matchMedia',
     vi.fn((media: string) => {
-      expect(media).toBe('(prefers-color-scheme: dark)');
-      return query;
+      expect([DARK, REDUCED_MOTION]).toContain(media);
+      return media === DARK ? queries.dark : queries.reducedMotion;
     }),
   );
-  return query;
+  return queries;
+}
+
+/** Installs a fake matchMedia (jsdom has none) and returns its dark query. */
+export function stubSystemTheme(dark: boolean): FakeDarkQuery {
+  return stubMediaQueries({ dark }).dark;
 }

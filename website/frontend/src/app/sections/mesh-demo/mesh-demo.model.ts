@@ -129,6 +129,8 @@ export interface Decision {
 /** A decision as shown at one step, marked when the step changed it. */
 export interface DecisionView extends Decision {
   readonly changed: boolean;
+  /** The state after the previous step; at the first step, the state itself. */
+  readonly before: SubjectState;
 }
 
 export interface ServerView {

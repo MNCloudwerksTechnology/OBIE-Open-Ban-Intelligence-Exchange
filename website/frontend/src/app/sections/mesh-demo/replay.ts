@@ -135,5 +135,5 @@ function withChange(decision: Decision, previous: ServerView | undefined): Decis
       before.reporters !== decision.reporters ||
       before.contributions.length !== decision.contributions.length ||
       Math.abs(before.score - decision.score) > 1e-9);
-  return { ...decision, changed };
+  return { ...decision, changed, before: before?.state ?? decision.state };
 }

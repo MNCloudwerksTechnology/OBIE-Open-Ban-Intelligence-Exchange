@@ -1,0 +1,199 @@
+:host {
+  display: block;
+}
+
+svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font-sans);
+  font-weight: 600;
+}
+
+text {
+  fill: var(--color-text);
+  font-size: 17px;
+  text-anchor: middle;
+}
+
+.link {
+  stroke: var(--color-mesh);
+  stroke-width: 3;
+}
+
+.link--untrusted {
+  stroke-dasharray: 6 6;
+}
+
+.node circle {
+  fill: var(--color-surface-alt);
+  stroke: var(--color-mesh);
+  stroke-width: 3;
+}
+
+.node--blocking circle {
+  stroke: var(--color-accent);
+  stroke-width: 7;
+}
+
+.letter {
+  font-family: var(--font-mono);
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.rogue circle,
+.attacker circle {
+  fill: var(--color-surface);
+  stroke: var(--color-text);
+  stroke-width: 2.5;
+}
+
+.rogue text {
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.cross {
+  stroke: var(--color-text);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.attack-line {
+  stroke: var(--color-text);
+  stroke-width: 2.5;
+  stroke-dasharray: 5 5;
+}
+
+.stop {
+  fill: var(--color-accent);
+  stroke: var(--color-text);
+  stroke-width: 3;
+}
+
+.attack--turned-away .attack-line {
+  stroke-width: 3.5;
+}
+
+.attack--turned-away text {
+  fill: var(--color-accent-text);
+  font-weight: 700;
+}
+
+.message line {
+  stroke: var(--color-accent);
+  stroke-width: 5;
+}
+
+.message--revocation line {
+  stroke-dasharray: 10 6;
+}
+
+.message--untrusted line {
+  stroke: var(--color-mesh);
+  stroke-width: 4;
+}
+
+.arrow-head {
+  fill: var(--color-accent);
+}
+
+.arrow-head--muted {
+  fill: var(--color-mesh);
+}
+
+.copies {
+  fill: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 20px;
+  text-anchor: start;
+}
+
+// Packets travel only when the visitor has not asked for reduced motion; the
+// arrows alone show who sends what to whom.
+.packet {
+  display: none;
+  transform: translate(var(--to-x), var(--to-y));
+
+  rect {
+    fill: var(--color-surface);
+    stroke: currentColor;
+    stroke-width: 2.5;
+  }
+
+  circle {
+    fill: currentColor;
+  }
+}
+
+.message {
+  color: var(--color-accent-text);
+}
+
+.message--untrusted {
+  color: var(--color-mesh);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animated {
+    .packet {
+      display: inline;
+      animation: travel 900ms ease-in-out both;
+    }
+
+    .attacker {
+      animation: approach 500ms ease-out both;
+    }
+
+    .attack--turned-away .attacker {
+      animation: bounce 900ms ease-out both;
+    }
+
+    .node--blocking circle {
+      animation: fade-in 600ms ease-out both;
+    }
+  }
+}
+
+@keyframes travel {
+  from {
+    transform: translate(var(--from-x), var(--from-y));
+  }
+}
+
+@keyframes approach {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes bounce {
+  0% {
+    opacity: 0;
+  }
+
+  40% {
+    opacity: 1;
+    transform: translateX(24px);
+  }
+
+  60% {
+    transform: translateX(-6px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    stroke-width: 3;
+  }
+}
+
+// Below 40rem the map is too small for its smaller labels; the cards name every server.
+@media (max-width: 39.99rem) {
+  .operator,
+  .attacker text {
+    display: none;
+  }
+}

@@ -1,0 +1,152 @@
+<h3 class="heading">{{ demo.heading }}</h3>
+<p class="intro">{{ demo.intro }}</p>
+<p class="illustration">{{ demo.illustration }}</p>
+<p class="settings">{{ demo.settings }}</p>
+
+@if (interactive()) {
+  <div
+    class="toolbar"
+    role="group"
+    [attr.aria-label]="demo.controls.label"
+    (keydown.arrowright)="arrow($event, 1)"
+    (keydown.arrowleft)="arrow($event, -1)"
+  >
+    <div class="buttons">
+      <button type="button" class="button button--secondary control" (click)="restart()">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4h4" />
+        </svg>
+        <span class="label">{{ demo.controls.restart }}</span>
+      </button>
+      <button
+        type="button"
+        class="button button--secondary control"
+        [attr.aria-disabled]="first() || null"
+        (click)="previous()"
+      >
+        <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M15 5l-7 7 7 7" />
+        </svg>
+        {{ demo.controls.previous }}
+      </button>
+      <button
+        type="button"
+        class="button button--primary control"
+        [attr.aria-disabled]="last() || null"
+        (click)="next()"
+      >
+        {{ demo.controls.next }}
+        <svg class="chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path d="M9 5l7 7-7 7" />
+        </svg>
+      </button>
+      <button type="button" class="button button--secondary control" (click)="togglePlay()">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          @if (playing()) {
+            <path d="M8 5v14M16 5v14" />
+          } @else {
+            <path class="solid" d="M7 5l12 7-12 7z" />
+          }
+        </svg>
+        <span class="label">{{ playing() ? demo.controls.pause : demo.controls.play }}</span>
+      </button>
+    </div>
+    <ol class="steps" [attr.aria-label]="demo.controls.steps">
+      @for (item of demo.steps; track $index; let i = $index) {
+        <li>
+          <button
+            type="button"
+            class="dot"
+            [attr.aria-current]="i === step() ? 'step' : null"
+            (click)="jump(i)"
+          >
+            <span aria-hidden="true">{{ i + 1 }}</span>
+            <span class="visually-hidden">{{ stepLabel(i) }}</span>
+          </button>
+        </li>
+      }
+    </ol>
+  </div>
+
+  <div class="stage">
+    <div class="map">
+      <app-mesh-map [frame]="frame()" [animate]="motion() === 'full'" />
+    </div>
+    @for (index of [step()]; track index) {
+      <div class="narrative" [class.animated]="motion() === 'full'">
+        <p class="progress">{{ progress() }}</p>
+        <h4 class="title">{{ current().title }}</h4>
+        <p class="caption">{{ current().caption }}</p>
+        <ng-container
+          [ngTemplateOutlet]="extras"
+          [ngTemplateOutletContext]="{ $implicit: current() }"
+        />
+        @if (index === shareStep) {
+          <app-shared-report [report]="sharedReport" [receivers]="receivers" />
+        }
+        @if (last()) {
+          <ul class="takeaways">
+            @for (takeaway of demo.recap.takeaways; track takeaway) {
+              <li>{{ takeaway }}</li>
+            }
+          </ul>
+          <p class="actions">
+            @for (action of demo.recap.actions; track action.href; let primary = $first) {
+              <a
+                class="button"
+                [class.button--primary]="primary"
+                [class.button--secondary]="!primary"
+                [href]="action.href"
+                [attr.rel]="primary ? 'noopener' : null"
+                >{{ action.label }}</a
+              >
+            }
+          </p>
+        }
+      </div>
+    }
+  </div>
+
+  <ul class="servers" [attr.aria-label]="demo.controls.servers">
+    @for (server of frame().servers; track server.id; let i = $index) {
+      <li>
+        <app-server-card [view]="server" [setup]="setups[i]" [animate]="motion() === 'full'" />
+      </li>
+    }
+  </ul>
+
+  <p class="visually-hidden" aria-live="polite" aria-atomic="true">{{ announcement() }}</p>
+
+  <details class="transcript">
+    <summary>{{ demo.controls.transcript }}</summary>
+    <ng-container [ngTemplateOutlet]="story" />
+  </details>
+} @else {
+  <ng-container [ngTemplateOutlet]="story" />
+}
+
+<!-- The whole story as text: what visitors without JavaScript and search engines get. -->
+<ng-template #story>
+  <ol class="story">
+    @for (item of demo.steps; track $index) {
+      <li>
+        <strong>{{ item.title }}</strong>
+        <p>{{ item.caption }}</p>
+        <ng-container [ngTemplateOutlet]="extras" [ngTemplateOutletContext]="{ $implicit: item }" />
+      </li>
+    }
+  </ol>
+</ng-template>
+
+<ng-template #extras let-item>
+  @if (item.note) {
+    <p class="note">
+      <strong>{{ demo.labels.note }}</strong> {{ item.note }}
+    </p>
+  }
+  @if (item.planned) {
+    <p class="planned">
+      <span class="badge">{{ demo.labels.planned }}</span> {{ item.planned }}
+    </p>
+  }
+</ng-template>
