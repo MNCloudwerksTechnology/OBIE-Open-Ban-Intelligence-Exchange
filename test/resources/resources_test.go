@@ -442,8 +442,9 @@ func addrAt(base netip.Addr, i int) string {
 
 // awaitAccepted waits until a accepted want events from its peers and
 // returns how many it lost: those it has not accepted after drainBound. A
-// node whose processor cannot keep up loses events, because its peers drop
-// what it does not take in time.
+// node whose processor cannot keep up loses events: GossipSub drops them
+// when the queue towards the node, or the node's validation queue, is
+// full.
 func awaitAccepted(t *testing.T, a *node, want float64) (lost float64) {
 	t.Helper()
 	err := poll(drainBound, func(ctx context.Context) error {
