@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 )
 
 // testHost is a node's files in a temporary directory, checked through a
@@ -18,6 +22,9 @@ import (
 type testHost struct {
 	dir, config, stateDir, socket string
 	env                           Env
+	node                          *fakeNode
+	dialer                        fakeDialer
+	clock                         ClockState
 }
 
 // newTestHost writes a configuration with the state directory and admin
@@ -60,7 +67,17 @@ func newTestHost(t *testing.T, extra string) *testHost {
 			return &user.Group{Name: name, Gid: gid}, nil
 		},
 		InGroup: func(string, string) (bool, error) { return false, nil },
+		Now:     func() time.Time { return time.Date(2026, time.September, 29, 12, 0, 0, 0, time.UTC) },
 	}
+	// Not running until a test starts it.
+	h.node = &fakeNode{statusErr: admin.ErrDaemonNotRunning, identity: admin.IdentityResponse{PeerID: "12D3KooWSelf"}}
+	h.env.Node = func(string) NodeClient { return h.node }
+	h.dialer = fakeDialer{up: map[string]bool{}}
+	h.env.Dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		return h.dialer.dial(ctx, network, address)
+	}
+	h.clock = ClockState{Synced: true, MaxError: 12 * time.Millisecond}
+	h.env.Clock = func() (ClockState, error) { return h.clock, nil }
 	return h
 }
 

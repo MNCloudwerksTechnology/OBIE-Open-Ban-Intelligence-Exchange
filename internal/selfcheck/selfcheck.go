@@ -7,9 +7,12 @@ package selfcheck
 
 import (
 	"context"
+	"net"
 	"os/user"
 	"slices"
+	"time"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 )
@@ -128,6 +131,15 @@ type Env struct {
 	// InGroup reports whether the named user is a member of the group
 	// with gid.
 	InGroup func(userName, gid string) (bool, error)
+
+	// Node returns a client of the admin API on socket.
+	Node func(socket string) NodeClient
+	// Dial connects to a peer, to see whether it answers.
+	Dial func(ctx context.Context, network, address string) (net.Conn, error)
+	// Now returns the current time.
+	Now func() time.Time
+	// Clock returns the kernel's view of the clock (KernelClock).
+	Clock func() (ClockState, error)
 }
 
 // run is one self-check: the environment and what the checks share.
@@ -138,16 +150,25 @@ type run struct {
 	// invalid; cfgErr is why the configuration check fails.
 	cfg    *config.Config
 	cfgErr error
+	// socket is the admin socket asked; node its client; status the
+	// node's answer, statusErr why there is none.
+	socket    string
+	node      NodeClient
+	status    *admin.StatusResponse
+	statusErr error
 }
 
 // Run runs every check and returns the report.
 func Run(ctx context.Context, env Env) Report {
 	r := &run{ctx: ctx, env: env}
 	r.loadConfig()
+	r.queryNode()
 	euid := env.Euid()
 	report := Report{Status: OK, Config: env.ConfigPath, Version: env.Version, User: env.UserName(euid), Root: euid == 0,
 		Summary: map[Status]int{OK: 0, Warning: 0, Problem: 0}}
-	for _, check := range []func() Check{r.checkConfig, r.checkIdentity, r.checkAdmin} {
+	for _, check := range []func() Check{
+		r.checkConfig, r.checkIdentity, r.checkAdmin, r.checkNode, r.checkPeers, r.checkClock,
+	} {
 		c := check()
 		report.Checks = append(report.Checks, c)
 		report.Summary[c.Status]++

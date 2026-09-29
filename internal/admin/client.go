@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"syscall"
 )
@@ -128,7 +129,7 @@ func (c *Client) dialError(err error) error {
 	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
 		return fmt.Errorf("%w: nothing is listening on admin socket %s", ErrDaemonNotRunning, c.socket)
 	case errors.Is(err, syscall.EACCES):
-		return fmt.Errorf("permission denied on admin socket %s: run as root or as a member of the socket's group", c.socket)
+		return fmt.Errorf("%w on admin socket %s: run as root or as a member of the socket's group", os.ErrPermission, c.socket)
 	default:
 		return fmt.Errorf("connect to admin socket %s: %w", c.socket, err)
 	}

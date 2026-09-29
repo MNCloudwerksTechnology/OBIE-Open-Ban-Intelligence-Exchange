@@ -382,6 +382,27 @@ func TestClientDaemonNotRunning(t *testing.T) {
 	}
 }
 
+// TestClientPermissionDenied checks that a socket the user may not use
+// yields an error matching fs.ErrPermission that says what to do.
+func TestClientPermissionDenied(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root may use every socket")
+	}
+	path := socketPath(t)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewClient(path).Status(context.Background())
+	if !errors.Is(err, os.ErrPermission) || !strings.Contains(err.Error(), "permission denied on admin socket "+path+": run as root") {
+		t.Errorf("Status = %v, want a permission error naming %s", err, path)
+	}
+}
+
 func TestClientReportsHTTPErrors(t *testing.T) {
 	path := socketPath(t)
 	ln, err := net.Listen("unix", path)
