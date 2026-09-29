@@ -49,7 +49,8 @@ func RunCtl(args []string, stdout, stderr io.Writer) int {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	return cmds[i].run(withCommandLine(ctx, fs.Args()), admin.NewClient(*socket), fs.Args()[1:], stdout, stderr)
+	ctx = withInvocation(ctx, invocation{args: fs.Args(), timeout: *timeout})
+	return cmds[i].run(ctx, admin.NewClient(*socket), fs.Args()[1:], stdout, stderr)
 }
 
 func runStatus(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {

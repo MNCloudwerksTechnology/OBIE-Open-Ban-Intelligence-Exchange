@@ -120,7 +120,9 @@ func TestCompletionOfArgumentsAndRepeatedFlags(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"'*--peer=[", "'*--allow=[", "'--config=[path to the YAML configuration file]:config:_files'",
-		"'(1 *)--config=[path to the YAML configuration file]:config:_files' \\\n"} {
+		"'(1 *)--config=[path to the YAML configuration file]:config:_files' \\\n",
+		// The options after the command are the command's, e.g. setup --config.
+		"\t_arguments -C -A '-*' \\\n"} {
 		if !strings.Contains(zshDaemon.String(), want) {
 			t.Errorf("obied zsh completion lacks %q", want)
 		}

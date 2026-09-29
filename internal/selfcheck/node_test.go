@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
 )
 
 // stampFormat marks the state directory as used by a started node.
@@ -47,7 +48,7 @@ func TestCheckNode(t *testing.T) {
 	h.node.status.Ready = false
 	h.node.status.Subsystems["enforce"] = admin.SubsystemStatus{State: "running", Error: "nftables access denied"}
 	c = h.run(t, "node")
-	assertCheck(t, c, Problem, "the node is running, but not ready: enforce", "sudo obiectl status")
+	assertCheck(t, c, Problem, "the node is running, but not ready: enforce", h.obiectl()+" status")
 	if len(c.Details) != 1 || c.Details[0] != "enforce: nftables access denied" {
 		t.Errorf("details = %q", c.Details)
 	}
@@ -138,7 +139,7 @@ func TestCheckPeersRunning(t *testing.T) {
 	assertCheck(t, h.run(t, "peers"), OK, "2 of 2 peers in mesh.bootstrap connected; 2 connected in all")
 
 	h.node.peersErr = errors.New("boom")
-	assertCheck(t, h.run(t, "peers"), Warning, "cannot list the node's peers: boom", "sudo obiectl peers")
+	assertCheck(t, h.run(t, "peers"), Warning, "cannot list the node's peers: boom", h.obiectl()+" peers")
 }
 
 // TestCheckPeersSkipsThisNode checks that a bootstrap entry naming this
@@ -198,5 +199,24 @@ func TestKernelClock(t *testing.T) {
 	}
 	if err != nil || state.MaxError < 0 {
 		t.Errorf("KernelClock = %+v, %v", state, err)
+	}
+}
+
+// TestObiectlNamesTheSocket checks how next steps run obiectl: with the
+// admin socket of the configuration, unless it is the default one.
+func TestObiectlNamesTheSocket(t *testing.T) {
+	standard, custom := config.Default(), config.Default()
+	custom.Admin.Socket = "/srv/node a/obie.sock"
+	for _, tc := range []struct {
+		cfg  *config.Config
+		want string
+	}{
+		{nil, "sudo obiectl"},
+		{&standard, "sudo obiectl"},
+		{&custom, "sudo obiectl --socket '/srv/node a/obie.sock'"},
+	} {
+		if got := (&run{cfg: tc.cfg}).obiectl(); got != tc.want {
+			t.Errorf("obiectl() = %q, want %q", got, tc.want)
+		}
 	}
 }

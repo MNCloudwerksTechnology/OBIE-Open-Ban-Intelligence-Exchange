@@ -186,7 +186,7 @@ func (r *run) nftablesFinding() finding {
 				"run obied under the shipped systemd unit, which grants CAP_NET_ADMIN, and restart it")
 		case found:
 			return problem("the nftables backend cannot block: "+sub.Error,
-				"see what the node says: sudo obiectl status; sudo journalctl -u obied -n 50")
+				"see what the node says: "+r.obiectl()+" status; sudo journalctl -u obied -n 50")
 		}
 	}
 	ctx, cancel := context.WithTimeout(r.ctx, callTimeout)
@@ -219,7 +219,7 @@ func (r *run) checkSession() Check {
 	how, protected, err := r.protection(addr)
 	if err != nil {
 		return newCheck(id, name, warn(fmt.Sprintf("cannot tell whether %s, your SSH session's address, is protected: %v", addr, err),
-			fmt.Sprintf("ask the running node: sudo obiectl explain %s", addr)))
+			fmt.Sprintf("ask the running node: %s explain %s", r.obiectl(), addr)))
 	}
 	if protected {
 		return newCheck(id, name, ok(fmt.Sprintf("your SSH session comes from %s, which is protected (%s)", addr, how)))
@@ -228,8 +228,8 @@ func (r *run) checkSession() Check {
 	r.lockout, r.enforcing = addr, enforcing
 	text := fmt.Sprintf("your SSH session comes from %s, which OBIE does not protect: a block would lock you out", addr)
 	next := fmt.Sprintf("protect it: add %s to allowlist.cidrs in %s and reload: sudo systemctl reload obied; "+
-		"on a running node also at once: sudo obiectl allow %s --note \"my SSH session\"",
-		netip.PrefixFrom(addr, addr.BitLen()), r.env.ConfigPath, addr)
+		"on a running node also at once: %s allow %s --note \"my SSH session\"",
+		netip.PrefixFrom(addr, addr.BitLen()), r.env.ConfigPath, r.obiectl(), addr)
 	f := problem(text, next)
 	if !enforcing {
 		f = warn(text+" once the node enforces", next)

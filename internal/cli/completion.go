@@ -282,7 +282,7 @@ func (s completionSpec) writeZsh(b *strings.Builder) {
 	for _, c := range s.commands {
 		fmt.Fprintf(b, "\t\t'%s:%s'\n", c.name, zshQuote(c.summary))
 	}
-	b.WriteString("\t)\n\tlocal curcontext=$curcontext state line\n\t_arguments -C \\\n")
+	b.WriteString("\t)\n\tlocal curcontext=$curcontext state line\n\t# -A: the options after the command are the command's.\n\t_arguments -C -A '-*' \\\n")
 	exclude := ""
 	if s.flagsOnly {
 		exclude = "(1 *)"

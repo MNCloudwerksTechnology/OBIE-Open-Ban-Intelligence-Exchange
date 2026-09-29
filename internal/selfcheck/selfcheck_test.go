@@ -34,6 +34,9 @@ type testHost struct {
 	session  netip.Addr
 }
 
+// obiectl is how next steps run obiectl against the test host's socket.
+func (h *testHost) obiectl() string { return "sudo obiectl --socket " + h.socket }
+
 // newTestHost writes a configuration with the state directory and admin
 // socket in a temporary directory; extra are further top-level YAML
 // sections.

@@ -136,20 +136,28 @@ func teardownProblem(err error) problem {
 }
 
 // isListenError reports whether err is a failure to listen on a network
-// address.
-func isListenError(err error) bool {
+// address with errno.
+func isListenError(err error, errno syscall.Errno) bool {
 	var opErr *net.OpError
-	return errors.As(err, &opErr) && opErr.Op == "listen"
+	if errors.As(err, &opErr) && opErr.Op == "listen" && errors.Is(err, errno) {
+		return true
+	}
+	// The mesh reports why it could not listen as text only, e.g. "failed to
+	// listen on any addresses: [listen tcp4 0.0.0.0:443: bind: permission
+	// denied]", as libp2p does.
+	return strings.Contains(err.Error(), "bind: "+errno.Error())
 }
 
 // startNext is the next step after obied failed to run with err, for the
-// "next" attribute of its last log line.
-func startNext(err error) string {
-	const always = "sudo obied self-check names what is wrong; documentation/operations/troubleshooting.md#obied-does-not-start lists the usual causes"
+// "next" attribute of its last log line. configPath is the configuration
+// the node was started with.
+func startNext(err error, configPath string) string {
+	always := "sudo obied self-check" + config.PathFlag(configPath) + " names what is wrong; " +
+		"documentation/operations/troubleshooting.md#obied-does-not-start lists the usual causes"
 	switch {
-	case errors.Is(err, syscall.EADDRINUSE):
+	case isListenError(err, syscall.EADDRINUSE) || errors.Is(err, syscall.EADDRINUSE):
 		return "another process uses the address: stop it, or change mesh.listen, metrics.listen or console.listen; " + always
-	case isListenError(err) && errors.Is(err, fs.ErrPermission):
+	case isListenError(err, syscall.EACCES):
 		return "only root may listen on a port below 1024, and the service runs as the user obie: use a port of 1024 " +
 			"or higher in mesh.listen, metrics.listen or console.listen; " + always
 	case errors.Is(err, fs.ErrPermission):

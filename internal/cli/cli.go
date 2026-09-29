@@ -153,7 +153,7 @@ func runNode(ctx context.Context, reload <-chan struct{}, program string, args [
 	log.Info("configuration loaded", "path", *configPath, "mode", cfg.Node.Mode)
 	opts := daemon.Options{Reload: reload, File: file, LoadConfig: func() (*config.File, error) { return config.LoadFile(*configPath) }}
 	if err := daemon.Run(ctx, cfg, logs, opts); err != nil {
-		log.Error("obied failed", "error", err, "next", startNext(err))
+		log.Error("obied failed", "error", err, "next", startNext(err, *configPath))
 		return ExitFailure
 	}
 	return ExitOK

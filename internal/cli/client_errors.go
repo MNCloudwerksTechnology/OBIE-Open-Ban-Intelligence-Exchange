@@ -11,45 +11,93 @@ import (
 	"os/user"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
 )
 
-// commandLineKey is the context key of the command obiectl runs with its
-// arguments, as given after the global flags.
-type commandLineKey struct{}
-
-// withCommandLine returns ctx carrying args, the command and its
-// arguments, for next steps that repeat them.
-func withCommandLine(ctx context.Context, args []string) context.Context {
-	return context.WithValue(ctx, commandLineKey{}, args)
+// invocation is how obiectl was run, for next steps that repeat it: the
+// command with its arguments, as given after the global flags, and
+// --timeout.
+type invocation struct {
+	args    []string
+	timeout time.Duration
 }
 
-// commandLine returns the command and its arguments that ctx carries, as
-// shell words, or else the command of program.
-func commandLine(ctx context.Context, program string) string {
-	args, _ := ctx.Value(commandLineKey{}).([]string)
-	if len(args) == 0 {
-		return commandOf(program)
+// invocationKey is the context key of the invocation.
+type invocationKey struct{}
+
+// withInvocation returns ctx carrying inv.
+func withInvocation(ctx context.Context, inv invocation) context.Context {
+	return context.WithValue(ctx, invocationKey{}, inv)
+}
+
+// invocationOf returns the invocation ctx carries, or else one of the
+// command of program with the default --timeout.
+func invocationOf(ctx context.Context, program string) invocation {
+	if inv, ok := ctx.Value(invocationKey{}).(invocation); ok && len(inv.args) > 0 {
+		return inv
 	}
-	words := make([]string, len(args))
-	for i, arg := range args {
+	return invocation{args: []string{commandOf(program)}, timeout: requestTimeout}
+}
+
+// retry is the command that runs inv again against the node with more
+// time, at least 30s and twice what it had: ctl, the longer --timeout and
+// the command with its arguments as shell words. Log lines read from
+// standard input must be piped in again.
+func (inv invocation) retry(ctl string) string {
+	words := make([]string, len(inv.args))
+	for i, arg := range inv.args {
 		words[i] = config.QuotePath(arg)
 	}
-	return strings.Join(words, " ")
+	longer := max(30*time.Second, 2*inv.timeout)
+	command := ctl + " --timeout " + durationFlag(longer) + " " + strings.Join(words, " ")
+	if inv.readsStdin() {
+		command = "<the command that printed the log lines> | " + command
+	}
+	return command
+}
+
+// readsStdin reports whether the command of inv reads its evidence from
+// standard input.
+func (inv invocation) readsStdin() bool {
+	for i, arg := range inv.args {
+		name := strings.TrimLeft(arg, "-")
+		switch {
+		case arg == "--":
+			return false
+		case name == "evidence-from-stdin", strings.HasPrefix(name, "evidence-from-stdin=") && name != "evidence-from-stdin=false",
+			name == "evidence-file=-", name == "evidence-file" && i+1 < len(inv.args) && inv.args[i+1] == "-":
+			return true
+		}
+	}
+	return false
+}
+
+// durationFlag writes d as a value of a duration flag, without zero
+// minutes and seconds: 30s, 2m, 1m30s, 1h.
+func durationFlag(d time.Duration) string {
+	s := d.String()
+	if strings.HasSuffix(s, "m0s") {
+		s = strings.TrimSuffix(s, "0s")
+	}
+	if strings.HasSuffix(s, "h0m") {
+		s = strings.TrimSuffix(s, "0m")
+	}
+	return s
 }
 
 // reportClientError explains on stderr why program could not do what it
 // was asked through client within ctx.
 func reportClientError(ctx context.Context, stderr io.Writer, program string, client *admin.Client, err error) {
-	clientProblem(program, client.Socket(), commandLine(ctx, program), err).write(stderr, program)
+	clientProblem(program, client.Socket(), invocationOf(ctx, program), err).write(stderr, program)
 }
 
 // clientProblem explains a failed call of program to the node's admin
-// socket: what went wrong, why and what to do next. command is the
-// command with its arguments, for a next step that repeats it.
-func clientProblem(program, socket, command string, err error) problem {
+// socket: what went wrong, why and what to do next. inv is how obiectl was
+// run, for a next step that repeats it.
+func clientProblem(program, socket string, inv invocation, err error) problem {
 	ctl := ctlCommandLine(socket)
 	var apiErr *admin.APIError
 	switch {
@@ -60,7 +108,7 @@ func clientProblem(program, socket, command string, err error) problem {
 	case errors.Is(err, context.DeadlineExceeded):
 		return problem{id: "node-timeout", what: "obied did not answer in time (--timeout)",
 			why: "the node is busy, still starting, or stuck",
-			next: []string{"try again with more time: " + ctl + " --timeout 30s " + command,
+			next: []string{"try again with more time: " + inv.retry(ctl),
 				"see whether the node is ready and what it logs: " + ctl + " --timeout 30s status; sudo journalctl -u obied -n 50"}}
 	case errors.Is(err, admin.ErrNoOverride):
 		return problem{id: "no-override", what: err.Error(), next: []string{"see which overrides there are: " + ctl + " overrides"}}

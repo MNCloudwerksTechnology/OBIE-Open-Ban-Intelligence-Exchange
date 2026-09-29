@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
@@ -51,9 +52,9 @@ func TestClientProblems(t *testing.T) {
 	}
 	tests := []struct {
 		name, program, socket string
-		// command is the command with its arguments; commandOf(program)
-		// if "".
-		command   string
+		// inv is how obiectl was run; the command of program with the
+		// default --timeout if it has no arguments.
+		inv       invocation
 		err       error
 		id        string
 		what, why string
@@ -108,9 +109,19 @@ func TestClientProblems(t *testing.T) {
 			id: "node-failed", what: "reporting failed; see the obied log", next: []string{"sudo journalctl -u obied -n 50"}},
 		{name: "other status", program: "obiectl report", socket: stale, err: api(http.StatusTeapot, "tea"),
 			id: "node-error", what: "the node answered 418 I'm a teapot: tea", next: []string{"journalctl"}},
-		{name: "timeout repeats the arguments", program: "obiectl unoverride", socket: stale, command: "unoverride 45.10.0.1",
+		{name: "timeout repeats the arguments", program: "obiectl unoverride", socket: stale,
+			inv: invocation{args: []string{"unoverride", "45.10.0.1"}, timeout: 5 * time.Second},
 			err: context.DeadlineExceeded, id: "node-timeout", what: "obied did not answer in time",
 			next: []string{"try again with more time: " + ctl + " --timeout 30s unoverride 45.10.0.1\n"}},
+		{name: "timeout gives more than it had", program: "obiectl decisions", socket: stale,
+			inv: invocation{args: []string{"decisions"}, timeout: time.Minute},
+			err: context.DeadlineExceeded, id: "node-timeout", what: "obied did not answer in time",
+			next: []string{"try again with more time: " + ctl + " --timeout 2m decisions\n"}},
+		{name: "timeout pipes the evidence again", program: "obiectl report", socket: stale,
+			inv: invocation{args: []string{"report", "--protocol", "ssh", "--reason", "password_bruteforce", "--evidence-file", "-", "45.10.0.1"}, timeout: requestTimeout},
+			err: context.DeadlineExceeded, id: "node-timeout", what: "obied did not answer in time",
+			next: []string{"try again with more time: <the command that printed the log lines> | " + ctl +
+				" --timeout 30s report --protocol ssh --reason password_bruteforce --evidence-file - 45.10.0.1\n"}},
 		{name: "default socket", program: "obiectl decisions", socket: config.Default().Admin.Socket, err: context.DeadlineExceeded,
 			id: "node-timeout", what: "obied did not answer in time", next: []string{"try again with more time: sudo obiectl --timeout 30s decisions"}},
 		{name: "other error", program: "obiectl status", socket: stale, err: errors.New("decode response: unexpected EOF"),
@@ -118,11 +129,11 @@ func TestClientProblems(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			command := tt.command
-			if command == "" {
-				command = commandOf(tt.program)
+			inv := tt.inv
+			if len(inv.args) == 0 {
+				inv = invocationOf(context.Background(), tt.program)
 			}
-			p := clientProblem(tt.program, tt.socket, command, tt.err)
+			p := clientProblem(tt.program, tt.socket, inv, tt.err)
 			if p.id != tt.id || !strings.HasPrefix(p.what, tt.what) || !strings.Contains(p.why, tt.why) || len(p.next) == 0 {
 				t.Errorf("problem = %+v, want id %s, what %q, why containing %q and a next step", p, tt.id, tt.what, tt.why)
 			}
@@ -133,6 +144,33 @@ func TestClientProblems(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestInvocationReadsStdin(t *testing.T) {
+	for args, want := range map[string]bool{
+		"report --evidence-from-stdin 45.10.0.1":       true,
+		"report -evidence-from-stdin=true 45.10.0.1":   true,
+		"report --evidence-from-stdin=false 45.10.0.1": false,
+		"report --evidence-file=- 45.10.0.1":           true,
+		"report --evidence-file - 45.10.0.1":           true,
+		"report --evidence-file auth.log 45.10.0.1":    false,
+		"report -- --evidence-from-stdin":              false,
+		"decisions":                                    false,
+	} {
+		if got := (invocation{args: strings.Fields(args)}).readsStdin(); got != want {
+			t.Errorf("readsStdin(%s) = %v, want %v", args, got, want)
+		}
+	}
+}
+
+func TestDurationFlag(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		30 * time.Second: "30s", 90 * time.Second: "1m30s", 2 * time.Minute: "2m", time.Hour: "1h", 90 * time.Minute: "1h30m",
+	} {
+		if got := durationFlag(d); got != want {
+			t.Errorf("durationFlag(%s) = %q, want %q", d, got, want)
+		}
 	}
 }
 
