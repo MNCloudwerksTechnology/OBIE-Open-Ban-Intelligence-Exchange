@@ -191,3 +191,26 @@ engine pass and one walk. Reproduce with:
 go test ./internal/decision -run '^$' -bench BenchmarkVerdicts -benchtime 30x
 go test ./internal/store -run '^$' -bench BenchmarkEnded100k -benchtime 30x
 ```
+
+## Fail2Ban versions
+
+`make fail2ban-versions`
+([`contrib/fail2ban/check-versions.sh`](../../contrib/fail2ban/check-versions.sh))
+installs the Fail2Ban of a distribution in a container and runs a real
+`fail2ban-server` with one jail that uses the OBIE action and a stand-in
+for `obiectl`. Two failed logins must make Fail2Ban report the address
+with the failure count, the ban time as the verdict's lifetime and the two
+matched lines as evidence; unbanning must revoke the verdict. Run on
+2026-09-29 with the action of `ecfc6cc`:
+
+| Distribution (image) | Fail2Ban | Result |
+|---|---|---|
+| Ubuntu 22.04 | 0.11.2 | pass |
+| Debian 12, Ubuntu 24.04 | 1.0.2 | pass |
+| Debian 13, Ubuntu 26.04, Alpine 3.22, Rocky Linux 9 (EPEL) | 1.1.0 | pass |
+| Ubuntu 18.04, run once by hand | 0.10.2 | the report carries no lifetime: Fail2Ban 0.10 does not pass the ban time to the action, so the verdict lives `decision.default_ttl` |
+
+Debian 11 can no longer be checked: its package mirrors stopped serving
+it when its long-term support ended in August 2026. CI checks the action's
+configuration with the Fail2Ban of its Ubuntu runner on every pull request
+(`TestFail2BanAcceptsAction`).

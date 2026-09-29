@@ -100,6 +100,10 @@ image: ## Build the container image obie:$(VERSION) (docker)
 lab-smoke: ## Start the 3-node compose lab, check the nodes see each other and block, remove it (docker)
 	packaging/compose/smoke-test.sh
 
+.PHONY: fail2ban-versions
+fail2ban-versions: ## Ban and unban through the Fail2Ban action with the Fail2Ban of current distributions (docker); not part of `make ci`
+	contrib/fail2ban/check-versions.sh
+
 .PHONY: check-unit
 check-unit: build ## Check the systemd unit with systemd-analyze (verify, exposure <= 3.0)
 	packaging/systemd/check-unit.sh $(BIN_DIR)
