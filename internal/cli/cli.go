@@ -92,9 +92,9 @@ func runDaemonWith(ctx context.Context, reload <-chan struct{}, args []string, s
 		return code
 	}
 
-	cfg, err := config.Load(*configPath)
+	file, err := config.LoadFile(*configPath)
 	if err == nil {
-		_, err = sovereignty.ReadFiles(cfg.Allowlist.Files)
+		_, err = sovereignty.ReadFiles(file.Config.Allowlist.Files)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "%s: %s: %v\n", program, *configPath, err)
@@ -108,12 +108,13 @@ func runDaemonWith(ctx context.Context, reload <-chan struct{}, args []string, s
 		return ExitOK
 	}
 
+	cfg := file.Config
 	// Validation guarantees a known level.
 	level, _ := logging.ParseLevel(cfg.Log.Level)
 	logs := logging.New(stderr, level)
 	log := logs.Logger(daemon.Component)
 	log.Info("configuration loaded", "path", *configPath, "mode", cfg.Node.Mode)
-	opts := daemon.Options{Reload: reload, LoadConfig: func() (*config.Config, error) { return config.Load(*configPath) }}
+	opts := daemon.Options{Reload: reload, File: file, LoadConfig: func() (*config.File, error) { return config.LoadFile(*configPath) }}
 	if err := daemon.Run(ctx, cfg, logs, opts); err != nil {
 		log.Error("obied failed", "error", err)
 		return ExitFailure

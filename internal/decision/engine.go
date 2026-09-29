@@ -9,7 +9,9 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unique"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
@@ -111,12 +113,17 @@ type Engine struct {
 	policy  Policy
 	rules   Rules
 
-	// mu guards decisions: the decision of every indicator with active
-	// verdicts, by key, without Publishers.
-	mu        sync.RWMutex
-	decisions map[string]Decision
-	// verdicts counts the active verdicts of every kept decision, by key.
-	verdicts map[string]int
+	// mu guards kept: the decision of every indicator with active
+	// verdicts, without Publishers, with its active verdicts. publishers
+	// counts those by publisher (ADR 0021); categories counts the
+	// decisions holding a verdict of each category (ADR 0022).
+	mu         sync.RWMutex
+	kept       keptSet
+	publishers map[unique.Handle[string]]PublisherCount
+	categories map[unique.Handle[string]]int
+	// generation counts the evaluations that kept, replaced or dropped a
+	// decision.
+	generation atomic.Uint64
 
 	// dirty holds the indicators changed in the store since the worker last
 	// ran, or whose evaluation failed, with the latest cause; wake signals
@@ -140,6 +147,10 @@ type Engine struct {
 	errMu   sync.Mutex
 	lastErr error
 
+	// countsMu guards counts, taken after every evaluation pass.
+	countsMu sync.Mutex
+	counts   Counts
+
 	runMu       sync.Mutex
 	unsubscribe func()
 	stop        chan struct{}
@@ -150,17 +161,17 @@ type Engine struct {
 // in opts.
 func New(st store.Store, p Policy, log *slog.Logger, opts Options) *Engine {
 	return &Engine{
-		store:     st,
-		policy:    p,
-		rules:     Rules{Allowlist: opts.Allowlist},
-		log:       log,
-		opts:      opts.withDefaults(),
-		decisions: map[string]Decision{},
-		verdicts:  map[string]int{},
-		dirty:     map[string]string{},
-		wake:      make(chan struct{}, 1),
-		subs:      map[int]func(Change){},
-		tsubs:     map[int]func(Transition){},
+		store:      st,
+		policy:     p,
+		rules:      Rules{Allowlist: opts.Allowlist},
+		log:        log,
+		opts:       opts.withDefaults(),
+		publishers: map[unique.Handle[string]]PublisherCount{},
+		categories: map[unique.Handle[string]]int{},
+		dirty:      map[string]string{},
+		wake:       make(chan struct{}, 1),
+		subs:       map[int]func(Change){},
+		tsubs:      map[int]func(Transition){},
 	}
 }
 
@@ -187,7 +198,7 @@ func (e *Engine) Start(ctx context.Context) error {
 	e.stop, e.done = make(chan struct{}), make(chan struct{})
 	go e.loop(e.stop, e.done)
 	e.mu.RLock()
-	n := len(e.decisions)
+	n := e.kept.len()
 	e.mu.RUnlock()
 	e.log.Info("decision engine started", "indicators", n, "blocked", len(e.Decisions(StateBlock)))
 	return nil
@@ -220,15 +231,15 @@ func (e *Engine) Ready() error {
 	return e.lastErr
 }
 
-// Detail summarizes the kept decisions for the node status.
+// Detail summarizes the kept decisions for the node status, from the
+// counts of the last evaluation pass.
 func (e *Engine) Detail() string {
-	return fmt.Sprintf("%d blocked of %d indicators", len(e.Decisions(StateBlock)), e.count())
-}
-
-func (e *Engine) count() int {
-	e.mu.RLock()
-	defer e.mu.RUnlock()
-	return len(e.decisions)
+	c := e.Counts()
+	total := 0
+	for _, n := range c.Decisions {
+		total += n
+	}
+	return fmt.Sprintf("%d blocked of %d indicators", c.Decisions[StateBlock], total)
 }
 
 // Subscribe registers fn for the block change stream. Every block that
@@ -285,6 +296,21 @@ func (e *Engine) SubscribeTransitions(fn func(Transition)) (unsubscribe func()) 
 // StateNone. Only verdicts on ind itself count: an address inside a CIDR
 // range with verdicts is explained on its own.
 func (e *Engine) Explain(ind obieproto.Indicator) (Decision, error) {
+	return e.ExplainWith(ind, func(*Inputs) {})
+}
+
+// Inputs are what the decision on an indicator is made from: its active
+// verdicts and the overrides in effect.
+type Inputs struct {
+	Verdicts  []*obieproto.Event
+	Overrides []store.Override
+}
+
+// ExplainWith explains the decision on ind like Explain, but from the
+// inputs edit leaves of the stored ones: with an override set or removed,
+// or a verdict of this node issued or withdrawn. It tells before a change
+// what the change would decide, and changes nothing (ADR 0026).
+func (e *Engine) ExplainWith(ind obieproto.Indicator, edit func(*Inputs)) (Decision, error) {
 	now := e.opts.Now()
 	verdicts, err := e.store.ActiveVerdicts(ind.Key(), now)
 	if err != nil {
@@ -294,9 +320,23 @@ func (e *Engine) Explain(ind obieproto.Indicator) (Decision, error) {
 	if err != nil {
 		return Decision{}, fmt.Errorf("read overrides: %w", err)
 	}
+	in := Inputs{Verdicts: verdicts, Overrides: overrides}
+	edit(&in)
 	p, r := e.current()
-	r.Overrides = sovereignty.NewOverrides(overrides)
-	return Decide(ind, verdicts, p, r, now), nil
+	r.Overrides = sovereignty.NewOverrides(in.Overrides)
+	return Decide(ind, in.Verdicts, p, r, now), nil
+}
+
+// Flush evaluates the indicators changed so far right away, rather than
+// on the worker, so that reads that follow — Decision, Browse, Verdicts —
+// see the change: the console calls it after an operator action
+// (ADR 0026). It does nothing while the engine is not running.
+func (e *Engine) Flush() {
+	e.runMu.Lock()
+	defer e.runMu.Unlock()
+	if e.stop != nil {
+		e.processDirty()
+	}
 }
 
 // Reload replaces the policy and the allow-list and re-decides every kept
@@ -324,6 +364,32 @@ func (e *Engine) Reload(p Policy, allow *sovereignty.Allowlist) {
 func (e *Engine) Allowlist() *sovereignty.Allowlist {
 	_, r := e.current()
 	return r.Allowlist
+}
+
+// Policy returns the policy in effect, which Reload replaces. Its maps
+// are shared and must not be modified.
+func (e *Engine) Policy() Policy {
+	p, _ := e.current()
+	return p
+}
+
+// Decision returns the kept decision on the indicator with key, without
+// Publishers, and whether there is one.
+func (e *Engine) Decision(key string) (Decision, bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	k, ok := e.kept.get(key)
+	if !ok {
+		return Decision{}, false
+	}
+	return k.d, true
+}
+
+// Generation counts the evaluations that kept, replaced or dropped a
+// decision since the engine was created; a caller that read the
+// decisions knows they may have changed once it moved (ADR 0022).
+func (e *Engine) Generation() uint64 {
+	return e.generation.Load()
 }
 
 // current returns the policy and rules in effect.
@@ -359,9 +425,9 @@ func (e *Engine) refreshOverrides(now time.Time) ([]netip.Prefix, error) {
 func (e *Engine) keptKeys() []string {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	keys := make([]string, 0, len(e.decisions))
-	for key := range e.decisions {
-		keys = append(keys, key)
+	keys := make([]string, 0, e.kept.len())
+	for i := range e.kept.items {
+		keys = append(keys, e.kept.items[i].key)
 	}
 	return keys
 }
@@ -387,9 +453,9 @@ func (e *Engine) overlapping(ranges []netip.Prefix) []string {
 	}
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	for key, d := range e.decisions {
-		if overlaps(d.Indicator) {
-			keys = append(keys, key)
+	for i := range e.kept.items {
+		if k := &e.kept.items[i]; k.prefix.IsValid() && slices.ContainsFunc(ranges, k.prefix.Overlaps) {
+			keys = append(keys, k.key)
 		}
 	}
 	return keys
@@ -407,11 +473,12 @@ func (e *Engine) Decisions(state State) []Decision {
 func (e *Engine) list(state State, hideExpired bool) []Decision {
 	now := e.opts.Now()
 	e.mu.RLock()
-	out := make([]Decision, 0, len(e.decisions))
-	for _, d := range e.decisions {
+	out := make([]Decision, 0, e.kept.len())
+	for i := range e.kept.items {
+		d := &e.kept.items[i].d
 		expired := hideExpired && d.State == StateBlock && !now.Before(d.ExpiresAt)
 		if state == "" || (d.State == state && !expired) {
-			out = append(out, d)
+			out = append(out, *d)
 		}
 	}
 	e.mu.RUnlock()
@@ -556,11 +623,12 @@ func (e *Engine) refreshExpired() {
 	now := e.opts.Now()
 	var due []string
 	e.mu.RLock()
-	for key, d := range e.decisions {
+	for i := range e.kept.items {
+		d := &e.kept.items[i].d
 		blockEnded := d.State == StateBlock && !now.Before(d.ExpiresAt)
 		overrideEnded := !d.Sovereignty.ExpiresAt.IsZero() && !now.Before(d.Sovereignty.ExpiresAt)
 		if blockEnded || overrideEnded {
-			due = append(due, key)
+			due = append(due, e.kept.items[i].key)
 		}
 	}
 	e.mu.RUnlock()
@@ -612,10 +680,14 @@ func (e *Engine) indicatorOf(key string, verdicts []*obieproto.Event) (obieproto
 		return verdicts[0].Indicator, true
 	}
 	e.mu.RLock()
-	d, ok := e.decisions[key]
+	k, ok := e.kept.get(key)
+	var ind obieproto.Indicator
+	if ok {
+		ind = k.d.Indicator
+	}
 	e.mu.RUnlock()
 	if ok {
-		return d.Indicator, true
+		return ind, true
 	}
 	_, r := e.current()
 	o, ok := r.Overrides.Get(key)
@@ -626,16 +698,24 @@ func (e *Engine) indicatorOf(key string, verdicts []*obieproto.Event) (obieproto
 // block changed. Decisions without active verdicts are kept only while
 // they block (force-block). Callers hold workMu.
 func (e *Engine) apply(key string, d Decision, cause string) {
-	verdicts := len(d.Publishers)
-	active := verdicts > 0 || d.State == StateBlock
+	held := heldOf(d.Publishers)
+	active := len(held) > 0 || d.State == StateBlock
 	d.Publishers = nil
 	e.mu.Lock()
-	prev, had := e.decisions[key]
+	var prev Decision
+	k, had := e.kept.get(key)
+	if had {
+		prev = k.d
+		e.count(k.held, -1)
+	}
 	if active {
-		e.decisions[key], e.verdicts[key] = d, verdicts
+		e.kept.put(key, d, held)
 	} else {
-		delete(e.decisions, key)
-		delete(e.verdicts, key)
+		e.kept.remove(key)
+	}
+	e.count(held, 1)
+	if active || had {
+		e.generation.Add(1)
 	}
 	e.mu.Unlock()
 

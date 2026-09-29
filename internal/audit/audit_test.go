@@ -80,16 +80,41 @@ func goldenRecords() []Record {
 	revoke := &obieproto.Event{ID: "0199a1b2-c3d4-7e5f-8a6b-000000000002", Type: obieproto.TypeRevoke,
 		IssuedAt: obieproto.NewTimestamp(t0), Indicator: ipv4("203.0.113.7"), Revokes: report.ID, Reason: "false_positive"}
 
+	// Operator actions name the door and the local user (ADR 0026).
+	set := OverrideSet(&override)
+	set.Origin = Origin{Via: OriginConsole, UserID: "1000", UserName: "alice"}
+	unset := OverrideRemoved(override.Indicator, override.Action)
+	unset.Origin = Origin{Via: OriginAdminAPI, UserID: "0", UserName: "root"}
+	reported := LocalReport(report)
+	reported.Origin = Origin{Via: OriginAdminAPI, UserID: "994"}
+	revoked := Revocation(revoke)
+	revoked.Origin = Origin{Via: OriginConsole, UserID: "1000", UserName: "alice"}
+
 	return []Record{
 		BlockChange(decision.Change{Type: decision.ChangeAdded, Key: consensus.Indicator.Key(), Decision: consensus, Cause: "verdict"}),
 		BlockChange(decision.Change{Type: decision.ChangeUpdated, Key: autoblock.Indicator.Key(), Decision: autoblock, Cause: "refresh"}),
 		BlockChange(decision.Change{Type: decision.ChangeRemoved, Key: removed.Indicator.Key(), Decision: removed, Cause: "revoke"}),
 		Allowed(decision.Transition{Key: allowed.Indicator.Key(), From: decision.StateNone, Decision: allowed, Cause: "verdict"}),
-		OverrideSet(&override),
+		set,
 		BlockChange(decision.Change{Type: decision.ChangeAdded, Key: forced.Indicator.Key(), Decision: forced, Cause: "override"}),
-		OverrideRemoved(override.Indicator, override.Action),
-		LocalReport(report),
-		Revocation(revoke),
+		unset,
+		reported,
+		revoked,
+		PeerConnection(Peer{ID: "12D3KooWPeerB", Name: "node-b", Bootstrap: true, Publisher: true}, true),
+		PeerConnection(Peer{ID: "12D3KooWPeerC"}, false),
+		ConfigReloaded("/etc/obie/obied.yaml", []string{"node.mode", "decision.threshold"}, []string{"mesh.listen"}),
+		ModeChanged("observe", "enforce"),
+	}
+}
+
+// aboutAddress reports whether records of action are about an address,
+// and so carry obie.indicator and rule.name.
+func aboutAddress(action Action) bool {
+	switch action {
+	case ActionPeerConnected, ActionPeerDisconnected, ActionConfigReloaded, ActionModeChanged:
+		return false
+	default:
+		return true
 	}
 }
 
@@ -137,10 +162,13 @@ func TestLinesAreECS(t *testing.T) {
 			t.Fatalf("line %d is not JSON: %v", i+1, err)
 		}
 		if _, err := time.Parse(time.RFC3339, doc.Timestamp); err != nil || doc.Event.Action == "" ||
-			doc.Event.Outcome != OutcomeSuccess || doc.Rule.Name == "" || doc.Obie.Mode != "observe" {
+			doc.Event.Outcome != OutcomeSuccess || doc.Obie.Mode != "observe" {
 			t.Errorf("line %d lacks ECS fields: %s", i+1, line)
 		}
-		if isRange := strings.HasPrefix(doc.Obie.Indicator, "cidr:"); isRange != (doc.Source == nil) {
+		if about := aboutAddress(Action(doc.Event.Action)); about != (doc.Rule.Name != "") || about != (doc.Obie.Indicator != "") {
+			t.Errorf("line %d: rule %q, indicator %q for %s", i+1, doc.Rule.Name, doc.Obie.Indicator, doc.Event.Action)
+		}
+		if isRange := strings.HasPrefix(doc.Obie.Indicator, "cidr:") || doc.Obie.Indicator == ""; isRange != (doc.Source == nil) {
 			t.Errorf("line %d: source = %+v for %s", i+1, doc.Source, doc.Obie.Indicator)
 		}
 	}
@@ -222,5 +250,28 @@ func TestNilLogDoesNothing(t *testing.T) {
 	l.Write(Record{Action: ActionOverrideRemoved})
 	if err := l.Reopen(); err != nil {
 		t.Errorf("Reopen on nil = %v", err)
+	}
+}
+
+// TestReasons: the reasons of peer, reload and mode records say what
+// happened in one line.
+func TestReasons(t *testing.T) {
+	for _, tc := range []struct {
+		r    Record
+		want string
+	}{
+		{PeerConnection(Peer{ID: "12D3KooWA", Publisher: true}, true), "publisher 12D3KooWA connected"},
+		{PeerConnection(Peer{ID: "12D3KooWA", Name: "a", Bootstrap: true}, false), "bootstrap peer a (12D3KooWA) disconnected"},
+		{PeerConnection(Peer{ID: "12D3KooWA"}, true), "peer 12D3KooWA connected"},
+		{ConfigReloaded("", nil, nil), "configuration reloaded: no setting changed"},
+		{ConfigReloaded("/etc/obie/obied.yaml", []string{"trust.default_weight"}, nil),
+			"configuration reloaded from /etc/obie/obied.yaml: trust.default_weight changed"},
+		{ConfigReloaded("/c.yaml", nil, []string{"mesh.listen", "store.max_indicators"}),
+			"configuration reloaded from /c.yaml: no setting changed; 2 settings wait for a restart (mesh.listen, store.max_indicators)"},
+		{ModeChanged("enforce", "observe"), "node.mode changed from enforce to observe: blocks are only logged, and withdrawn from the firewall"},
+	} {
+		if tc.r.Reason != tc.want {
+			t.Errorf("reason = %q, want %q", tc.r.Reason, tc.want)
+		}
 	}
 }

@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
+
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -100,19 +102,32 @@ func marshal(t *testing.T, ev *obieproto.Event) []byte {
 	return data
 }
 
-// countingMetrics counts outcomes.
+// countingMetrics counts outcomes, in total and by the peer that sent the
+// message.
 type countingMetrics struct {
 	mu     sync.Mutex
 	counts map[Outcome]int
+	byPeer map[peer.ID]map[Outcome]int
 }
 
-func (m *countingMetrics) Observe(o Outcome) {
+func (m *countingMetrics) Observe(from peer.ID, o Outcome) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.counts == nil {
-		m.counts = map[Outcome]int{}
+		m.counts, m.byPeer = map[Outcome]int{}, map[peer.ID]map[Outcome]int{}
 	}
 	m.counts[o]++
+	if m.byPeer[from] == nil {
+		m.byPeer[from] = map[Outcome]int{}
+	}
+	m.byPeer[from][o]++
+}
+
+// of returns a copy of the counts of the messages from sent.
+func (m *countingMetrics) of(from peer.ID) map[Outcome]int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return maps.Clone(m.byPeer[from])
 }
 
 // snapshot returns a copy of the counts.

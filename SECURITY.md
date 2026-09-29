@@ -190,6 +190,67 @@ the Fail2Ban action refuse only addresses in `allowlist.cidrs` as loaded
 at start, so an address in `allowlist.files` or added with a reload can
 still be reported to your peers, and blocked on theirs.
 
+### Local web console
+
+Someone other than the operator reads the node through the web console:
+an attacker on the network, another user of the host, or a web page open
+in the operator's browser that forges requests or rebinds a DNS name to
+the host.
+
+**v0.1 mitigation.** The console is off unless `console.enabled` is set,
+and listens only on a loopback address; any other `console.listen` is a
+configuration error. It serves only root, the service user and members of
+the group `obie` — the connecting process's user is read from the
+kernel's socket table — and only browsers signed in with a 256-bit token
+that `obied` keeps in memory and hands out only through the admin socket
+(`obiectl console`; `--rotate` replaces it and ends every session, as
+does every restart). Sessions are HMAC-signed, `HttpOnly`,
+`SameSite=Strict` cookies that last 12 hours. Requests addressed to
+another host name (DNS rebinding), requests from other sites or other
+local ports (Fetch Metadata, `Origin`) and framing are refused; a strict
+content security policy allows no other origin and no inline code. The
+console is read-only, loads nothing from outside the node, and never
+stops or degrades the node. Pages that refresh themselves fetch only the
+console's own escaped template output, behind the same session, and
+parse it into an inert document before showing it. Details and the
+threats considered are in
+[ADR 0019](documentation/adr/0019-local-web-console.md),
+[ADR 0020](documentation/adr/0020-console-overview.md),
+[ADR 0021](documentation/adr/0021-console-peers.md),
+[ADR 0022](documentation/adr/0022-console-decisions-and-firewall.md),
+[ADR 0023](documentation/adr/0023-console-verdicts.md),
+[ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md) and
+[ADR 0025](documentation/adr/0025-console-activity-timeline.md); the
+peers view shows peer names, addresses and dial errors as received from
+the configuration and the network, and the decisions and verdicts views
+show the reasons, protocols, log hashes and revocation reasons of
+verdicts as received, escaped like everything else. The evidence behind
+a verdict is never shown: only its hash ever left the reporting node. The
+copy buttons write only text to the clipboard; a shared link holds no
+secret and still needs a session. The revoked and expired verdicts the
+store keeps for the verdicts view are capped per state, so a flood of
+short-lived verdicts cannot fill the disk. The configuration view shows
+what the users of `obiectl` may already read — the configuration, never
+the node's private key or the console token — and would show a secret
+setting only as set or not set. It reads only the configuration file
+`obied` was started with and the allow-list files it loaded, never a path
+from a request, and the address lookup only parses an address. The
+activity timeline reads back only the audit log file `obied` writes, at
+most 16 MiB per page; a position in it from a request is only an offset
+into that file. Its live feed is one more fragment of escaped rows behind
+the session, asked for once a second only while its page is visible, and
+never lists more than 50 rows at once.
+
+**Remaining risk.** Through an SSH port forward, every user of the
+operator's workstation can reach the forwarded port, and on the node the
+connection counts as the operator's login user: only the token protects
+it there. Cookies are not isolated by port, so on the workstation the
+session cookie also reaches other servers on its loopback interface. Use
+a workstation you control, sign out, and rotate the token when in doubt.
+On platforms without the Linux socket table, only the token protects the
+console. The console speaks plain HTTP; on the host, loopback traffic is
+visible to root only.
+
 ### Privacy leakage
 
 Verdicts and the mesh reveal more than the operator intends: about the

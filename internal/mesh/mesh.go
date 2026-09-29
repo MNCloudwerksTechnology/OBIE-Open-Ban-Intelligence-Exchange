@@ -78,6 +78,10 @@ type Options struct {
 	// GossipMetrics observes the outcome of every received event; nil for
 	// none.
 	GossipMetrics gossip.Metrics
+	// Connections, if set, is called for every peer that connects or
+	// loses its last connection, one call at a time; it must be fast
+	// (ADR 0025).
+	Connections func(Connection)
 	// AllowDocumentationRanges accepts events on documentation addresses
 	// (gossip.Options.AllowDocumentationRanges); only for tests.
 	AllowDocumentationRanges bool
@@ -106,6 +110,14 @@ type Mesh struct {
 	publishers    map[peer.ID]config.Publisher
 	defaultWeight float64
 
+	// tally counts the events each peer sent (ADR 0021).
+	tally *gossip.Tally
+	// historyMu guards lastSeen and dialFailures, which are kept for
+	// configured peers only.
+	historyMu    sync.Mutex
+	lastSeen     map[peer.ID]time.Time
+	dialFailures map[peer.ID]dialFailure
+
 	mu     sync.Mutex
 	host   host.Host
 	gossip *gossip.Gossip
@@ -121,7 +133,8 @@ func New(id identity.Identity, opts Options, log *slog.Logger) (*Mesh, error) {
 		return nil, errors.New("no store")
 	}
 	opts = withDefaults(opts)
-	m := &Mesh{id: id, opts: opts, log: log}
+	m := &Mesh{id: id, opts: opts, log: log, lastSeen: map[peer.ID]time.Time{}, dialFailures: map[peer.ID]dialFailure{}}
+	m.tally = gossip.NewTally(nil, m.isConfigured)
 
 	for _, s := range opts.Listen {
 		addr, err := ma.NewMultiaddr(s)
@@ -177,6 +190,22 @@ func (m *Mesh) trustOf(id peer.ID) (name string, weight float64) {
 	return "", m.defaultWeight
 }
 
+// isPublisher reports whether peer id is listed in trust.publishers.
+func (m *Mesh) isPublisher(id peer.ID) bool {
+	m.trustMu.RLock()
+	defer m.trustMu.RUnlock()
+	_, ok := m.publishers[id]
+	return ok
+}
+
+// DefaultWeight returns trust.default_weight: the trust weight of
+// publishers not listed in trust.publishers.
+func (m *Mesh) DefaultWeight() float64 {
+	m.trustMu.RLock()
+	defer m.trustMu.RUnlock()
+	return m.defaultWeight
+}
+
 func withDefaults(opts Options) Options {
 	if opts.InitialBackoff <= 0 {
 		opts.InitialBackoff = DefaultInitialBackoff
@@ -222,11 +251,15 @@ func (m *Mesh) Start(context.Context) error {
 	if err != nil {
 		return err
 	}
+	var metrics gossip.Metrics = m.tally
+	if m.opts.GossipMetrics != nil {
+		metrics = observers{m.tally, m.opts.GossipMetrics}
+	}
 	g, err := gossip.New(h, gossip.Options{
 		Store:          m.opts.Store,
 		PublisherLimit: m.opts.RateLimit.Publisher,
 		PeerLimit:      m.opts.RateLimit.Peer,
-		Metrics:        m.opts.GossipMetrics,
+		Metrics:        metrics,
 
 		AllowDocumentationRanges: m.opts.AllowDocumentationRanges,
 	}, m.log)
@@ -333,6 +366,10 @@ func (m *Mesh) Stop(ctx context.Context) error {
 		return nil
 	}
 	cancel()
+	// The watcher no longer sees the disconnects closing the host causes.
+	for _, id := range h.Network().Peers() {
+		m.disconnectedFrom(id)
+	}
 	g.Close()
 	err := h.Close()
 	peersConnected.Set(0)
@@ -368,22 +405,42 @@ func (m *Mesh) Ready() error {
 
 // Detail summarizes the connected peers; zero peers is a degraded state.
 func (m *Mesh) Detail() string {
-	h := m.currentHost()
-	if h == nil {
+	if m.currentHost() == nil {
 		return ""
 	}
-	connected := len(h.Network().Peers())
-	bootstrap := 0
-	for _, pi := range m.bootstrap {
-		if h.Network().Connectedness(pi.ID) == network.Connected {
-			bootstrap++
-		}
-	}
-	summary := fmt.Sprintf("%d peers connected (%d/%d bootstrap peers)", connected, bootstrap, len(m.bootstrap))
-	if connected == 0 {
+	c := m.PeerCounts()
+	summary := fmt.Sprintf("%d peers connected (%d/%d bootstrap peers)", c.Connected, c.Bootstrap, c.Configured)
+	if c.Connected == 0 {
 		return "degraded: " + summary
 	}
 	return summary
+}
+
+// PeerCounts counts the mesh's peers.
+type PeerCounts struct {
+	// Connected counts the connected peers.
+	Connected int
+	// Bootstrap counts the connected peers among the configured ones.
+	Bootstrap int
+	// Configured counts the peers in mesh.bootstrap, without this node.
+	Configured int
+}
+
+// PeerCounts counts the connected and the configured peers; none are
+// connected before Start.
+func (m *Mesh) PeerCounts() PeerCounts {
+	c := PeerCounts{Configured: len(m.bootstrap)}
+	h := m.currentHost()
+	if h == nil {
+		return c
+	}
+	c.Connected = len(h.Network().Peers())
+	for _, pi := range m.bootstrap {
+		if h.Network().Connectedness(pi.ID) == network.Connected {
+			c.Bootstrap++
+		}
+	}
+	return c
 }
 
 // Publish stores ev, an event signed by this node, and sends it to the
@@ -396,6 +453,40 @@ func (m *Mesh) Publish(ctx context.Context, ev *obieproto.Event) error {
 		return errors.New("mesh not started")
 	}
 	return g.Publish(ctx, ev)
+}
+
+// Held reports whether this node's event with the ID id waits for a peer
+// to join the topic: it was published while none was (ADR 0026).
+func (m *Mesh) Held(id string) bool {
+	m.mu.Lock()
+	g := m.gossip
+	m.mu.Unlock()
+	return g != nil && g.Held(id)
+}
+
+// Backlog counts this node's events waiting to be sent and estimates how
+// long sending them takes once a peer is on the topic; none while the mesh
+// is not running.
+func (m *Mesh) Backlog() (events int, wait time.Duration) {
+	m.mu.Lock()
+	g := m.gossip
+	m.mu.Unlock()
+	if g == nil {
+		return 0, 0
+	}
+	return g.Backlog()
+}
+
+// TopicPeers counts the peers on the GossipSub topic, those this node's
+// events are sent to; 0 while the mesh is not running.
+func (m *Mesh) TopicPeers() int {
+	m.mu.Lock()
+	g := m.gossip
+	m.mu.Unlock()
+	if g == nil {
+		return 0
+	}
+	return g.TopicPeers()
 }
 
 // ListenAddrs returns the addresses the host listens on, with the ports

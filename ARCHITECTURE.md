@@ -35,7 +35,23 @@ analysis and the soak test — in
 [ADR 0017](documentation/adr/0017-hardening-and-resource-limits.md); release
 packaging (tarballs, systemd unit, container image, compose lab) and the state
 directory format in
-[ADR 0017](documentation/adr/0017-packaging-and-state-format.md); the website
+[ADR 0017](documentation/adr/0017-packaging-and-state-format.md); the local
+web console, its security model and its technology in
+[ADR 0019](documentation/adr/0019-local-web-console.md), its overview
+in [ADR 0020](documentation/adr/0020-console-overview.md), its peers
+view in [ADR 0021](documentation/adr/0021-console-peers.md), its
+decisions, explanations and firewall view in
+[ADR 0022](documentation/adr/0022-console-decisions-and-firewall.md), its
+verdicts view, with the ended verdicts the store keeps for it, in
+[ADR 0023](documentation/adr/0023-console-verdicts.md) and its overrides,
+allow-list and configuration views, with the expired overrides the store
+keeps and the configuration reference in code, in
+[ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md) and
+its activity timeline, read from the audit trail and followed live, in
+[ADR 0025](documentation/adr/0025-console-activity-timeline.md) and its
+operator actions, confirmed, checked by the admin API's rules and audited
+with their origin, in
+[ADR 0026](documentation/adr/0026-console-operator-actions.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -55,11 +71,12 @@ for implementation work (see [Deviations from the whitepaper](#deviations-from-t
 - **Logging:** `log/slog` JSON to stderr.
 - **Events:** obie/0.1 JSON; signatures are Ed25519 over the RFC 8785 (JCS) canonical form of the event with `publisher.signature` removed; `signature` = `"ed25519:" + base64url(no padding)`. IDs are UUIDv7.
 - **Identity:** one Ed25519 key per node; the libp2p peer ID is derived from it (same key for mesh and event signing).
-- **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0008).
-- **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts` (no pubsub signatures, message ID = event ID, validation before relay, per-publisher and per-peer rate limits, peer scoring), static bootstrap peers in v0.1.
+- **Storage:** BadgerDB v4 in `<state_dir>/db`: deduplicated events, the latest verdict per (publisher, indicator), revocations, TTL-based expiry with change notifications, operator overrides (ADR 0008); revoked and expired verdicts kept for 24 hours after their expiry, with the revocation's reason (ADR 0023); expired overrides kept for 7 days after their expiry (ADR 0024).
+- **Mesh:** go-libp2p (TCP + QUIC, Noise), GossipSub topic `obie/0.1/verdicts` (no pubsub signatures, message ID = event ID, validation before relay, per-publisher and per-peer rate limits, peer scoring), static bootstrap peers in v0.1; the node's own events published while no peer is on the topic are held in memory and sent when one joins (ADR 0026).
 - **Decision:** operator-assigned per-publisher trust weights; `score = Σ weight(publisher) × confidence` over distinct publishers' latest active verdicts; enforce iff score ≥ threshold (default 1.8) AND distinct publishers with weight > 0 ≥ quorum (default 2) — local verdicts count with `local_weight` and, with `decision.local_autoblock` (default), block on their own; only `ban` verdicts count (ADR 0011). Allow-list always wins (built-in ranges, own and bootstrap addresses, `allowlist.cidrs`, `allowlist.files`); operator force-allow / force-block overrides; mode `observe` (default) or `enforce`; SIGHUP reloads (ADR 0013).
 - **Enforcement:** pluggable enforcer (`Setup`/`List`/`Apply`/`Teardown`, entries with timeouts); `dryrun` (default) and `nftables` (netlink via google/nftables, own table `inet obie` with interval+timeout sets `obie_v4`/`obie_v6` and a priority -10 input chain, optional forward chain, CAP_NET_ADMIN only, `obied teardown-firewall`; ADR 0015) backends; reconcile loop with `enforce.max_entries` cap and allow-list re-check (ADR 0014).
-- **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015).
+- **Ops:** Prometheus `/metrics` (namespace `obie_`, no high-cardinality labels), `/healthz`, `/readyz` on a separate listen address (default `127.0.0.1:9464`); ECS JSON-lines decision audit log at `audit.path`, reopened on SIGHUP (ADR 0015), which also records peer connections, reloads and mode changes and keeps its last 10,000 records in memory for the console (ADR 0025); operator actions carry their origin (`obie.origin` `admin-api` or `console`, `user.id`, `user.name`; ADR 0026).
+- **Console:** opt-in (`console.enabled`, default off) web console inside `obied` on a loopback address only (`console.listen`, default `127.0.0.1:9465`), server-rendered with `html/template` and embedded assets; it serves only the admin API's local users (socket owner from the kernel's socket table) and only browsers signed in with an in-memory token (`obiectl console [--rotate]`); Host, Fetch Metadata/Origin checks and a strict CSP (ADR 0019); an overview of health, key numbers and attention conditions that refreshes itself through a fragment endpoint (ADR 0020); a peers view of every configured and connected peer with its trust, held verdicts and recent events (ADR 0021); a decisions list filtered, searched, sorted and paged on the node, the explanation of any address like `obiectl explain`, and a firewall view of the backend's entries and their differences from the decided blocks, with copy buttons and shareable links (ADR 0022); a verdicts view of this node's and every other publisher's verdicts — active, revoked (and why) or expired — with the evidence's hash and event count, totals per publisher, and links to the publisher and the decision (ADR 0023); an overrides view of the force-allows and force-blocks in effect (and expired ones), an allow-list view grouped by origin with the state of each allow-list file on disk and the lookup *Is this address protected?*, and a configuration view of every setting with its running value, default mark, one-line summary and reload/restart, the load status and the changes on disk not active yet (ADR 0024); an activity timeline of the audit trail, newest first, filtered by kind and address, followed live every second through a fragment of new rows, with bursts summed up, and the last entries on the overview (ADR 0025); the operator actions of `obiectl` — allow, block, unoverride, report, revoke — from the decision, verdicts and overrides views, each confirmed on a page that states what the node computed it will do, checked and carried out through the admin API's checks and services, refused when the address's state changed since the confirmation, recorded with the console as origin, and switched off by `console.actions: false` (ADR 0026).
 - **Testing:** table-driven unit tests, fuzz tests on all decoders (see [Fuzz testing](CONTRIBUTING.md#fuzz-testing)), in-process multi-node integration tests, above all the four-node end-to-end test in `test/e2e` (ADR 0016); goleak in every package's `TestMain`; the soak test behind the `soak` build tag (`make soak`, ADR 0017); privileged tests behind the `privileged` build tag, run in a fresh network namespace (see [Privileged tests](CONTRIBUTING.md#privileged-tests)).
 
 ## Repository layout
@@ -70,9 +87,10 @@ cmd/
   obiectl/          operator CLI entry point
 internal/           all non-public code (one package per concern listed above)
   admin/            admin API on the Unix socket (server, wire types, obiectl client)
-  audit/            decision audit log: ECS JSON lines, reopened on SIGHUP
+  audit/            decision audit log: ECS JSON lines, reopened on SIGHUP; its tail in memory, read back newest first
   cli/              flag handling and commands of both binaries
-  config/           YAML configuration schema, defaults, strict decoding, validation
+  config/           YAML configuration schema, defaults, strict decoding, validation, settings reference
+  console/          local web console: loopback server, request guards, token and sessions, layout, views
   daemon/           wires the obied subsystems together and runs them
   decision/         trust-weighted consensus per indicator, explanations, block and transition streams
   enforce/          mode gate, reconciler and enforcement backends (dryrun)
@@ -83,6 +101,7 @@ internal/           all non-public code (one package per concern listed above)
   logging/          slog JSON handler; per-component loggers
   mesh/             go-libp2p host, bootstrap peers with backoff, peer view
   ops/              /healthz, /readyz and Prometheus /metrics
+  peercred/         local user of an admin socket or console connection; who may use them
   statedir/         state directory format version (<state_dir>/FORMAT); refuses newer formats
   sovereignty/      allow-list (built-in, config, files, own and bootstrap addresses), override precedence
   store/            BadgerDB event and indicator state: dedupe, expiry, overrides
@@ -186,7 +205,12 @@ Only the packages that exist today are listed in detail; the remaining
   that order; invalid events are rejected (and penalise the forwarder
   through peer scoring), duplicates and rate-limited events are ignored,
   accepted ones are stored and relayed. `Mesh.Publish` stores an event of
-  the node first, then publishes it. Outcomes are counted in
+  the node first, then publishes it; while no peer is on the topic it holds
+  the event instead (at most 10,000, in memory), and later events wait
+  behind held ones; once a peer is on the topic it sends them in order, 16
+  every 2 seconds (below GossipSub's per-peer queue and the default
+  publisher rate limit), dropping those about to expire
+  (`Mesh.Held`, `Mesh.Backlog`, `Mesh.TopicPeers`; ADR 0026). Outcomes are counted in
   `obie_events_received_total` and reported through the `gossip.Metrics`
   interface (ADR 0009).
 - **Decision.** The `decision` subsystem (registered right after `store`)
@@ -201,9 +225,15 @@ Only the packages that exist today are listed in detail; the remaining
   refreshed while its verdicts live. `Engine.Subscribe` streams
   added/updated/removed block changes with their cause for the enforcer.
   `obiectl explain <ip>` (`GET /v1/decisions/{indicator}`) shows every
-  publisher's weight, confidence and contribution, score vs threshold,
-  count vs quorum and the final decision; `obiectl decisions`
-  (`GET /v1/decisions?state=block`) lists them (ADR 0011).
+  publisher's weight, confidence, contribution and reason, score vs
+  threshold, count vs quorum and the final decision; `obiectl decisions`
+  (`GET /v1/decisions?state=block`) lists them (ADR 0011). The kept
+  decisions live in one slice with a key index, each with its active
+  verdicts' publishers and categories (reason and protocol, interned), so
+  a pass over all of them reads memory in order; `Engine.Browse` filters,
+  sorts and pages them for the console in one such pass under the read
+  lock, keeping only the page (ADR 0022); `Engine.Verdicts` pages their
+  active verdicts the same way, by indicator key and publisher (ADR 0023).
 - **Sovereignty.** `internal/sovereignty` builds the effective allow-list —
   built-in ranges (loopback, RFC 1918, CGNAT, link-local, ULA, multicast,
   unspecified, broadcast, IPv4-mapped, documentation), `allowlist.cidrs`,
@@ -219,15 +249,25 @@ Only the packages that exist today are listed in detail; the remaining
   [--ttl] [--note]`, `obiectl overrides` and `obiectl unoverride`
   (`GET/POST /v1/overrides`, `DELETE /v1/overrides/{indicator}`) manage the
   overrides; `obiectl explain` names the rule, its source and the match.
+  The allow-list remembers what it loaded from each file (entries and
+  SHA-256) and the addresses it could not determine (unresolved bootstrap
+  names, unlisted interfaces); `CheckFile` reads a file again reporting
+  every rejected line, without loading it (ADR 0024).
 - **Modes and reload.** `internal/enforce.Gate` subscribes to the block
   change stream and is the only path to the enforcer: in `observe`
   (default) it logs every change and notifies nothing, in `enforce` it
   notifies the reconciler; switching applies or withdraws the current
   blocks. The mode is set only in the configuration (`obiectl status` shows it first). SIGHUP
   re-reads the configuration and the allow-list files and applies
-  `node.mode`, `trust`, `decision` and `allowlist` at once; an invalid
+  `node.mode`, `trust`, `decision`, `allowlist` and `console` at once; an invalid
   configuration or allow-list file is logged and the running one kept;
   changes to other keys are logged as needing a restart (ADR 0013).
+  `config.Settings` lists every key with a one-line summary, whether a
+  reload or only a restart applies it, and whether it is secret; a test
+  keeps it equal to `Config` and the configuration reference. The
+  reloader copies exactly the keys it marks `reload` and keeps the running
+  `config.File` — the configuration with the keys its file set — in its
+  load record (ADR 0024).
 - **Enforcement.** The `enforce` subsystem (`internal/enforce.Reconciler`,
   registered right after `decision`) makes the backend's entries match the
   gate's blocks: at start, ~250 ms after a block change or mode switch and
@@ -242,7 +282,11 @@ Only the packages that exist today are listed in detail; the remaining
   failed pass is retried with backoff (1 s up to the interval) and makes
   `/readyz` answer 503. `dryrun` (default) keeps entries in memory and
   logs every add/remove as JSON. `obiectl enforced` (`GET /v1/enforced`)
-  lists the applied entries (ADR 0014).
+  lists the applied entries (ADR 0014). After every successful pass the
+  reconciler keeps an immutable `Snapshot` — the mode, the entries the
+  backend holds after it, the skipped and deferred ranges — whose
+  `Lookup` tells for any range whether its own or a wider entry applies
+  it, or why not, in O(log entries) (ADR 0022).
 - **Local verdicts.** `internal/verdicts` turns a local detection into a
   signed `indicator.verdict` (`obiectl report`, `POST /v1/reports`): defaults
   confidence 0.8, action `ban` and TTL `decision.default_ttl`, capped at
@@ -260,6 +304,87 @@ Only the packages that exist today are listed in detail; the remaining
   request is checked against the peer's `SO_PEERCRED` credentials: only
   root, obied's own user and members of `admin.socket_group` get past 403
   (ADR 0012).
+- **Web console.** `internal/console` is the subsystem `console`, registered
+  first: it starts before and stops after every other subsystem, so it can
+  show the node starting and shutting down, and its views must cope with
+  subsystems that are not running. Its `Start` never fails and it is always
+  ready: a console that cannot listen is logged (`console not started; the
+  node runs without it`) and shown in its status detail. A reload applies
+  `console.enabled` and `console.listen` through `Console.Apply` without
+  restarting anything else. `console.listen` must be a loopback IP; the
+  server re-checks the bound address. Every request passes, in order, the
+  `Host` check (loopback literal or `localhost`: DNS rebinding), the
+  local-user check (`internal/peercred`: the admin API's policy, the client
+  socket's owner read from `/proc/self/net/tcp{,6}`) and the Fetch
+  Metadata/`Origin` check; every response carries a CSP that allows only
+  the console's own origin and no inline code. Pages need a session: an
+  HMAC-signed, `HttpOnly`, `SameSite=Strict` cookie (12 h) obtained by
+  posting the token, which `obied` keeps in memory only and replaces on
+  `POST /v1/console/token` (`obiectl console --rotate`) and on every
+  restart. Views are a path, a title and a template in the view list; the
+  navigation lists exactly that list. Every page shows the node's health
+  (starting, ready, degraded, shutting down) derived from the lifecycle
+  statuses, refreshed by a small script (ADR 0019). The overview at `/`
+  reads the node through `console.Node.Facts`, which the daemon fills with
+  cheap reads only — `Mesh.PeerCounts`, `Engine.Counts` (taken with the
+  metrics after every evaluation pass), the reconciler's `Status`, the
+  store's overrides and counters, the reloader's record of configuration
+  loads — and decides from each owning subsystem's lifecycle state
+  whether a number is available. It raises attention conditions after a
+  2-minute startup grace and links a number to its view only once that
+  view exists. A view may declare a fragment under `/api/` that renders its
+  refreshing region alone; the script swaps it in from an inert
+  `DOMParser` document with every health poll (ADR 0020). The peers view
+  at `/peers` reads `console.Node.Peers`: `Mesh.KnownPeers` (the
+  `mesh.bootstrap` and `trust.publishers` peers and the connected ones,
+  with the last-seen time and last failed dial the mesh keeps for
+  configured peers, and the outcomes of the events each peer sent in the
+  last hour, tallied by `gossip.Tally` from the validator's observer) and
+  `Engine.PublisherCounts` (active and counting verdicts per publisher,
+  kept incrementally with the decisions); it filters, sorts and pages on
+  the node. A view may serve item pages below its path: `/peers/{id}`
+  adds the verdicts the node holds from that publisher, read on request
+  with `store.DB.PublisherVerdicts`, which walks the verdict keys and
+  decodes only that publisher's records (ADR 0021). The decisions view at
+  `/decisions` reads a page through `console.Node.Decisions`
+  (`Engine.Browse`, the reconciler's snapshot for the firewall column and
+  filter) when it opens; its refreshing region only compares the engine's
+  `Generation` and the snapshot's sequence. `/decisions/{address or
+  network}` (an item whose ID is the rest of the path) re-evaluates the
+  range with `Engine.Explain` on every refresh, with the decisions on the
+  networks around it (`Engine.Covering`, by key lookups). The firewall
+  view at `/enforcement` refreshes the reconciler's status and snapshot and
+  reads `Reconciler.Entries` when it opens (ADR 0022). The verdicts view at
+  `/verdicts` reads `console.Node.Verdicts` when it opens: a page of
+  `Engine.Verdicts` with the page's events from `store.DB.ActiveVerdicts`,
+  or a page of the verdicts that ended from `store.DB.EndedVerdicts`,
+  which walks the keys of the `h/` keyspace (indicator, publisher and
+  category are in the key) and decodes only the page, and the totals per
+  publisher from `Engine.PublisherCounts` and `store.DB.EndedCounts`
+  (ADR 0023). The overrides, allow-list and configuration views read
+  `console.Node.Rules` when they open: the overrides in effect from
+  `store.DB.Overrides` (each force-block judged with `sovereignty.Judge`
+  to say what beats it) or the expired ones from
+  `store.DB.ExpiredOverrides` (the `h/o/` keyspace, 7 days); the engine's
+  running allow-list with each of its files read again by `CheckFile`, and
+  the lookup judged like the engine judges; the running configuration from
+  the reloader's load record, with the file on disk loaded, validated and
+  compared key by key (ADR 0024). The operator actions at
+  `/actions/{allow,block,unoverride,report,revoke}` go through
+  `console.Node.Actions`, which the daemon implements with the admin API's
+  exported request checks (`OverrideRequest.Check`, `ReportRequest.Check`,
+  `RevocationRequest.Check`), `verdicts.Service.Check`,
+  `store.CheckOverride` and the very override and audited verdict services
+  of the admin API. `GET` shows the form, then the confirmation, whose
+  consequence `decision.Engine.ExplainWith` computes from the inputs the
+  action would leave; the `POST` checks the session itself (an ended one
+  changes nothing and returns to the confirmation after signing in),
+  compares a fingerprint of the address's override and own verdict under
+  one lock for all tabs (409 if stale), carries the action out,
+  `Engine.Flush`es the change and redirects back with an outcome kept in
+  memory under a random ID. Action pages refuse cross-site and same-site
+  navigations; `console.actions` (default `true`, reload) switches them
+  off (ADR 0026).
 - **Observability.** Metrics are defined in the package that updates them
   and registered on the Prometheus default registry, which `internal/ops`
   serves; label values come from closed sets only (the admin endpoint label
@@ -267,8 +392,20 @@ Only the packages that exist today are listed in detail; the remaining
   subsystem (registered after `store`) appends one ECS JSON line per
   decision change: the engine's block changes (`block-added|updated|removed`)
   and transitions to `allowed` (`Engine.SubscribeTransitions`), override
-  changes, local reports and revocations; startup state is not recorded.
-  SIGHUP reopens it before the reload. Operator documentation, collector
+  changes, local reports and revocations, the mesh's peer connections
+  (`mesh.Options.Connections`), and the reloader's reloads and mode
+  changes; startup state is not recorded. SIGHUP reopens it before the
+  reload. The `audit.Log` exists without `audit.path` too: it numbers every
+  record and keeps the last 10,000 in memory under the lock that appends
+  them to the file (opened read-write), so the console's timeline at
+  `/activity` (`console.Node.Activity`) reads the file backwards from a
+  mark — the last record number and the file's size — and its live feed
+  (`/api/activity?after=`) continues from memory after that number
+  (ADR 0025). An operator action's request carries its origin in its
+  context (`audit.WithOrigin`): the admin API attaches `admin-api` and the
+  `SO_PEERCRED` UID, the console `console` and the socket table's; the
+  override and verdict services write it as `obie.origin`, `user.id` and
+  `user.name` (ADR 0026). Operator documentation, collector
   snippets and a Grafana dashboard are in `documentation/operations/`
   (ADR 0015).
 - **End-to-end test.** `test/e2e` runs four complete nodes in one process

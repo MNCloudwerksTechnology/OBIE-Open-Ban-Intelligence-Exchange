@@ -74,8 +74,10 @@ func NewPolicy(self string, trust config.Trust, dec config.Decision) Policy {
 	return p
 }
 
-// weight returns the trust weight of a publisher.
-func (p *Policy) weight(peerID string) float64 {
+// Weight returns the trust weight of the publisher with peerID:
+// trust.local_weight for this node, its trust.publishers weight, else
+// trust.default_weight.
+func (p *Policy) Weight(peerID string) float64 {
 	if peerID == p.Self {
 		return p.LocalWeight
 	}
@@ -91,11 +93,14 @@ type Contribution struct {
 	// Name is the publisher's name in trust.publishers; empty if unlisted.
 	Name string
 	// Local is set for this node's own verdicts.
-	Local      bool
-	EventID    string
-	Action     string
-	Weight     float64
-	Confidence float64
+	Local   bool
+	EventID string
+	Action  string
+	// Reason is the verdict's evidence reason, e.g. "password_bruteforce";
+	// Protocol names the attacked service, e.g. "ssh".
+	Reason, Protocol string
+	Weight           float64
+	Confidence       float64
 	// Score is Weight × Confidence if the verdict contributes, else 0.
 	Score     float64
 	IssuedAt  time.Time
@@ -224,10 +229,14 @@ func contribution(v *obieproto.Event, p *Policy) Contribution {
 		Local:      v.Publisher.PeerID == p.Self,
 		EventID:    v.ID,
 		Action:     v.Verdict.SuggestedAction,
-		Weight:     p.weight(v.Publisher.PeerID),
+		Protocol:   v.Protocol,
+		Weight:     p.Weight(v.Publisher.PeerID),
 		Confidence: v.Verdict.Confidence,
 		IssuedAt:   v.IssuedAt.UTC(),
 		ExpiresAt:  v.ExpiresAt().UTC(),
+	}
+	if v.Evidence != nil {
+		c.Reason = v.Evidence.Reason
 	}
 	c.Contributes = c.Action == obieproto.ActionBan && c.Weight > 0
 	if c.Contributes {
@@ -250,8 +259,8 @@ func reason(d *Decision, active int) string {
 		return "no active verdicts"
 	}
 	tally := fmt.Sprintf("score %s %s threshold %s, %d %s quorum %d",
-		formatFloat(d.Score), cmp(d.Score >= d.Threshold-scoreTolerance), formatFloat(d.Threshold),
-		d.Contributors, cmp(d.Contributors >= d.Quorum), d.Quorum)
+		formatFloat(d.Score), relation(d.Score >= d.Threshold-scoreTolerance), formatFloat(d.Threshold),
+		d.Contributors, relation(d.Contributors >= d.Quorum), d.Quorum)
 	switch {
 	case d.Autoblock:
 		return "local autoblock: this node's own ban verdict (" + tally + ")"
@@ -262,7 +271,7 @@ func reason(d *Decision, active int) string {
 	}
 }
 
-func cmp(reached bool) string {
+func relation(reached bool) string {
 	if reached {
 		return ">="
 	}

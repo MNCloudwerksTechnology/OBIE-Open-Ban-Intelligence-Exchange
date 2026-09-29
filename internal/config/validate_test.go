@@ -128,6 +128,23 @@ func TestValidateRules(t *testing.T) {
 		{"metrics port too big", func(c *Config) { c.Metrics.Listen = "127.0.0.1:65536" }, "metrics.listen", "between 1 and 65535"},
 		{"metrics port name", func(c *Config) { c.Metrics.Listen = "127.0.0.1:http" }, "metrics.listen", "between 1 and 65535"},
 
+		// console
+		{"console enabled", func(c *Config) { c.Console.Enabled = true }, "", ""},
+		{"console loopback range", func(c *Config) { c.Console.Listen = "127.0.0.2:8080" }, "", ""},
+		{"console ipv6 loopback", func(c *Config) { c.Console.Listen = "[::1]:9465" }, "", ""},
+		{"console all interfaces", func(c *Config) { c.Console.Listen = ":9465" }, "console.listen",
+			`":9465" listens on every interface and would expose the console to the network; use a loopback address such as 127.0.0.1:9465 and reach it from another machine through an SSH port forward instead: ssh -L 9465:127.0.0.1:9465 <this host>`},
+		{"console unspecified", func(c *Config) { c.Console.Listen = "0.0.0.0:9465" }, "console.listen",
+			"0.0.0.0 is not a loopback address and would expose the console to the network"},
+		{"console unspecified ipv6", func(c *Config) { c.Console.Listen = "[::]:9465" }, "console.listen", ":: is not a loopback address"},
+		{"console interface address", func(c *Config) { c.Console.Listen = "192.0.2.10:8443" }, "console.listen",
+			"192.0.2.10 is not a loopback address and would expose the console to the network; the console is only reachable from this host: use 127.0.0.1 or ::1 and reach it from another machine through an SSH port forward instead: ssh -L 8443:127.0.0.1:8443 <this host>"},
+		{"console hostname", func(c *Config) { c.Console.Listen = "localhost:9465" }, "console.listen", `host "localhost" must be a loopback IP address (127.0.0.1 or ::1), not a name`},
+		{"console no port", func(c *Config) { c.Console.Listen = "127.0.0.1" }, "console.listen", `must be a loopback ip:port such as 127.0.0.1:9465, got "127.0.0.1"`},
+		{"console empty", func(c *Config) { c.Console.Listen = "" }, "console.listen", "must be a loopback ip:port"},
+		{"console port zero", func(c *Config) { c.Console.Listen = "127.0.0.1:0" }, "console.listen", "between 1 and 65535"},
+		{"console port name", func(c *Config) { c.Console.Listen = "127.0.0.1:https" }, "console.listen", "between 1 and 65535"},
+
 		// audit
 		{"audit file", func(c *Config) { c.Audit.Path = "/var/log/obie/audit.jsonl" }, "", ""},
 		{"audit relative", func(c *Config) { c.Audit.Path = "audit.jsonl" }, "audit.path", "absolute path"},

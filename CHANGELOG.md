@@ -36,7 +36,8 @@ The first release, v0.1.0 "Stable Base".
   (`trust.publishers`) and blocks an address when the score reaches
   `decision.threshold` and `decision.quorum` publishers agree; the node's
   own verdicts can block at once (`decision.local_autoblock`).
-  `obiectl explain`, `decisions`, `indicators` and `show` show why.
+  `obiectl explain` (with every verdict's reason), `decisions`,
+  `indicators` and `show` show why.
 - **Local sovereignty.** A built-in allow-list (loopback, private,
   special-purpose ranges, own and bootstrap addresses) plus
   `allowlist.cidrs` and `allowlist.files`; operator overrides
@@ -52,6 +53,94 @@ The first release, v0.1.0 "Stable Base".
 - **Admin API and CLI.** A local Unix-socket API restricted to root, the
   service user and the `obie` group, and `obiectl` on top of it
   (`status`, `peers` and the commands above).
+- **Web console.** An opt-in browser view of the node
+  (`console.enabled`, switched on and off by a reload), listening on a
+  loopback address only, for the users of `obiectl` only and behind a
+  token kept in `obied`'s memory (`obiectl console`, `--rotate`); it shows
+  the node's health on every page and never stops the node
+  ([web console](documentation/operations/console.md),
+  [ADR 0019](documentation/adr/0019-local-web-console.md)). Its overview
+  shows the node's identity, mode, uptime and configuration load, the
+  readiness of every part, the key numbers (peers, indicators, decisions
+  by state, applied firewall entries, overrides) and the conditions that
+  need attention with a next step, explains what will appear on a node
+  that has just started, and refreshes itself every 5 seconds
+  ([ADR 0020](documentation/adr/0020-console-overview.md)). Its peers view
+  lists every configured and connected peer — bootstrap peers, trusted
+  publishers, peers that connected on their own — with its connection
+  (since when, last seen, the last failed dial), its trust weight (and
+  whether it has any influence on decisions), the verdicts the node holds
+  and counts from it, and the events it sent in the last hour, accepted
+  or rejected and why; it filters, sorts and pages on the node, and a
+  peer's page lists the verdicts the node holds from it
+  ([ADR 0021](documentation/adr/0021-console-peers.md)). Its decisions
+  view lists every address and network the node decided on — state, score
+  against threshold, publishers against quorum, reason, when decided and
+  until when, and whether the firewall applies it and if not why — filters
+  by state, reason, publisher and firewall, searches by address (an
+  address finds the networks around it), sorts and pages on the node, fast
+  with 1,000,000 decisions; an address's page explains it like
+  `obiectl explain`, also one the node knows nothing about, and refreshes
+  itself. Its firewall view lists what the backend applies and every
+  difference from the decided blocks, and says in observe mode that
+  nothing is applied by design. Addresses can be copied, and every view
+  shared as a link on the same host
+  ([ADR 0022](documentation/adr/0022-console-decisions-and-firewall.md)).
+  Its verdicts view lists the verdicts this node published and those it
+  holds from every other publisher — address, publisher and its trust
+  weight (marked *No weight* at 0), action, confidence, reason, event
+  count and the evidence's log hash, issue and expiry, and whether it
+  counts — with totals per publisher; it filters by publisher, reason and
+  address (the verdicts on one address, as `obiectl show` gives them),
+  shows revoked verdicts with why and expired ones on request, and links
+  every verdict to its publisher and its decision. The store now keeps
+  revoked and expired verdicts for 24 hours after their expiry, with the
+  revocation's reason — of other publishers at most a tenth of
+  `store.max_indicators` in each state (`obie_store_ended_verdicts`)
+  ([ADR 0023](documentation/adr/0023-console-verdicts.md)).
+  Its overrides view lists every always-allow and always-block override
+  in effect with its note, when it was set and when it ends, says why an
+  always-block has no effect when a force-allow or a protected address
+  beats it, and shows the overrides that expired in the last 7 days on
+  request; the store now keeps them that long. Its allow-list view lists
+  every entry the node never blocks, grouped by origin — built-in ranges
+  by class, the node's own addresses, the bootstrap peers,
+  `allowlist.cidrs` and each allow-list file — warns about addresses it
+  could not determine and about files that are missing, unreadable or now
+  hold rejected lines (listed), and answers *Is this address protected?*
+  with the rule that decides. Its configuration view shows every setting
+  the node runs with, defaults marked, with a one-line explanation and
+  whether a reload or a restart applies it; when the configuration was
+  loaded and whether the last reload succeeded (or was rejected, and the
+  previous configuration kept); and which changes in the file on disk are
+  not active yet or wait for a restart. Secrets are never shown
+  ([ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md)).
+  Its activity timeline shows what the node did, newest first — blocks
+  added, updated or removed, addresses spared by the allow-list,
+  overrides, its own reports and revocations, peers connecting and
+  disconnecting, configuration reloads and mode changes — filtered by kind
+  and address, each linking to its decision, verdicts, peer or setting,
+  and follows the node live within about a second, with a pause; bursts
+  are summed up instead of listed one by one. It reads the audit log, so
+  it tells the same story as the SIEM, also across restarts; without
+  `audit.path` it shows the last 10,000 entries since the start and says
+  what is missing. The overview shows the last 5 entries. The audit log
+  now also records `peer-connected`, `peer-disconnected`,
+  `config-reloaded` and `mode-changed`
+  ([ADR 0025](documentation/adr/0025-console-activity-timeline.md)).
+  From the decision, verdicts and overrides views the operator can always
+  allow, always block (with expiry and note), remove an override, report
+  an address and revoke this node's own verdicts: each action asks to
+  confirm after saying in plain words what it will do — the decision now
+  and after, whether only this node is affected or a signed event goes to
+  how many peers — obeys the admin API's rules with its words, refuses a
+  confirmation that another tab or `obiectl` made stale, and returns to
+  the view with the new state. `console.actions: false` keeps the console
+  read-only. Audit records of operator actions now carry `obie.origin`
+  (`console` or `admin-api`), `user.id` and `user.name`. A verdict or
+  revocation published while no peer is connected is now held in memory
+  and sent as soon as a peer joins, instead of being lost
+  ([ADR 0026](documentation/adr/0026-console-operator-actions.md)).
 - **Packaging.** Reproducible static release tarballs for linux/amd64 and
   linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
   hardened systemd unit, a distroless container image, and a three-node

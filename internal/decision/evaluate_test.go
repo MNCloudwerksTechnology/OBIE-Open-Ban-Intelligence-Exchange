@@ -235,8 +235,8 @@ func TestEvaluateExplains(t *testing.T) {
 		t.Fatalf("publishers = %+v", d.Publishers)
 	}
 	want := Contribution{
-		PeerID: pubA, Name: "alpha", EventID: a.ID, Action: obieproto.ActionBan, Weight: 1, Confidence: 0.9, Score: 0.9,
-		IssuedAt: t0.Add(-time.Hour), ExpiresAt: t0.Add(time.Hour), Contributes: true,
+		PeerID: pubA, Name: "alpha", EventID: a.ID, Action: obieproto.ActionBan, Reason: "password_bruteforce", Protocol: "ssh",
+		Weight: 1, Confidence: 0.9, Score: 0.9, IssuedAt: t0.Add(-time.Hour), ExpiresAt: t0.Add(time.Hour), Contributes: true,
 	}
 	if !reflect.DeepEqual(d.Publishers[0], want) {
 		t.Errorf("publisher A = %+v, want %+v", d.Publishers[0], want)
@@ -283,7 +283,7 @@ func TestNewPolicy(t *testing.T) {
 	cfg.Trust.LocalWeight = 0.9
 	p := NewPolicy(self, cfg.Trust, cfg.Decision)
 	for id, want := range map[string]float64{self: 0.9, pubA: 0.7, unlisted: 0.1} {
-		if got := p.weight(id); got != want {
+		if got := p.Weight(id); got != want {
 			t.Errorf("weight(%s) = %v, want %v", id, got, want)
 		}
 	}

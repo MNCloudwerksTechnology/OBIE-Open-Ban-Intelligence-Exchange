@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/libp2p/go-libp2p/core/peer"
+
 	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -15,7 +17,7 @@ import (
 // counter counts accepted events.
 type counter struct{ accepted chan struct{} }
 
-func (c counter) Observe(o gossip.Outcome) {
+func (c counter) Observe(_ peer.ID, o gossip.Outcome) {
 	if o != gossip.Accepted {
 		return
 	}
@@ -69,8 +71,14 @@ func TestMeshGossip(t *testing.T) {
 		}
 		select {
 		case <-accepted.accepted:
-			if _, err := storeA.Get(ev.ID); err != nil {
-				t.Fatalf("A accepted the event but did not store it: %v", err)
+			// Events published before B saw A on the topic were held and
+			// follow in order (ADR 0026); A may have accepted one of those.
+			waitFor(t, 5*time.Second, "A to store the event", func() bool {
+				_, err := storeA.Get(ev.ID)
+				return err == nil
+			})
+			if b.Held(ev.ID) || b.TopicPeers() != 1 {
+				t.Errorf("Held = %v, TopicPeers = %d after A received the event", b.Held(ev.ID), b.TopicPeers())
 			}
 			return
 		case <-time.After(200 * time.Millisecond):
@@ -88,5 +96,8 @@ func TestPublishBeforeStart(t *testing.T) {
 	}
 	if err := m.Publish(context.Background(), signedVerdict(t, id, 0)); err == nil {
 		t.Error("Publish succeeded before Start")
+	}
+	if events, wait := m.Backlog(); m.Held(signedVerdict(t, id, 0).ID) || m.TopicPeers() != 0 || events != 0 || wait != 0 {
+		t.Error("Held, TopicPeers or Backlog report something before Start")
 	}
 }

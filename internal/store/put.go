@@ -18,6 +18,9 @@ import (
 type record struct {
 	Event   *obieproto.Event `json:"event"`
 	Revoked bool             `json:"revoked,omitempty"`
+	// Revocation is the revocation that ended a revoked verdict; kept only
+	// with the ended verdict (ADR 0023).
+	Revocation *Revocation `json:"revocation,omitempty"`
 }
 
 // active reports whether the verdict counts at now.
@@ -38,6 +41,8 @@ type outcome struct {
 	// foreignRevokes and invalidRevokes count revocations of a verdict that
 	// arrived before it and are now known to be ignored.
 	foreignRevokes, invalidRevokes int
+	// ended are the verdicts kept once they ended (ADR 0023).
+	ended []keptEnded
 }
 
 // Put stores ev; see Store.
@@ -60,6 +65,7 @@ func (s *DB) Put(ev *obieproto.Event) (bool, error) {
 	})
 	if err == nil {
 		s.addVerdicts(out.verdicts)
+		s.endedCounts.add(out.ended)
 		if out.evictedIndex != nil {
 			s.evictFrom = out.evictedIndex
 		}
@@ -134,7 +140,9 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return outcome{}, err
 	}
-	if cur != nil && !newer(ev, cur.Event) {
+	// A record past its expiry is kept for EndedRetention, but no verdict
+	// supersedes an ended one (ADR 0023).
+	if cur != nil && !cur.Event.Expired(now) && !newer(ev, cur.Event) {
 		return outcome{result: resultStale}, nil
 	}
 	var out outcome
@@ -147,7 +155,8 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 	}
 
 	rec := record{Event: ev}
-	rec.Revoked, out.foreignRevokes, out.invalidRevokes, err = earlyRevocations(txn, ev)
+	var rev *Revocation
+	rec.Revoked, rev, out.foreignRevokes, out.invalidRevokes, err = earlyRevocations(txn, ev)
 	if err != nil {
 		return outcome{}, err
 	}
@@ -155,6 +164,9 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 		return outcome{}, err
 	}
 	if cur != nil {
+		if err := s.archiveExpired(txn, cur, now, &out.ended); err != nil {
+			return outcome{}, err
+		}
 		removed, err := deleteIndex(txn, expiryKey(cur.Event.ExpiresAt(), key))
 		if err != nil {
 			return outcome{}, err
@@ -166,6 +178,11 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 		return outcome{}, err
 	}
 	out.verdicts += added
+	if rec.Revoked {
+		if err := s.archive(txn, &rec, EndedRevoked, rev, &out.ended); err != nil {
+			return outcome{}, err
+		}
+	}
 
 	out.result = resultAccepted
 	if !rec.Revoked || (cur != nil && cur.active(now)) {
@@ -176,9 +193,10 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 
 // earlyRevocations looks up revocations of verdict ev that arrived before
 // it. It reports whether its own publisher revoked it for the same
-// indicator, how many other publishers tried to, and whether its publisher
-// named another indicator (invalid).
-func earlyRevocations(txn *badger.Txn, ev *obieproto.Event) (revoked bool, foreign, invalid int, err error) {
+// indicator and with which revocation (nil if the store did not keep it),
+// how many other publishers tried to, and whether its publisher named
+// another indicator (invalid).
+func earlyRevocations(txn *badger.Txn, ev *obieproto.Event) (revoked bool, rev *Revocation, foreign, invalid int, err error) {
 	own := revokeKey(ev.ID, ev.Publisher.PeerID)
 	it := txn.NewIterator(badger.IteratorOptions{Prefix: revokeKey(ev.ID, "")})
 	defer it.Close()
@@ -193,13 +211,22 @@ func earlyRevocations(txn *badger.Txn, ev *obieproto.Event) (revoked bool, forei
 			return nil
 		})
 		if err != nil {
-			return false, 0, 0, err
+			return false, nil, 0, 0, err
 		}
 		if !revoked {
 			invalid++
 		}
 	}
-	return revoked, foreign, invalid, nil
+	if revoked {
+		var r Revocation
+		switch err := getJSON(txn, pendingRevocationKey(ev.ID, ev.Publisher.PeerID), &r); {
+		case err == nil:
+			rev = &r
+		case !errors.Is(err, ErrNotFound):
+			return false, nil, 0, 0, err
+		}
+	}
+	return revoked, rev, foreign, invalid, nil
 }
 
 // newer reports whether verdict a supersedes verdict b of the same publisher:
@@ -221,6 +248,17 @@ func (s *DB) putRevoke(txn *badger.Txn, ev *obieproto.Event, now time.Time) (out
 		mark := badger.NewEntry(revokeKey(ev.Revokes, ev.Publisher.PeerID), []byte(ev.Key()))
 		mark.ExpiresAt = badgerExpiry(ev.ExpiresAt())
 		if err := txn.SetEntry(mark); err != nil {
+			return outcome{}, err
+		}
+		// Kept apart from the marker, whose value older versions read, so
+		// the verdict shows why it was revoked when it arrives (ADR 0023).
+		info, err := json.Marshal(revocationOf(ev))
+		if err != nil {
+			return outcome{}, err
+		}
+		pending := badger.NewEntry(pendingRevocationKey(ev.Revokes, ev.Publisher.PeerID), info)
+		pending.ExpiresAt = mark.ExpiresAt
+		if err := txn.SetEntry(pending); err != nil {
 			return outcome{}, err
 		}
 		return outcome{result: resultAccepted}, setEvent(txn, ev)
@@ -259,6 +297,9 @@ func (s *DB) putRevoke(txn *badger.Txn, ev *obieproto.Event, now time.Time) (out
 		return outcome{}, err
 	}
 	out := outcome{result: resultAccepted, verdicts: added}
+	if err := s.archive(txn, cur, EndedRevoked, revocationOf(ev), &out.ended); err != nil {
+		return outcome{}, err
+	}
 	if wasActive {
 		out.changes = append(out.changes, Change{Key: target.Key(), Reason: ReasonRevoke})
 	}
@@ -276,10 +317,12 @@ func setEvent(txn *badger.Txn, ev *obieproto.Event) error {
 	return txn.SetEntry(e)
 }
 
-// setRecord stores rec under key until its verdict expires and enters it
-// into the expiry index, revoked or not: the index holds exactly one entry
-// per verdict record, which the sweep and the eviction rely on. It returns
-// 1 if the index entry is new, else 0. Callers hold writeMu.
+// setRecord stores rec under key until EndedRetention after its verdict
+// expires, so the sweep can still archive it after a downtime (ADR 0023),
+// and enters it into the expiry index, revoked or not: the index holds
+// exactly one entry per verdict record, which the sweep and the eviction
+// rely on. It returns 1 if the index entry is new, else 0. Callers hold
+// writeMu.
 func (s *DB) setRecord(txn *badger.Txn, key []byte, rec *record) (int, error) {
 	data, err := json.Marshal(rec)
 	if err != nil {
@@ -287,7 +330,7 @@ func (s *DB) setRecord(txn *badger.Txn, key []byte, rec *record) (int, error) {
 	}
 	expires := rec.Event.ExpiresAt()
 	e := badger.NewEntry(key, data)
-	e.ExpiresAt = badgerExpiry(expires)
+	e.ExpiresAt = badgerExpiry(expires.Add(EndedRetention))
 	if err := txn.SetEntry(e); err != nil {
 		return 0, err
 	}

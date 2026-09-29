@@ -50,7 +50,16 @@ it with a production firewall, and start in
   of every decision for your SIEM, a
   [Grafana dashboard](documentation/operations/monitoring.md), static
   binaries with checksums and SBOMs, a hardened systemd unit and a
-  container image.
+  container image. An opt-in [web console](documentation/operations/console.md)
+  shows the node's health, its key numbers, what needs attention, its
+  peers with the trust placed in them, every decision with why it was made
+  and what the firewall applies, the verdicts it published and received,
+  every [override](documentation/glossary.md#override) and
+  [allow-list](documentation/glossary.md#allow-list) entry, the
+  configuration it runs with, and a live timeline of what it does, in a browser on its own
+  host, behind a token only its operator can obtain; from there the
+  operator allows, blocks, reports or revokes after a confirmation that
+  says what will happen.
 
 ## What it does not do yet
 
@@ -99,6 +108,7 @@ try a three-node mesh on a laptop instead, run the
 | Every configuration key | [Configuration reference](documentation/operations/configuration.md) |
 | Connecting to other nodes | [Federation](documentation/operations/federation.md) |
 | Day-2: metrics, audit log, upgrades, backup, uninstall | [Operations](documentation/operations/operations.md), [Monitoring](documentation/operations/monitoring.md) |
+| Looking into the node in a browser | [Web console](documentation/operations/console.md) |
 | Install options (tarball, container, lab) | [Installing and upgrading](documentation/operations/install.md) |
 | When something is wrong | [Troubleshooting](documentation/operations/troubleshooting.md) |
 | Fail2Ban and nftables | [Fail2Ban guide](documentation/guides/fail2ban.md), [nftables guide](documentation/guides/nftables.md) |

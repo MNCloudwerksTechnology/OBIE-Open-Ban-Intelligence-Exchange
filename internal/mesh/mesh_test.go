@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -131,6 +132,9 @@ func TestNew(t *testing.T) {
 	}
 	if len(m.bootstrap) != 1 || m.bootstrap[0].ID.String() != other.PeerID() || len(m.bootstrap[0].Addrs) != 2 {
 		t.Errorf("bootstrap = %v, want %s with both addresses and without this node", m.bootstrap, other.PeerID())
+	}
+	if got := m.PeerCounts(); got != (PeerCounts{Configured: 1}) {
+		t.Errorf("PeerCounts() before Start = %+v, want 1 configured", got)
 	}
 	if m.opts.InitialBackoff != DefaultInitialBackoff || m.opts.MaxBackoff != DefaultMaxBackoff {
 		t.Errorf("backoff = %v..%v, want the defaults", m.opts.InitialBackoff, m.opts.MaxBackoff)
@@ -285,6 +289,12 @@ func TestBootstrapMesh(t *testing.T) {
 	if d := b.Detail(); d != "1 peers connected (1/1 bootstrap peers)" {
 		t.Errorf("B Detail() = %q", d)
 	}
+	if got := b.PeerCounts(); got != (PeerCounts{Connected: 1, Bootstrap: 1, Configured: 1}) {
+		t.Errorf("B PeerCounts() = %+v", got)
+	}
+	if got := a.PeerCounts(); got != (PeerCounts{Connected: 2}) {
+		t.Errorf("A PeerCounts() = %+v, want 2 connected, none configured", got)
+	}
 	// A reload replaces names and weights.
 	if err := b.SetTrust(config.Trust{Publishers: []config.Publisher{{PeerID: idA.PeerID(), Name: "alpha2", Weight: 0.2}}}); err != nil {
 		t.Fatal(err)
@@ -308,6 +318,9 @@ func TestBootstrapMesh(t *testing.T) {
 	if d := b.Detail(); !strings.HasPrefix(d, "degraded:") || b.Ready() != nil {
 		t.Errorf("B without peers: Detail() = %q, Ready() = %v; want degraded but ready", d, b.Ready())
 	}
+	if got := b.PeerCounts(); got != (PeerCounts{Configured: 1}) {
+		t.Errorf("B PeerCounts() without peers = %+v", got)
+	}
 	// Let a few dials fail so that B and C back off to the cap.
 	time.Sleep(2 * backoffMax)
 
@@ -323,5 +336,52 @@ func connected2(b, c *Mesh, a string) func() bool {
 		_, ba := peerIDs(b)[a]
 		_, ca := peerIDs(c)[a]
 		return ba && ca
+	}
+}
+
+// TestConnectionsAreReported: Options.Connections learns of a peer
+// connecting and disconnecting, with its name and role.
+func TestConnectionsAreReported(t *testing.T) {
+	idA, idB := newIdentity(t), newIdentity(t)
+	a, err := New(idA, Options{Listen: []string{"/ip4/127.0.0.1/tcp/0"}, Store: newStore(t)}, discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	var got []Connection
+	startMesh(t, idB, Options{
+		Listen:    []string{"/ip4/127.0.0.1/tcp/0"},
+		Bootstrap: []string{listenAddr(t, a, ma.P_TCP) + "/p2p/" + idA.PeerID()},
+		Trust:     config.Trust{Publishers: []config.Publisher{{PeerID: idA.PeerID(), Name: "alpha", Weight: 0.5}}},
+		Connections: func(c Connection) {
+			mu.Lock()
+			defer mu.Unlock()
+			got = append(got, c)
+		},
+	})
+	reported := func(n int) func() bool {
+		return func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			return len(got) >= n
+		}
+	}
+	waitFor(t, 10*time.Second, "B to report A connected", reported(1))
+	if err := a.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 5*time.Second, "B to report A disconnected", reported(2))
+	mu.Lock()
+	defer mu.Unlock()
+	want := Connection{ID: idA.PeerID(), Name: "alpha", Bootstrap: true, Publisher: true, Connected: true}
+	if got[0] != want {
+		t.Errorf("connected = %+v, want %+v", got[0], want)
+	}
+	want.Connected = false
+	if got[1] != want {
+		t.Errorf("disconnected = %+v, want %+v", got[1], want)
 	}
 }

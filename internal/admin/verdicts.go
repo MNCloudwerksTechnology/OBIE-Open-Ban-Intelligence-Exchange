@@ -180,12 +180,12 @@ func handleVerdicts(mux *http.ServeMux, info Info, log *slog.Logger) {
 		if !decodeRequest(w, r, &req) || !available(w) {
 			return
 		}
-		report, err := req.report()
+		report, err := req.Check()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		res, err := svc.Report(r.Context(), report)
+		res, err := svc.Report(withOrigin(r), report)
 		if err != nil {
 			writeServiceError(w, "reporting", err, log)
 			return
@@ -201,12 +201,12 @@ func handleVerdicts(mux *http.ServeMux, info Info, log *slog.Logger) {
 		if !decodeRequest(w, r, &req) || !available(w) {
 			return
 		}
-		rev, err := req.revocation()
+		rev, err := req.Check()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		events, err := svc.Revoke(r.Context(), rev)
+		events, err := svc.Revoke(withOrigin(r), rev)
 		if err != nil {
 			writeServiceError(w, "revoking", err, log)
 			return
@@ -297,8 +297,9 @@ func jsonProblem(err error) string {
 	}
 }
 
-// report checks the request and converts it; errors name the field.
-func (req *ReportRequest) report() (verdicts.Report, error) {
+// Check checks the request and converts it, as the admin API and the
+// console do before reporting; errors name the field.
+func (req *ReportRequest) Check() (verdicts.Report, error) {
 	ind, err := reportIndicator(req.IP, req.CIDR)
 	if err != nil {
 		return verdicts.Report{}, err
@@ -346,8 +347,9 @@ func reportIndicator(ip, cidr string) (obieproto.Indicator, error) {
 	return ind, nil
 }
 
-// revocation checks the request and converts it.
-func (req *RevocationRequest) revocation() (verdicts.Revocation, error) {
+// Check checks the request and converts it, as the admin API and the
+// console do before revoking.
+func (req *RevocationRequest) Check() (verdicts.Revocation, error) {
 	switch {
 	case (req.EventID == "") == (req.Indicator == ""):
 		return verdicts.Revocation{}, errors.New("event_id or indicator: give exactly one of them")

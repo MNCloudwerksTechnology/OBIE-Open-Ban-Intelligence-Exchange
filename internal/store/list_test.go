@@ -1,6 +1,8 @@
 package store
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -132,5 +134,110 @@ func TestListIndicatorsCapsLimit(t *testing.T) {
 	}
 	if len(res.Items) != DefaultPageLimit {
 		t.Errorf("default page has %d items", len(res.Items))
+	}
+}
+
+// publisherKeys pages through PublisherVerdicts with the given limit and
+// returns the indicator keys in order, checking every verdict's publisher.
+func publisherKeys(t *testing.T, db *DB, publisher string, now time.Time, limit int) []string {
+	t.Helper()
+	var keys []string
+	page := Page{Limit: limit}
+	for range 10000 {
+		res, err := db.PublisherVerdicts(publisher, now, page)
+		if err != nil {
+			t.Fatalf("PublisherVerdicts: %v", err)
+		}
+		for _, v := range res.Verdicts {
+			if v.Publisher.PeerID != publisher {
+				t.Errorf("verdict %s of %s listed for %s", v.ID, v.Publisher.PeerID, publisher)
+			}
+			keys = append(keys, v.Key())
+		}
+		if res.Next == "" {
+			return keys
+		}
+		if len(res.Verdicts) == 0 {
+			t.Fatal("empty page with a Next cursor")
+		}
+		page.After = res.Next
+	}
+	t.Fatal("paging did not terminate")
+	return nil
+}
+
+// TestPublisherVerdicts: one publisher's active verdicts, by indicator,
+// page by page; revoked and expired ones are left out.
+func TestPublisherVerdicts(t *testing.T) {
+	clk := newClock()
+	db := newMemDB(t, clk)
+	now := clk.Now()
+	v4a, v4b, v4c := ipv4("11.0.0.1"), ipv4("11.0.0.2"), ipv4("11.0.0.3")
+	v6 := obieproto.Indicator{Kind: obieproto.KindIPv6, Value: "2a00::1", Scope: "/128"}
+	cidr := obieproto.Indicator{Kind: obieproto.KindCIDR, Value: "11.1.0.0/24", Scope: "/24"}
+	revoked, short := ipv4("11.0.0.4"), ipv4("11.0.0.5")
+	// A publisher whose ID ends with pubB's must not match pubB.
+	longer := "x" + pubB
+
+	mustPut(t, db, verdict(pubA, v4a, now, time.Hour), true)
+	mustPut(t, db, verdict(pubB, v4a, now, time.Hour), true)
+	mustPut(t, db, verdict(pubB, v4b, now, time.Hour), true)
+	mustPut(t, db, verdict(longer, v4c, now, time.Hour), true)
+	mustPut(t, db, verdict(pubA, v4c, now, time.Hour), true)
+	mustPut(t, db, verdict(pubA, v6, now, time.Hour), true)
+	mustPut(t, db, verdict(pubA, cidr, now, time.Hour), true)
+	mustPut(t, db, verdict(pubA, short, now, time.Minute), true)
+	rv := verdict(pubA, revoked, now, time.Hour)
+	mustPut(t, db, rv, true)
+	mustPut(t, db, revoke(pubA, rv, now), true)
+
+	later := now.Add(time.Minute) // the short verdict has expired
+	for publisher, want := range map[string][]string{
+		pubA:      {cidr.Key(), v4a.Key(), v4c.Key(), v6.Key()},
+		pubB:      {v4a.Key(), v4b.Key()},
+		longer:    {v4c.Key()},
+		"unknown": nil,
+	} {
+		for _, limit := range []int{0, 1, 2, 3, 4, 5} {
+			if got := publisherKeys(t, db, publisher, later, limit); !slices.Equal(got, want) {
+				t.Errorf("%s, limit %d: keys = %v, want %v", publisher, limit, got, want)
+			}
+		}
+	}
+	if got := publisherKeys(t, db, pubA, now, 0); !slices.Contains(got, short.Key()) {
+		t.Errorf("before it expired: keys = %v, want %s among them", got, short.Key())
+	}
+
+	res, err := db.PublisherVerdicts(pubA, later, Page{Limit: 4})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Verdicts) != 4 || res.Next != "" {
+		t.Errorf("exact last page: %d verdicts, next %q", len(res.Verdicts), res.Next)
+	}
+
+	if err := db.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.PublisherVerdicts(pubA, later, Page{}); !errors.Is(err, ErrClosed) {
+		t.Errorf("PublisherVerdicts on a closed store = %v, want ErrClosed", err)
+	}
+}
+
+func TestPublisherVerdictsCapsLimit(t *testing.T) {
+	clk := newClock()
+	db := newMemDB(t, clk)
+	for i := range MaxPageLimit + 1 {
+		mustPut(t, db, verdict(pubA, ipv4(ipv4Value(i)), clk.Now(), time.Hour), true)
+	}
+	res, err := db.PublisherVerdicts(pubA, clk.Now(), Page{Limit: MaxPageLimit * 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Verdicts) != MaxPageLimit || res.Next == "" {
+		t.Errorf("got %d verdicts, next %q", len(res.Verdicts), res.Next)
+	}
+	if res, err = db.PublisherVerdicts(pubA, clk.Now(), Page{}); err != nil || len(res.Verdicts) != DefaultPageLimit {
+		t.Errorf("default page has %d verdicts, %v", len(res.Verdicts), err)
 	}
 }

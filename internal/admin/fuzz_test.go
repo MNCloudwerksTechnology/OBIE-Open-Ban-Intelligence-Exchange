@@ -24,11 +24,11 @@ type fuzzOverrides struct{}
 
 func (fuzzOverrides) List() ([]OverrideResponse, error) { return nil, nil }
 
-func (fuzzOverrides) Set(ind obieproto.Indicator, action string, _ time.Duration, note string) (OverrideResponse, error) {
+func (fuzzOverrides) Set(_ context.Context, ind obieproto.Indicator, action string, _ time.Duration, note string) (OverrideResponse, error) {
 	return OverrideResponse{Indicator: ind, Action: action, Note: note, CreatedAt: started}, nil
 }
 
-func (fuzzOverrides) Delete(obieproto.Indicator) (bool, error) { return false, nil }
+func (fuzzOverrides) Delete(context.Context, obieproto.Indicator) (bool, error) { return false, nil }
 
 // newFuzzHandler returns the admin API backed by the real verdict service
 // on an in-memory store; nothing it is asked may fail internally.
@@ -51,6 +51,7 @@ func newFuzzHandler(tb testing.TB) http.Handler {
 	}
 	info.Overrides = fuzzOverrides{}
 	info.Enforced = func(context.Context) ([]EnforcedEntry, error) { return nil, nil }
+	info.Console = &fakeConsole{}
 	info.Verdicts = verdicts.New(verdicts.Options{
 		Store: db, Publisher: &storePublisher{db: db}, Signer: key,
 		DefaultTTL: 7 * 24 * time.Hour, MaxTTL: 30 * 24 * time.Hour,
@@ -73,6 +74,7 @@ var fuzzRequests = []struct {
 	{method: http.MethodGet, path: DecisionsPath, query: true},
 	{method: http.MethodGet, path: IndicatorsPath + "/"},
 	{method: http.MethodGet, path: IndicatorsPath, query: true},
+	{method: http.MethodPost, path: ConsoleTokenPath, body: true},
 }
 
 // FuzzRequests checks that the admin API never panics and never fails

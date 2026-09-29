@@ -36,7 +36,7 @@ func (f *fakeOverrides) List() ([]OverrideResponse, error) {
 	return out, nil
 }
 
-func (f *fakeOverrides) Set(ind obieproto.Indicator, action string, ttl time.Duration, note string) (OverrideResponse, error) {
+func (f *fakeOverrides) Set(_ context.Context, ind obieproto.Indicator, action string, ttl time.Duration, note string) (OverrideResponse, error) {
 	if ind.Value == failingIndicator {
 		return OverrideResponse{}, errStore
 	}
@@ -54,7 +54,7 @@ func (f *fakeOverrides) Set(ind obieproto.Indicator, action string, ttl time.Dur
 	return o, nil
 }
 
-func (f *fakeOverrides) Delete(ind obieproto.Indicator) (bool, error) {
+func (f *fakeOverrides) Delete(_ context.Context, ind obieproto.Indicator) (bool, error) {
 	if ind.Value == failingIndicator {
 		return false, errStore
 	}

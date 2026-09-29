@@ -3,9 +3,11 @@ package decision
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -142,10 +144,7 @@ func wantChanges(t *testing.T, got []Change, want ...string) {
 }
 
 func (f *fixture) decision(key string) (Decision, bool) {
-	f.engine.mu.RLock()
-	defer f.engine.mu.RUnlock()
-	d, ok := f.engine.decisions[key]
-	return d, ok
+	return f.engine.Decision(key)
 }
 
 func TestEngineStartupBuildsDecisions(t *testing.T) {
@@ -832,5 +831,66 @@ func TestEngineNoTransitionForUnkeptDecisions(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("transitions = %+v, want none", got)
+	}
+}
+
+// TestEngineExplainWith: the decision from edited inputs, as a change
+// would leave it, while the stored inputs and the kept decision stay as
+// they are (ADR 0026).
+func TestEngineExplainWith(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	f.start(t)
+	ind := ipv4("198.51.100.8")
+	f.put(t, ind, pubA, 1, time.Hour)
+	if err := f.store.SetOverride(store.Override{Indicator: ind, Action: store.ForceBlock}); err != nil {
+		t.Fatal(err)
+	}
+	f.engine.Flush()
+	if d, ok := f.decision(ind.Key()); !ok || d.State != StateBlock {
+		t.Fatalf("kept decision = %+v, %v; want the force-block", d, ok)
+	}
+
+	without, err := f.engine.ExplainWith(ind, func(in *Inputs) {
+		in.Overrides = slices.DeleteFunc(in.Overrides, func(o store.Override) bool { return o.Indicator.Key() == ind.Key() })
+	})
+	if err != nil || without.State != StateNone || without.Sovereignty.Rule != "" || without.Score != 1 {
+		t.Errorf("without the override = %+v, %v; want none by the verdicts", without, err)
+	}
+	allowed, err := f.engine.ExplainWith(ind, func(in *Inputs) {
+		in.Overrides = append(in.Overrides, store.Override{Indicator: ipv4("198.51.100.8"), Action: store.ForceAllow})
+	})
+	if err != nil || allowed.State != StateAllowed {
+		t.Errorf("with a force-allow = %+v, %v", allowed, err)
+	}
+	own := verdictOn(ind, self, obieproto.ActionBan, 0.8, f.clock.Now(), time.Hour)
+	reported, err := f.engine.ExplainWith(ind, func(in *Inputs) {
+		in.Overrides = nil
+		in.Verdicts = append(in.Verdicts, own)
+	})
+	if err != nil || reported.State != StateBlock || reported.Contributors != 2 {
+		t.Errorf("with this node's verdict = %+v, %v; want a block of 2 publishers", reported, err)
+	}
+
+	// Nothing changed.
+	if d, err := f.engine.Explain(ind); err != nil || d.State != StateBlock || len(d.Publishers) != 1 {
+		t.Errorf("Explain after ExplainWith = %+v, %v", d, err)
+	}
+}
+
+// TestEngineFlush: a change is evaluated by Flush before it returns, so
+// the kept decision reads it at once; before Start it does nothing.
+func TestEngineFlush(t *testing.T) {
+	f := newFixture(t, testPolicy())
+	f.engine.Flush() // not running: no evaluation, no panic
+	f.start(t)
+	for i := range 20 {
+		ind := ipv4(fmt.Sprintf("198.51.100.%d", 100+i))
+		if err := f.store.SetOverride(store.Override{Indicator: ind, Action: store.ForceBlock}); err != nil {
+			t.Fatal(err)
+		}
+		f.engine.Flush()
+		if d, ok := f.decision(ind.Key()); !ok || d.State != StateBlock {
+			t.Fatalf("decision on %s right after Flush = %+v, %v", ind.Key(), d, ok)
+		}
 	}
 }

@@ -2,12 +2,14 @@ package sovereignty
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"io"
 	"log/slog"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -42,7 +44,8 @@ func fakeEnv() Env {
 const peerID = "12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd"
 
 func TestBuild(t *testing.T) {
-	file := writeFile(t, "# management\n185.0.1.0/24\n\n  185.0.2.7  # jump host\n2a01:1::/48\n")
+	content := "# management\n185.0.1.0/24\n\n  185.0.2.7  # jump host\n2a01:1::/48\n"
+	file := writeFile(t, content)
 	cfg := config.Default()
 	cfg.Allowlist.CIDRs = []string{"185.0.3.0/24"}
 	cfg.Allowlist.Files = []string{file}
@@ -82,6 +85,15 @@ func TestBuild(t *testing.T) {
 		if e, ok := a.Match(netip.MustParsePrefix(addrPrefix(s))); ok {
 			t.Errorf("%s allow-listed by %+v", s, e)
 		}
+	}
+	// It remembers what it loaded from the file, and the name it could not
+	// resolve (ADR 0024).
+	if got, want := a.Files(), []FileLoad{{Path: file, Entries: 3, Digest: sha256.Sum256([]byte(content))}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Files = %+v, want %+v", got, want)
+	}
+	w := a.Warnings()
+	if len(w) != 1 || w[0].Source != SourceBootstrap || w[0].Subject != cfg.Mesh.Bootstrap[2] || w[0].Err == nil {
+		t.Errorf("Warnings = %+v", w)
 	}
 }
 
@@ -129,8 +141,45 @@ func TestBuildErrors(t *testing.T) {
 	cfg = config.Default()
 	env := fakeEnv()
 	env.InterfaceAddrs = func() ([]netip.Addr, error) { return nil, errors.New("boom") }
-	if _, err := Build(context.Background(), &cfg, env, discardLogger()); err != nil {
-		t.Errorf("interface failure: %v", err)
+	a, err := Build(context.Background(), &cfg, env, discardLogger())
+	if err != nil {
+		t.Fatalf("interface failure: %v", err)
+	}
+	if w := a.Warnings(); len(w) != 1 || w[0].Source != SourceSelf || w[0].Subject != cfg.Mesh.Listen[0] || w[0].Err.Error() != "boom" {
+		t.Errorf("Warnings = %+v", w)
+	}
+}
+
+// TestCheckFile: a file is read without loading it, with every line it
+// rejects, so that the console can warn before a reload fails (ADR 0024).
+func TestCheckFile(t *testing.T) {
+	content := "185.0.1.0/24\n2a01:1::/48\n"
+	clean := writeFile(t, content)
+	if got := CheckFile(clean); got.Err != nil || got.Entries != 2 || got.RejectedLines != 0 ||
+		got.Digest != sha256.Sum256([]byte(content)) || got.LoadErr(clean) != nil {
+		t.Errorf("clean file: %+v", got)
+	}
+	missing := CheckFile(filepath.Join(t.TempDir(), "missing.txt"))
+	if missing.Err == nil || !errors.Is(missing.Err, os.ErrNotExist) || !strings.Contains(missing.Err.Error(), "missing.txt") ||
+		!errors.Is(missing.LoadErr("missing.txt"), missing.Err) {
+		t.Errorf("missing file: %+v", missing)
+	}
+	bad := "185.0.1.0/24\n185.0.1.0/33 # typo\n" + strings.Repeat("nope\n", MaxRejected+3) + "185.0.2.7\n"
+	badPath := writeFile(t, bad)
+	got := CheckFile(badPath)
+	if got.Err != nil || got.Entries != 2 || got.RejectedLines != MaxRejected+4 || len(got.Rejected) != MaxRejected {
+		t.Fatalf("file with bad lines: %+v", got)
+	}
+	// Loading the file fails with its first rejected line, as a reload does.
+	if _, err := ReadFiles([]string{badPath}); err == nil || got.LoadErr(badPath).Error() != err.Error() ||
+		!strings.HasPrefix(err.Error(), "allow-list file "+badPath+":2: invalid CIDR") {
+		t.Errorf("load error = %v, check says %v", err, got.LoadErr(badPath))
+	}
+	if r := got.Rejected[0]; r.Line != 2 || r.Text != "185.0.1.0/33" || !strings.Contains(r.Err.Error(), "invalid CIDR") {
+		t.Errorf("first rejected line = %+v", r)
+	}
+	if r := got.Rejected[1]; r.Line != 3 || r.Text != "nope" {
+		t.Errorf("second rejected line = %+v", r)
 	}
 }
 

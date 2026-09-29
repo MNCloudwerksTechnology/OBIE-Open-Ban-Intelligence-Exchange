@@ -28,6 +28,11 @@ parsed and compared with the built-in default.
   restart obied`; a reload logs them as `configuration changes that need a
   restart were not applied`. An invalid file or allow-list file is rejected
   on reload, and the running configuration is kept.
+- **See what runs.** The [web console](console.md#the-configuration-view)
+  shows the configuration the node runs with, every key marked *Default*
+  where the file does not set it, when it was loaded, whether the last
+  reload succeeded, and which changes in the file on disk wait for a reload
+  or a restart.
 - **Durations** are Go durations (`10s`, `90m`, `36h`) or whole days
   (`7d`).
 - **Paths** must be absolute.
@@ -67,7 +72,7 @@ if both admit it.
 
 | Key | Default | Applied on | Meaning |
 |-----|---------|------------|---------|
-| `store.max_indicators` | `1000000` | restart | Most verdicts the event store holds, one per publisher and indicator, so a flood of unique indicators — even from a trusted peer — cannot fill the disk. When the store is full, the verdict that expires first makes room (counted in `obie_store_evictions_total`); a new verdict that would expire before all stored ones is refused instead. This node's own verdicts are never evicted. About 3 KiB of disk per verdict. At least 1. See [Monitoring](monitoring.md). |
+| `store.max_indicators` | `1000000` | restart | Most verdicts the event store holds, one per publisher and indicator, so a flood of unique indicators — even from a trusted peer — cannot fill the disk. When the store is full, the verdict that expires first makes room (counted in `obie_store_evictions_total`); a new verdict that would expire before all stored ones is refused instead. This node's own verdicts are never evicted. About 3 KiB of disk per verdict. The store also keeps verdicts that were revoked or expired for a day, for the console's [verdicts view](console.md#the-verdicts-view): of other publishers at most a tenth of `store.max_indicators` (at least 1,000) revoked ones and as many expired ones, about 1 KiB each, and all of this node's own. At least 1. See [Monitoring](monitoring.md). |
 
 ## trust
 
@@ -85,7 +90,7 @@ if both admit it.
 | `decision.quorum` | `2` | reload | …and at least this many distinct publishers with a weight above 0 reported it. At least 1. |
 | `decision.local_autoblock` | `true` | reload | `true`: this node's own `ban` verdicts block without threshold and quorum, so a local detection protects this host at once (only while `trust.local_weight` > 0). |
 | `decision.max_ttl` | `30d` | reload | Longest a block may last from the moment it is decided, whatever the verdicts request. Also caps the TTL of the verdicts this node reports (`obiectl report`, Fail2Ban); that cap only changes on a restart. Greater than 0. |
-| `decision.default_ttl` | `7d` | restart | TTL of the verdicts this node reports without one: `obiectl report` without `--ttl`, permanent Fail2Ban bans. A reload does not apply it (and does not warn). Greater than 0 and at most `decision.max_ttl`. |
+| `decision.default_ttl` | `7d` | restart | TTL of the verdicts this node reports without one: `obiectl report` without `--ttl`, permanent Fail2Ban bans. A reload does not apply it, and logs a change as needing a restart. Greater than 0 and at most `decision.max_ttl`. |
 
 `watch` verdicts are shown by `obiectl explain` but never count. The
 allow-list always wins over the score. How to choose these values for a
@@ -121,11 +126,25 @@ bootstrap addresses.
 |-----|---------|------------|---------|
 | `metrics.listen` | `127.0.0.1:9464` | restart | `ip:port` of `/metrics` (Prometheus, namespace `obie_`), `/healthz` and `/readyz`. Use an IP address, not a host name; `:9464` listens on every interface. See [Monitoring](monitoring.md). |
 
+## console
+
+| Key | Default | Applied on | Meaning |
+|-----|---------|------------|---------|
+| `console.enabled` | `false` | reload | Serve the local web console, a view of the node for its operator. Off by default; a reload starts or stops it without touching anything else. Sign in with the token `obiectl console` shows. |
+| `console.listen` | `127.0.0.1:9465` | reload | Loopback `ip:port` of the console: `127.0.0.1` (or another `127.0.0.0/8` address) or `::1`. Any other address — a host name, `localhost`, `0.0.0.0`, an empty host, an interface address — is refused, because it would expose the console to the network. From another machine, forward the port over SSH: `ssh -L 9465:127.0.0.1:9465 <this host>`. A reload moves the console to the new address. |
+| `console.actions` | `true` | reload | Let the console carry out what `obiectl allow`, `block`, `unoverride`, `report` and `revoke` do — each after a confirmation that says what will happen, under the same rules, and recorded in the audit log with `obie.origin: console`. `false` makes the console strictly read-only: it shows no action and refuses them. It adds no right: whoever may sign in may run `obiectl` too. See [Act from the console](console.md#act-from-the-console). |
+
+The console admits only root, the user `obied` runs as and members of
+`admin.socket_group`, and only with the token; its security model is
+[ADR 0019](../adr/0019-local-web-console.md). If it cannot start, for
+example because its port is taken, the node runs without it and logs why.
+How to sign in and reach it from another machine: [Web console](console.md).
+
 ## audit
 
 | Key | Default | Applied on | Meaning |
 |-----|---------|------------|---------|
-| `audit.path` | `""` | restart | JSON-lines audit log of every decision change with ECS field names; empty disables it. An absolute file path in an existing directory, e.g. `/var/log/obie/audit.jsonl` (the unit creates `/var/log/obie`). Every reload reopens the file, for logrotate. See [Monitoring](monitoring.md#audit-log). |
+| `audit.path` | `""` | restart | JSON-lines audit log of every decision change, peer connection, reload and mode change with ECS field names; empty disables it. An absolute file path in an existing directory, e.g. `/var/log/obie/audit.jsonl` (the unit creates `/var/log/obie`). Every reload reopens the file, for logrotate. The console's [activity timeline](console.md#the-activity-timeline) reads it back; without it, the timeline shows only the last 10,000 entries since `obied` started. See [Monitoring](monitoring.md#audit-log). |
 
 ## log
 

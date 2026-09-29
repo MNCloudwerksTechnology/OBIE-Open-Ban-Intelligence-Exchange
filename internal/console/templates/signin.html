@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · OBIE console</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/console.css">
+</head>
+<body class="signin">
+<main id="main" class="signin-card">
+  <p class="brand-line"><span class="brand-mark" aria-hidden="true"></span>OBIE console</p>
+  <h1>Sign in</h1>
+  <p>Sign in with this node's console token. On the node, run:</p>
+  <pre><code>sudo obiectl console</code></pre>
+  {{- if .Action}}
+  <p class="alert" role="alert">Your session ended before the action was carried out, so nothing was changed. Sign in again: the confirmation opens again, with the state of now, for you to confirm once more.</p>
+  {{- end}}
+  {{- if .Error}}
+  <p class="alert alert-error" role="alert">{{.Error}}</p>
+  {{- end}}
+  <form method="post" action="/login" class="signin-form">
+    <input type="hidden" name="next" value="{{.Next}}">
+    <label for="token">Token</label>
+    <input id="token" name="token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" required autofocus>
+    <button type="submit" class="button">Sign in</button>
+  </form>
+  <p class="hint">The token changes whenever obied restarts and when you run <code>obiectl console --rotate</code>, which also signs every browser out.</p>
+</main>
+</body>
+</html>

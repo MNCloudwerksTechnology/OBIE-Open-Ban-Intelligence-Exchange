@@ -26,7 +26,7 @@ No label ever carries an IP address or a [peer ID](../glossary.md#peer-id).
 | `obie_peers_connected` | gauge | | Connected mesh peers. |
 | `obie_peers_configured` | gauge | | Bootstrap peers in `mesh.bootstrap`. |
 | `obie_events_received_total` | counter | `outcome` (`accepted`, `duplicate`, `rate_limited`, `expired`, `invalid_signature`, `invalid_schema`, `too_large`) | Events received from peers, by validation outcome. |
-| `obie_events_published_total` | counter | `type` (`verdict`, `revoke`) | Events this [node](../glossary.md#node) published. |
+| `obie_events_published_total` | counter | `type` (`verdict`, `revoke`) | Events this [node](../glossary.md#node) sent to the mesh; one published while no peer was on the topic counts when it is sent, once a peer joins. |
 | `obie_store_active_indicators` | gauge | | [Indicators](../glossary.md#indicator) with at least one active [verdict](../glossary.md#verdict). |
 | `obie_store_active_verdicts` | gauge | | Active verdicts (one per publisher and indicator). |
 | `obie_decisions` | gauge | `state` (`block`, `none`, `allowed`) | Decisions the engine keeps, by state. |
@@ -39,6 +39,7 @@ No label ever carries an IP address or a [peer ID](../glossary.md#peer-id).
 | `obie_store_events_total` | counter | `result` | Events passed to the store, by outcome; `full` counts verdicts refused because the store was full and they would have expired first. |
 | `obie_store_verdict_records` | gauge | | Verdicts the store holds (active, [revoked](../glossary.md#revocation) or expired but not yet swept), bounded by `store.max_indicators`. |
 | `obie_store_evictions_total` | counter | | Stored verdicts evicted, the one expiring first each, to keep the store within `store.max_indicators`. |
+| `obie_store_ended_verdicts` | gauge | `state` (`revoked`, `expired`) | Verdicts the store keeps for a day after they ended, for the console's [verdicts view](console.md#the-verdicts-view); of other publishers at most a tenth of `store.max_indicators` in each state. |
 
 Useful queries:
 
@@ -62,7 +63,8 @@ pick your Prometheus data source; the `instance` variable selects nodes.
 Set `audit.path` to an absolute file path, e.g.
 `/var/log/obie/audit.jsonl`; the directory must exist and be writable by
 the user `obied` runs as. `obied` then appends one JSON object per line
-for every decision change:
+for every decision change, and for the node's peers, reloads and mode
+changes:
 
 | `event.action` | When |
 |---|---|
@@ -70,9 +72,12 @@ for every decision change:
 | `block-updated` | A block's expiry, score, publishers or rule changed. |
 | `block-removed` | An indicator is no longer blocked. |
 | `allowed-by-allowlist` | The [allow-list](../glossary.md#allow-list) or a force-allow keeps an indicator with verdicts from being blocked. |
-| `override-set` / `override-removed` | The operator set or deleted an [override](../glossary.md#override) (`obiectl allow`, `block`, `unoverride`). |
-| `local-report` | This node issued a verdict (`obiectl report`, Fail2Ban). |
-| `revocation` | This node revoked one of its verdicts (`obiectl revoke`). |
+| `override-set` / `override-removed` | The operator set or deleted an [override](../glossary.md#override) (`obiectl allow`, `block`, `unoverride`, or the web console). |
+| `local-report` | This node issued a verdict (`obiectl report`, Fail2Ban, or the web console). |
+| `revocation` | This node revoked one of its verdicts (`obiectl revoke`, or the web console). |
+| `peer-connected` / `peer-disconnected` | The mesh connected to a peer, or lost its last connection to it. |
+| `config-reloaded` | A reload (SIGHUP, also logrotate's) took effect; a rejected reload is not recorded. |
+| `mode-changed` | A reload switched `node.mode`. |
 
 Records follow the Elastic Common Schema (nested objects):
 
@@ -81,15 +86,38 @@ Records follow the Elastic Common Schema (nested objects):
 ```
 
 - `source.ip` is set for single addresses; ranges are only in
-  `obie.indicator` (e.g. `cidr:203.0.113.0/24`).
+  `obie.indicator` (e.g. `cidr:203.0.113.0/24`). Records about no address
+  (peers, reloads, mode changes) have neither, and no `rule.name`.
 - `rule.name` is `consensus`, `local_autoblock`, `allowlist`,
   `force_allow`, `force_block`, `local_report` or `revocation`.
 - `obie.score`, `obie.threshold` and `obie.publishers` (contributing
   publishers) are set for decisions; `obie.mode` is the `node.mode` at the
   time; `obie.cause` says what triggered a decision change (`verdict`,
   `revoke`, `expiry`, `evict`, `override`, `refresh`, `reload`).
+- `obie.peer_id` and `obie.peer_name` (its `trust.publishers` name, if
+  any) name the peer of `peer-connected` and `peer-disconnected`;
+  `obie.settings` lists the settings a reload changed and applied,
+  `obie.restart_settings` those that wait for a restart; `obie.mode` of
+  `mode-changed` is the new mode, `obie.previous_mode` the one before.
+- `obie.origin` says through which door an operator action came —
+  `admin-api` (`obiectl`, Fail2Ban and every other client of the admin
+  socket) or `console` (the [web console](console.md#act-from-the-console))
+  — and `user.id` and `user.name` name the local user who carried it out:
+  the UID from the socket's peer credentials, and its name if the host
+  knows it. Only `override-set`, `override-removed`, `local-report` and
+  `revocation` have them:
+
+  ```json
+  {"@timestamp":"2026-09-28T12:00:00.123Z","event":{"kind":"event","module":"obie","dataset":"obie.audit","action":"override-set","outcome":"success","reason":"operator force_block override set"},"source":{"ip":"192.0.2.99"},"rule":{"name":"force_block"},"user":{"id":"1000","name":"alice"},"obie":{"indicator":"ipv4:192.0.2.99","mode":"enforce","expires_at":"2026-09-28T13:00:00.123Z","note":"scanner","origin":"console"}}
+  ```
+
 - Blocks that exist when `obied` starts are not recorded again; use
   `obiectl decisions` for the current state.
+- The [web console's activity timeline](console.md#the-activity-timeline)
+  reads this file back, so it shows the same records as your SIEM. `obied`
+  opens the file for reading too; if it may only write it, or it is no
+  regular file, the timeline shows the last records it keeps in memory
+  instead.
 
 The full set of fields per action is in
 [the golden test file](../../internal/audit/testdata/audit.golden.jsonl).

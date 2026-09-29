@@ -71,7 +71,7 @@ sudo obiectl explain 85.10.0.7
 |-----------------------------|---------------|
 | `Decision: none`, `below consensus: score 0.64 < threshold 1.8` | Not enough trusted publishers agree. See [Federation](federation.md#choose-trust-weights-and-quorum) for [threshold](../glossary.md#threshold) and [quorum](../glossary.md#quorum). |
 | A publisher with `WEIGHT 0` and `COUNTS no` | Its peer ID is not in `trust.publishers`, or not exactly. Compare it with `obiectl peers`. |
-| `No active verdicts.` | The verdict never arrived: the publisher was not connected when it published, or it was dropped (see [no peers](#no-peers) and the event outcomes below). |
+| `No active verdicts.` | The verdict never arrived: the publisher restarted before it had a peer to send it to, or it was dropped (see [no peers](#no-peers) and the event outcomes below). |
 | `Decision: allowed` | The allow-list or a force-allow (`obiectl overrides`) covers the address. |
 | `Decision: block…`, but `status` says `Mode: OBSERVE` | [Observe mode](../glossary.md#observe-mode) never blocks. Set `node.mode: enforce` and reload. |
 | `enforce … enforcing via dryrun` in `status` | The `dryrun` backend only logs. Set `enforce.backend: nftables` and **restart**. |
@@ -123,6 +123,16 @@ After a failed dial the node retries with a backoff of up to five minutes,
 so a fixed problem can take that long to heal; `sudo systemctl restart
 obied` dials at once.
 
+What this node reports or [revokes](../glossary.md#revocation) while no
+peer is connected is not lost:
+it counts on this node at once, and the node holds it in memory and sends
+it, in order, as soon as a peer joins — 16 events every 2 seconds, so that
+peers do not drop a long backlog (`obied` logs `no peer is on the topic;
+the event is held and sent when one joins`, and later `the held events
+were sent`). A restart before then drops what is held; the
+verdicts still count on this node, and a new report sends them again.
+Verdicts about to expire within a minute are not sent any more.
+
 ## Fail2Ban reports do not arrive
 
 Fail2Ban bans, but `obiectl indicators --mine` stays empty. The action
@@ -143,6 +153,16 @@ No message at all: check that the jail lists `obie` among its actions
 (`sudo fail2ban-client -d | grep "'obie'"`) and that Fail2Ban was
 reloaded. The [Fail2Ban guide](../guides/fail2ban.md#verify) has a
 step-by-step check.
+
+## The web console does not open
+
+`sudo obiectl console` says whether the console is switched on and
+serving, and why not. It never keeps the node from running: a console that
+cannot listen (port taken) is logged as `console not started; the node
+runs without it`. A refusal in the browser names its cause — your user is
+not in the group `obie`, or the console was opened under another name than
+`127.0.0.1` or `localhost`. [Web console](console.md#when-it-does-not-work)
+lists every message and its fix.
 
 ## obied does not start
 

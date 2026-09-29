@@ -3,6 +3,7 @@ package sovereignty
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log/slog"
@@ -67,7 +68,8 @@ func interfaceAddrs() ([]netip.Addr, error) {
 // interface address for an unspecified listen address), the IPs of the
 // mesh.bootstrap peers and the entries of allowlist.files. A file that
 // cannot be read or holds an invalid line is an error. Interface addresses
-// and bootstrap names that cannot be determined are logged and skipped.
+// and bootstrap names that cannot be determined are logged, skipped and
+// kept as the allow-list's Warnings.
 func Build(ctx context.Context, cfg *config.Config, env Env, log *slog.Logger) (*Allowlist, error) {
 	env = env.withDefaults()
 	entries := Builtin()
@@ -81,14 +83,20 @@ func Build(ctx context.Context, cfg *config.Config, env Env, log *slog.Logger) (
 		}
 		entries = append(entries, Entry{Prefix: p, Source: SourceConfig})
 	}
-	files, err := ReadFiles(cfg.Allowlist.Files)
-	if err != nil {
-		return nil, err
+	var files []FileLoad
+	for _, path := range cfg.Allowlist.Files {
+		fileEntries, load, err := readFile(path)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, fileEntries...)
+		files = append(files, load)
 	}
-	entries = append(entries, files...)
-	entries = append(entries, selfEntries(cfg.Mesh.Listen, env, log)...)
-	entries = append(entries, bootstrapEntries(ctx, cfg.Mesh.Bootstrap, env, log)...)
-	return NewAllowlist(entries...), nil
+	self, selfWarnings := selfEntries(cfg.Mesh.Listen, env, log)
+	bootstrap, bootstrapWarnings := bootstrapEntries(ctx, cfg.Mesh.Bootstrap, env, log)
+	a := NewAllowlist(slices.Concat(entries, self, bootstrap)...)
+	a.files, a.warnings = files, slices.Concat(selfWarnings, bootstrapWarnings)
+	return a, nil
 }
 
 // ReadFiles reads the allow-list files at paths: one IP address or CIDR
@@ -96,7 +104,7 @@ func Build(ctx context.Context, cfg *config.Config, env Env, log *slog.Logger) (
 func ReadFiles(paths []string) ([]Entry, error) {
 	var out []Entry
 	for _, path := range paths {
-		entries, err := readFile(path)
+		entries, _, err := readFile(path)
 		if err != nil {
 			return nil, err
 		}
@@ -105,19 +113,82 @@ func ReadFiles(paths []string) ([]Entry, error) {
 	return out, nil
 }
 
-func readFile(path string) ([]Entry, error) {
-	f, err := os.Open(path) // #nosec G304 -- the operator configures the allow-list files.
-	if err != nil {
-		return nil, fmt.Errorf("allow-list file: %w", err)
+// readFile reads the allow-list file at path; a line it rejects is an
+// error.
+func readFile(path string) ([]Entry, FileLoad, error) {
+	entries, check := scanFile(path)
+	if err := check.LoadErr(path); err != nil {
+		return nil, FileLoad{}, err
 	}
-	defer func() { _ = f.Close() }()
-	return parseFile(f, path)
+	return entries, FileLoad{Path: path, Entries: len(entries), Digest: check.Digest}, nil
 }
 
-// parseFile parses the allow-list file at path from r: one IP address or
-// CIDR range per line, blank lines and "#" comments ignored.
-func parseFile(r io.Reader, path string) ([]Entry, error) {
+// MaxRejected bounds the rejected lines a FileCheck lists.
+const MaxRejected = 20
+
+// FileCheck is what an allow-list file holds now (ADR 0024).
+type FileCheck struct {
+	// Entries counts the entries it would load; Digest is the SHA-256 of
+	// its content.
+	Entries int
+	Digest  [sha256.Size]byte
+	// Rejected are the first MaxRejected lines the allow-list rejects;
+	// RejectedLines counts them all. A file with any cannot be loaded.
+	Rejected      []RejectedLine
+	RejectedLines int
+	// Err says why the file could not be read; the other fields are then
+	// unset.
+	Err error
+}
+
+// RejectedLine is a line of an allow-list file that holds no valid entry.
+type RejectedLine struct {
+	// Line is its number, from 1; Text its entry, without the comment.
+	Line int
+	Text string
+	Err  error
+}
+
+// LoadErr is the error loading the checked file at path fails with: why it
+// cannot be read, or its first rejected line. Nil if it loads.
+func (c *FileCheck) LoadErr(path string) error {
+	switch {
+	case c.Err != nil:
+		return c.Err
+	case len(c.Rejected) > 0:
+		r := c.Rejected[0]
+		return fmt.Errorf("allow-list file %s:%d: %w", path, r.Line, r.Err)
+	}
+	return nil
+}
+
+// CheckFile reads the allow-list file at path without loading it, and
+// reports every line it rejects rather than only the first.
+func CheckFile(path string) FileCheck {
+	_, check := scanFile(path)
+	return check
+}
+
+// scanFile reads the allow-list file at path: one IP address or CIDR range
+// per line, blank lines and "#" comments ignored.
+func scanFile(path string) ([]Entry, FileCheck) {
+	f, err := os.Open(path) // #nosec G304 -- the operator configures the allow-list files.
+	if err != nil {
+		return nil, FileCheck{Err: fmt.Errorf("allow-list file: %w", err)}
+	}
+	defer func() { _ = f.Close() }()
+	digest := sha256.New()
+	entries, check := parseFile(io.TeeReader(f, digest), path)
+	if check.Err == nil {
+		copy(check.Digest[:], digest.Sum(nil))
+	}
+	return entries, check
+}
+
+// parseFile parses the allow-list file at path from r.
+func parseFile(r io.Reader, path string) ([]Entry, FileCheck) {
 	var out []Entry
+	var check FileCheck
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 256), maxFileLine)
 	for n := 1; sc.Scan(); n++ {
@@ -127,19 +198,25 @@ func parseFile(r io.Reader, path string) ([]Entry, error) {
 		}
 		p, err := ParseEntry(line)
 		if err != nil {
-			return nil, fmt.Errorf("allow-list file %s:%d: %w", path, n, err)
+			if check.RejectedLines++; len(check.Rejected) < MaxRejected {
+				check.Rejected = append(check.Rejected, RejectedLine{Line: n, Text: line, Err: err})
+			}
+			continue
 		}
 		out = append(out, Entry{Prefix: p, Source: SourceFile, Label: fmt.Sprintf("%s:%d", path, n)})
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("allow-list file %s: %w", path, err)
+		return nil, FileCheck{Err: fmt.Errorf("allow-list file %s: %w", path, err)}
 	}
-	return out, nil
+	check.Entries = len(out)
+	return out, check
 }
 
-// selfEntries returns the node's own addresses from its listen multiaddrs.
-func selfEntries(listen []string, env Env, log *slog.Logger) []Entry {
+// selfEntries returns the node's own addresses from its listen multiaddrs,
+// and a warning if the interface addresses could not be listed.
+func selfEntries(listen []string, env Env, log *slog.Logger) ([]Entry, []Warning) {
 	var out []Entry
+	var warnings []Warning
 	var ifaces []netip.Addr
 	ifacesRead := false
 	for _, s := range listen {
@@ -153,6 +230,7 @@ func selfEntries(listen []string, env Env, log *slog.Logger) []Entry {
 				var err error
 				if ifaces, err = env.InterfaceAddrs(); err != nil {
 					log.Warn("cannot list the interface addresses for the allow-list; list public addresses in allowlist.cidrs", "error", err)
+					warnings = append(warnings, Warning{Source: SourceSelf, Subject: s, Err: err})
 				}
 			}
 			for _, a := range ifaces {
@@ -162,13 +240,14 @@ func selfEntries(listen []string, env Env, log *slog.Logger) []Entry {
 			}
 		}
 	}
-	return out
+	return out, warnings
 }
 
 // bootstrapEntries returns the IPs of the bootstrap peers, resolving DNS
-// names.
-func bootstrapEntries(ctx context.Context, bootstrap []string, env Env, log *slog.Logger) []Entry {
+// names, and a warning for every name that did not resolve.
+func bootstrapEntries(ctx context.Context, bootstrap []string, env Env, log *slog.Logger) ([]Entry, []Warning) {
 	var out []Entry
+	var warnings []Warning
 	for _, s := range bootstrap {
 		for _, addr := range multiaddrIPs(s) {
 			out = append(out, hostEntry(addr, SourceBootstrap, s))
@@ -182,13 +261,14 @@ func bootstrapEntries(ctx context.Context, bootstrap []string, env Env, log *slo
 		cancel()
 		if err != nil {
 			log.Warn("cannot resolve a bootstrap peer for the allow-list; it stays unprotected until the next reload", "address", s, "error", err)
+			warnings = append(warnings, Warning{Source: SourceBootstrap, Subject: s, Err: err})
 			continue
 		}
 		for _, a := range addrs {
 			out = append(out, hostEntry(a.Unmap(), SourceBootstrap, s))
 		}
 	}
-	return out
+	return out, warnings
 }
 
 func hostEntry(addr netip.Addr, src Source, label string) Entry {

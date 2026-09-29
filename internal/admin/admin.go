@@ -13,6 +13,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/httpserver"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
+	"github.com/MNCloudwerksTechnology/obie/internal/peercred"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
@@ -121,6 +122,9 @@ type Info struct {
 	// Enforced lists the entries the enforcement backend applies; the
 	// endpoint answers 503 when nil.
 	Enforced func(context.Context) ([]EnforcedEntry, error)
+	// Console reports the web console and replaces its token; the console
+	// endpoints answer 503 when nil.
+	Console ConsoleService
 	// Now returns the current time; time.Now when nil.
 	Now func() time.Time
 }
@@ -135,7 +139,7 @@ func New(path, group string, info Info, log *slog.Logger) *httpserver.Server {
 	return newServer(path, group, newAccessPolicy(group, log), info, log)
 }
 
-func newServer(path, group string, policy accessPolicy, info Info, log *slog.Logger) *httpserver.Server {
+func newServer(path, group string, policy peercred.Policy, info Info, log *slog.Logger) *httpserver.Server {
 	return httpserver.New(Name, ListenUnix(path, group, log), countRequests(authorize(policy, Handler(info, log), log)), log,
 		httpserver.ConnContext(withPeerCred))
 }
@@ -176,6 +180,7 @@ func Handler(info Info, log *slog.Logger) http.Handler {
 	handleOverrides(mux, info, log)
 	handleVerdicts(mux, info, log)
 	handleEnforced(mux, info, log)
+	handleConsole(mux, info, log)
 	return mux
 }
 

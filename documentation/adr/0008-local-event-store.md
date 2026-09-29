@@ -34,6 +34,8 @@ stay bounded on a small VPS (≤ 1 vCPU, 512 MB RAM, 100k active indicators).
     duplicates without the event being retrievable.
   - `v/<indicator>\x00<publisher>` → the publisher's latest verdict on the
     indicator and whether it was revoked. Kept until the verdict expires.
+    *Extended by [ADR 0023](0023-console-verdicts.md): kept until a day
+    after, for the sweep to keep revoked and expired verdicts in `h/`.*
   - `x/<expiry, 8-byte big-endian Unix seconds><verdict or override key>` →
     expiry index of *active* verdicts and expiring overrides, without TTL. The
     sweep walks it in time order; entries are removed when their verdict is
@@ -45,6 +47,11 @@ stay bounded on a small VPS (≤ 1 vCPU, 512 MB RAM, 100k active indicators).
     Kept until the revocation expires.
   - `o/<indicator>` → operator override (force-allow / force-block, optional
     expiry and note). Separate keyspace, never touched by events.
+    *Extended by
+    [ADR 0024](0024-console-overrides-allowlist-configuration.md): an
+    expiring override is kept until 7 days after its expiry, reads skip it
+    as inactive, and the sweep moves it to `h/o/<indicator>`, kept for the
+    same 7 days.*
 - **Rules:** events are expected to be validated (`obieproto.Decode`) before
   `Put`. `Put` ignores events whose ID was already seen, events that are
   already expired, and verdicts not newer (by `issued_at`, ties broken by
@@ -66,7 +73,9 @@ stay bounded on a small VPS (≤ 1 vCPU, 512 MB RAM, 100k active indicators).
   disappears from reads and compaction reclaims it. A sweep (every minute)
   walks the expiry index up to now, deletes what expired and notifies the
   affected indicators, so an expiry is notified within one sweep interval
-  (reads stop returning the verdict at its expiry already). An index entry
+  (reads stop returning the verdict at its expiry already). *Extended by
+  [ADR 0023](0023-console-verdicts.md): a verdict record outlives its
+  expiry by a day, and reads skip it as inactive instead.* An index entry
   whose value cannot be decoded is logged and dropped rather than stalling
   the sweep. The value-log GC runs every ten minutes until it has
   nothing left to rewrite.

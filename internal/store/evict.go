@@ -37,7 +37,7 @@ func (s *DB) makeRoom(txn *badger.Txn, ev *obieproto.Event, now time.Time, out *
 		case !own && !at.Before(ev.ExpiresAt()):
 			return out.evicted > 0, nil
 		}
-		change, err := s.evict(txn, index, now)
+		change, err := s.evict(txn, index, now, &out.ended)
 		if err != nil {
 			return false, err
 		}
@@ -87,7 +87,7 @@ func (s *DB) evictionCandidate(txn *badger.Txn) ([]byte, time.Time, bool) {
 // the record's event. The event's ID stays known until it expires, so a
 // replay is a duplicate. It returns the change to notify, with an empty Key
 // if nothing active changed.
-func (s *DB) evict(txn *badger.Txn, index []byte, now time.Time) (Change, error) {
+func (s *DB) evict(txn *badger.Txn, index []byte, now time.Time, kept *[]keptEnded) (Change, error) {
 	if err := txn.Delete(index); err != nil {
 		return Change{}, err
 	}
@@ -118,7 +118,8 @@ func (s *DB) evict(txn *badger.Txn, index []byte, now time.Time) (Change, error)
 	s.log.Debug("evicted verdict", "event", rec.Event.ID, "indicator", rec.Event.Key(),
 		"publisher", rec.Event.Publisher.PeerID, "expires_at", rec.Event.ExpiresAt())
 	if !rec.active(now) {
-		return Change{}, nil
+		// Revoked, or expired before the sweep came.
+		return Change{}, s.archiveExpired(txn, rec, now, kept)
 	}
 	return Change{Key: rec.Event.Key(), Reason: ReasonEvict}, nil
 }

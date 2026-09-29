@@ -42,9 +42,13 @@ type Options struct {
 	// MaxIndicators caps the verdict records, one per publisher and
 	// indicator; beyond it the record expiring first is evicted.
 	MaxIndicators int
-	// Self is this node's peer ID: its verdicts are never evicted. Empty
-	// protects none.
+	// Self is this node's peer ID: its verdicts are never evicted, and
+	// always kept once they ended. Empty protects none.
 	Self string
+	// MaxEnded caps the verdicts of other publishers kept once they were
+	// revoked, and those kept once they expired (ADR 0023); 0 means a tenth
+	// of MaxIndicators, at least 1,000.
+	MaxEnded int
 }
 
 func (o Options) withDefaults() Options {
@@ -59,6 +63,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.MaxIndicators <= 0 {
 		o.MaxIndicators = DefaultMaxIndicators
+	}
+	if o.MaxEnded <= 0 {
+		o.MaxEnded = max(o.MaxIndicators/10, minMaxEnded)
 	}
 	return o
 }
@@ -91,6 +98,10 @@ type DB struct {
 	// evictFrom is a lower bound of the expiry index keys of the records
 	// that may be evicted; see evictionCandidate. Guarded by writeMu.
 	evictFrom []byte
+	// endedCounts counts the ended verdicts kept (ADR 0023), and endedFull
+	// is set once other publishers' reached MaxEnded; see warnEndedFull.
+	endedCounts endedTally
+	endedFull   atomic.Bool
 
 	loopMu  sync.Mutex
 	loopErr error
@@ -103,7 +114,8 @@ var _ Store = (*DB)(nil)
 // New returns the store subsystem for the database in dir, typically
 // <node.state_dir>/db. The database is opened by Start.
 func New(dir string, log *slog.Logger, opts Options) *DB {
-	return &DB{dir: dir, log: log, opts: opts.withDefaults(), subs: map[int]func(Change){}}
+	opts = opts.withDefaults()
+	return &DB{dir: dir, log: log, opts: opts, subs: map[int]func(Change){}, endedCounts: endedTally{self: opts.Self}}
 }
 
 // NewMemory returns a store subsystem whose database lives in memory only.
@@ -136,13 +148,22 @@ func (s *DB) Start(context.Context) error {
 	}
 	s.db = db
 	var n int64
-	if err := db.View(func(txn *badger.Txn) error { n = countVerdicts(txn); return nil }); err != nil {
+	var ended map[string]EndedCount
+	err = db.View(func(txn *badger.Txn) error {
+		n = countVerdicts(txn)
+		var err error
+		ended, err = s.countEnded(txn)
+		return err
+	})
+	if err != nil {
 		_ = db.Close()
 		s.db = nil
 		return fmt.Errorf("count verdicts in %s: %w", s.dir, err)
 	}
 	s.verdicts.Store(0)
 	s.addVerdicts(int(n))
+	s.endedCounts.reset(ended)
+	s.endedFull.Store(false)
 	s.evictFrom = nil
 	s.setLoopErr(nil)
 	s.stop, s.done = make(chan struct{}), make(chan struct{})

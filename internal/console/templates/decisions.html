@@ -1,0 +1,163 @@
+{{define "content" -}}
+<h1>Decisions</h1>
+<p class="lead">Every address and network this node holds a decision on, whether it is blocked, and why. Open one for the full explanation. The list is read when the page opens; <span data-live hidden>every 5 seconds </span>the line below says whether the decisions changed since.</p>
+<div class="refresh" data-refresh="{{.Status.Fragment}}" aria-live="polite">
+{{template "region" .Status}}
+</div>
+{{- with .Notice}}
+<p class="callout">{{.}}</p>
+{{- end}}
+{{- with .FirewallNote}}
+<p class="callout">{{.}}</p>
+{{- end}}
+<form class="filter-form" method="get" action="/decisions" role="search" aria-label="Filter decisions">
+  <div class="field field-wide">
+    <label for="decisions-q">Address or network</label>
+    <input id="decisions-q" name="q" type="search" value="{{.Search}}" placeholder="203.0.113.7 or 198.51.100.0/24" autocomplete="off" spellcheck="false">
+  </div>
+  <div class="field">
+    <label for="decisions-reason">Reason</label>
+    <select id="decisions-reason" name="reason">
+      {{- range .Reasons}}
+      <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+      {{- end}}
+    </select>
+  </div>
+  <div class="field">
+    <label for="decisions-publisher">Publisher</label>
+    <select id="decisions-publisher" name="publisher">
+      {{- range .Publishers}}
+      <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+      {{- end}}
+    </select>
+  </div>
+  <div class="field">
+    <label for="decisions-firewall">Firewall</label>
+    <select id="decisions-firewall" name="firewall">
+      {{- range .Firewalls}}
+      <option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>
+      {{- end}}
+    </select>
+  </div>
+  {{- with .State}}
+  <input type="hidden" name="state" value="{{.}}">
+  {{- end}}
+  {{- if ne .Sort "decided"}}
+  <input type="hidden" name="sort" value="{{.Sort}}">
+  {{- end}}
+  <div class="form-actions">
+    <button type="submit" class="button">Show</button>
+    {{- with .Clear}}
+    <a href="{{.}}">Clear filters and search</a>
+    {{- end}}
+  </div>
+</form>
+{{- with .SearchErr}}
+<p class="callout" data-level="warning">{{.}}</p>
+{{- end}}
+{{- with .Searched}}
+<div class="searched">
+  {{- if .Err}}
+  <p><span class="mono">{{.Range}}</span> cannot be explained: {{.Err}}</p>
+  {{- else}}
+  <p><a class="mono" href="{{.Href}}" data-copy>{{.Range}}</a>: <strong>{{.Headline}}</strong>. {{.Protection}} <a href="{{.Href}}">Full explanation</a></p>
+  {{- end}}
+</div>
+{{- end}}
+<div class="list-head">
+  <nav class="filters" aria-label="Decision state">
+    <ul>
+      {{- range .States}}
+      <li><a href="{{.Href}}"{{if .Current}} aria-current="page"{{end}}>{{.Label}} <span class="filter-count">{{count .Count}}</span></a></li>
+      {{- end}}
+    </ul>
+  </nav>
+</div>
+{{- if .Rows}}
+<div class="table-scroll">
+<table class="list decisions">
+  <thead>
+    <tr>
+      {{- range .Columns}}
+      <th scope="col"{{with .Sort}} aria-sort="{{.}}"{{end}}>{{if .Href}}<a href="{{.Href}}">{{.Label}}</a>{{else}}{{.Label}}{{end}}</th>
+      {{- end}}
+    </tr>
+  </thead>
+  <tbody>
+    {{- range .Rows}}
+    <tr>
+      <th scope="row"><a class="mono address" href="{{.Href}}" data-copy>{{.Address}}</a></th>
+      <td>
+        <span class="cell-label">State</span>
+        <span class="decision-state" data-state="{{.State}}">{{.StateLabel}}</span>
+        <span class="cell-note">{{.StateNote}}</span>
+      </td>
+      <td>
+        <span class="cell-label">Score</span>
+        <span class="weight">{{.Score}}</span>
+        <span class="cell-note">{{.ScoreNote}}</span>
+      </td>
+      <td>
+        <span class="cell-label">Publishers</span>
+        <span class="weight">{{.Publishers}}</span>
+        <span class="cell-note">{{.PublishersNote}}</span>
+      </td>
+      <td>
+        <span class="cell-label">Reason</span>
+        {{- range .Reasons}}
+        <span class="reason">{{.}}</span>
+        {{- else}}
+        <span class="cell-note">None: no active verdict</span>
+        {{- end}}
+        {{- if .Reasons}}
+        <span class="cell-note">{{.ReasonsNote}}</span>
+        {{- end}}
+      </td>
+      <td><span class="cell-label">Decided</span> <time datetime="{{.Decided.ISO}}"><span class="day">{{day .Decided}}</span> {{clock .Decided}}</time></td>
+      <td>
+        <span class="cell-label">Expires</span>
+        {{- if .ExpiresNote}}
+        <span class="cell-note">{{.ExpiresNote}}</span>
+        {{- else}}
+        <time datetime="{{.Expires.ISO}}"><span class="day">{{day .Expires}}</span> {{clock .Expires}}</time>
+        {{- end}}
+      </td>
+      <td>
+        <span class="cell-label">Firewall</span>
+        <span class="peer-state" data-state="{{.FirewallState}}">{{.FirewallLabel}}</span>
+        <span class="cell-note">{{.FirewallNote}}</span>
+      </td>
+    </tr>
+    {{- end}}
+  </tbody>
+</table>
+</div>
+<p class="pager-text">{{.Pager.Text}}</p>
+{{- if or .Pager.First .Pager.Last}}
+<nav class="pager" aria-label="Pages of decisions">
+  {{- with .Pager.First}}
+  <a href="{{.}}">First page</a>
+  {{- end}}
+  {{- with .Pager.Prev}}
+  <a href="{{.}}" rel="prev">Previous page</a>
+  {{- end}}
+  {{- with .Pager.Next}}
+  <a href="{{.}}" rel="next">Next page</a>
+  {{- end}}
+  {{- with .Pager.Last}}
+  <a href="{{.}}">Last page</a>
+  {{- end}}
+</nav>
+{{- end}}
+{{- else}}
+<p class="empty">{{.Empty}}{{with .Clear}} <a href="{{.}}">Clear filters and search</a>{{end}}</p>
+{{- end}}
+{{- end}}
+
+{{define "region" -}}
+{{if .Changed -}}
+<p class="callout" data-level="warning">The decisions or the firewall changed since this list was read at <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time>. <a href="{{.Reload}}">Read the list again</a></p>
+{{- else -}}
+<p class="updated">List read at <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time>; no decision changed since.</p>
+{{- end}}
+{{- end}}
