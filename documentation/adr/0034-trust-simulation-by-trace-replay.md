@@ -150,7 +150,7 @@ The first two slots are *newcomers*: they join at hour 24. Adversaries
 | naive | Also reports victims from a pool of 100 benign addresses of any class, 20 per hour, confidence 1.0, TTL 7 days. |
 | careful | Like naive, but the pool avoids the published ranges (customers and NAT addresses only), 2 per hour, confidence 0.8, TTL 1 day. |
 | onoff | Careful poisoning at 8 per hour with a TTL of 1 hour, during the first D·P of every period P (P = 24 h, D = 0.25); honest otherwise. |
-| whitewash | Naive poisoning. Once its key's weight is 0, it waits an hour and goes on under a new key that no trust entry lists. |
+| whitewash | Naive poisoning. Once its key has lost its weight, it waits an hour and goes on under a new key that no trust entry lists. |
 | sybil-1asn, sybil-masn | All adversaries are one coalition. Twice an hour it picks a careful-pool victim, and every member reports it within 2 minutes (confidence 0.8, TTL 1 day). Their `publisher.asn` is one ASN, or one of m = 3. |
 | spies | Half the adversaries (rounded up) poison like naive at 4 per hour with a TTL of 1 day; the others stay honest and corroborate each poison verdict within 1–10 minutes (confidence 0.8). EigenTrust's threat model D. |
 | suppressor | Shields the attackers of a third of the attackers' networks (their ASNs; /48s in an imported trace): of its bans of them, half are never published and half are revoked after 1–5 minutes. |
@@ -182,26 +182,35 @@ and cumulatively over [0, h+1), for every hour of the run.
   a window if one of its episodes overlaps it.
 - **Precision, recall, F1.** Precision is the share of the banned
   addresses that are attackers. Recall is the share of the attackers
-  active in the window (banned by the observer's or an honest
-  publisher's Fail2Ban) that were banned in it.
+  active in the window that were banned in it. An attacker is active
+  when the Fail2Ban of an operator in the network bans it, whatever the
+  operator's publisher does with the ban; a newcomer's operator is in the
+  network once it joined. So the attackers are the same for every model
+  and fraction of a seed.
 - **False bans per protected victim.** Episodes on benign addresses that
   start in the window, divided by the size of the protected population.
-- **Defection to neutralization.** A publisher key is neutralized when its
-  weight falls to 0: it no longer contributes to any ban. Hours and
-  events (the key's own events) from its defection until then. A key not
+- **Defection to neutralization.** A key defects with its first malicious
+  act: a poison verdict, a corroboration of one, a withheld or revoked
+  ban. It is neutralized at the first probe after that at which its
+  weight is 0: it no longer contributes to any ban. Hours and events
+  (the key's own events) from its defection until then. A key not
   neutralized counts until the window ends (restricted mean), and the
   share neutralized is reported with it.
-- **False bans caused before neutralization.** False episodes among whose
-  contributors, at the start or an update, is an adversary key not yet
-  neutralized.
+- **False bans caused before neutralization.** False episodes to which a
+  malicious verdict of a key not yet neutralized contributed, at the
+  start or an update. An adversary's honest reports, e.g. of a shared
+  NAT address, do not make it the cause.
 - **Honest publishers' mean weight** as a fraction of the ceiling, over
   the 5-minute probes in the window, for the honest publishers that
   have joined.
 - **Newcomer convergence.** Hours from a newcomer's joining until its
   weight first reaches 90 % of the ceiling, restricted like
   neutralization.
-- **Whitewashing payoff.** A whitewasher's false bans, over all its keys,
-  divided by the number of keys it burned (at least 1).
+- **Whitewashing payoff.** The false bans a whitewasher's malicious
+  verdicts contributed to, over all its keys, divided by the number of
+  keys it burned (at least 1). A key is burned when its weight falls to
+  0 after it was above 0; a key that was never trusted is not worth
+  abandoning.
 - **Calibration.** Over the ban verdicts the observer receives in the
   window, the outcome is 1 for an attacker and 0 otherwise. The Brier
   score is the mean of (confidence − outcome)². The ECE is computed over

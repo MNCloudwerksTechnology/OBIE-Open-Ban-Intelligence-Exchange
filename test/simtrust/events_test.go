@@ -17,7 +17,7 @@ func TestEventsAreValid(t *testing.T) {
 	ids := idSource{rng: rand.New(rand.NewPCG(7, 7))} // #nosec G404 -- reproducible test data.
 	at := testStart.Add(90 * time.Second)
 	v := newVerdict(ids.next(at), publisherOf(k.PeerID, 64512), netip.MustParseAddr(victim), at, 0.8, time.Hour)
-	r := newRevocation(ids.next(at.Add(time.Minute)), v, at.Add(time.Minute))
+	r := newRevocation(ids.next(at.Add(time.Minute)), v.ID, v.Publisher, netip.MustParseAddr(victim), at.Add(time.Minute))
 	for _, ev := range []*obieproto.Event{v, r} {
 		if err := k.Sign(ev); err != nil {
 			t.Fatal(err)

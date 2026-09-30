@@ -18,15 +18,15 @@ type Episode struct {
 	Start, End time.Time
 	// Autoblock is set if the observer's own verdict alone started it.
 	Autoblock bool
-	// Contributors are the publishers whose verdicts counted in the ban,
-	// each with the first time it counted, in that order.
+	// Contributors are the verdicts that counted in the ban, each with
+	// the first time it counted, in that order.
 	Contributors []Contribution
 }
 
-// Contribution is a publisher counting in a ban from At.
+// Contribution is a publisher's verdict counting in a ban from At.
 type Contribution struct {
-	PeerID string
-	At     time.Time
+	PeerID, EventID string
+	At              time.Time
 }
 
 // openEpisode is an episode that has not ended, with the block's expiry.
@@ -76,8 +76,8 @@ func (l *BanLog) Record(c decision.Change) {
 		}
 		cur.expires = c.Decision.ExpiresAt
 		for _, k := range c.Contributors {
-			if !slices.ContainsFunc(cur.Contributors, func(x Contribution) bool { return x.PeerID == k.PeerID }) {
-				cur.Contributors = append(cur.Contributors, Contribution{PeerID: k.PeerID, At: at})
+			if !slices.ContainsFunc(cur.Contributors, func(x Contribution) bool { return x.EventID == k.EventID }) {
+				cur.Contributors = append(cur.Contributors, Contribution{PeerID: k.PeerID, EventID: k.EventID, At: at})
 			}
 		}
 	case decision.ChangeRemoved:

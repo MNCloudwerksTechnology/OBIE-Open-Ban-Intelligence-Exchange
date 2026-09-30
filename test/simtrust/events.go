@@ -99,16 +99,17 @@ func newVerdict(id string, pub obieproto.Publisher, addr netip.Addr, at time.Tim
 	}
 }
 
-// newRevocation returns the revocation of verdict v by its publisher at at.
-func newRevocation(id string, v *obieproto.Event, at time.Time) *obieproto.Event {
+// newRevocation returns the revocation by pub of its verdict with ID
+// revokes on addr, issued at at.
+func newRevocation(id, revokes string, pub obieproto.Publisher, addr netip.Addr, at time.Time) *obieproto.Event {
 	return &obieproto.Event{
 		ID:        id,
 		Spec:      obieproto.Spec,
 		Type:      obieproto.TypeRevoke,
 		IssuedAt:  obieproto.NewTimestamp(at),
-		Indicator: v.Indicator,
-		Revokes:   v.ID,
+		Indicator: indicatorOf(addr),
+		Revokes:   revokes,
 		Reason:    revokeReason,
-		Publisher: v.Publisher,
+		Publisher: pub,
 	}
 }

@@ -260,10 +260,12 @@ func streams(t *Trace, model Model, c cast, p ModelParams, seed uint64) []item {
 	case ModelHonest, ModelSuppressor:
 		// Their streams are honest ones.
 	}
-	slices.SortStableFunc(b.items, func(x, y item) int {
+	// A corroboration or revocation after the end is never sent.
+	items := slices.DeleteFunc(b.items, func(it item) bool { return !it.at.Before(end) })
+	slices.SortStableFunc(items, func(x, y item) int {
 		return cmp.Or(x.at.Compare(y.at), cmp.Compare(x.actor, y.actor))
 	})
-	return b.items
+	return items
 }
 
 // builder collects the items of a run, each with its event ID.

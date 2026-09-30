@@ -120,19 +120,19 @@ func TestTwoTrustedRemotesAtDefaultConfidence(t *testing.T) {
 
 func TestEpisodeNamesContributorsInOrder(t *testing.T) {
 	tn := newTestNode(t, ProfileLab)
-	tn.report(tn.remotes[0], victim, 0.8, time.Hour)
+	first := tn.report(tn.remotes[0], victim, 0.8, time.Hour)
 	tn.at(time.Minute)
-	tn.report(tn.remotes[1], victim, 0.8, time.Hour)
+	second := tn.report(tn.remotes[1], victim, 0.8, time.Hour)
 	tn.at(2 * time.Minute)
-	tn.report(tn.remotes[2], victim, 0.8, time.Hour)
+	third := tn.report(tn.remotes[2], victim, 0.8, time.Hour)
 	eps := tn.episodes(2 * time.Hour)
 	if len(eps) != 1 {
 		t.Fatalf("episodes = %+v, want one", eps)
 	}
 	want := []Contribution{
-		{tn.remotes[0].PeerID, testStart.Add(time.Minute)},
-		{tn.remotes[1].PeerID, testStart.Add(time.Minute)},
-		{tn.remotes[2].PeerID, testStart.Add(2 * time.Minute)},
+		{tn.remotes[0].PeerID, first.ID, testStart.Add(time.Minute)},
+		{tn.remotes[1].PeerID, second.ID, testStart.Add(time.Minute)},
+		{tn.remotes[2].PeerID, third.ID, testStart.Add(2 * time.Minute)},
 	}
 	slices.SortFunc(want[:2], func(a, b Contribution) int { return strings.Compare(a.PeerID, b.PeerID) })
 	if !slices.Equal(eps[0].Contributors, want) {
@@ -174,7 +174,7 @@ func blockChange(typ decision.ChangeType, at, expires time.Duration, peerIDs ...
 		EvaluatedAt: testStart.Add(at), ExpiresAt: testStart.Add(expires),
 	}}
 	for _, id := range peerIDs {
-		c.Contributors = append(c.Contributors, decision.Contributor{PeerID: id})
+		c.Contributors = append(c.Contributors, decision.Contributor{PeerID: id, EventID: id + "-verdict"})
 	}
 	return c
 }
@@ -193,7 +193,7 @@ func TestBanLogEpisodes(t *testing.T) {
 				blockChange(decision.ChangeRemoved, 30*time.Minute, 0, "b", "c"),
 			},
 			want: []Episode{{Start: testStart, End: testStart.Add(30 * time.Minute), Contributors: []Contribution{
-				{"a", testStart}, {"b", testStart}, {"c", testStart.Add(5 * time.Minute)}}}},
+				{"a", "a-verdict", testStart}, {"b", "b-verdict", testStart}, {"c", "c-verdict", testStart.Add(5 * time.Minute)}}}},
 		},
 		{
 			// Without a sweep between them, the engine reports a ban that
@@ -204,9 +204,9 @@ func TestBanLogEpisodes(t *testing.T) {
 				blockChange(decision.ChangeUpdated, 20*time.Minute, 30*time.Minute, "a", "c"),
 			},
 			want: []Episode{
-				{Start: testStart, End: testStart.Add(10 * time.Minute), Contributors: []Contribution{{"a", testStart}, {"b", testStart}}},
+				{Start: testStart, End: testStart.Add(10 * time.Minute), Contributors: []Contribution{{"a", "a-verdict", testStart}, {"b", "b-verdict", testStart}}},
 				{Start: testStart.Add(20 * time.Minute), End: testStart.Add(30 * time.Minute), Contributors: []Contribution{
-					{"a", testStart.Add(20 * time.Minute)}, {"c", testStart.Add(20 * time.Minute)}}},
+					{"a", "a-verdict", testStart.Add(20 * time.Minute)}, {"c", "c-verdict", testStart.Add(20 * time.Minute)}}},
 			},
 		},
 		{
@@ -215,14 +215,14 @@ func TestBanLogEpisodes(t *testing.T) {
 				blockChange(decision.ChangeAdded, 0, 10*time.Minute, "a"),
 				blockChange(decision.ChangeRemoved, 14*time.Minute, 0),
 			},
-			want: []Episode{{Start: testStart, End: testStart.Add(10 * time.Minute), Contributors: []Contribution{{"a", testStart}}}},
+			want: []Episode{{Start: testStart, End: testStart.Add(10 * time.Minute), Contributors: []Contribution{{"a", "a-verdict", testStart}}}},
 		},
 		{
 			name: "open episode ends at the end of the run",
 			changes: []decision.Change{
 				blockChange(decision.ChangeAdded, 0, 48*time.Hour, "a"),
 			},
-			want: []Episode{{Start: testStart, End: testStart.Add(24 * time.Hour), Contributors: []Contribution{{"a", testStart}}}},
+			want: []Episode{{Start: testStart, End: testStart.Add(24 * time.Hour), Contributors: []Contribution{{"a", "a-verdict", testStart}}}},
 		},
 	} {
 		l := NewBanLog()
@@ -244,7 +244,9 @@ func TestBanLogEpisodes(t *testing.T) {
 
 func sameEpisode(a, b Episode) bool {
 	return a.Addr == b.Addr && a.Start.Equal(b.Start) && a.End.Equal(b.End) && a.Autoblock == b.Autoblock &&
-		slices.EqualFunc(a.Contributors, b.Contributors, func(x, y Contribution) bool { return x.PeerID == y.PeerID && x.At.Equal(y.At) })
+		slices.EqualFunc(a.Contributors, b.Contributors, func(x, y Contribution) bool {
+			return x.PeerID == y.PeerID && x.EventID == y.EventID && x.At.Equal(y.At)
+		})
 }
 
 func TestRevocationEndsBan(t *testing.T) {
@@ -257,7 +259,7 @@ func TestRevocationEndsBan(t *testing.T) {
 		}
 	}
 	tn.at(5 * time.Minute)
-	tn.put(newRevocation(tn.ids.next(tn.node.Now()), first, tn.node.Now()))
+	tn.put(newRevocation(tn.ids.next(tn.node.Now()), first.ID, first.Publisher, netip.MustParseAddr(victim), tn.node.Now()))
 	eps := tn.episodes(time.Hour)
 	if len(eps) != 1 || !eps[0].End.Equal(testStart.Add(5*time.Minute)) {
 		t.Fatalf("episodes = %+v, want one ended by the revocation at 5m", eps)
