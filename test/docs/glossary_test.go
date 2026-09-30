@@ -83,6 +83,9 @@ var glossaryGuides = []string{
 	"documentation/operations/messages.md",
 	"documentation/guides/fail2ban.md",
 	"documentation/guides/nftables.md",
+	"documentation/guides/README.md",
+	"documentation/guides/connect-a-peer.md",
+	"documentation/guides/stop-trusting-a-peer.md",
 	"packaging/compose/README.md",
 }
 
