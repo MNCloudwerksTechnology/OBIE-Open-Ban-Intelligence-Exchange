@@ -43,13 +43,17 @@ attacker (`badboy.go`), the scenario files and the exact score parameters.
     from a geographic matrix. Streams deliver in order, after the link's
     latency.
   - The harness carries a copy of go-libp2p's mocknet
-    (`test/sim/internal/mocknet`, MIT) with two changes. First, a write
+    (`test/sim/internal/mocknet`, MIT) with three changes. First, a write
     never waits for an earlier one to arrive, and no goroutine carries it:
     the reader waits for its arrival time. The original accepts a write of
     256 bytes or more only once the previous one arrived, so a link carried
     about two messages per latency, and one goroutine per stream end made
     up a third of a run's goroutines. Second, a stream opened while its
-    connection closes is reset rather than left running.
+    connection closes is reset rather than left running. Third, no
+    connection opens to or from a closed peer. The original opened one as
+    long as the link remained, and nobody closed it. Its handshake then
+    waited for bytes after the run's virtual clock had stopped, which
+    failed the run.
 - **Why not Shadow.**
   - *Fidelity.* Shadow would add the real TCP/QUIC stacks and the
     subsystems outside routing. It would add nothing to the routing

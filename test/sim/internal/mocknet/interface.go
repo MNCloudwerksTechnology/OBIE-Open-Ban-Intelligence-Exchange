@@ -2,7 +2,7 @@
 //
 // It is go-libp2p v0.50.0's p2p/net/mock, copied under its MIT license
 // (LICENSE in this directory) for the routing simulation (ADR 0033), with
-// two changes:
+// three changes:
 //
 //   - mock_stream.go: a write is queued and delivered after the link's
 //     latency, in order, and never waits for an earlier write to arrive.
@@ -14,6 +14,10 @@
 //     goroutines.
 //   - mock_conn.go: a stream opened while its connection closes is reset.
 //     go-libp2p's was left open, and its goroutines ran forever.
+//   - mock_peernet.go: no connection opens to or from a closed peer.
+//     go-libp2p's opened one as long as the link remained, and nobody
+//     closed it: its handshakes still waited for their bytes when a run's
+//     virtual clock had stopped.
 //
 // - a Mocknet has many network.Networks
 // - a Mocknet has many Links

@@ -38,6 +38,11 @@ type peernet struct {
 	notifmu sync.Mutex
 	notifs  map[network.Notifiee]struct{}
 
+	// closed is set once Close ran: no connection opens to or from the
+	// peer after it (a change to go-libp2p's mocknet, which kept opening
+	// them while the link remained, and nobody closed them).
+	closed bool
+
 	sync.RWMutex
 }
 
@@ -65,6 +70,9 @@ func newPeernet(m *mocknet, p peer.ID, opts PeerOptions, bus event.Bus) (*peerne
 }
 
 func (pn *peernet) Close() error {
+	pn.Lock()
+	pn.closed = true
+	pn.Unlock()
 	// close the connections
 	for _, c := range pn.allConns() {
 		c.Close()
@@ -153,7 +161,9 @@ func (pn *peernet) connect(p peer.ID) (*conn, error) {
 
 func (pn *peernet) openConn(_ peer.ID, l *link) (*conn, error) {
 	lc, rc := l.newConnPair(pn)
-	addConnPair(pn, rc.net, lc, rc)
+	if !addConnPair(pn, rc.net, lc, rc) {
+		return nil, fmt.Errorf("%s cannot connect to %s: a network is closed", lc.local, lc.remote)
+	}
 	log.Debug("opening connection", "source_peer", pn.LocalPeer(), "destination_peer", lc.RemotePeer())
 	abort := func() {
 		_ = lc.Close()
@@ -196,8 +206,9 @@ func checkSecureAndUpgrade(dir network.Direction, gater connmgr.ConnectionGater,
 }
 
 // addConnPair adds connection to both peernets at the same time
-// must be followerd by pn1.addConn(c1) and pn2.addConn(c2)
-func addConnPair(pn1, pn2 *peernet, c1, c2 *conn) {
+// must be followerd by pn1.addConn(c1) and pn2.addConn(c2). It adds
+// neither and reports false if either peernet is closed.
+func addConnPair(pn1, pn2 *peernet, c1, c2 *conn) bool {
 	var l1, l2 = pn1, pn2 // peernets in lock order
 	// bytes compare as string compare is lexicographical
 	if bytes.Compare([]byte(l1.LocalPeer()), []byte(l2.LocalPeer())) > 0 {
@@ -206,6 +217,11 @@ func addConnPair(pn1, pn2 *peernet, c1, c2 *conn) {
 
 	l1.Lock()
 	l2.Lock()
+	if l1.closed || l2.closed {
+		l2.Unlock()
+		l1.Unlock()
+		return false
+	}
 
 	add := func(pn *peernet, c *conn) {
 		_, found := pn.connsByPeer[c.RemotePeer()]
@@ -227,6 +243,7 @@ func addConnPair(pn1, pn2 *peernet, c1, c2 *conn) {
 	c2.notifLk.Lock()
 	l2.Unlock()
 	l1.Unlock()
+	return true
 }
 
 func (pn *peernet) remoteOpenedConn(c *conn) {

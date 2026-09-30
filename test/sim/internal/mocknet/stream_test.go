@@ -205,3 +205,37 @@ func TestConnCloseResetsStreams(t *testing.T) {
 		}
 	})
 }
+
+// TestClosedNetworkRefusesConnections: once a peer's network is closed, no
+// connection to or from it opens, although the link remains; go-libp2p's
+// mocknet opened one that nobody closed.
+func TestClosedNetworkRefusesConnections(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		mn := New()
+		defer func() { _ = mn.Close() }()
+		a, err := mn.GenPeer()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := mn.GenPeer()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := mn.LinkPeers(a.ID(), b.ID()); err != nil {
+			t.Fatal(err)
+		}
+		if err := b.Network().Close(); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.Network().DialPeer(context.Background(), b.ID()); err == nil {
+			t.Error("dialing a closed network opened a connection")
+		}
+		if _, err := b.Network().DialPeer(context.Background(), a.ID()); err == nil {
+			t.Error("a closed network dialed out")
+		}
+		synctest.Wait()
+		if n, m := len(a.Network().Conns()), len(b.Network().Conns()); n+m != 0 {
+			t.Errorf("the peers have %d and %d connections, want none", n, m)
+		}
+	})
+}
