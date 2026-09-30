@@ -90,10 +90,16 @@ describe('Legal pages', () => {
       expect(page.querySelector('.updated')?.textContent).toBe(LEGAL_CONTENT_EN.privacy.updated);
     });
 
-    it('states that there is no cookie banner because there are no cookies', () => {
+    it('states up front that there are no cookies and statistics only with consent', () => {
       const summary = visibleText(page.querySelector('#summary'));
       expect(summary).toContain('No cookies.');
-      expect(summary).toContain('this website shows no cookie banner');
+      expect(summary).toContain('Visitor statistics only with your consent.');
+    });
+
+    it('has the section the consent dialog links to', () => {
+      expect(page.querySelector('section#analytics h2')?.textContent).toContain(
+        'Visitor statistics with Matomo',
+      );
     });
 
     it('offers the privacy contact as an e-mail link', () => {

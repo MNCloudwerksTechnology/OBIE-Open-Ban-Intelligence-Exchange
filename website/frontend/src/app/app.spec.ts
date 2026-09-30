@@ -2,9 +2,12 @@ import { TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
+import { renderPrerendered } from '../testing/prerender';
 import { App } from './app';
 import { routes } from './app.routes';
+import { CONSENT_CONTENT_EN } from './content/consent.content';
 import { LANDING_CONTENT_EN } from './content/landing.content';
+import { CONSENT_STORAGE_KEY } from './core/analytics/analytics.config';
 
 describe('App routing', () => {
   beforeEach(() => {
@@ -49,19 +52,28 @@ describe('App routing', () => {
     );
   });
 
-  it('shows no cookie banner or other consent dialog on any page', async () => {
+  it('asks about visitor statistics once in the browser, before the header and outside main', async () => {
+    localStorage.removeItem(CONSENT_STORAGE_KEY);
     const fixture = TestBed.createComponent(App);
-    const router = TestBed.inject(Router);
-    for (const url of ['/', '/impressum', '/privacy']) {
-      await router.navigateByUrl(url);
-      fixture.detectChanges();
-      const root = fixture.nativeElement as HTMLElement;
-      expect(root.querySelector('dialog, [role="dialog"], [role="alertdialog"]'), url).toBeNull();
-      const outsideMain = Array.from(root.children).filter((child) => child.tagName !== 'MAIN');
-      for (const element of outsideMain) {
-        expect(element.textContent, url).not.toMatch(/cookie|consent/i);
-      }
-    }
+    await TestBed.inject(Router).navigateByUrl('/');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const root = fixture.nativeElement as HTMLElement;
+    const dialogs = root.querySelectorAll('[role="dialog"]');
+    expect(dialogs.length).toBe(1);
+    expect(dialogs[0].closest('main')).toBeNull();
+    expect(dialogs[0].textContent).toContain(CONSENT_CONTENT_EN.heading);
+    expect(root.querySelector('app-consent-dialog')?.nextElementSibling?.tagName).toBe(
+      'APP-SITE-HEADER',
+    );
+  });
+
+  it('leaves the question and the privacy settings out of the prerendered page', async () => {
+    TestBed.configureTestingModule({ providers: [provideRouter(routes)] });
+    const page = await renderPrerendered(App);
+    expect(page.querySelector('[role="dialog"]')).toBeNull();
+    expect(page.textContent).not.toContain(CONSENT_CONTENT_EN.heading);
+    expect(page.textContent).not.toContain(CONSENT_CONTENT_EN.settings);
   });
 
   it('wraps pages in banner, main and content-info landmarks', () => {

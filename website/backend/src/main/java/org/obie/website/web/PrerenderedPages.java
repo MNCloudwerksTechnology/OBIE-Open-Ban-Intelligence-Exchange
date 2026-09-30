@@ -11,13 +11,14 @@ import org.springframework.core.io.support.ResourcePatternResolver;
 
 /**
  * The public paths of the prerendered pages, found as {@code <route>/index.html} under a static
- * location. The not-found page is not public. Reading them from the packaged front end means a new
- * page appears in the sitemap without a back-end change.
+ * location. The not-found pages ({@code /404} and each language's, e.g. {@code /de/404}) are not
+ * public. Reading them from the packaged front end means a new page, or a new language, appears in
+ * the sitemap without a back-end change.
  */
 final class PrerenderedPages {
 
   private static final String INDEX = "index.html";
-  private static final String NOT_FOUND_DIRECTORY = "404/";
+  static final String NOT_FOUND_DIRECTORY = "404/";
 
   private PrerenderedPages() {}
 
@@ -33,7 +34,7 @@ final class PrerenderedPages {
           continue; // the same path in another classpath root
         }
         String directory = url.substring(root.length(), url.length() - INDEX.length());
-        if (!directory.equals(NOT_FOUND_DIRECTORY)) {
+        if (!isNotFoundPage(directory)) {
           paths.add("/" + stripTrailingSlash(directory));
         }
       }
@@ -43,6 +44,10 @@ final class PrerenderedPages {
     } catch (IOException e) {
       throw new UncheckedIOException("Cannot list the prerendered pages in " + location, e);
     }
+  }
+
+  private static boolean isNotFoundPage(String directory) {
+    return directory.equals(NOT_FOUND_DIRECTORY) || directory.endsWith("/" + NOT_FOUND_DIRECTORY);
   }
 
   private static String stripTrailingSlash(String directory) {

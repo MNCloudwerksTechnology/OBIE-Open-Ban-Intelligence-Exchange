@@ -99,6 +99,13 @@ class InquiryFormBrowserTest extends IntegrationTest {
                     .executeScript(
                         "return performance.getEntriesByType('resource')"
                             + ".some(e => e.name.includes('/api/inquiries/form-token'))"));
+    // A first visit is asked about visitor statistics; the dialog covers the bottom of the window.
+    wait.until(
+            ExpectedConditions.elementToBeClickable(
+                By.xpath("//app-consent-dialog//button[normalize-space()='Decline']")))
+        .click();
+    wait.until(
+        ExpectedConditions.invisibilityOfElementLocated(By.cssSelector("app-consent-dialog *")));
 
     driver.findElement(By.xpath("//label[normalize-space()='Talk']/input")).click();
     type("inquiry-name", name);

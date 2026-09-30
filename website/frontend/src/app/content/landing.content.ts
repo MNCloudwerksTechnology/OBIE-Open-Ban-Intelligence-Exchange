@@ -1,11 +1,15 @@
-import { InjectionToken } from '@angular/core';
+import { InjectionToken, inject } from '@angular/core';
+import { TranslocoService } from '@jsverse/transloco';
 
+import { PAGE_PATHS } from '../i18n/languages';
+import { translated } from '../i18n/translated';
 import { LandingContent } from './landing-content.model';
 
 // All landing page copy (ADR 0012). Facts come from README.md,
 // ARCHITECTURE.md and documentation/spec/obie-0.1.md; anything the code does
 // not do yet is labelled "in progress" or "planned". Write for readers
 // without a security background: short sentences, explain terms on first use.
+// The German copy (landing.content.de.ts) says the same; change both together.
 
 /** The public repository; every section's next step points here. */
 export const REPOSITORY_URL =
@@ -27,8 +31,8 @@ export const LINKS = {
   issues: `${REPOSITORY_URL}/issues`,
   goodFirstIssues: `${REPOSITORY_URL}/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22`,
   securityPolicy: `${DOCS_URL}/SECURITY.md`,
-  impressum: '/impressum',
-  privacy: '/privacy',
+  impressum: PAGE_PATHS.impressum.en,
+  privacy: PAGE_PATHS.privacy.en,
   cloudwerks: 'https://cloudwerks.de',
 } as const;
 
@@ -56,6 +60,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
   },
   header: {
     github: { label: 'View on GitHub', href: LINKS.repository },
+    language: { label: 'DE', name: 'Deutsch' },
   },
   hero: {
     eyebrow: 'OBIE · Open Ban Intelligence Exchange',
@@ -653,8 +658,8 @@ export const LANDING_CONTENT_EN: LandingContent = {
   },
 };
 
-/** Copy of the landing page; provide another `LandingContent` for a new language. */
+/** The landing page copy in the page's language (Transloco translation `landing`). */
 export const LANDING_CONTENT = new InjectionToken<LandingContent>('LANDING_CONTENT', {
   providedIn: 'root',
-  factory: () => LANDING_CONTENT_EN,
+  factory: () => translated<LandingContent>(inject(TranslocoService), 'landing'),
 });

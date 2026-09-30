@@ -3,6 +3,8 @@ import { LANDING_CONTENT } from '../../content/landing.content';
 import { SEO_CONTENT } from '../../content/seo.content';
 import { SeoService } from '../../core/seo';
 import { homeStructuredData } from '../../core/structured-data';
+import { PAGE_PATHS } from '../../i18n/languages';
+import { LANG } from '../../i18n/provide-i18n';
 import { Contact } from '../../sections/contact';
 import { Faq } from '../../sections/faq';
 import { Founder } from '../../sections/founder';
@@ -27,7 +29,7 @@ export class Home {
     seo.apply({
       title: meta.title,
       description: meta.description,
-      path: '/',
+      path: PAGE_PATHS.home[inject(LANG)],
       structuredData: homeStructuredData(inject(SEO_CONTENT), founder, (path) =>
         seo.absolute(path),
       ),

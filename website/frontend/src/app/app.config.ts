@@ -4,6 +4,7 @@ import { provideClientHydration, withIncrementalHydration } from '@angular/platf
 import { provideRouter } from '@angular/router';
 
 import { routes } from './app.routes';
+import { provideI18n } from './i18n/provide-i18n';
 
 export const appConfig: ApplicationConfig = {
   providers: [
@@ -11,5 +12,6 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideClientHydration(withIncrementalHydration()),
     provideHttpClient(withFetch()),
+    provideI18n(),
   ],
 };

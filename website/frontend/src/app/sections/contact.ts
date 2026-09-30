@@ -18,6 +18,7 @@ import {
   Validators,
 } from '@angular/forms';
 
+import { Analytics } from '../core/analytics/analytics';
 import { FieldError, Inquiry, InquiryApi, SubmitResult } from '../core/inquiry-api';
 import {
   audienceSize,
@@ -55,6 +56,7 @@ export class Contact {
   protected readonly copy = this.contact.form;
 
   private readonly api = inject(InquiryApi);
+  private readonly analytics = inject(Analytics);
   private readonly host: HTMLElement = inject(ElementRef).nativeElement;
   private readonly injector = inject(Injector);
 
@@ -118,9 +120,12 @@ export class Contact {
     }
     this.state.set('sending');
     this.announce(this.copy.sending);
-    const result = await this.api.submit(this.inquiry());
+    const inquiry = this.inquiry();
+    const result = await this.api.submit(inquiry);
     switch (result.kind) {
       case 'accepted':
+        // The kind of inquiry only, never what the visitor typed.
+        this.analytics.track({ category: 'Inquiry', action: 'sent', name: inquiry.type });
         this.state.set('success');
         this.announce(this.copy.success.text);
         this.focus('#inquiry-success');

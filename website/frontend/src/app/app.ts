@@ -1,17 +1,24 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, afterNextRender, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 
 import { LANDING_CONTENT } from './content/landing.content';
+import { Analytics } from './core/analytics/analytics';
+import { ConsentService } from './core/analytics/consent.service';
+import { ConsentDialog } from './layout/consent-dialog';
 import { SiteFooter } from './layout/site-footer';
 import { SiteHeader } from './layout/site-header';
 
-/** Application shell: skip link, header, the page in the main landmark, footer. */
+/**
+ * Application shell: skip link, the question about visitor statistics (in
+ * the browser only), header, the page in the main landmark, footer.
+ */
 @Component({
   selector: 'app-root',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterOutlet, SiteFooter, SiteHeader],
+  imports: [ConsentDialog, RouterOutlet, SiteFooter, SiteHeader],
   template: `
     <a class="skip-link" href="#main" (click)="skipToMain($event)">{{ skipLink }}</a>
+    <app-consent-dialog />
     <app-site-header />
     <main id="main" tabindex="-1">
       <router-outlet />
@@ -43,6 +50,16 @@ import { SiteHeader } from './layout/site-header';
 })
 export class App {
   protected readonly skipLink = inject(LANDING_CONTENT).a11y.skipLink;
+
+  constructor() {
+    const consent = inject(ConsentService);
+    const analytics = inject(Analytics);
+    // After hydration, so the prerendered page never shows the dialog.
+    afterNextRender(() => {
+      consent.start();
+      analytics.start();
+    });
+  }
 
   /**
    * Moves focus to the main landmark. Handled here because `#main` resolves

@@ -25,7 +25,7 @@ class SeoTest extends IntegrationTest {
   @Autowired private TestRestTemplate http;
 
   @ParameterizedTest
-  @ValueSource(strings = {"/", "/impressum", "/privacy"})
+  @ValueSource(strings = {"/", "/impressum", "/privacy", "/de", "/de/impressum", "/de/datenschutz"})
   void pagesLinkTheirCanonicalUrlOnTheConfiguredOrigin(String path) {
     String html = getHtml(path).getBody();
 
@@ -36,6 +36,19 @@ class SeoTest extends IntegrationTest {
         .contains("<meta property=\"og:image\" content=\"" + SITE + "/social/obie-share.png\">")
         .contains("<meta name=\"twitter:card\" content=\"summary_large_image\">")
         .doesNotContain("name=\"robots\"");
+  }
+
+  @Test
+  void pagesLinkTheirCounterpartInTheOtherLanguageOnTheConfiguredOrigin() {
+    assertThat(getHtml("/privacy").getBody())
+        .contains("<html lang=\"en\"")
+        .contains(
+            "<link rel=\"alternate\" hreflang=\"en\" href=\"" + SITE + "/privacy\">",
+            "<link rel=\"alternate\" hreflang=\"de\" href=\"" + SITE + "/de/datenschutz\">",
+            "<link rel=\"alternate\" hreflang=\"x-default\" href=\"" + SITE + "/privacy\">");
+    assertThat(getHtml("/de/datenschutz").getBody())
+        .contains("<html lang=\"de\"")
+        .contains("<link rel=\"alternate\" hreflang=\"en\" href=\"" + SITE + "/privacy\">");
   }
 
   @Test
@@ -55,6 +68,21 @@ class SeoTest extends IntegrationTest {
         .contains("<meta name=\"robots\" content=\"noindex\">")
         .doesNotContain(SiteOrigin.PLACEHOLDER)
         .doesNotContain("rel=\"canonical\"");
+  }
+
+  @Test
+  void unknownGermanUrlGetsTheGermanNotFoundPage() {
+    ResponseEntity<String> response = getHtml("/de/gibt/es/nicht");
+
+    assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    assertThat(response.getBody())
+        .contains("<html lang=\"de\"")
+        .contains("Seite nicht gefunden")
+        .contains("<meta name=\"robots\" content=\"noindex\">")
+        .doesNotContain(SiteOrigin.PLACEHOLDER);
+    // Only the first segment can name a language; everything else is English.
+    assertThat(getHtml("/deutsch/seite").getBody()).contains("<html lang=\"en\"");
+    assertThat(getHtml("/xy/page").getBody()).contains("<html lang=\"en\"");
   }
 
   @Test
@@ -80,7 +108,10 @@ class SeoTest extends IntegrationTest {
         .contains(
             "<loc>" + SITE + "/</loc>",
             "<loc>" + SITE + "/impressum</loc>",
-            "<loc>" + SITE + "/privacy</loc>")
+            "<loc>" + SITE + "/privacy</loc>",
+            "<loc>" + SITE + "/de</loc>",
+            "<loc>" + SITE + "/de/impressum</loc>",
+            "<loc>" + SITE + "/de/datenschutz</loc>")
         .doesNotContain("404");
   }
 
