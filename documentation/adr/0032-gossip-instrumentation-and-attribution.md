@@ -81,7 +81,9 @@ block. A node measures none of them yet:
   `WithPeerScoreInspect`, with its components: time in mesh, first and
   invalid message deliveries, IP colocation factor, behaviour penalty,
   application score. It covers the connected peers and those that
-  disconnected within `RetainScore` (1 hour), whose score GossipSub keeps.
+  disconnected within `RetainScore` (1 hour) with a score of zero or
+  below, which GossipSub keeps; it drops a positive score when the peer
+  disconnects.
 - **Aggregated in `/metrics`:** `obie_gossip_peer_score` is a histogram
   with one observation per scored peer and inspection (buckets at the
   thresholds: −200, −100, −50, −10, −1, 0, 1, 5, 10);

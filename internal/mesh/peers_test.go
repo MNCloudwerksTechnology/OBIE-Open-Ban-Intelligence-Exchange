@@ -193,10 +193,12 @@ func TestKnownPeersConnected(t *testing.T) {
 		!reflect.DeepEqual(k.Addrs, []string{tcpA}) || k.Events[gossip.Accepted] < 1 {
 		t.Errorf("B's view of A after it stopped = %+v", k)
 	}
-	// GossipSub keeps the score of a peer that left for an hour.
-	if k.GossipScore == nil {
-		t.Error("B forgot A's score as A left")
-	}
+	// GossipSub keeps the score of a peer that left only if it is not
+	// positive (RetainScore); A left with a positive score, so B drops it
+	// at the next inspection.
+	waitFor(t, 5*time.Second, "B to drop A's positive score as A left", func() bool {
+		return knownPeers(t, b)[idA.PeerID()].GossipScore == nil
+	})
 	waitFor(t, 5*time.Second, "B's redial of A to fail", func() bool { return knownPeers(t, b)[idA.PeerID()].DialError != "" })
 }
 
