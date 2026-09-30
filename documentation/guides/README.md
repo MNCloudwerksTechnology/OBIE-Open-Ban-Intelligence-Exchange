@@ -45,6 +45,15 @@ you know, and decide how much each one counts.
 - [How do I connect with a friend's node and choose a trust level?](connect-a-peer.md)
 - [How do I stop trusting a peer?](stop-trusting-a-peer.md)
 
+## Look after the node
+
+Keep the node's identity safe, keep OBIE up to date, and remove it
+without a trace.
+
+- [How do I back up and restore the node identity?](back-up-the-identity.md)
+- [How do I upgrade to a new release?](upgrade.md)
+- [How do I uninstall OBIE completely, firewall rules included?](uninstall.md)
+
 ## How the guides are tested
 
 `make guides-check` runs every command of every guide and compares its
@@ -68,6 +77,9 @@ What a reader brings along is played by the check, as for the tutorial:
 - The reader reports `85.10.0.19` by mistake.
 - The reader mistypes their password five times from `85.10.3.30`, their
   address at home, and Fail2Ban bans it.
+- The release is downloaded from a copy inside the container. The new
+  release `0.1.1` that the upgrade guide installs is built from the same
+  change as `0.1.0`.
 
 Before it compares, the check replaces what differs from run to run:
 peer IDs, event IDs, fingerprints, times and durations. It ignores column

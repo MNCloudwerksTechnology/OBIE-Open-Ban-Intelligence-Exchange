@@ -268,7 +268,7 @@ func pageText(page string) string {
 // peerReports lets the peer's node publish a verdict on the address, as
 // the friend's Fail2Ban would.
 func (c *check) peerReports(address string) {
-	c.asRoot(fmt.Sprintf("ip netns exec peer /srv/peer/bin/obiectl --socket /run/obie-peer/obie.sock report --protocol ssh --reason bruteforce --events 5 %s", address))
+	c.asRoot(fmt.Sprintf("ip netns exec peer /srv/peer/bin/obiectl --socket /run/peer/admin.sock report --protocol ssh --reason bruteforce --events 5 %s", address))
 }
 
 // waitForBlock waits until the node blocks the address, or would in

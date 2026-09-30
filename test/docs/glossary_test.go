@@ -93,6 +93,9 @@ var glossaryGuides = []string{
 	"documentation/guides/withdraw-a-verdict.md",
 	"documentation/guides/switch-enforcement.md",
 	"documentation/guides/recover-from-a-lockout.md",
+	"documentation/guides/back-up-the-identity.md",
+	"documentation/guides/upgrade.md",
+	"documentation/guides/uninstall.md",
 	"packaging/compose/README.md",
 }
 

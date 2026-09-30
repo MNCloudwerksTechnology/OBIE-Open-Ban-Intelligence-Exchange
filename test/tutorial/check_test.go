@@ -322,11 +322,13 @@ func (c *check) must(bound time.Duration, name string, args ...string) string {
 }
 
 // buildRelease builds the release archive of a version a page installs,
-// for amd64, into a directory of its own below c.release.
+// for amd64, into a directory of its own below c.release. Only the check
+// uses it, so it is built even if the capability overview does not
+// describe it yet, such as the newer version of the upgrade guide.
 func (c *check) buildRelease(version string) {
 	cmd := exec.Command(filepath.Join(c.root, "packaging", "release.sh"), filepath.Join(c.release, version)) // #nosec G204 -- this repository's release script.
 	cmd.Dir = c.root
-	cmd.Env = append(os.Environ(), "VERSION="+version, "PLATFORMS=linux/amd64", "CYCLONEDX_GOMOD="+*cyclonedx)
+	cmd.Env = append(os.Environ(), "VERSION="+version, "UNRELEASED_VERSION="+version, "PLATFORMS=linux/amd64", "CYCLONEDX_GOMOD="+*cyclonedx)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		c.t.Fatalf("packaging/release.sh: %v\n%s", err, out)
 	}
@@ -373,7 +375,7 @@ func (c *check) startServer() {
 // of its own on the server: obied of the same release, in observe mode.
 func (c *check) startPeer() {
 	c.asRoot(fmt.Sprintf(`
-mkdir -p /srv/peer /run/obie-peer
+mkdir -p /srv/peer /run/peer
 tar -xzf /srv/release/%[1]s/obie-%[1]s-linux-amd64.tar.gz -C /srv/peer --strip-components=1
 install -d -m 0700 /srv/peer/state
 cat >/srv/peer/obie.yaml <<'EOF'
@@ -381,7 +383,7 @@ node:
   state_dir: /srv/peer/state
   mode: observe
 admin:
-  socket: /run/obie-peer/obie.sock
+  socket: /run/peer/admin.sock
   socket_group: root
 mesh:
   listen: [/ip4/0.0.0.0/tcp/4001, /ip4/0.0.0.0/udp/4001/quic-v1]
@@ -402,7 +404,7 @@ ip netns exec peer ip link set lo up
 	}
 	c.must(time.Minute, "docker", "exec", "-d", c.host, "ip", "netns", "exec", "peer",
 		"/srv/peer/bin/obied", "--config", "/srv/peer/obie.yaml")
-	c.asRoot("for i in $(seq 100); do ip netns exec peer /srv/peer/bin/obiectl --socket /run/obie-peer/obie.sock status >/dev/null 2>&1 && exit 0; sleep 0.2; done; exit 1")
+	c.asRoot("for i in $(seq 100); do ip netns exec peer /srv/peer/bin/obiectl --socket /run/peer/admin.sock status >/dev/null 2>&1 && exit 0; sleep 0.2; done; exit 1")
 }
 
 // attack lets the attacker fail five SSH logins, which makes Fail2Ban's

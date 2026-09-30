@@ -58,7 +58,10 @@ change the firewall need the way back before the change.
   server image, release build, simulated peer and attacker, terminal and
   output comparison. The check builds the release under the version the
   tutorial installs, and under the newer version the upgrade guide
-  installs, from the same tree. Each guide runs on its own server, one
+  installs, from the same tree. `packaging/release.sh` refuses a final
+  version that the capability overview does not describe; the check
+  names its versions in `UNRELEASED_VERSION`, which lets the script build
+  them all the same. Each guide runs on its own server, one
   after the other. CI runs the check in the packaging job, after the
   tutorial's. The console pages are read on the server with `curl`, as
   root, after signing in with the token of `obiectl console`.
