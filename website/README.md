@@ -24,7 +24,7 @@ backups and the checklist before going live.
 - Node.js 24 with npm
 - Java 21 (no Maven needed: the back end ships the Maven wrapper `./mvnw`)
 - Go (only to install the pinned `osv-scanner` for `make vuln`)
-- Docker (the back-end tests start PostgreSQL and, for the browser test,
+- Docker (the back-end tests start PostgreSQL and, for the browser tests,
   Chromium with Testcontainers; `make image` and `make smoke` need Docker
   with the Compose plugin)
 - Google Chrome, only for `make lighthouse` and `npm run share-image`

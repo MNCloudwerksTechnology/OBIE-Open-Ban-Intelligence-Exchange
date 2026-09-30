@@ -35,11 +35,7 @@ header {
 }
 
 nav {
-  display: flex;
-  flex-wrap: wrap;
   grid-area: nav;
-  gap: var(--space-2) var(--space-5);
-  align-items: center;
 }
 
 ul {
@@ -63,13 +59,6 @@ nav li a {
     color: var(--color-text);
     text-decoration: underline;
   }
-}
-
-.invite {
-  min-height: 2.75rem;
-  padding-block: var(--space-2);
-  padding-inline: var(--space-4);
-  font-size: var(--text-sm);
 }
 
 .actions {
@@ -108,10 +97,6 @@ nav li a {
     grid-template-columns: auto 1fr auto;
     min-height: var(--header-height);
     padding-block: var(--space-2);
-  }
-
-  nav {
-    justify-content: center;
   }
 
   nav ul {

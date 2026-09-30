@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { LANDING_CONTENT_EN, REPOSITORY_URL } from '../content/landing.content';
+import { CONTACT_ID, LANDING_CONTENT_EN, REPOSITORY_URL } from '../content/landing.content';
 import { SiteFooter } from './site-footer';
 
 describe('SiteFooter', () => {
@@ -25,6 +25,12 @@ describe('SiteFooter', () => {
     expect(github?.getAttribute('href')).toBe(REPOSITORY_URL);
     expect(github?.textContent?.trim()).toBe('View on GitHub');
     expect(github?.getAttribute('rel')).toBe('noopener');
+  });
+
+  it('offers the invitation to speak as a plain link to the inquiry form', () => {
+    const invite = footer.querySelector(`nav a[href="#${CONTACT_ID}"]`);
+    expect(invite?.textContent?.trim()).toBe('Invite Markus to speak');
+    expect(invite?.classList).not.toContain('button');
   });
 
   it('shows the attribution and the licence', () => {

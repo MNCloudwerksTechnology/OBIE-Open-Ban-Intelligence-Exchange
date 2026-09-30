@@ -5,8 +5,8 @@ import { GithubIcon, ObieMark } from './icons';
 import { ThemeToggle } from './theme-toggle';
 
 /**
- * Site header: the mark, anchored navigation with the invitation to the
- * inquiry form, theme toggle and GitHub link.
+ * Site header: the mark, anchored navigation to the page sections, theme
+ * toggle and GitHub link.
  */
 @Component({
   selector: 'app-site-header',
@@ -27,9 +27,6 @@ import { ThemeToggle } from './theme-toggle';
               </li>
             }
           </ul>
-          <a class="button button--secondary invite" [href]="content.header.invite.href">{{
-            content.header.invite.label
-          }}</a>
         </nav>
         <div class="actions">
           <app-theme-toggle />
