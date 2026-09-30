@@ -200,7 +200,9 @@ Every configuration below runs 20 seeds.
   - `A-eclipse`: the network warms up. At 60 s the Sybils connect, 100
     links each, and drop everything. The run ends at 240 s.
   - `A-coldboot`: the Sybils, 20 links each, connect as the honest nodes
-    start. The honest nodes dial after 1–5 s. The run ends at 240 s.
+    start. The links between honest nodes come up after 1–5 s, and each
+    node connects at its next bootstrap redial, so the honest connections
+    form after about 1–12 s. The run ends at 240 s.
   - `A-covertflash`: like `A-coldboot`, but the Sybils forward until
     120 s. The run ends at 300 s.
 - **B: scale.** 10,000 honest nodes and 10,000·f/(1−f) adversaries, for
@@ -217,9 +219,10 @@ Every configuration below runs 20 seeds.
     - The run measures the trusted verdicts retained by the nodes that
       accepted them. The publisher is left out, because a store never
       evicts its own node's verdicts.
-  - `C-junk`: 300 nodes. From 60 s to 180 s, two Sybil hosts linked to one
-    hub each inject junk at the per-peer bucket rate (50/s); the hub relays
-    it to its neighbors. The hosts forward honest traffic.
+  - `C-junk`: 300 nodes. From 60 s to 180 s, two Sybil hosts, both linked
+    to the same hub, each inject junk at the default per-peer bucket rate
+    (`mesh.rate_limit.peer`, 50/s); the hub relays it to its neighbors. The
+    hosts forward honest traffic.
   - `C-preempt`: 1,000 nodes and 10 preempters, each with 100 links and a
     link to each chosen revoker. Three chosen revocations per seed, at 60,
     90 and 120 s, each by a different random publisher. The run ends at
@@ -249,7 +252,9 @@ Every configuration below runs 20 seeds.
 - **Joining the trace.** An event's path to a node follows the peer of each
   node's accepted copy back to the publisher. Its hop count is the length
   of that path, compared with ln N / ln(D−1) for the variant's D.
-- **Per seed**, over the pairs of an honest verdict and an honest node:
+- **Per seed**, over the pairs of an honest verdict and an honest node
+  that runs at the end of the run (a window's delivery ratio counts the
+  same nodes):
   - **Delivery ratio**: the share of pairs the node accepted before the
     run ended.
   - **Latency**: acceptance time minus publish time, as p50, p99 and max.
@@ -272,11 +277,18 @@ Every configuration below runs 20 seeds.
     dropped from a full validation queue, because GossipSub does not
     remember its ID and validates the next copy. A node that got
     no copy at all counts as `never_received`, or as `offline` if it was
-    down at the time.
+    down at the time. GossipSub drops the RPCs of a graylisted peer before
+    its tracer sees them, so their copies leave no record: a node that got
+    an event only from graylisted peers counts as `never_received`.
 - **Across seeds**: each metric is the mean of its per-seed values, with a
   95 % confidence interval from Student's t over the seeds. The interval
   is clipped to the values the metric can take: never below 0, and never
   above 1 for a share.
+- **What a seed fixes.** A seed fixes the topology, the latencies, the
+  publishers, the Sybils' targets and the traffic. It does not fix the
+  run: goroutine scheduling, the jitter of GossipSub's and the mesh's
+  timers and the Sybils' regraft delays vary, so two runs of one seed
+  differ slightly. The confidence interval over 20 seeds covers both.
 
 ### The report and CI
 
@@ -327,7 +339,10 @@ Every configuration below runs 20 seeds.
   development machine. CI runs only `reduced`.
 - **What is not modelled.** Processing time, bandwidth limits, packet
   loss, TCP and QUIC behaviour, and every subsystem outside the mesh.
-  Results about queueing under CPU load therefore do not transfer.
+  Results about queueing under CPU load therefore do not transfer. Every
+  node, Sybils included, has an IP address of its own, so the score's IP
+  colocation penalty never fires: the attacker has as many addresses as
+  Sybils, the strongest case.
 - **Scaled parameters.** `C-flood` scales `store.max_indicators` from
   1,000,000 to 2,000. Its flood of 6,000 junk verdicts is three times the
   store's capacity; at the default capacity the same flood would last

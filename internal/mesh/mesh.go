@@ -106,8 +106,8 @@ type Options struct {
 type Testing struct {
 	// NewHost, if set, creates the libp2p host instead of listening on
 	// Listen with TCP and QUIC, e.g. on an in-memory mocknet. It gets the
-	// node's key and the connection manager of v0.1, which the host must
-	// use; the host does not need to listen.
+	// node's key and the connection manager of v0.1, which the host may
+	// use or replace; the host does not need to listen.
 	NewHost func(key crypto.PrivKey, cm connmgr.ConnManager) (host.Host, error)
 	// Gossip holds the hooks of the node's gossip.
 	Gossip gossip.Testing

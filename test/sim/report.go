@@ -389,7 +389,7 @@ func writeMarkdown(out io.Writer, h Header, sc *Scenario, byVariant map[string][
 		p("- `%s`: %s.\n", v, all[v].Summary)
 	}
 
-	p("\n## Results\n\nEach cell is the mean over the seeds with its 95 %% confidence interval (Student's t) in brackets.\n\n")
+	p("\n## Results\n\nEach cell is the mean over the seeds with its 95 %% confidence interval (Student's t) in brackets. Delivery ratios, of the whole run and of its windows, count the pairs of a verdict and an honest node that runs at the end of the run.\n\n")
 	header := func(first string) {
 		p("| %s |", first)
 		for _, v := range sc.Variants {
@@ -431,7 +431,7 @@ func writeMarkdown(out io.Writer, h Header, sc *Scenario, byVariant map[string][
 		p("\n")
 	}
 
-	p("\n## Loss by cause\n\nShare of all pairs of a verdict and an honest node that were lost, by what became of the first copy the node got.\n\n")
+	p("\n## Loss by cause\n\nShare of all pairs of a verdict and an honest node that were lost, by the outcome of the first copy the node validated (copies dropped as duplicates or from a full queue do not count), or by why no copy came.\n\n")
 	lossOf := func(r *Result) map[string]float64 { return r.Loss }
 	causes := keys(byVariant, lossOf, nil)
 	if len(causes) == 0 {

@@ -39,7 +39,9 @@ const (
 	// queueFull: GossipSub's validation queue was full; it dropped the copy
 	// without remembering its ID, so a later copy is validated.
 	queueFull
-	// blacklisted: GossipSub dropped the copy of a graylisted peer.
+	// blacklisted: GossipSub dropped the copy of a blacklisted peer or
+	// source; OBIE blacklists none. A graylisted peer's RPCs are dropped
+	// before the tracer sees them and leave no record (ADR 0033).
 	blacklisted
 	// relayed: an adversary got the copy.
 	relayed

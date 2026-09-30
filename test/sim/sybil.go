@@ -62,8 +62,6 @@ type sybil struct {
 	forged map[string]bool
 	// timers are the pending regrafts and redials.
 	timers map[*time.Timer]struct{}
-	// loops are the flooders' goroutines.
-	loops sync.WaitGroup
 }
 
 // sybilOut is the stream to a peer and a writer that serializes writes.
@@ -89,8 +87,7 @@ func newSybil(w *world, n *node, h host.Host, attackAt time.Duration) *sybil {
 	return s
 }
 
-// close stops the sybil's timers and loops; closing its host is the
-// caller's job.
+// close stops the sybil's timers; closing its host is the caller's job.
 func (s *sybil) close() {
 	s.stop()
 	s.mu.Lock()
@@ -99,7 +96,6 @@ func (s *sybil) close() {
 	}
 	s.timers = nil
 	s.mu.Unlock()
-	s.loops.Wait()
 }
 
 func (s *sybil) attacking() bool {

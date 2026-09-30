@@ -8,6 +8,7 @@ import (
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 )
 
@@ -172,10 +173,10 @@ func scenarioA(attack string) *Scenario {
 		Name: "A-" + attack, Group: "A", Summary: summary, Variants: []string{Plain, Paper, V01}, Honest: honest,
 		Params: [][2]string{
 			{"honest nodes", "1,000 (10 % publish); each dials 20 random honest nodes (about 40 links each), as in the paper's testbed"},
-			{"Sybils", fmt.Sprintf("4,000, %d links each to random honest nodes, connect at %v", perSybil, connectAt)},
-			{"attack", fmt.Sprintf("Sybils drop everything from %v", disrupt)},
+			{"Sybils", fmt.Sprintf("4,000, %d links each to random honest nodes, connect at %s", perSybil, seconds(connectAt))},
+			{"attack", fmt.Sprintf("Sybils drop everything from %s", seconds(disrupt))},
 			{"traffic", "Poisson, 1 verdict/s network-wide, from 30 s"},
-			{"run", fmt.Sprintf("%v; publishing stops at %v", end, end-drain)},
+			{"run", fmt.Sprintf("%s; publishing stops at %s", seconds(end), seconds(end-drain))},
 		},
 		Checks: validationChecks(),
 		build: func(w *world) error {
@@ -287,7 +288,9 @@ func newJunkSigner(w *world, n int) (*junkSigner, error) {
 
 // flood schedules junk verdicts, signed by the signer's keys in turn, that
 // the sybil injects at rate per second from from to to, each to all of
-// targets or, with distinct, a fresh one to each.
+// targets or, with distinct, a fresh one to each. The sybil does not
+// remember what it injects: a copy that comes back is forwarded like any
+// other, and the honest nodes drop it as a duplicate.
 func flood(w *world, s *node, junk *junkSigner, targets []int32, from, to time.Duration, rate float64, distinct bool) {
 	salt := w.rng.Uint32()
 	for _, t := range uniform(from, to, rate) {
@@ -372,13 +375,16 @@ func scenarioFlood() *Scenario {
 // per-peer buckets its neighbors keep for it.
 func scenarioJunk() *Scenario {
 	const honest, end = 300, 210 * time.Second
-	const junkFrom, junkTo, rate = 60 * time.Second, 180 * time.Second, 50.0
+	const junkFrom, junkTo = 60 * time.Second, 180 * time.Second
+	// Each Sybil host injects at the default per-peer limit
+	// (mesh.rate_limit.peer), which the hub lets through.
+	rate := config.Default().Mesh.RateLimit.Peer.EventsPerSecond
 	return &Scenario{
 		Name: "C-junk", Group: "C", Variants: []string{V01}, Honest: honest,
 		Summary: "two Sybil hosts inject valid junk into one hub at the per-peer rate limit; the hub relays it and its neighbors' buckets for it run dry",
 		Params: [][2]string{
 			{"honest nodes", "300 (10 % publish), static-bootstrap graph (6 hubs)"},
-			{"junk", "2 Sybil hosts linked to hub 0 that forward honest traffic, each injecting 50 junk verdicts/s (the per-peer limit) from 60 s to 180 s, signed by 500 weight-0 keys in turn"},
+			{"junk", fmt.Sprintf("2 Sybil hosts linked to hub 0 that forward honest traffic, each injecting %v junk verdicts/s (the default per-peer limit, mesh.rate_limit.peer) from 60 s to 180 s, signed by 500 weight-0 keys in turn", rate)},
 			{"traffic", "Poisson, 1 verdict/s network-wide, from 30 s"},
 			{"run", "210 s; publishing stops at 180 s"},
 		},
@@ -558,7 +564,7 @@ func scenarioTraffic(name, topology string, honest int, rate float64, burst bool
 	params := [][2]string{
 		{"honest nodes", fmt.Sprintf("%d (10 %% publish), %s graph", honest, topologyName(topology))},
 		{"traffic", fmt.Sprintf("Poisson, %v verdict/s network-wide, from 30 s", rate)},
-		{"run", fmt.Sprintf("%v; publishing stops at %v", end, end-drain)},
+		{"run", fmt.Sprintf("%s; publishing stops at %s", seconds(end), seconds(end-drain))},
 	}
 	summary := fmt.Sprintf("no attack; %v verdict/s on the %s graph", rate, topologyName(topology))
 	if burst {
@@ -584,6 +590,9 @@ func scenarioTraffic(name, topology string, honest int, rate float64, burst bool
 		},
 	}
 }
+
+// seconds formats d as whole seconds, e.g. "240 s".
+func seconds(d time.Duration) string { return fmt.Sprintf("%.0f s", d.Seconds()) }
 
 func topologyName(t string) string {
 	if t == "regular" {
