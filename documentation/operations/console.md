@@ -416,10 +416,11 @@ in [ADR 0023](../adr/0023-console-verdicts.md).
   *Revoked* ones or the *Expired* ones, each with how many match the
   other filters. Revoked and expired verdicts count in no decision; they
   are shown only under their tab, marked as such (an expired verdict is
-  greyed out), and the node keeps them for 24 hours after the verdict's
-  expiry, then forgets them — of other publishers at most a tenth of
-  `store.max_indicators` in each state, so that a flood cannot fill the
-  disk; the tab says when that many are kept.
+  greyed out), and the node keeps them for `store.ended_retention` (30
+  days by default) after the verdict's expiry, then forgets them — of
+  other publishers at most a tenth of `store.max_indicators` in each
+  state, so that a flood cannot fill the disk; the tab says when that
+  many are kept.
 - **Filters.** By **address or network** — the verdicts on exactly that
   address or network, from every publisher, as
   `sudo obiectl show <address>` lists the active ones, with a link to its

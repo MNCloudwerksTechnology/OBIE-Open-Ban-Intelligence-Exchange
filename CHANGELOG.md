@@ -129,9 +129,10 @@ The first release, v0.1.0 "Stable Base".
   address (the verdicts on one address, as `obiectl show` gives them),
   shows revoked verdicts with why and expired ones on request, and links
   every verdict to its publisher and its decision. The store now keeps
-  revoked and expired verdicts for 24 hours after their expiry, with the
-  revocation's reason — of other publishers at most a tenth of
-  `store.max_indicators` in each state (`obie_store_ended_verdicts`)
+  revoked and expired verdicts for `store.ended_retention` (30 days by
+  default) after their expiry, with the revocation's reason — of other
+  publishers at most a tenth of `store.max_indicators` in each state
+  (`obie_store_ended_verdicts`)
   ([ADR 0023](documentation/adr/0023-console-verdicts.md)).
   Its overrides view lists every always-allow and always-block override
   in effect with its note, when it was set and when it ends, says why an

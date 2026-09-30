@@ -147,8 +147,9 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	log.Info("allow-list loaded", "entries", len(allow.Entries()))
 
 	db := store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{
-		MaxIndicators: cfg.Store.MaxIndicators,
-		Self:          id.PeerID(),
+		MaxIndicators:  cfg.Store.MaxIndicators,
+		EndedRetention: cfg.Store.EndedRetention.Std(),
+		Self:           id.PeerID(),
 	})
 	if opts.Testing.Store != nil {
 		opts.Testing.Store(db)

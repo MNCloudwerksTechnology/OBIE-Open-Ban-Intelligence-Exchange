@@ -59,6 +59,9 @@ func (c *Config) validate(lines lineMap, decodeProblems problems) error {
 	if c.Store.MaxIndicators < 1 {
 		v.addf("store.max_indicators", "must be at least 1, got %d", c.Store.MaxIndicators)
 	}
+	if r := c.Store.EndedRetention; r < MinEndedRetention || r > MaxEndedRetention {
+		v.addf("store.ended_retention", "must lie between 1h and 365d, got %s", r)
+	}
 
 	v.publishers(c.Trust.Publishers)
 	v.weight("trust.default_weight", c.Trust.DefaultWeight)

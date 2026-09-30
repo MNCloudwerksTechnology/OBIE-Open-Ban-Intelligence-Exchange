@@ -56,6 +56,7 @@ var settings = []Setting{
 	{"mesh.rate_limit.peer.burst", "Events one connected peer may forward at once.", OnRestart, false},
 
 	{"store.max_indicators", "Most verdicts the store holds; beyond it the verdict that expires first makes room.", OnRestart, false},
+	{"store.ended_retention", "How long revoked and expired verdicts are kept after their expiry, so that blocks can be traced back to them.", OnRestart, false},
 
 	{"trust.publishers", "Publishers whose verdicts count, each with the trust weight you give it, from 0 to 1.", OnReload, false},
 	{"trust.default_weight", "Weight of the publishers not listed in trust.publishers; keep it 0.", OnReload, false},

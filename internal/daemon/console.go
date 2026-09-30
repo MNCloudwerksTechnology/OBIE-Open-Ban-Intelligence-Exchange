@@ -505,7 +505,7 @@ func (v *consoleVerdicts) Totals() (console.VerdictTotals, error) {
 		return console.VerdictTotals{}, err
 	}
 	t := console.VerdictTotals{ByPublisher: make(map[string]console.VerdictCounts, len(ended.ByPublisher)),
-		Retention: store.EndedRetention, EndedMax: ended.Max, EndedFull: map[string]bool{
+		Retention: v.store.EndedRetention(), EndedMax: ended.Max, EndedFull: map[string]bool{
 			console.VerdictRevoked: ended.Full[store.EndedRevoked], console.VerdictExpired: ended.Full[store.EndedExpired]}}
 	for id, c := range v.engine.PublisherCounts() {
 		t.ByPublisher[id] = console.VerdictCounts{Active: c.Verdicts, Counting: c.Counting}

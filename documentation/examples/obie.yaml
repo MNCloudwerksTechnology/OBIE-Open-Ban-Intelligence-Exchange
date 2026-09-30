@@ -79,6 +79,11 @@ store:
   # own verdicts are never evicted. About 0.7 KiB of disk and 3 KiB of
   # memory per verdict (measured in documentation/operations/performance.md).
   max_indicators: 1000000
+  # How long a revoked or expired verdict is kept after its expiry (1h to
+  # 365d), so that the blocks it caused can be traced back to it. About
+  # 1 KiB each: other publishers' stay within a tenth of max_indicators per
+  # state; this node's own are all kept (1,000 a day: about 30 MiB at 30d).
+  ended_retention: 30d
 
 trust:
   # Publishers whose verdicts count towards a decision, each with a weight

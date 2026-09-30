@@ -115,6 +115,13 @@ func TestValidateRules(t *testing.T) {
 		{"max_entries 1", func(c *Config) { c.Enforce.MaxEntries = 1 }, "", ""},
 		{"max_indicators 1", func(c *Config) { c.Store.MaxIndicators = 1 }, "", ""},
 		{"max_indicators 0", func(c *Config) { c.Store.MaxIndicators = 0 }, "store.max_indicators", "at least 1"},
+		{"ended_retention 1h", func(c *Config) { c.Store.EndedRetention = Duration(time.Hour) }, "", ""},
+		{"ended_retention 365d", func(c *Config) { c.Store.EndedRetention = Duration(365 * day) }, "", ""},
+		{"ended_retention 59m", func(c *Config) { c.Store.EndedRetention = Duration(59 * time.Minute) }, "store.ended_retention",
+			"must lie between 1h and 365d, got 59m0s"},
+		{"ended_retention 366d", func(c *Config) { c.Store.EndedRetention = Duration(366 * day) }, "store.ended_retention",
+			"must lie between 1h and 365d, got 366d"},
+		{"ended_retention 0", func(c *Config) { c.Store.EndedRetention = 0 }, "store.ended_retention", "got 0s"},
 		{"max_entries 0", func(c *Config) { c.Enforce.MaxEntries = 0 }, "enforce.max_entries", "at least 1"},
 		{"reconcile_interval zero", func(c *Config) { c.Enforce.ReconcileInterval = 0 }, "enforce.reconcile_interval", "greater than 0"},
 

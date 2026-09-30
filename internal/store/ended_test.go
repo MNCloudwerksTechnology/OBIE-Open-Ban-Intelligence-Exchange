@@ -102,7 +102,7 @@ func TestRevokedVerdictIsKeptWithItsRevocation(t *testing.T) {
 	if got := endedIDs(t, db, EndedFilter{State: EndedExpired}); len(got) != 0 {
 		t.Errorf("expired = %v, want none: it was revoked", got)
 	}
-	clk.Advance(EndedRetention - time.Minute - time.Second)
+	clk.Advance(DefaultEndedRetention - time.Minute - time.Second)
 	if got := endedIDs(t, db, EndedFilter{State: EndedRevoked}); len(got) != 1 {
 		t.Errorf("revoked a second before its retention ended = %v", got)
 	}
@@ -120,7 +120,7 @@ func TestExpiredVerdictIsKept(t *testing.T) {
 	mustPut(t, db, v, true)
 	// The record outlives its verdict, so the sweep can still keep it after
 	// a downtime.
-	if got, want := ttlOf(t, db, verdictKey(ind.Key(), pubA)), v.ExpiresAt().Add(EndedRetention); !got.Equal(want) {
+	if got, want := ttlOf(t, db, verdictKey(ind.Key(), pubA)), v.ExpiresAt().Add(DefaultEndedRetention); !got.Equal(want) {
 		t.Errorf("record TTL = %v, want %v", got, want)
 	}
 
@@ -136,13 +136,13 @@ func TestExpiredVerdictIsKept(t *testing.T) {
 		t.Errorf("counts = %v", page.States)
 	}
 	key := endedKey(EndedExpired, ind.Key(), pubA, "password_bruteforce/ssh")
-	if got, want := ttlOf(t, db, key), v.ExpiresAt().Add(EndedRetention); !got.Equal(want) {
+	if got, want := ttlOf(t, db, key), v.ExpiresAt().Add(DefaultEndedRetention); !got.Equal(want) {
 		t.Errorf("ended verdict TTL = %v, want %v", got, want)
 	}
 	if got := tally(t, db).ByPublisher; !reflect.DeepEqual(got, map[string]EndedCount{pubA: {Expired: 1}}) {
 		t.Errorf("EndedCounts = %v", got)
 	}
-	clk.Advance(EndedRetention)
+	clk.Advance(DefaultEndedRetention)
 	if got := endedIDs(t, db, EndedFilter{State: EndedExpired}); len(got) != 0 {
 		t.Errorf("expired after its retention = %v", got)
 	}
@@ -457,7 +457,7 @@ func TestEndedVerdictsAreCapped(t *testing.T) {
 
 	// Once the retention ends, the sweep recounts and verdicts are kept
 	// again.
-	clk.Advance(EndedRetention + time.Hour)
+	clk.Advance(DefaultEndedRetention + time.Hour)
 	sweep(t, db, clk.Now())
 	if c := tally(t, db); len(c.ByPublisher) != 0 || c.Full[EndedRevoked] || c.Full[EndedExpired] {
 		t.Errorf("tally after the retention = %+v", c)
@@ -528,5 +528,41 @@ func TestEndedAfterRestart(t *testing.T) {
 	}
 	if got := tally(t, db).ByPublisher; !reflect.DeepEqual(got, map[string]EndedCount{pubA: {Expired: 1}, pubB: {Revoked: 1}}) {
 		t.Errorf("counts after the first sweep = %v", got)
+	}
+}
+
+// TestEndedRetentionIsConfigurable: store.ended_retention sets how long a
+// verdict record and an ended verdict outlive the verdict's expiry; zero
+// takes the default of 30 days (ADR 0032).
+func TestEndedRetentionIsConfigurable(t *testing.T) {
+	if got := newMemDB(t, newClock()).EndedRetention(); got != 30*24*time.Hour {
+		t.Errorf("default retention = %v, want 30 days", got)
+	}
+	clk := newClock()
+	const retention = 2 * time.Hour
+	db := startDB(t, NewMemory(discardLogger(), Options{Now: clk.Now, EndedRetention: retention}))
+	if got := db.EndedRetention(); got != retention {
+		t.Errorf("EndedRetention() = %v, want %v", got, retention)
+	}
+	ind := ipv4("11.0.0.9")
+	v := verdict(pubA, ind, clk.Now(), time.Hour)
+	mustPut(t, db, v, true)
+	if got, want := ttlOf(t, db, verdictKey(ind.Key(), pubA)), v.ExpiresAt().Add(retention); !got.Equal(want) {
+		t.Errorf("record TTL = %v, want %v", got, want)
+	}
+
+	clk.Advance(time.Hour)
+	sweep(t, db, clk.Now())
+	key := endedKey(EndedExpired, ind.Key(), pubA, "password_bruteforce/ssh")
+	if got, want := ttlOf(t, db, key), v.ExpiresAt().Add(retention); !got.Equal(want) {
+		t.Errorf("ended verdict TTL = %v, want %v", got, want)
+	}
+	clk.Advance(retention - time.Second)
+	if got := endedIDs(t, db, EndedFilter{State: EndedExpired}); !slices.Equal(got, []string{v.ID}) {
+		t.Errorf("expired a second before the retention ended = %v, want [%s]", got, v.ID)
+	}
+	clk.Advance(time.Second)
+	if got := endedIDs(t, db, EndedFilter{State: EndedExpired}); len(got) != 0 {
+		t.Errorf("expired after the retention = %v, want none", got)
 	}
 }
