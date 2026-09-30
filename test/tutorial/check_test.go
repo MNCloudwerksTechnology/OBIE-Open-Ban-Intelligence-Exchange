@@ -6,6 +6,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,7 +48,7 @@ const (
 var cyclonedx = flag.String("tutorial.cyclonedx", "", "the cyclonedx-gomod binary packaging/release.sh needs (make tutorial-check passes it)")
 
 var (
-	// pageRelease is the release the page downloads.
+	// pageRelease is a release a page downloads.
 	pageRelease = regexp.MustCompile(regexp.QuoteMeta(releases) + `([0-9]+\.[0-9]+\.[0-9]+[^/]*)/`)
 	// peerID is a peer ID the page types, which stands for the peer's.
 	peerID = regexp.MustCompile(`12D3KooW[1-9A-HJ-NP-Za-km-z]+`)
@@ -56,11 +57,8 @@ var (
 	promptLine = regexp.MustCompile(`^(.*(?:\]|\(empty: done\)):)(?: (.*))?$`)
 	// interactive is a command that asks questions on a terminal.
 	interactive = regexp.MustCompile(`^sudo obied setup$`)
-	// reading is a command that only looks, and may be repeated.
-	reading = regexp.MustCompile(`^(sudo )?(uname|ps|sha256sum|journalctl|nft list|fail2ban-client (version|status|-t)|obied (self-check|--config)|obiectl (status|peers|identity|indicators|decisions|explain|enforced|overrides|show))\b` +
-		`|^docker exec obie obiectl (status|identity)\b`)
-	// containerNames are what the container section names, replaced by
-	// the check's own, in this order.
+	// containerNames are what the tutorial's container section names,
+	// replaced by the tutorial check's own, in this order.
 	containerNames = []struct {
 		re   *regexp.Regexp
 		with string
@@ -72,15 +70,21 @@ var (
 	}
 )
 
-// check is one run of the tutorial against a server of its own.
+// check is one run of a page against a server of its own.
 type check struct {
-	t       *testing.T
-	root    string
-	version string
-	release string // the directory of the release built for the check
+	t    *testing.T
+	root string
+	// name names the check's server, its image and anything else it
+	// starts, so that the tutorial's and the guides' checks run side by
+	// side.
+	name    string
+	version string // the release the tutorial installs
+	release string // the directory of the releases built for the check, one directory per version
 	host    string // the server's container
 	peerID  string // the peer ID of the peer's node
-	failed  bool
+	// links are the server's sides of the /24s that failLogins set up.
+	links  map[string]bool
+	failed bool
 }
 
 // TestTutorial runs documentation/getting-started.md: every command in
@@ -98,11 +102,13 @@ func TestTutorial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &check{t: t, root: root, version: releaseOf(t, p), host: checkName}
+	c := &check{t: t, root: root, name: checkName, version: releaseOf(t, p), host: checkName}
 	t.Cleanup(c.remove)
 	c.removeContainers() // what an interrupted run left
-	c.buildRelease()
-	c.buildImages()
+	c.release = t.TempDir()
+	c.buildRelease(c.version)
+	c.buildHostImage()
+	c.buildContainerImage()
 	c.startServer()
 	c.startPeer()
 
@@ -186,7 +192,7 @@ func (c *check) until(cmd, what string, ok func(string) bool) {
 	}
 }
 
-// releaseOf returns the version of the release the page downloads.
+// releaseOf returns the version of the release the tutorial downloads.
 func releaseOf(t *testing.T, p page) string {
 	t.Helper()
 	for _, s := range p.steps {
@@ -204,7 +210,7 @@ func releaseOf(t *testing.T, p page) string {
 // page's, if the page shows one.
 func (c *check) run(s step, cmd string) {
 	t := c.t
-	t.Logf("line %d: %s", s.line, cmd)
+	t.Logf("%s: %s", s.where(), cmd)
 	var got string
 	var err error
 	deadline := time.Now().Add(settle)
@@ -220,16 +226,16 @@ func (c *check) run(s step, cmd string) {
 		if err == nil && (!s.hasWant || matches(s.want, got)) {
 			return
 		}
-		if !reading.MatchString(cmd) || time.Now().After(deadline) {
+		if !readsOnly(cmd) || time.Now().After(deadline) {
 			break
 		}
 		time.Sleep(time.Second)
 	}
 	c.diagnose()
 	if err != nil {
-		t.Fatalf("line %d: %s: %v\n%s", s.line, cmd, err, got)
+		t.Fatalf("%s: %s: %v\n%s", s.where(), cmd, err, got)
 	}
-	t.Errorf("line %d: %s printed\n%s\n\nthe page shows\n%s", s.line, cmd,
+	t.Errorf("%s: %s printed\n%s\n\nthe page shows\n%s", s.where(), cmd,
 		strings.Join(normalize(got), "\n"), strings.Join(normalize(s.want), "\n"))
 }
 
@@ -247,11 +253,17 @@ func answers(transcript string) []answer {
 }
 
 // onServer runs a command of the page on the server, as the reader in an
-// SSH session.
+// SSH session: downloads come from the releases built for the check, and
+// the peer ID the page types is the peer's. Standard output and error
+// share one stream, so that their lines come in the order a terminal
+// shows them.
 func (c *check) onServer(cmd string) (string, error) {
-	cmd = strings.ReplaceAll(cmd, releases+c.version+"/", downloads)
+	cmd = pageRelease.ReplaceAllString(cmd, downloads+"$1/")
+	if c.peerID != "" {
+		cmd = peerID.ReplaceAllString(cmd, c.peerID)
+	}
 	return c.command(stepBound, "docker", "exec", "-u", reader, "-w", "/home/"+reader, "-e", "SSH_CONNECTION="+session,
-		c.host, "bash", "-c", cmd)
+		c.host, "bash", "-c", "exec 2>&1\n"+cmd)
 }
 
 // inTerminal runs an interactive command of the page on the server and
@@ -306,28 +318,35 @@ func (c *check) must(bound time.Duration, name string, args ...string) string {
 	return out
 }
 
-// buildRelease builds the release archive the page installs, for amd64.
-func (c *check) buildRelease() {
-	c.release = c.t.TempDir()
-	cmd := exec.Command(filepath.Join(c.root, "packaging", "release.sh"), c.release) // #nosec G204 -- this repository's release script.
+// buildRelease builds the release archive of a version a page installs,
+// for amd64, into a directory of its own below c.release. Only the check
+// uses it, so it is built even if the capability overview does not
+// describe it yet, such as the newer version of the upgrade guide.
+func (c *check) buildRelease(version string) {
+	cmd := exec.Command(filepath.Join(c.root, "packaging", "release.sh"), filepath.Join(c.release, version)) // #nosec G204 -- this repository's release script.
 	cmd.Dir = c.root
-	cmd.Env = append(os.Environ(), "VERSION="+c.version, "PLATFORMS=linux/amd64", "CYCLONEDX_GOMOD="+*cyclonedx)
+	cmd.Env = append(os.Environ(), "VERSION="+version, "UNRELEASED_VERSION="+version, "PLATFORMS=linux/amd64", "CYCLONEDX_GOMOD="+*cyclonedx)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		c.t.Fatalf("packaging/release.sh: %v\n%s", err, out)
 	}
 }
 
-// buildImages builds the server's image and OBIE's container image.
-func (c *check) buildImages() {
-	c.must(buildBound, "docker", "build", "-q", "-t", checkName+"-host", filepath.Join("test", "tutorial", "testdata", "host"))
-	c.must(buildBound, "docker", "build", "-q", "--build-arg", "VERSION="+c.version, "-t", checkName+"-image:"+c.version, ".")
+// buildHostImage builds the server's image.
+func (c *check) buildHostImage() {
+	c.must(buildBound, "docker", "build", "-q", "-t", c.name+"-host", filepath.Join("test", "tutorial", "testdata", "host"))
 }
 
-// startServer starts the server with systemd, and serves the release to
+// buildContainerImage builds OBIE's container image, for the tutorial's
+// container section.
+func (c *check) buildContainerImage() {
+	c.must(buildBound, "docker", "build", "-q", "--build-arg", "VERSION="+c.version, "-t", c.name+"-image:"+c.version, ".")
+}
+
+// startServer starts the server with systemd, and serves the releases to
 // the page's download commands.
 func (c *check) startServer() {
 	c.must(time.Minute, "docker", "run", "-d", "--name", c.host, "--hostname", "server",
-		"--privileged", "--cgroupns=private", "--tmpfs", "/run", "--tmpfs", "/run/lock", checkName+"-host")
+		"--privileged", "--cgroupns=private", "--tmpfs", "/run", "--tmpfs", "/run/lock", c.name+"-host")
 	// Copied, not mounted: a Docker daemon outside the test's file system,
 	// as in some CI runners, would mount an empty directory.
 	c.must(time.Minute, "docker", "cp", c.release+"/.", c.host+":/srv/release")
@@ -346,22 +365,22 @@ func (c *check) startServer() {
 	}
 	c.must(time.Minute, "docker", "exec", "-d", c.host, "python3", "-m", "http.server", "8000",
 		"--bind", "127.0.0.1", "--directory", "/srv/release")
-	c.asRoot("for i in $(seq 50); do curl -fsS -o /dev/null " + downloads + "SHA256SUMS && exit 0; sleep 0.2; done; exit 1")
+	c.asRoot("for i in $(seq 50); do curl -fsS -o /dev/null " + downloads + c.version + "/SHA256SUMS && exit 0; sleep 0.2; done; exit 1")
 }
 
 // startPeer starts the peer's node at peerAddress, in a network namespace
 // of its own on the server: obied of the same release, in observe mode.
 func (c *check) startPeer() {
 	c.asRoot(fmt.Sprintf(`
-mkdir -p /srv/peer /run/obie-peer
-tar -xzf /srv/release/obie-%[1]s-linux-amd64.tar.gz -C /srv/peer --strip-components=1
+mkdir -p /srv/peer /run/peer
+tar -xzf /srv/release/%[1]s/obie-%[1]s-linux-amd64.tar.gz -C /srv/peer --strip-components=1
 install -d -m 0700 /srv/peer/state
 cat >/srv/peer/obie.yaml <<'EOF'
 node:
   state_dir: /srv/peer/state
   mode: observe
 admin:
-  socket: /run/obie-peer/obie.sock
+  socket: /run/peer/admin.sock
   socket_group: root
 mesh:
   listen: [/ip4/0.0.0.0/tcp/4001, /ip4/0.0.0.0/udp/4001/quic-v1]
@@ -382,26 +401,49 @@ ip netns exec peer ip link set lo up
 	}
 	c.must(time.Minute, "docker", "exec", "-d", c.host, "ip", "netns", "exec", "peer",
 		"/srv/peer/bin/obied", "--config", "/srv/peer/obie.yaml")
-	c.asRoot("for i in $(seq 100); do ip netns exec peer /srv/peer/bin/obiectl --socket /run/obie-peer/obie.sock status >/dev/null 2>&1 && exit 0; sleep 0.2; done; exit 1")
+	c.asRoot("for i in $(seq 100); do ip netns exec peer /srv/peer/bin/obiectl --socket /run/peer/admin.sock status >/dev/null 2>&1 && exit 0; sleep 0.2; done; exit 1")
 }
 
-// attack lets the attacker fail five SSH logins from a network namespace
-// of its own, which makes Fail2Ban's sshd jail ban it.
+// attack lets the attacker fail five SSH logins, which makes Fail2Ban's
+// sshd jail ban it.
 func (c *check) attack() {
+	c.failLogins(attacker)
+}
+
+// failLogins fails five SSH logins from the address, in a network
+// namespace of its own on a /24 of its own, which makes Fail2Ban's sshd
+// jail ban it.
+func (c *check) failLogins(address string) {
+	ip := net.ParseIP(address).To4()
+	if ip == nil {
+		c.t.Fatalf("%s is no IPv4 address", address)
+	}
+	// The namespace and its link are named after the address's third and
+	// fourth byte, within the 15 bytes of a link's name; the server's side
+	// of the /24 is .1.
+	ns := fmt.Sprintf("f2b-%d-%d", ip[2], ip[3])
+	server := net.IPv4(ip[0], ip[1], ip[2], 1).String()
+	if server == address || c.links[server] {
+		c.t.Fatalf("%s is the server's side of its /24, or shares it with an address that failed its logins before", address)
+	}
+	if c.links == nil {
+		c.links = map[string]bool{}
+	}
+	c.links[server] = true
 	c.asRoot(fmt.Sprintf(`
-ip link add obie-atk type veth peer name obie-atk-ns
-ip netns add attacker
-ip link set obie-atk-ns netns attacker
-ip addr add 85.10.0.1/24 dev obie-atk
-ip link set obie-atk up
-ip netns exec attacker ip addr add %s/24 dev obie-atk-ns
-ip netns exec attacker ip link set obie-atk-ns up
-ip netns exec attacker ip link set lo up
+ip link add %[1]s type veth peer name %[1]s-ns
+ip netns add %[1]s
+ip link set %[1]s-ns netns %[1]s
+ip addr add %[2]s/24 dev %[1]s
+ip link set %[1]s up
+ip netns exec %[1]s ip addr add %[3]s/24 dev %[1]s-ns
+ip netns exec %[1]s ip link set %[1]s-ns up
+ip netns exec %[1]s ip link set lo up
 for i in 1 2 3 4 5; do
-  timeout 10 ip netns exec attacker ssh -o BatchMode=yes -o StrictHostKeyChecking=no \
-    -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 intruder@85.10.0.1 true >/dev/null 2>&1 || true
+  timeout 10 ip netns exec %[1]s ssh -o BatchMode=yes -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 intruder@%[2]s true >/dev/null 2>&1 || true
 done
-`, attacker))
+`, ns, server, address))
 }
 
 // diagnose logs, once, what explains a failed step: the node's and
@@ -416,14 +458,15 @@ func (c *check) diagnose() {
 	c.t.Logf("the server's failed units and logs:\n%s", out)
 }
 
-// removeContainers removes the check's containers and volume.
+// removeContainers removes the check's containers and volume: the server,
+// and the node and volume of the tutorial's container section.
 func (c *check) removeContainers() {
-	_, _ = c.command(time.Minute, "docker", "rm", "-f", "-v", c.host, checkName+"-node")
-	_, _ = c.command(time.Minute, "docker", "volume", "rm", "-f", checkName+"-state")
+	_, _ = c.command(time.Minute, "docker", "rm", "-f", "-v", c.host, c.name+"-node")
+	_, _ = c.command(time.Minute, "docker", "volume", "rm", "-f", c.name+"-state")
 }
 
 // remove removes the check's containers, volume and images.
 func (c *check) remove() {
 	c.removeContainers()
-	_, _ = c.command(time.Minute, "docker", "image", "rm", "-f", checkName+"-host", checkName+"-image:"+c.version)
+	_, _ = c.command(time.Minute, "docker", "image", "rm", "-f", c.name+"-host", c.name+"-image:"+c.version)
 }

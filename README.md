@@ -131,6 +131,7 @@ firewall, [try it in a sandbox](documentation/sandbox.md).
 | Can a peer lock me out? What is shared? What if it crashes? | [FAQ](documentation/faq.md) |
 | Every OBIE term in one or two sentences | [Glossary](documentation/glossary.md) |
 | First node on your server, step by step, with the output of every command | [Get started](documentation/getting-started.md) |
+| Routine jobs, one short guide each: connect a friend's node, unblock an address, switch enforcement, recover after a lockout, upgrade, uninstall | [How-to guides](documentation/guides/README.md) |
 | Setting up a node with a few questions, and checking it | [Set up and check a node](documentation/operations/setup.md) |
 | Every configuration key | [Configuration reference](documentation/operations/configuration.md) |
 | Every command, its flags and examples (also `man obiectl`, `obiectl help <command>`) | [Command-line reference](documentation/operations/cli.md) |

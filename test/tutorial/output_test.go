@@ -9,6 +9,22 @@ import (
 // line of only the wildcard stands for any number of lines.
 const wildcard = "…"
 
+var (
+	// reading is a command that only looks.
+	reading = regexp.MustCompile(`^(sudo )?(uname|ps|sha256sum|journalctl|grep|nft list|fail2ban-client (version|status|-t)|obied (self-check|identity|--config)|obiectl (status|peers|identity|indicators|decisions|explain|enforced|overrides|show))\b` +
+		`|^docker exec obie obiectl (status|identity)\b`)
+	// another runs a second command, or writes the output to a file: a
+	// command that starts like one that only looks may change something.
+	another = regexp.MustCompile(`\|\||&&|;|>|\btee\b`)
+)
+
+// readsOnly reports whether a command only looks, so that the check may
+// repeat it until its output is what the page shows: bans, verdicts and
+// peers take a moment.
+func readsOnly(cmd string) bool {
+	return reading.MatchString(cmd) && !another.MatchString(cmd)
+}
+
 // volatile is what differs from one run of the tutorial to the next, in
 // the order it is replaced.
 var volatile = []struct {

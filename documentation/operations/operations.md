@@ -3,6 +3,8 @@
 Day-2 tasks for a [node](../glossary.md#node) installed with `install.sh`
 and the systemd unit ([Get started](../getting-started.md)). For the container
 image, see [Installing and upgrading](install.md#run-the-container-image).
+The [how-to guides](../guides/README.md) take you through the routine
+tasks step by step, with the output of every command.
 
 ## Metrics and health
 
@@ -159,8 +161,10 @@ sudo obiectl identity
 ## Uninstall
 
 First delete the `obie` lines from your Fail2Ban jails' `action` options
-and run `sudo fail2ban-client reload`. Then stop the node, remove its
-firewall table and its files:
+and run `sudo systemctl restart fail2ban`: a reload does not change the
+actions of a running jail. Then stop the node, remove its firewall table
+and its files
+([step by step](../guides/uninstall.md)):
 
 ```sh
 sudo systemctl disable --now obied

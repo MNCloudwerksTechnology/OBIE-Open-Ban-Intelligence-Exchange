@@ -210,6 +210,22 @@ The first release, v0.1.0 "Stable Base".
   Connecting Fail2Ban restarts it, since `fail2ban-client reload` does not
   add the action to a running jail; the self-check now says so when the
   running Fail2Ban does not use the action its configuration adds.
+- **How-to guides.** [Twelve short guides](documentation/guides/README.md)
+  for the routine jobs of a running node, grouped by goal: connect a
+  friend's node and choose a trust level, stop trusting a peer, review
+  what the node would block, find out why an address is blocked, unblock
+  an address you trust now and for good, block an address, withdraw a
+  verdict, switch between observe and enforce mode, recover after a
+  lockout, back up and restore the node's identity, upgrade and
+  uninstall. Each is titled as the task and says what you need, the
+  steps, how to check that they worked and how to undo them; a guide that
+  changes the firewall warns first and shows the way back before the
+  steps, and the console's way stands next to the command line's where it
+  is easier. The introduction, the tutorial and the README link the
+  index. `make guides-check` runs every guide in CI on a server of its
+  own, after the tutorial's steps it starts from, and compares every
+  output with the page
+  ([ADR 0031](documentation/adr/0031-how-to-guides-checked-on-a-systemd-host.md)).
 - **Testing.** An end-to-end test of report → block under quorum → revoke
   across several nodes, with an nftables variant in network namespaces.
   `make resources` measures one node's memory, CPU and disk in a mesh of

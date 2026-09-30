@@ -116,3 +116,47 @@ func TestMatches(t *testing.T) {
 		}
 	}
 }
+
+// TestParsePageReadsConsoleHints checks how a page names a console page:
+// a paragraph that starts with the console lead, one console page, the
+// phrases in bold besides the lead, and the number of steps before it.
+func TestParsePageReadsConsoleHints(t *testing.T) {
+	doc := "## Steps\n\n```sh\nsudo obiectl explain 85.10.0.7\n```\n\n" +
+		consoleLead + " the explanation,\n<" + consoleAddress + "/decisions/85.10.0.7>, says **Blocked** and\noffers **Always allow…**.\n"
+	p := parsePage(doc)
+	if len(p.problems) > 0 {
+		t.Fatalf("problems: %q", p.problems)
+	}
+	want := consoleHint{section: "Steps", line: 7, after: 1, path: "/decisions/85.10.0.7", phrases: []string{"Blocked", "Always allow…"}}
+	if len(p.hints) != 1 || p.hints[0].section != want.section || p.hints[0].line != want.line || p.hints[0].after != want.after ||
+		p.hints[0].path != want.path || !slices.Equal(p.hints[0].phrases, want.phrases) {
+		t.Errorf("hints %+v, want %+v", p.hints, want)
+	}
+	for doc, problem := range map[string]string{
+		"## 1\n\n" + consoleLead + " <" + consoleAddress + "/a> and <" + consoleAddress + "/b> show **x**.\n": "line 3: a console hint names 2 pages",
+		"## 1\n\n" + consoleLead + " the page <" + consoleAddress + "/peers> shows it.\n":                     "line 3: a console hint sets nothing in bold",
+	} {
+		p := parsePage(doc)
+		if !slices.ContainsFunc(p.problems, func(p string) bool { return strings.HasPrefix(p, problem) }) {
+			t.Errorf("%q gave the problems %q, want %q", doc, p.problems, problem)
+		}
+	}
+}
+
+// TestReadsOnly checks which commands the check may repeat: those that
+// only look, and none that also changes something.
+func TestReadsOnly(t *testing.T) {
+	for cmd, want := range map[string]bool{
+		"sudo obiectl explain 85.10.0.7":                        true,
+		"sudo grep -A 1 'name: \"friend\"' /etc/obie/obie.yaml": true,
+		"docker exec obie obiectl status":                       true,
+		"sudo obiectl allow 85.10.0.7":                          false,
+		"sudo systemctl restart obied":                          false,
+		"sudo grep -q '^enforce:' /etc/obie/obie.yaml || printf 'x' | sudo tee -a /etc/obie/obie.yaml": false,
+		"sudo obiectl decisions > decisions.txt":                                                       false,
+	} {
+		if got := readsOnly(cmd); got != want {
+			t.Errorf("readsOnly(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}

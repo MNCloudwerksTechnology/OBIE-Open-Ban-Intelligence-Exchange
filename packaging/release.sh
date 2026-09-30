@@ -19,9 +19,13 @@
 #
 # A final VERSION (x.y.z) is refused unless documentation/capabilities.md,
 # the capability overview, describes it: every release updates it.
+# UNRELEASED_VERSION set to VERSION builds it all the same, for a check that
+# never publishes it: `make guides-check` builds the next version to upgrade
+# to.
 #
 # Environment: VERSION (required, x.y.z[-pre]), GO, CYCLONEDX_GOMOD,
-# PLATFORMS (default "linux/amd64 linux/arm64"), SOURCE_DATE_EPOCH.
+# PLATFORMS (default "linux/amd64 linux/arm64"), SOURCE_DATE_EPOCH,
+# UNRELEASED_VERSION.
 set -eu
 # The staged files' modes must not depend on the caller's umask.
 umask 022
@@ -44,9 +48,10 @@ if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; the
 fi
 # Every release updates the capability overview for evaluators; a final
 # release is only built once the overview names it. Pre-releases (and CI's
-# 0.0.0-ci) are not checked.
+# 0.0.0-ci) are not checked, nor a version built for a check only.
 case "$version" in
 *-*) ;;
+"${UNRELEASED_VERSION:-}") ;;
 *)
 	grep -qF "**OBIE $version**" "$root/documentation/capabilities.md" ||
 		die "documentation/capabilities.md does not describe OBIE $version; update it for the release (CONTRIBUTING.md, Releasing)"

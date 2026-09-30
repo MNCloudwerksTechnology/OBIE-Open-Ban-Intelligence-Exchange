@@ -45,6 +45,8 @@ The requirements check or the installation of
 ## Locked out
 
 You cannot reach the host any more, and suspect OBIE blocked you.
+[How do I recover after locking myself out?](../guides/recover-from-a-lockout.md)
+takes you through it step by step, with the output of every command.
 
 1. **Get in another way**: the provider's console, IPMI/KVM, or from an
    address on the [allow-list](../glossary.md#allow-list) (private networks

@@ -9,16 +9,38 @@ import (
 // tutorialPath is the tutorial, relative to the repository root.
 const tutorialPath = "documentation/getting-started.md"
 
-// A step is a shell block of the tutorial: its commands and, if a text
-// block follows it, the output the page shows for its one command. line is
-// the line of the block's opening fence.
+// A step is a shell block of a page: its commands and, if a text block
+// follows it, the output the page shows for its one command. line is the
+// line of the block's opening fence in file.
 type step struct {
+	file       string
 	section    string
 	subsection string
 	line       int
 	commands   []string
 	want       string
 	hasWant    bool
+}
+
+// where names the step's place for messages: its file, if known, and line.
+func (s step) where() string {
+	if s.file == "" {
+		return fmt.Sprintf("line %d", s.line)
+	}
+	return fmt.Sprintf("%s:%d", s.file, s.line)
+}
+
+// A consoleHint is a paragraph that starts with consoleLead: it names one
+// page of the web console, and every phrase it sets in bold is on that
+// page, once the steps before it have run.
+type consoleHint struct {
+	section string
+	line    int
+	// after is the number of the page's steps before the hint.
+	after int
+	// path is the console page, such as /decisions/85.10.0.7.
+	path    string
+	phrases []string
 }
 
 // A section is a level-2 heading of the tutorial with its running text.
@@ -33,14 +55,23 @@ type section struct {
 	started bool
 }
 
-// page is documentation/getting-started.md as the tests read it.
+// page is a page of shell steps, such as documentation/getting-started.md,
+// as the tests read it.
 type page struct {
 	title    string
 	sections []section
 	steps    []step
+	hints    []consoleHint
 	// problems are mistakes in the page's form.
 	problems []string
 }
+
+const (
+	// consoleLead opens a paragraph about the web console.
+	consoleLead = "**In the console:**"
+	// consoleAddress is where the web console serves by default.
+	consoleAddress = "http://127.0.0.1:9465"
+)
 
 var (
 	shellFence = regexp.MustCompile("^```(sh|shell|bash)\\s*$")
@@ -50,6 +81,10 @@ var (
 	heredoc = regexp.MustCompile(`<<-?\s*['"]?([A-Za-z_]+)['"]?`)
 	// listItem starts a list item, which is a paragraph of its own.
 	listItem = regexp.MustCompile(`^\s*([-*]|\d+\.) `)
+	// consolePage is a console page a hint names; bold is a phrase it sets
+	// in bold.
+	consolePage = regexp.MustCompile(`<` + regexp.QuoteMeta(consoleAddress) + `(/[^>\s]*)>`)
+	bold        = regexp.MustCompile(`\*\*([^*]+)\*\*`)
 )
 
 // parsePage reads the tutorial page.
@@ -60,6 +95,7 @@ func parsePage(doc string) page {
 	subsection := ""
 	var pending *step // the last shell block, until an output block or text follows
 	var para []string
+	paraLine := 0 // the line the paragraph starts at
 	flushStep := func() {
 		if pending != nil {
 			p.steps = append(p.steps, *pending)
@@ -80,6 +116,9 @@ func parsePage(doc string) page {
 		para = nil
 		if cur < 0 {
 			return
+		}
+		if strings.HasPrefix(text, consoleLead) {
+			p.hints = append(p.hints, parseHint(text, p.sections[cur].title, paraLine, len(p.steps), &p.problems))
 		}
 		s := &p.sections[cur]
 		if !s.started {
@@ -147,12 +186,34 @@ func parsePage(doc string) page {
 			if listItem.MatchString(line) {
 				flushPara()
 			}
+			if len(para) == 0 {
+				paraLine = i + 1
+			}
 			para = append(para, strings.TrimSpace(line))
 		}
 	}
 	flushPara()
 	flushStep()
 	return p
+}
+
+// parseHint reads a console hint: the one console page it names and the
+// phrases it sets in bold, besides its lead.
+func parseHint(para, section string, line, after int, problems *[]string) consoleHint {
+	h := consoleHint{section: section, line: line, after: after}
+	pages := consolePage.FindAllStringSubmatch(para, -1)
+	if len(pages) != 1 {
+		*problems = append(*problems, fmt.Sprintf("line %d: a console hint names %d pages of %s, want one", line, len(pages), consoleAddress))
+	} else {
+		h.path = pages[0][1]
+	}
+	for _, m := range bold.FindAllStringSubmatch(strings.TrimPrefix(para, consoleLead), -1) {
+		h.phrases = append(h.phrases, m[1])
+	}
+	if len(h.phrases) == 0 {
+		*problems = append(*problems, fmt.Sprintf("line %d: a console hint sets nothing in bold that the console page shows", line))
+	}
+	return h
 }
 
 // fenced returns the lines of the code block that opens at lines[i] and

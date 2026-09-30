@@ -108,6 +108,10 @@ sandbox-check: ## Run every step of documentation/sandbox.md against a sandbox o
 tutorial-check: $(CYCLONEDX_GOMOD) ## Run every command of documentation/getting-started.md on a systemd host in a container and compare the output (docker, privileged)
 	$(GO) test -tags tutorial -run '^TestTutorial$$' -count=1 -v -timeout 30m ./test/tutorial -tutorial.cyclonedx=$(CYCLONEDX_GOMOD)
 
+.PHONY: guides-check
+guides-check: $(CYCLONEDX_GOMOD) ## Run every command of the how-to guides in documentation/guides on a systemd host in a container and compare the output (docker, privileged)
+	$(GO) test -tags tutorial -run '^TestGuides$$' -count=1 -v -timeout 60m ./test/tutorial -tutorial.cyclonedx=$(CYCLONEDX_GOMOD)
+
 .PHONY: fail2ban-versions
 fail2ban-versions: ## Ban and unban through the Fail2Ban action with the Fail2Ban of current distributions (docker); not part of `make ci`
 	contrib/fail2ban/check-versions.sh

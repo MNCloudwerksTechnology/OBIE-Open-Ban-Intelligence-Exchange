@@ -162,6 +162,7 @@ and runs next to your existing tools.
   nothing.
 - [Get started](getting-started.md): a first node, safely in observe
   mode.
+- [How-to guides](guides/README.md).
 - [Threat model](../SECURITY.md#threat-model): the risks that remain.
 
 Anything unclear? Please
