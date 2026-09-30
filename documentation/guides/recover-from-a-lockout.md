@@ -78,7 +78,8 @@ Status for the jail: sshd
    `- Banned IP list:	85.10.0.7 85.10.3.30
 ```
 
-It did. Lift its ban; `1` means that it lifted one:
+It did: the list names your address. Lift its ban; `1` means that it
+lifted one:
 
 ```sh
 sudo fail2ban-client set sshd unbanip 85.10.3.30
@@ -138,7 +139,7 @@ Revoked verdict 01a0ef55-20f8-7627-97e6-0a7cd4dd1560 on ipv4:85.10.3.30 (revocat
 
 To protect the address for good, also add it to the
 [allow-list](../glossary.md#allow-list) and to Fail2Ban's `ignoreip`, as
-[How do I unblock an address I trust?](unblock-an-address.md) shows.
+[How do I unblock an address I trust, now and for good?](unblock-an-address.md) shows.
 
 ## Check that it worked
 

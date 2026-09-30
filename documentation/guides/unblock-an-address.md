@@ -157,7 +157,7 @@ PREFIX        EXPIRES               REMAINING
 ```
 
 `85.10.0.7` stands for an attacker that stays blocked. Fail2Ban ignores
-the address:
+the address; it lists the addresses in no particular order:
 
 ```sh
 sudo fail2ban-client get sshd ignoreip
@@ -166,5 +166,6 @@ sudo fail2ban-client get sshd ignoreip
 ```text
 These IP addresses/networks are ignored:
 …
-`- 85.10.4.12
+…- 85.10.4.12
+…
 ```

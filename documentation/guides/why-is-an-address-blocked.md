@@ -137,4 +137,4 @@ way.
 
 There is nothing to undo: these commands and the console's pages only
 read, and change nothing. If the address should not be blocked, see
-[How do I unblock an address I trust?](unblock-an-address.md).
+[How do I unblock an address I trust, now and for good?](unblock-an-address.md).

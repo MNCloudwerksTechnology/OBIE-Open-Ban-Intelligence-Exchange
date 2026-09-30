@@ -369,3 +369,40 @@ func TestGuideIndexIsLinked(t *testing.T) {
 		}
 	}
 }
+
+// questionLink is a link whose text asks "How do I …?", with its target.
+var questionLink = regexp.MustCompile(`\[(How do I [^\]]+)\]\(([^)#\s]+\.md)\)`)
+
+// TestLinksToGuidesAskTheirQuestion checks that a link that asks a guide's
+// question asks it as the guide's title does, so that the reader finds the
+// page they were promised.
+func TestLinksToGuidesAskTheirQuestion(t *testing.T) {
+	titles := map[string]string{}
+	for _, g := range readGuides(t) {
+		titles[g.file] = g.title
+	}
+	root := filepath.Join(repoRoot, "documentation")
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".md") {
+			return err
+		}
+		data, err := os.ReadFile(path) // #nosec G304 G122 -- a page of the documentation.
+		if err != nil {
+			return err
+		}
+		text := strings.Join(strings.Fields(string(data)), " ")
+		for _, m := range questionLink.FindAllStringSubmatch(text, -1) {
+			target := filepath.Join(filepath.Dir(path), m[2])
+			if filepath.Dir(target) != filepath.Join(root, "guides") {
+				continue
+			}
+			if title := titles[filepath.Base(target)]; m[1] != title {
+				t.Errorf("%s links %s as %q; its title is %q", path, m[2], m[1], title)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

@@ -94,7 +94,7 @@ PUBLISHER    PEER ID                                               ACTION  WEIGH
 per publisher, with **Trust weight** and **Counts**.
 
 An address that should not be on the list is a false positive: see
-[How do I unblock an address I trust?](unblock-an-address.md). If one peer
+[How do I unblock an address I trust, now and for good?](unblock-an-address.md). If one peer
 keeps reporting addresses you trust, see
 [How do I stop trusting a peer?](stop-trusting-a-peer.md).
 
