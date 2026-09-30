@@ -122,7 +122,13 @@ func TestTestingHooksSeeEveryMessage(t *testing.T) {
 		{id: valid.ID, from: raw.host.ID(), outcome: Accepted},
 	}
 	waitFor(t, time.Second, "both outcomes", func() bool { return len(rec.outcomes()) == len(want) })
-	if got := rec.outcomes(); !slices.Equal(got, want) {
+	// GossipSub validates in parallel workers: the outcomes need not come
+	// in the order of the messages.
+	byID := func(a, b observed) int { return strings.Compare(a.id, b.id) }
+	got := rec.outcomes()
+	slices.SortFunc(got, byID)
+	slices.SortFunc(want, byID)
+	if !slices.Equal(got, want) {
 		t.Errorf("observed %+v, want %+v", got, want)
 	}
 	rec.mu.Lock()
