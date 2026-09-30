@@ -24,6 +24,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/eventtrace"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -79,6 +80,9 @@ type Options struct {
 	// ScoreInspectInterval is how often the peer scores are read; zero
 	// for ScoreInspectInterval.
 	ScoreInspectInterval time.Duration
+	// Trace records every copy of an event received and every event
+	// published (mesh.trace_path); nil for none (ADR 0032).
+	Trace *eventtrace.Writer
 	// AllowDocumentationRanges accepts indicators in the documentation
 	// ranges (obieproto.ReceiveDocumentationRanges). Only for multi-node
 	// tests; production nodes never set it.
@@ -100,6 +104,8 @@ type Gossip struct {
 	// scores keeps and exports the peer scores.
 	tracer *tracer
 	scores *scoreBoard
+	// trace records the node's publications; nil for none.
+	trace *eventtrace.Writer
 
 	// pubMu serializes the node's publications, so that held events go
 	// out before any later one, and guards the fields below.
@@ -153,6 +159,7 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 		self:       h.ID(),
 		store:      opts.Store,
 		metrics:    opts.Metrics,
+		trace:      opts.Trace,
 		log:        log,
 		now:        opts.Now,
 		receive:    receive,
@@ -161,7 +168,7 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	tr, scores := newTracer(h.ID()), newScoreBoard(opts.Now)
+	tr, scores := newTracer(h.ID(), opts.Trace, opts.Now), newScoreBoard(opts.Now)
 	topic, sub, err := join(ctx, h, v, validateQueueBursts*opts.PeerLimit.Burst,
 		pubsub.WithRawTracer(tr),
 		pubsub.WithPeerScoreInspect(pubsub.ExtendedPeerScoreInspectFn(scores.inspect), opts.ScoreInspectInterval))
@@ -179,7 +186,7 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 		return nil, fmt.Errorf("watch the peers of %s: %w", obieproto.Topic, err)
 	}
 	g := &Gossip{topic: topic, self: h.ID(), store: opts.Store, now: opts.Now, log: log, receive: receive, cancel: cancel,
-		tracer: tr, scores: scores, heldLimit: maxHeld, heldBatch: heldBatch, heldInterval: heldInterval,
+		tracer: tr, scores: scores, trace: opts.Trace, heldLimit: maxHeld, heldBatch: heldBatch, heldInterval: heldInterval,
 		wake: make(chan struct{}, 1)}
 	// Subscribing makes the node a member of the topic's mesh. Accepted
 	// events are stored by the validator, so deliveries are discarded.
@@ -291,6 +298,7 @@ func (g *Gossip) Publish(ctx context.Context, ev *obieproto.Event) error {
 	if _, err := g.store.Put(checked); err != nil {
 		return fmt.Errorf("publish event %s: %w", ev.ID, err)
 	}
+	g.trace.Write(ev.ID, g.self.String(), g.now(), eventtrace.Published)
 	g.pubMu.Lock()
 	defer g.pubMu.Unlock()
 	if alone := len(g.topic.ListPeers()) == 0; alone || len(g.held) > 0 {

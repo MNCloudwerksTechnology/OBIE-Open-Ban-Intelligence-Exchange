@@ -169,6 +169,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		UserAgent:   "obied/" + version.Version,
 		Store:       db,
 		RateLimit:   cfg.Mesh.RateLimit,
+		TracePath:   cfg.Mesh.TracePath,
 		Connections: auditConnections(auditLog),
 
 		AllowDocumentationRanges: opts.Testing.AllowDocumentationRanges,

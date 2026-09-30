@@ -234,6 +234,8 @@ done unless it repeats; then report it with the line.
 | `closing the previous audit log failed` | warn | The old audit log did not close cleanly after a rotation. Report if it repeats. |
 | `audit log is not open; record lost` | error | An audit record could not be written because the log is not open; fix the cause of the earlier audit log error. |
 | `writing the audit log failed; record lost` | error | The audit log could not be written (`error`), e.g. a full disk; free space. |
+| `writing the event trace failed; records are lost` | error | The per-event trace at `mesh.trace_path` could not be written (`path`, `error`), e.g. a full disk; logged once. Free space, or empty `mesh.trace_path` and restart to switch the trace off. |
+| `closing the event trace failed` | warn | The per-event trace did not close cleanly as the mesh stopped (`error`); its last lines may be missing. |
 | `encoding an audit record failed` | error | Report. |
 | `reading overrides failed; using the previous ones` | error | The node's database could not be read; it keeps working with what it had. Report if it repeats. |
 | `reading overrides failed; keeping the previous decisions and retrying` | error | As above. |

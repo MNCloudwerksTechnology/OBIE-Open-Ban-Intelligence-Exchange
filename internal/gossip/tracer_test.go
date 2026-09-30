@@ -48,7 +48,7 @@ func delta(c prometheus.Collector) func() float64 {
 // of messages from peers are counted; the node's own are not.
 func TestTracerCountsMessages(t *testing.T) {
 	self := peer.ID("self")
-	tr := newTracer(self)
+	tr := newTracer(self, nil, time.Now)
 	own := fromPeer(self)
 	local := fromPeer(peerA)
 	local.Local = true
@@ -100,7 +100,7 @@ func TestTracerCountsMessages(t *testing.T) {
 // the mesh gauge follows its members, also when a peer disconnects
 // without a PRUNE and when the node leaves.
 func TestTracerTracksMesh(t *testing.T) {
-	tr := newTracer("self")
+	tr := newTracer("self", nil, time.Now)
 	grafts, prunes, mesh := delta(graftsTotal), delta(prunesTotal), delta(meshPeers)
 	check := func(step string, wantGrafts, wantPrunes, wantMesh float64) {
 		t.Helper()
@@ -138,7 +138,7 @@ func TestTracerTracksMesh(t *testing.T) {
 // TestTracerCountsControl: the message IDs of IHAVE and IWANT are counted
 // by direction.
 func TestTracerCountsControl(t *testing.T) {
-	tr := newTracer("self")
+	tr := newTracer("self", nil, time.Now)
 	topic := obieproto.Topic
 	rpc := &pubsub.RPC{RPC: pb.RPC{Control: &pb.ControlMessage{
 		Ihave: []*pb.ControlIHave{{TopicID: &topic, MessageIDs: []string{"a", "b"}}, {TopicID: &topic, MessageIDs: []string{"c"}}},

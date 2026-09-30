@@ -155,6 +155,8 @@ func TestValidateRules(t *testing.T) {
 		// audit
 		{"audit file", func(c *Config) { c.Audit.Path = "/var/log/obie/audit.jsonl" }, "", ""},
 		{"audit relative", func(c *Config) { c.Audit.Path = "audit.jsonl" }, "audit.path", "absolute path"},
+		{"trace absolute", func(c *Config) { c.Mesh.TracePath = "/var/lib/obie/trace.jsonl" }, "", ""},
+		{"trace relative", func(c *Config) { c.Mesh.TracePath = "trace.jsonl" }, "mesh.trace_path", "absolute path"},
 
 		// log
 		{"level debug", func(c *Config) { c.Log.Level = "debug" }, "", ""},

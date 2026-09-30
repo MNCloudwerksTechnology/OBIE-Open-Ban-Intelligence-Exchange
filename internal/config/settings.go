@@ -54,6 +54,7 @@ var settings = []Setting{
 	{"mesh.rate_limit.publisher.burst", "Events one publisher may send at once.", OnRestart, false},
 	{"mesh.rate_limit.peer.events_per_second", "Events accepted per second, on average, forwarded by one connected peer.", OnRestart, false},
 	{"mesh.rate_limit.peer.burst", "Events one connected peer may forward at once.", OnRestart, false},
+	{"mesh.trace_path", "File that gets a JSON line per copy of an event received or published, for simulations; empty is off.", OnRestart, false},
 
 	{"store.max_indicators", "Most verdicts the store holds; beyond it the verdict that expires first makes room.", OnRestart, false},
 	{"store.ended_retention", "How long revoked and expired verdicts are kept after their expiry, so that blocks can be traced back to them.", OnRestart, false},

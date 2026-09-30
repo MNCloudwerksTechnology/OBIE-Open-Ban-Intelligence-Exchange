@@ -46,7 +46,7 @@ func newHost(t *testing.T, key crypto.PrivKey) host.Host {
 }
 
 // newNode returns a node with the default options, changed by tune.
-func newNode(t *testing.T, tune ...func(*Options)) *node {
+func newNode(t *testing.T, tune ...func(*node, *Options)) *node {
 	t.Helper()
 	p := newPublisher(t)
 	key, err := crypto.UnmarshalEd25519PrivateKey(p.key)
@@ -61,7 +61,7 @@ func newNode(t *testing.T, tune ...func(*Options)) *node {
 		Metrics:        n.metrics,
 	}
 	for _, f := range tune {
-		f(&opts)
+		f(n, &opts)
 	}
 	n.gossip, err = New(n.host, opts, discardLogger())
 	if err != nil {

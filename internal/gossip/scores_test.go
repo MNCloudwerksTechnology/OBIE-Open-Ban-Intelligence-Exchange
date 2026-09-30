@@ -118,7 +118,7 @@ func TestGossipScoresPeers(t *testing.T) {
 	belowGossip, belowPublish := delta(peersBelowThreshold.WithLabelValues("gossip")),
 		delta(peersBelowThreshold.WithLabelValues("publish"))
 	scored := delta(scoredPeers)
-	a := newNode(t, func(o *Options) { o.ScoreInspectInterval = 20 * time.Millisecond })
+	a := newNode(t, func(_ *node, o *Options) { o.ScoreInspectInterval = 20 * time.Millisecond })
 	raw := newUnsignedRawPublisher(t)
 	connect(t, raw.host, a.host, raw.topic)
 	waitFor(t, 5*time.Second, "a score of the raw peer", func() bool {

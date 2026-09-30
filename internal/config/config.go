@@ -91,6 +91,10 @@ type Mesh struct {
 	Bootstrap []string `yaml:"bootstrap"`
 	// RateLimit bounds the events the node accepts from the mesh.
 	RateLimit RateLimit `yaml:"rate_limit"`
+	// TracePath is the file the node appends a line to for every copy of
+	// an event it receives and every event it publishes; empty for none
+	// (ADR 0032).
+	TracePath string `yaml:"trace_path"`
 }
 
 // RateLimit configures the token buckets that bound the events accepted

@@ -2,11 +2,13 @@ package gossip
 
 import (
 	"sync"
+	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/eventtrace"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
@@ -72,6 +74,10 @@ func rejectReason(reason string) string {
 // concurrent use. Messages this node published are not counted.
 type tracer struct {
 	self peer.ID
+	// trace records the copies GossipSub drops before validation; now is
+	// its clock.
+	trace *eventtrace.Writer
+	now   func() time.Time
 
 	// mu guards mesh, the peers in this node's mesh of the topic, and
 	// closed, set once the node left: from then on the mesh is not
@@ -83,9 +89,11 @@ type tracer struct {
 
 var _ pubsub.RawTracer = (*tracer)(nil)
 
-// newTracer returns the tracer of the node self.
-func newTracer(self peer.ID) *tracer {
-	return &tracer{self: self, mesh: map[peer.ID]struct{}{}}
+// newTracer returns the tracer of the node self, which records the
+// copies GossipSub drops before validation in trace (nil for none) at the
+// times now returns.
+func newTracer(self peer.ID, trace *eventtrace.Writer, now func() time.Time) *tracer {
+	return &tracer{self: self, trace: trace, now: now, mesh: map[peer.ID]struct{}{}}
 }
 
 // Graft counts a peer added to the mesh of a topic.
@@ -156,6 +164,7 @@ func (t *tracer) DuplicateMessage(msg *pubsub.Message) {
 		return
 	}
 	duplicatesTotal.Inc()
+	t.trace.Write(idOf(msg), msg.ReceivedFrom.String(), t.now(), eventtrace.Duplicate)
 }
 
 // RejectMessage counts a message GossipSub dropped, by reason; ignored
@@ -168,7 +177,12 @@ func (t *tracer) RejectMessage(msg *pubsub.Message, reason string) {
 		ignoresTotal.Inc()
 		return
 	}
-	rejectsTotal.WithLabelValues(rejectReason(reason)).Inc()
+	label := rejectReason(reason)
+	rejectsTotal.WithLabelValues(label).Inc()
+	// The validator traced the outcome of what it rejected.
+	if label != rejectValidationFailed {
+		t.trace.Write(idOf(msg), msg.ReceivedFrom.String(), t.now(), label)
+	}
 }
 
 // RecvRPC counts the message IDs a peer announced or requested.

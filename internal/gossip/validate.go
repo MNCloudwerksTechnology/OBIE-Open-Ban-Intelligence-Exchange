@@ -10,6 +10,7 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/eventtrace"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -20,8 +21,10 @@ type validator struct {
 	self    peer.ID
 	store   store.Store
 	metrics Metrics
-	log     *slog.Logger
-	now     func() time.Time
+	// trace records every message's outcome; nil for none.
+	trace *eventtrace.Writer
+	log   *slog.Logger
+	now   func() time.Time
 	// receive are the obieproto.Receive options besides the clock.
 	receive    []obieproto.Option
 	publishers *limiter
@@ -38,7 +41,16 @@ func (v *validator) validate(_ context.Context, from peer.ID, msg *pubsub.Messag
 	outcome, result := v.check(from, msg.GetData())
 	receivedTotal.WithLabelValues(string(outcome)).Inc()
 	v.metrics.Observe(from, outcome)
+	v.trace.Write(idOf(msg), from.String(), v.now(), string(outcome))
 	return result
+}
+
+// idOf returns the message ID of msg: the event ID of an event.
+func idOf(msg *pubsub.Message) string {
+	if msg.ID != "" {
+		return msg.ID
+	}
+	return messageID(msg.Message)
 }
 
 // check runs the checks in order — size, format and field rules,

@@ -69,6 +69,11 @@ mesh:
     peer:
       events_per_second: 50
       burst: 250
+  # File the node appends one JSON line to for every copy of an event it
+  # receives and every event it publishes (node, event, from, at, outcome),
+  # for simulations and short diagnostics; about 200 bytes per copy, never
+  # rotated. Empty switches it off.
+  trace_path: ""
 
 store:
   # Most verdicts the event store holds (>= 1): one per publisher and

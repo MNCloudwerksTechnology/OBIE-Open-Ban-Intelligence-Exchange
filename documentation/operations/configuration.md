@@ -64,6 +64,7 @@ parsed and compared with the built-in default.
 | `mesh.rate_limit.publisher.burst` | `50` | restart | Events one publisher may send at once. At least 1. |
 | `mesh.rate_limit.peer.events_per_second` | `50` | restart | Events accepted per second, on average, that one directly connected peer forwards (for every publisher together). Keep it well above the publisher limit. Greater than 0. |
 | `mesh.rate_limit.peer.burst` | `250` | restart | Events one connected peer may forward at once. At least 1. |
+| `mesh.trace_path` | `""` | restart | Per-event trace for simulations and short diagnostics; empty (the default) switches it off. An absolute file path in an existing directory: the node appends one JSON line for every copy of an event it receives and every event it publishes — its peer ID (`node`), the event ID (`event`), the peer that forwarded it (`from`; the node itself for its own), when (`at`, to the nanosecond) and what became of it (`outcome`: `published`, a validation outcome such as `accepted` or `duplicate`, or a reason GossipSub dropped it such as `queue_full`). Joined across nodes, the files show the hops and path each event took ([ADR 0032](../adr/0032-gossip-instrumentation-and-attribution.md)). About 200 bytes per copy; the node never rotates or reads the file. It names peers, not addresses. |
 
 Events beyond a rate limit are dropped and not relayed, and counted as
 `obie_events_received_total{outcome="rate_limited"}`. The peer that
