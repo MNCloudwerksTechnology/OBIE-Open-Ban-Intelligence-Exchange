@@ -6,7 +6,7 @@ import { PAGE_PATHS } from '../i18n/languages';
 import { translated } from '../i18n/translated';
 import { Link } from './landing-content.model';
 
-// Copy of the question about visitor statistics (ADR 0033). German consent
+// Copy of the question about visitor statistics (ADR 0034). German consent
 // rules apply (§ 25 TDDDG, Art. 7 GDPR): say what is measured and by whom,
 // offer declining as prominently as accepting, and say how to change the
 // choice later. Keep it in step with the privacy policy's "analytics" section.

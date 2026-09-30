@@ -6,7 +6,7 @@ import { TRANSLATION_EN, asTranslation } from './site-translation';
 
 /**
  * Where each translation comes from. The translations are TypeScript objects
- * compiled into the application, never fetched as JSON (ADR 0032): English is
+ * compiled into the application, never fetched as JSON (ADR 0033): English is
  * in the main bundle, every other language and the legal pages' copy are
  * chunks the bundler splits off and loads on demand.
  */

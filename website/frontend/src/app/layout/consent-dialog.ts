@@ -12,7 +12,7 @@ import { ConsentService } from '../core/analytics/consent.service';
 import { LanguageSwitch } from './language-switch';
 
 /**
- * The question about visitor statistics (ADR 0033): a non-modal dialog at the
+ * The question about visitor statistics (ADR 0034): a non-modal dialog at the
  * bottom of the window that leaves the page usable. Declining is offered
  * exactly like accepting. It asks on the first visit and whenever the
  * visitor opens the privacy settings; only then does it take focus. The

@@ -3,7 +3,7 @@ import { TranslocoService } from '@jsverse/transloco';
 /**
  * The copy object stored under `key` in the active language's translation,
  * e.g. the whole landing page for `landing`. The translations are typed
- * objects, not flat strings (ADR 0032), so this is how components read them.
+ * objects, not flat strings (ADR 0033), so this is how components read them.
  * It fails loudly when the translation has not been loaded: `provideI18n`
  * loads the page's language before the first component is created.
  */

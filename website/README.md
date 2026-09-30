@@ -194,7 +194,7 @@ Keep the privacy policy true to the deployment and the code:
 
 ## Languages: English and German
 
-Design decisions: [ADR 0032](../documentation/adr/0032-website-languages.md).
+Design decisions: [ADR 0033](../documentation/adr/0033-website-languages.md).
 
 - **URLs.** English is at the root (`/`, `/impressum`, `/privacy`), German
   under `/de` (`/de`, `/de/impressum`, `/de/datenschutz`); `PAGE_PATHS` in
@@ -226,7 +226,7 @@ Design decisions: [ADR 0032](../documentation/adr/0032-website-languages.md).
 
 ## Visitor statistics (Matomo)
 
-Design decisions: [ADR 0033](../documentation/adr/0033-website-visitor-statistics.md).
+Design decisions: [ADR 0034](../documentation/adr/0034-website-visitor-statistics.md).
 
 - **Consent first.** On the first visit a dialog asks whether the visit may
   be counted ("Accept" and "Decline", equally prominent, in the page's

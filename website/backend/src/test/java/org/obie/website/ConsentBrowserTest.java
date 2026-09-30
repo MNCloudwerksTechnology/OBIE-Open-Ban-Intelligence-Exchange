@@ -30,7 +30,7 @@ import org.testcontainers.containers.BrowserWebDriverContainer.VncRecordingMode;
 import org.testcontainers.utility.DockerImageName;
 
 /**
- * The question about visitor statistics and the German pages in a real browser (ADR 0032, ADR
+ * The question about visitor statistics and the German pages in a real browser (ADR 0033, ADR
  * 0033): Chromium (in a container) opens the packaged, prerendered pages under the production
  * Content Security Policy. Before the visitor accepts, the browser contacts no other origin;
  * declining is remembered; accepting loads Matomo from the one origin the policy allows. German

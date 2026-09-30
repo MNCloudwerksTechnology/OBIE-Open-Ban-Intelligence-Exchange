@@ -16,7 +16,7 @@ import { LANGS, counterpartPath } from '../i18n/languages';
 import { LANG } from '../i18n/provide-i18n';
 
 /**
- * Link to the current page in the other language (ADR 0032), labelled in
+ * Link to the current page in the other language (ADR 0033), labelled in
  * that language: a compact button ("DE") by default, the language's name as
  * a text link ("Deutsch") with `plain`. It is a plain link: the other
  * language's page is prerendered, so the browser loads it like any other

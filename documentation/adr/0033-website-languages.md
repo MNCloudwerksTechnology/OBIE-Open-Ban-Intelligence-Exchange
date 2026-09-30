@@ -1,4 +1,4 @@
-# ADR 0032: English and German website with Transloco
+# ADR 0033: English and German website with Transloco
 
 - **Status:** Accepted
 - **Date:** 2026-09-30
@@ -81,4 +81,4 @@ application.
   build links it ahead of time as usual.
 - The initial JavaScript grew by about 12 KB gzip, to 125.5 KB of the
   150 KB budget: Transloco, the loader and the language switch, together
-  with the consent dialog and statistics code of ADR 0033.
+  with the consent dialog and statistics code of ADR 0034.

@@ -25,7 +25,7 @@ export interface AnalyticsEvent {
 }
 
 /**
- * Visitor statistics with the self-hosted Matomo (ADR 0033), strictly after
+ * Visitor statistics with the self-hosted Matomo (ADR 0034), strictly after
  * consent. Until the visitor accepts, it neither loads Matomo nor sends
  * anything; after they decline, Matomo drops everything it would still send.
  *

@@ -16,7 +16,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *
  * <p>The Content Security Policy allows only the site's own resources, plus the self-hosted Matomo
  * ({@link #ANALYTICS_ORIGIN}) for scripts, tracking requests and its fallback pixel: the front end
- * loads it only after the visitor consents to visitor statistics (ADR 0033). Scripts are restricted
+ * loads it only after the visitor consents to visitor statistics (ADR 0034). Scripts are restricted
  * to files from the site and Matomo plus the hashes of the prerendered pages' inline scripts, never
  * {@code 'unsafe-inline'}; styles need {@code 'unsafe-inline'} because Angular inlines critical and
  * component styles.

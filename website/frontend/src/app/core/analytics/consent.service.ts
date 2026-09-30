@@ -6,7 +6,7 @@ import { CONSENT_STORAGE_KEY } from './analytics.config';
 export type ConsentDecision = 'granted' | 'denied';
 
 /**
- * The visitor's consent to visitor statistics (ADR 0033). Nothing is
+ * The visitor's consent to visitor statistics (ADR 0034). Nothing is
  * measured without it. The answer is kept in local storage, so the question
  * is asked once and not on every page; storing it is strictly necessary to
  * respect it (§ 25(2) no. 2 TDDDG). Where storage is blocked, the answer

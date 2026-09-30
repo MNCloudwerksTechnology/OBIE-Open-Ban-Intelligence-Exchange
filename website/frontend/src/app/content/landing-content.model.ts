@@ -55,7 +55,7 @@ export interface A11yContent {
 
 export interface HeaderContent {
   readonly github: Link;
-  /** Link to the same page in the other language (ADR 0032). */
+  /** Link to the same page in the other language (ADR 0033). */
   readonly language: LanguageSwitchContent;
 }
 

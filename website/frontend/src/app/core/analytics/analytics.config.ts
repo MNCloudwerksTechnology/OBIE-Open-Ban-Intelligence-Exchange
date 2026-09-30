@@ -1,4 +1,4 @@
-// Visitor statistics with Matomo (ADR 0033). Nothing here runs before the
+// Visitor statistics with Matomo (ADR 0034). Nothing here runs before the
 // visitor consents: until then the browser never contacts the statistics
 // server. The back end allows exactly this origin in its Content Security
 // Policy (`SecurityHeadersFilter.ANALYTICS_ORIGIN`); change both together.

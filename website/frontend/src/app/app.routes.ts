@@ -23,7 +23,7 @@ const legalPage = (legalPage: LegalPageKey): Omit<Route, 'path'> => ({
 
 const notFound: Omit<Route, 'path'> = { component: NotFound, data: NOT_FOUND_DATA };
 
-/** The pages of one language, relative to its prefix (ADR 0032). */
+/** The pages of one language, relative to its prefix (ADR 0033). */
 function pages(lang: Lang): Routes {
   return [
     { path: routePath(lang, PAGE_PATHS.home[lang]), component: Home },

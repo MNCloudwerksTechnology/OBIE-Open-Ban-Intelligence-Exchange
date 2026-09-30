@@ -25,7 +25,7 @@ export const LANG = new InjectionToken<Lang>('LANG', {
 });
 
 /**
- * Transloco with the site's built-in translations (ADR 0032). Before the
+ * Transloco with the site's built-in translations (ADR 0033). Before the
  * first component is created, both while prerendering and in the browser,
  * the page's language becomes the active one, its translation is loaded
  * and `<html lang>` says it. Prerendered page and hydrating application

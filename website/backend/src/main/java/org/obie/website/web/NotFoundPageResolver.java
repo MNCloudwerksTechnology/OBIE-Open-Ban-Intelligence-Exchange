@@ -24,7 +24,7 @@ import org.springframework.web.servlet.View;
 /**
  * Answers 404 errors for HTML clients with the prerendered not-found page, keeping the 404 status
  * and the configured origin ({@link SiteOrigin}). An unknown URL under a language's prefix, such as
- * {@code /de/…}, gets that language's page ({@code /de/404}, ADR 0032); every other one gets {@code
+ * {@code /de/…}, gets that language's page ({@code /de/404}, ADR 0033); every other one gets {@code
  * /404}. Other errors and non-HTML clients fall through to Spring Boot's defaults.
  */
 @Component

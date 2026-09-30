@@ -1,4 +1,4 @@
-// The languages the site is published in (ADR 0032). English is the default
+// The languages the site is published in (ADR 0033). English is the default
 // and lives at the root; every other language lives under its own prefix, so
 // each page is prerendered once per language and a language switch is a plain
 // link to the counterpart page.

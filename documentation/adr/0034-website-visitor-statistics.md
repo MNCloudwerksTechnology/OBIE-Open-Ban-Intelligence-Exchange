@@ -1,4 +1,4 @@
-# ADR 0033: Visitor statistics with self-hosted Matomo, after consent
+# ADR 0034: Visitor statistics with self-hosted Matomo, after consent
 
 - **Status:** Accepted
 - **Date:** 2026-09-30
