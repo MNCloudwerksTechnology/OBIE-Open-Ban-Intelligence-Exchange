@@ -34,7 +34,7 @@ If you disconnected it too, add its address back to the peers the node
 connects to, and restart the node:
 
 ```sh
-sudo sed -i '/^  bootstrap:$/a\    - "/ip4/198.51.100.20/tcp/4001/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf"' /etc/obie/obie.yaml
+sudo sed -i -e 's/^  bootstrap: \[\]$/  bootstrap:/' -e '/^  bootstrap:$/a\    - "/ip4/198.51.100.20/tcp/4001/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf"' /etc/obie/obie.yaml
 sudo systemctl restart obied
 ```
 

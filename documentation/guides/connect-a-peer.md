@@ -2,24 +2,51 @@
 
 Connect your [node](../glossary.md#node) to a node that a friend or a
 partner organisation runs, so that the two exchange their
-[verdicts](../glossary.md#verdict), and decide how much your node trusts
-theirs. Both of you do the same on your own server; it takes a few
+[verdicts](../glossary.md#verdict) as [peers](../glossary.md#peer), and
+decide how much your node trusts theirs. Both of you do the same on your own server; it takes a few
 minutes.
+
+> **Warning:** In [enforce mode](../glossary.md#enforce-mode), the other
+> node's verdicts count at once: together with those of other nodes, they
+> can get addresses blocked on your server. Connect in
+> [observe mode](../glossary.md#observe-mode), and watch what its verdicts
+> would do for a week first.
 
 ## Before you start
 
-- Your node runs as [Get started](../getting-started.md#7-see-the-first-verdict)
-  leaves it after step 7, in [observe mode](../glossary.md#observe-mode).
-  Once you have connected a [peer](../glossary.md#peer), keep observe mode
-  for a week and watch what its verdicts would do.
+- Your node runs in observe mode, as
+  [Get started](../getting-started.md#7-see-the-first-verdict) leaves it
+  after step 7.
 - The other node runs too, and you can reach its operator over a channel
   where you know who you are talking to: in person, on a call, or in a
   signed mail.
 - Port 4001, TCP and UDP, is open between the two servers
   ([how](../operations/federation.md#open-the-mesh-port)).
-- The setup assistant writes the whole configuration again. If your node
-  already has peers, `sudo obiectl peers` lists them: enter them again,
-  together with the new one.
+
+## Undo
+
+To disconnect again and stop trusting the other node, put back the copy
+of the configuration that the steps make first, and restart the node:
+
+```sh
+sudo cp /etc/obie/obie.yaml.before-friend /etc/obie/obie.yaml
+sudo systemctl restart obied
+```
+
+The node no longer connects to the other node, and no longer trusts it:
+
+```sh
+sudo obiectl peers
+```
+
+```text
+No peers connected.
+obiectl peers: if this node should have peers, sudo obied self-check tests whether each configured peer answers, and documentation/operations/troubleshooting.md#no-peers lists the usual causes
+```
+
+To keep the connection but stop counting the other node's verdicts, see
+[How do I stop trusting a peer?](stop-trusting-a-peer.md) instead. Ask the
+other operator to remove your node from theirs as well.
 
 ## Steps
 
@@ -31,7 +58,7 @@ each counted with its sender's weight, reach the
 
 | The other node is run by | Trust weight | What its verdicts do on your node |
 |--------------------------|--------------|-----------------------------------|
-| a friend or a partner you know well | 0.8, the suggestion | They count, but never block alone: at least three nodes like it must agree. |
+| a friend or a partner you know well | 0.8 | They count, but never block alone: at least three nodes like it must agree. |
 | someone you know less well | 0.5 | They count less: more nodes must agree. |
 | someone whose verdicts you only want to see | 0 | Your node shows them and never counts them. |
 
@@ -58,58 +85,62 @@ give you their node's address in return, such as
 `/ip4/198.51.100.20/tcp/4001/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf`,
 and read out its fingerprint.
 
-Run the setup assistant. Press Enter at every question, except three:
-paste the other node's address at `Peer address`, give it a name, such as
-`friend`, and type the trust weight you chose, or press Enter for 0.8.
-Answer `y` to replace the file.
+Keep a copy of the configuration, to undo:
 
 ```sh
-sudo obied setup
+sudo cp /etc/obie/obie.yaml /etc/obie/obie.yaml.before-friend
+```
+
+Add the other node's address to the peers your node connects to,
+`mesh.bootstrap`. Paste the address you received in place of the
+example's:
+
+```sh
+sudo sed -i -e 's/^  bootstrap: \[\]$/  bootstrap:/' -e '/^  bootstrap:$/a\    - "/ip4/198.51.100.20/tcp/4001/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf"' /etc/obie/obie.yaml
+```
+
+Add its peer ID, a name and the trust weight you chose to the nodes your
+node trusts, `trust.publishers`. The name, `friend` here, is how the node
+names it in every list:
+
+```sh
+sudo sed -i -e 's/^  publishers: \[\]$/  publishers:/' -e '/^  publishers:$/a\    - peer_id: "12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf"\n      name: "friend"\n      weight: 0.8' /etc/obie/obie.yaml
+```
+
+The two commands change only these two lists, as the setup assistant
+writes them, and leave the rest of the file as it is. In an editor, make
+the same change. The lists now read:
+
+```sh
+sudo grep -A 1 '^  bootstrap:' /etc/obie/obie.yaml
 ```
 
 ```text
-OBIE setup
-…
-1/5  Where should the node keep its state?
-…
-State directory [/var/lib/obie]:
-
-2/5  Where should the node write its audit log?
-…
-Audit log [/var/log/obie/audit.jsonl]:
-
-3/5  Which peers should this node connect to?
-…
-Peer address (empty: done): /ip4/198.51.100.20/tcp/4001/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf
-  Name of this peer [198.51.100.20]: friend
-  How much do you trust its verdicts, from 0 (not at all) to 1 (fully)?
-  With the default settings, one peer alone never gets an address blocked.
-  Trust weight [0.8]:
-Peer address (empty: done):
-
-4/5  Should the node start in observe mode?
-…
-Start in observe mode? [Y/n]:
-
-5/5  Which addresses must never be blocked?
-…
-Addresses or networks, separated by spaces, or none [85.10.3.20/32]:
-
-Summary
-  State directory: /var/lib/obie
-  Audit log:       /var/log/obie/audit.jsonl
-  Peers:           friend (trust 0.8) /ip4/198.51.100.20/tcp/4001/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf
-  Mode:            observe
-  Never blocked:   85.10.3.20/32
-
-Replace /etc/obie/obie.yaml? The old file is kept as a backup. [y/N]: y
-Wrote /etc/obie/obie.yaml.
-The previous file is kept as /etc/obie/obie.yaml.bak.1.
-…
+  bootstrap:
+    - "/ip4/198.51.100.20/tcp/4001/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf"
 ```
 
-The last lines name the backup of the previous file; you need it to undo.
-The node reads its peers only when it starts, so restart it:
+```sh
+sudo grep -A 3 '^  publishers:' /etc/obie/obie.yaml
+```
+
+```text
+  publishers:
+    - peer_id: "12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf"
+      name: "friend"
+      weight: 0.8
+```
+
+Check the file, and restart the node, which reads its peers only when it
+starts:
+
+```sh
+sudo obied --config /etc/obie/obie.yaml --check-config
+```
+
+```text
+obied: configuration /etc/obie/obie.yaml is valid
+```
 
 ```sh
 sudo systemctl restart obied
@@ -149,28 +180,3 @@ friend     12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf  ban     0.8    
 The verdict counts, and it does not block alone. If the peer is not
 listed within a minute, see
 [No peers](../operations/troubleshooting.md#no-peers).
-
-## Undo
-
-To go back to the configuration you had, copy the backup that the setup
-assistant named back into place, and restart the node:
-
-```sh
-sudo cp /etc/obie/obie.yaml.bak.1 /etc/obie/obie.yaml
-sudo systemctl restart obied
-```
-
-The node no longer connects to the other node, and no longer trusts it:
-
-```sh
-sudo obiectl peers
-```
-
-```text
-No peers connected.
-obiectl peers: if this node should have peers, sudo obied self-check tests whether each configured peer answers, and documentation/operations/troubleshooting.md#no-peers lists the usual causes
-```
-
-To keep the connection but stop counting the other node's verdicts, see
-[How do I stop trusting a peer?](stop-trusting-a-peer.md) instead. Ask the
-other operator to remove your node from theirs as well.

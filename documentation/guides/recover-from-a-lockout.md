@@ -90,11 +90,25 @@ sudo fail2ban-client set sshd unbanip 85.10.3.30
 ```
 
 Now try to log in from your address again. Then find out why the node
-blocked it. Start the node in observe mode, which blocks nothing, and ask
-it:
+blocked it. Set observe mode, in which the node blocks nothing:
 
 ```sh
 sudo sed -i 's/^  mode: enforce$/  mode: observe/' /etc/obie/obie.yaml
+```
+
+```sh
+sudo grep '^  mode:' /etc/obie/obie.yaml
+```
+
+```text
+  mode: observe
+```
+
+If it still says `enforce`, change the line in an editor: in enforce
+mode, the node would block your address again as soon as it starts.
+Start the node, and ask it:
+
+```sh
 sudo systemctl start obied
 ```
 
@@ -110,9 +124,10 @@ Reason:                local autoblock: this node's own ban verdict (score 0.8 <
 ```
 
 `local autoblock` means that your own Fail2Ban banned the address, for
-example after you mistyped your password. If the reason names
-`consensus`, your [peers](../glossary.md#peer) reported it: ask their
-operators why.
+example after you mistyped your password. If the reason starts with
+`consensus`, enough trusted nodes reported it, your
+[peers](../glossary.md#peer) among them: the rows below the reason name
+them, and their operators can tell you why.
 
 Protect the address with an [override](../glossary.md#override), which
 works at once and beats every other rule:

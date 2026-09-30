@@ -54,6 +54,15 @@ without a trace.
 - [How do I upgrade to a new release?](upgrade.md)
 - [How do I uninstall OBIE completely, firewall rules included?](uninstall.md)
 
+## Go further with Fail2Ban and nftables
+
+Learn how OBIE works with the tools it builds on, and tune them.
+
+- [Publishing Fail2Ban bans to OBIE](fail2ban.md): report more jails, and
+  choose what each ban tells your peers.
+- [Enforcing with nftables](nftables.md): how OBIE blocks, and how to
+  block traffic that passes through the server.
+
 ## How the guides are tested
 
 `make guides-check` runs every command of every guide and compares its

@@ -3,7 +3,8 @@
 Install a new release of OBIE over the one your
 [node](../glossary.md#node) runs. The node keeps its identity, its
 configuration and what it knows, and is down for a few seconds. Blocks
-already in the firewall stay in place meanwhile.
+already in the firewall stay in place meanwhile, unless you set
+`enforce.nftables.teardown_on_stop`.
 
 ## Before you start
 
@@ -100,7 +101,8 @@ Result: 0 problems, …
 
 If the node does not start, see
 [obied does not start](../operations/troubleshooting.md#obied-does-not-start),
-or go back as below.
+or go back as below. Once you are sure that you will not go back, delete
+`/root/obie-state-before-upgrade.tar.gz`: it holds the node's key.
 
 ## Undo
 

@@ -6,10 +6,11 @@ block holds on your node only. To warn your [peers](../glossary.md#peer)
 too, report the address as well.
 
 > **Warning:** In [enforce mode](../glossary.md#enforce-mode), this drops
-> all traffic from the address at once. Make sure that it is none of
-> yours: not your office, your monitoring or a customer. The node refuses
-> to block its protected addresses, but blocks any other address you
-> name.
+> all traffic from the address at once. A manual block overrules your
+> [allow-list](../glossary.md#allow-list): only the
+> [protected addresses](../glossary.md#protected-addresses) are never
+> blocked. Make sure that the address, or the range you block, holds none
+> of yours: not your office, your monitoring or a customer.
 
 ## Before you start
 

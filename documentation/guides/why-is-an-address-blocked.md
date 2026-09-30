@@ -45,7 +45,8 @@ Read it from the top:
 - `Reason` names the rule that decided:
   - `local autoblock`: your own server reported it, here Fail2Ban's
     `sshd` jail; your own detections block at once.
-  - `consensus`: enough trusted [peers](../glossary.md#peer) agree; their
+  - `consensus`: enough trusted nodes agree, your
+    [peers](../glossary.md#peer) and perhaps your own: their
     [verdicts](../glossary.md#verdict) reach the
     [threshold](../glossary.md#threshold) and the
     [quorum](../glossary.md#quorum).
@@ -62,7 +63,8 @@ verdict with its **Trust weight**, and says under Firewall
 **The firewall's own entry for it drops its traffic.**
 
 To see what was reported, how often and when, list the verdicts on the
-address. Each has an event ID, which a peer's operator can look up:
+address. Each has an event ID, which names it in the audit log and to a
+peer's operator:
 
 ```sh
 sudo obiectl show 85.10.0.7

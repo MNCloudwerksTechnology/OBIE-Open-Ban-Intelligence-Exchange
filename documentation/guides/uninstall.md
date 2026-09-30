@@ -64,7 +64,7 @@ to a jail's `action` elsewhere, such as in `/etc/fail2ban/jail.local`,
 delete that line too, or Fail2Ban does not start:
 
 ```sh
-sudo rm /etc/fail2ban/jail.d/obie.local /etc/fail2ban/action.d/obie.conf
+sudo rm -f /etc/fail2ban/jail.d/obie.local /etc/fail2ban/action.d/obie.conf
 sudo systemctl restart fail2ban
 ```
 
@@ -95,10 +95,10 @@ completions:
 
 ```sh
 sudo rm /etc/systemd/system/obied.service /usr/local/bin/obied /usr/local/bin/obiectl
-cd /usr/local/share && sudo rm -f man/man1/obied.1 man/man1/obiectl.1 \
+(cd /usr/local/share && sudo rm -f man/man1/obied.1 man/man1/obiectl.1 \
   bash-completion/completions/obied bash-completion/completions/obiectl \
   zsh/site-functions/_obied zsh/site-functions/_obiectl \
-  fish/vendor_completions.d/obied.fish fish/vendor_completions.d/obiectl.fish
+  fish/vendor_completions.d/obied.fish fish/vendor_completions.d/obiectl.fish)
 sudo systemctl daemon-reload
 ```
 
@@ -144,4 +144,8 @@ sudo find /etc /usr/local /var/lib /var/log /run -name '*obie*' | wc -l
 0
 ```
 
-Only your key backup in `/root/obie-backup` remains, if you made one.
+Only your backups remain, if you made them: the key in `/root/obie-backup`,
+and the state from an upgrade, `/root/obie-state-before-upgrade.tar.gz`.
+Both hold the node's key; delete them unless you may come back. Addresses
+you told Fail2Ban to ignore, in
+`/etc/fail2ban/jail.d/trusted-addresses.local`, stay ignored.

@@ -31,7 +31,7 @@ Fail2Ban's `ignoreip`, and apply both:
 ```sh
 sudo sed -i '/^    - "85.10.4.12\/32"$/d' /etc/obie/obie.yaml
 sudo systemctl reload obied
-sudo rm /etc/fail2ban/jail.d/obie-trusted.local
+sudo sed -i 's/ 85\.10\.4\.12\b//' /etc/fail2ban/jail.d/trusted-addresses.local
 sudo systemctl restart fail2ban
 ```
 
@@ -96,23 +96,43 @@ Revoked verdict 01a0ef55-20f8-7627-97e6-0a7cd4dd1560 on ipv4:85.10.4.12 (revocat
 The override lasts, but it lives in the node's state. Add the address to
 the allow-list in the configuration too,
 since the node never reports an address on its allow-list. This command
-adds a line under `allowlist.cidrs`, as the setup assistant writes it:
+adds a line under `allowlist.cidrs`, as the setup assistant writes it; in
+an editor, make the same change:
 
 ```sh
-sudo sed -i '/^  cidrs:$/a\    - "85.10.4.12/32"' /etc/obie/obie.yaml
+sudo sed -i -e 's/^  cidrs: \[\]$/  cidrs:/' -e '/^  cidrs:$/a\    - "85.10.4.12/32"' /etc/obie/obie.yaml
+```
+
+```sh
+sudo grep -A 2 '^  cidrs:' /etc/obie/obie.yaml
+```
+
+```text
+  cidrs:
+    - "85.10.4.12/32"
+    - "85.10.3.20/32"
+```
+
+The list must name the address. Check the file, and reload the node:
+
+```sh
 sudo obied --config /etc/obie/obie.yaml --check-config
 sudo systemctl reload obied
 ```
 
-Last, tell Fail2Ban never to ban the address again. This file adds it to
-the addresses all jails ignore; if `/etc/fail2ban/jail.local` sets
-`ignoreip` already, add the address there instead:
+Last, tell Fail2Ban never to ban the address again, in a file of
+addresses that all jails ignore. The first command creates the file,
+unless it is there from an earlier time; the second adds the address to
+it. If `/etc/fail2ban/jail.local` sets `ignoreip` already, add the
+address there instead:
 
 ```sh
-sudo tee /etc/fail2ban/jail.d/obie-trusted.local <<'EOF'
-[DEFAULT]
-ignoreip = 127.0.0.1/8 ::1 85.10.4.12
-EOF
+sudo test -f /etc/fail2ban/jail.d/trusted-addresses.local || printf '[DEFAULT]\nignoreip = 127.0.0.1/8 ::1\n' | sudo tee /etc/fail2ban/jail.d/trusted-addresses.local
+sudo sed -i 's/^ignoreip = .*/& 85.10.4.12/' /etc/fail2ban/jail.d/trusted-addresses.local
+```
+
+```sh
+sudo cat /etc/fail2ban/jail.d/trusted-addresses.local
 ```
 
 ```text
