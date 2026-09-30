@@ -138,7 +138,7 @@ func TestMeshTracesEvents(t *testing.T) {
 	waitFor(t, 5*time.Second, "B's publication and A's acceptance in the traces", func() bool {
 		recs, err := eventtrace.ReadFiles(traceA, filepath.Join(dir, "b.jsonl"))
 		if err != nil {
-			t.Fatal(err)
+			return false // not written yet
 		}
 		var published, accepted bool
 		for _, r := range recs {

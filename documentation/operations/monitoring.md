@@ -273,8 +273,9 @@ validation. The trace files of several nodes, joined, show for every
 event which peer each node first accepted it from, and so the hops and
 the path it took from its publisher; `internal/eventtrace` joins them.
 A copy takes about 230 bytes; the node never rotates or reads the file,
-so empty `mesh.trace_path` again when you are done. Lines reach the file
-every second and when `obied` stops. An event the node published while
+so empty `mesh.trace_path` again when you are done. Lines reach the file,
+whole, every second and when `obied` stops; a line a crash cut short is
+skipped when the files are read. An event the node published while
 no peer was on the topic is traced when it was published, not when it
 was sent, so its delays include the wait. The file names peers,
 not addresses. The design is in

@@ -2,6 +2,8 @@ package eventtrace
 
 import (
 	"bytes"
+	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -88,7 +90,8 @@ func TestReadRejectsBadLines(t *testing.T) {
 	if err != nil || len(recs) != 1 {
 		t.Errorf("blank lines: %v, %v", recs, err)
 	}
-	if _, err := Read(strings.NewReader(`{"node":"a"}` + "\nnot json\n")); err == nil || !strings.Contains(err.Error(), "line 2") {
+	if _, err := Read(strings.NewReader(`{"node":"a"}` + "\n" + `{"node":"a","at":"yesterday"}` + "\n")); err == nil ||
+		!strings.Contains(err.Error(), "line 2") {
 		t.Errorf("bad line: %v, want an error naming line 2", err)
 	}
 	if _, err := ReadFiles(filepath.Join(t.TempDir(), "none.jsonl")); err == nil {
@@ -200,6 +203,7 @@ func TestWriterFlushesWhileOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = w.Close() })
 	w.Write("e1", "node-b", t0, Accepted)
 	deadline := time.Now().Add(5 * time.Second)
 	for {
@@ -221,4 +225,250 @@ func TestWriterFlushesWhileOpen(t *testing.T) {
 		})
 	}
 	wg.Wait()
+}
+
+// TestReadSkipsLinesCutShort: a line a crash or a failed write cut short
+// is skipped, the records around it are read.
+func TestReadSkipsLinesCutShort(t *testing.T) {
+	full := `{"node":"a","event":"e","from":"b","at":"2026-09-30T12:00:00Z","outcome":"accepted"}`
+	recs, err := Read(strings.NewReader(full + "\n" + full[:40] + "\n" + full + "\n" + full[:30]))
+	if err != nil || len(recs) != 2 {
+		t.Errorf("Read = %d records, %v; want the 2 whole ones", len(recs), err)
+	}
+}
+
+// sink is a trace file that can fail once, or block, for the tests.
+type sink struct {
+	mu     sync.Mutex
+	data   bytes.Buffer
+	writes int
+	// failAt makes the write with that number (from 1) fail after all but
+	// its last 10 bytes; release, while open, blocks every write.
+	failAt  int
+	release chan struct{}
+	closed  bool
+}
+
+func (s *sink) Write(p []byte) (int, error) {
+	if s.release != nil {
+		<-s.release
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return 0, os.ErrClosed
+	}
+	s.writes++
+	if s.writes == s.failAt {
+		n := max(len(p)-10, 0)
+		s.data.Write(p[:n])
+		return n, io.ErrShortWrite
+	}
+	return s.data.Write(p)
+}
+
+func (s *sink) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	return nil
+}
+
+func (s *sink) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.data.String()
+}
+
+// countingHandler counts the log records of each message.
+type countingHandler struct {
+	mu     sync.Mutex
+	counts map[string]int
+}
+
+func (h *countingHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *countingHandler) WithAttrs([]slog.Attr) slog.Handler       { return h }
+func (h *countingHandler) WithGroup(string) slog.Handler            { return h }
+func (h *countingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.counts == nil {
+		h.counts = map[string]int{}
+	}
+	h.counts[r.Message]++
+	return nil
+}
+
+func (h *countingHandler) count(msg string) int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.counts[msg]
+}
+
+// TestWriterNeverSplitsLines: while many goroutines write far more than a
+// batch, the file only ever holds whole lines, and every record arrives.
+func TestWriterNeverSplitsLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trace.jsonl")
+	w, err := Open(path, "node-a", slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const writers, each = 8, 250 // about 460 KB, seven batches
+	var wg sync.WaitGroup
+	for g := range writers {
+		wg.Go(func() {
+			for i := range each {
+				w.Write(fmt.Sprintf("e-%d-%d", g, i), "node-b", t0, Duplicate)
+			}
+		})
+	}
+	stopWatching := make(chan struct{})
+	watched := make(chan error, 1)
+	go func() {
+		for {
+			data, err := os.ReadFile(path) // #nosec G304 -- test file.
+			if err == nil && len(data) > 0 && data[len(data)-1] != '\n' {
+				watched <- fmt.Errorf("the file ends in half a line after %d bytes", len(data))
+				return
+			}
+			select {
+			case <-stopWatching:
+				watched <- nil
+				return
+			default:
+			}
+		}
+	}()
+	wg.Wait()
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	close(stopWatching)
+	if err := <-watched; err != nil {
+		t.Error(err)
+	}
+	recs, err := ReadFiles(path)
+	if err != nil || len(recs) != writers*each {
+		t.Errorf("read %d records, %v; want %d", len(recs), err, writers*each)
+	}
+}
+
+// TestWriterSurvivesAFailedWrite: a write that fails in the middle of a
+// line loses the rest of its batch and is logged once; the next batch
+// starts on a line of its own, so the file stays readable and tracing
+// goes on.
+func TestWriterSurvivesAFailedWrite(t *testing.T) {
+	out := &sink{failAt: 1}
+	logs := &countingHandler{}
+	w := start(out, "trace.jsonl", "node-a", slog.New(logs), false)
+	t.Cleanup(func() { _ = w.Close() })
+	w.Write("lost-1", "node-b", t0, Accepted)
+	w.Write("lost-2", "node-b", t0, Accepted)
+	waitFor(t, "the failed write", func() bool { return logs.count("writing the event trace failed; records are lost") == 1 })
+	w.Write("kept", "node-b", t0, Accepted)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := Read(strings.NewReader(out.String()))
+	if err != nil || len(recs) != 2 || recs[0].Event != "lost-1" || recs[1].Event != "kept" {
+		t.Errorf("records after the failure = %+v, %v; want the one written whole and the later one", recs, err)
+	}
+	if n := logs.count("writing the event trace failed; records are lost"); n != 1 {
+		t.Errorf("the failure was logged %d times, want once", n)
+	}
+}
+
+// TestOpenStartsAfterALineCutShort: a trace a crash left in the middle of
+// a line gets the next record on a line of its own.
+func TestOpenStartsAfterALineCutShort(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trace.jsonl")
+	if err := os.WriteFile(path, []byte(`{"node":"a","event":"e0","from":"b","at":"2026-09-30T12:00:00Z","outcome":"accepted"}`+"\n"+`{"node":"a","ev`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	w, err := Open(path, "node-a", slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Write("e1", "node-b", t0, Accepted)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := ReadFiles(path)
+	if err != nil || len(recs) != 2 || recs[0].Event != "e0" || recs[1].Event != "e1" {
+		t.Errorf("records = %+v, %v; want e0 and e1", recs, err)
+	}
+}
+
+// TestWriterDropsWhenFallingBehind: while the disk does not keep up, the
+// records beyond the bound are dropped, with one warning, and memory stays
+// bounded; once it keeps up, records are kept again.
+func TestWriterDropsWhenFallingBehind(t *testing.T) {
+	out := &sink{release: make(chan struct{})}
+	logs := &countingHandler{}
+	w := start(out, "trace.jsonl", "node-a", slog.New(logs), false)
+	w.maxPending = 4 * 1024
+	for i := range 100 { // about 10 KiB
+		w.Write(fmt.Sprintf("e%d", i), "node-b", t0, Accepted)
+	}
+	w.mu.Lock()
+	pending := len(w.pending)
+	w.mu.Unlock()
+	if pending >= w.maxPending {
+		t.Errorf("%d bytes wait, want fewer than %d", pending, w.maxPending)
+	}
+	if n := logs.count("the event trace falls behind the disk; records are lost"); n != 1 {
+		t.Errorf("warned %d times, want once", n)
+	}
+	close(out.release)
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recs, err := Read(strings.NewReader(out.String()))
+	if err != nil || len(recs) == 0 || len(recs) >= 100 {
+		t.Errorf("kept %d records, %v; want some, not all", len(recs), err)
+	}
+}
+
+// TestCloseRacesWrites: writes racing Close neither panic nor break a
+// line, and every Close returns once the file is closed.
+func TestCloseRacesWrites(t *testing.T) {
+	out := &sink{}
+	w := start(out, "trace.jsonl", "node-a", slog.New(slog.DiscardHandler), false)
+	var wg sync.WaitGroup
+	for g := range 4 {
+		wg.Go(func() {
+			for i := range 200 {
+				w.Write(fmt.Sprintf("e-%d-%d", g, i), "node-b", t0, Accepted)
+			}
+		})
+	}
+	for range 3 {
+		wg.Go(func() {
+			if err := w.Close(); err != nil {
+				t.Errorf("Close = %v", err)
+			}
+			out.mu.Lock()
+			closed := out.closed
+			out.mu.Unlock()
+			if !closed {
+				t.Error("Close returned before the file was closed")
+			}
+		})
+	}
+	wg.Wait()
+	if _, err := Read(strings.NewReader(out.String())); err != nil || !strings.HasSuffix(out.String(), "\n") && out.String() != "" {
+		t.Errorf("the file holds a broken line: %v", err)
+	}
+}
+
+// waitFor waits up to 5 seconds for cond.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

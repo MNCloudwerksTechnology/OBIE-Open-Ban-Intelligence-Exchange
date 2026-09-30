@@ -37,12 +37,15 @@ const (
 // fileMode is the mode of a new trace file, as of the audit log.
 const fileMode = 0o640
 
-// Records are buffered, so that GossipSub's event loop, which traces the
-// copies it drops, does not wait for the disk; they reach the file every
-// flushInterval, when bufferSize is full, and on Close.
+// Records are batched in memory, so that GossipSub's event loop, which
+// traces the copies it drops, never waits for the disk: a goroutine writes
+// the batch, whole lines only, every flushInterval, once it holds
+// batchSize bytes, and on Close. Beyond maxPending bytes waiting, records
+// are dropped rather than let memory grow without bound.
 const (
 	flushInterval = time.Second
-	bufferSize    = 64 * 1024
+	batchSize     = 64 * 1024
+	maxPending    = 16 * 1024 * 1024
 )
 
 // Record is one line of a trace file.
@@ -66,34 +69,73 @@ type Record struct {
 type Writer struct {
 	node string
 	log  *slog.Logger
-	// stop ends the flushing goroutine, which closes done.
-	stop, done chan struct{}
+	path string
+	// out is the file; only the flushing goroutine writes to it, and Close
+	// closes it once that goroutine is done.
+	out io.WriteCloser
+	// kick asks the flushing goroutine to write at once; stop ends it, and
+	// it closes done. closed is closed once Close has closed the file.
+	kick         chan struct{}
+	stop, done   chan struct{}
+	closed       chan struct{}
+	closeErr     error
+	midLine      bool // owned by the flushing goroutine
+	failedLogged bool // owned by the flushing goroutine
 
-	mu  sync.Mutex
-	f   *os.File
-	buf *bufio.Writer
-	// failed is set once a write failed, so that the failure is logged
-	// once, not for every record; closing once Close began.
-	failed, closing bool
+	// maxPending bounds the bytes waiting to be written.
+	maxPending int
+
+	mu sync.Mutex
+	// pending holds the complete lines not written yet, and spare the
+	// buffer the last batch was written from, for reuse.
+	pending, spare []byte
+	// dropping is set while records are dropped for want of room, closing
+	// once Close began.
+	dropping, closing bool
 }
 
 // Open opens the trace file at path for appending the records of the node
 // with peer ID node, creating it if needed; its directory must exist.
-// Close flushes and closes it.
+// Close writes the records still waiting and closes it.
 func Open(path, node string, log *slog.Logger) (*Writer, error) {
+	midLine := endsMidLine(path)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- the operator chooses mesh.trace_path.
 	if err != nil {
 		return nil, fmt.Errorf("open event trace: %w", err)
 	}
-	w := &Writer{node: node, log: log, stop: make(chan struct{}), done: make(chan struct{}), f: f,
-		buf: bufio.NewWriterSize(f, bufferSize)}
-	go w.flushEvery(flushInterval)
-	return w, nil
+	return start(f, path, node, log, midLine), nil
+}
+
+// start returns a writer of node's records to out and starts its flushing
+// goroutine; midLine says that out ends in a line cut short.
+func start(out io.WriteCloser, path, node string, log *slog.Logger, midLine bool) *Writer {
+	w := &Writer{node: node, log: log, path: path, out: out, midLine: midLine, maxPending: maxPending,
+		kick: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}), closed: make(chan struct{})}
+	go w.flush()
+	return w
+}
+
+// endsMidLine reports whether the file at path ends in a line a crash or a
+// failed write cut short, so that the next record starts on a line of its
+// own.
+func endsMidLine(path string) bool {
+	f, err := os.Open(path) // #nosec G304 -- the operator chooses mesh.trace_path.
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	info, err := f.Stat()
+	if err != nil || info.Size() == 0 {
+		return false
+	}
+	var last [1]byte
+	_, err = f.ReadAt(last[:], info.Size()-1)
+	return err == nil && last[0] != '\n'
 }
 
 // Write appends the record of a copy of the event with ID event that
-// peer from forwarded, or the node published, at at with outcome. A
-// failure is logged once; the record is lost.
+// peer from forwarded, or the node published, at at with outcome. It never
+// waits for the disk; the record reaches the file within flushInterval.
 func (w *Writer) Write(event, from string, at time.Time, outcome string) {
 	if w == nil {
 		return
@@ -102,48 +144,93 @@ func (w *Writer) Write(event, from string, at time.Time, outcome string) {
 	if err != nil {
 		return // a Record always encodes
 	}
-	line = append(line, '\n')
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.f == nil {
+	if w.closing {
+		w.mu.Unlock()
 		return
 	}
-	if _, err := w.buf.Write(line); err != nil {
-		w.failedWith(err)
+	if len(w.pending)+len(line) >= w.maxPending {
+		if !w.dropping {
+			w.dropping = true
+			w.log.Warn("the event trace falls behind the disk; records are lost", "path", w.path)
+		}
+		w.mu.Unlock()
+		return
 	}
-}
-
-// flushEvery writes the buffered records to the file every interval until
-// Close.
-func (w *Writer) flushEvery(interval time.Duration) {
-	defer close(w.done)
-	tick := time.NewTicker(interval)
-	defer tick.Stop()
-	for {
+	w.dropping = false
+	w.pending = append(append(w.pending, line...), '\n')
+	full := len(w.pending) >= batchSize
+	w.mu.Unlock()
+	if full {
 		select {
-		case <-w.stop:
-			return
-		case <-tick.C:
-			w.mu.Lock()
-			if err := w.buf.Flush(); err != nil {
-				w.failedWith(err)
-			}
-			w.mu.Unlock()
+		case w.kick <- struct{}{}:
+		default: // a write is pending
 		}
 	}
 }
 
-// failedWith logs the first failed write. The caller holds mu.
-func (w *Writer) failedWith(err error) {
-	if w.failed {
-		return
+// flush writes the waiting records every flushInterval and when kicked,
+// and a last time when stopped.
+func (w *Writer) flush() {
+	defer close(w.done)
+	tick := time.NewTicker(flushInterval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-w.stop:
+			w.writeBatch()
+			return
+		case <-w.kick:
+		case <-tick.C:
+		}
+		w.writeBatch()
 	}
-	w.failed = true
-	w.log.Error("writing the event trace failed; records are lost", "path", w.f.Name(), "error", err)
 }
 
-// Close writes the buffered records and closes the file; later records
-// are dropped.
+// writeBatch writes the waiting records, whole lines only. A failed write
+// loses them, is logged once until a write succeeds again, and makes the
+// next batch start on a line of its own.
+func (w *Writer) writeBatch() {
+	w.mu.Lock()
+	batch := w.pending
+	w.pending, w.spare = w.spare[:0], nil
+	w.mu.Unlock()
+	if len(batch) == 0 {
+		w.recycle(batch)
+		return
+	}
+	if w.midLine {
+		batch = append([]byte{'\n'}, batch...)
+	}
+	n, err := w.out.Write(batch)
+	switch {
+	case err != nil:
+		if n > 0 {
+			w.midLine = batch[n-1] != '\n'
+		}
+		if !w.failedLogged {
+			w.failedLogged = true
+			w.log.Error("writing the event trace failed; records are lost", "path", w.path, "error", err)
+		}
+	default:
+		w.midLine, w.failedLogged = false, false
+	}
+	w.recycle(batch)
+}
+
+// recycle keeps the buffer of a written batch for the next one, unless it
+// grew beyond a few batches.
+func (w *Writer) recycle(batch []byte) {
+	if cap(batch) > 4*batchSize {
+		return
+	}
+	w.mu.Lock()
+	w.spare = batch[:0]
+	w.mu.Unlock()
+}
+
+// Close writes the waiting records and closes the file; later records are
+// dropped. Every call returns once the file is closed.
 func (w *Writer) Close() error {
 	if w == nil {
 		return nil
@@ -151,36 +238,34 @@ func (w *Writer) Close() error {
 	w.mu.Lock()
 	if w.closing {
 		w.mu.Unlock()
+		<-w.closed
 		return nil
 	}
 	w.closing = true
-	close(w.stop)
 	w.mu.Unlock()
+	close(w.stop)
 	<-w.done
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	flushErr := w.buf.Flush()
-	err := errors.Join(flushErr, w.f.Close())
-	w.f = nil
-	if err != nil {
-		return fmt.Errorf("close event trace: %w", err)
+	if err := w.out.Close(); err != nil {
+		w.closeErr = fmt.Errorf("close event trace: %w", err)
 	}
-	return nil
+	close(w.closed)
+	return w.closeErr
 }
 
 // maxLine bounds a line of a trace file: a record with a message ID of
 // the longest kind and two peer IDs takes about 300 bytes.
 const maxLine = 64 * 1024
 
-// Read decodes the records of a trace file, one JSON object per line;
-// blank lines are skipped.
+// Read decodes the records of a trace file, one JSON object per line.
+// Blank lines are skipped, and so is a line that a crash or a failed write
+// cut short: a record ends in the only "}" it holds.
 func Read(r io.Reader) ([]Record, error) {
 	var out []Record
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 4096), maxLine)
 	for n := 1; sc.Scan(); n++ {
 		line := bytes.TrimSpace(sc.Bytes())
-		if len(line) == 0 {
+		if len(line) == 0 || !bytes.HasSuffix(line, []byte("}")) {
 			continue
 		}
 		var rec Record

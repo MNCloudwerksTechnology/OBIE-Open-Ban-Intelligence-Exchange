@@ -121,7 +121,7 @@ func TestTraceShowsHops(t *testing.T) {
 	waitFor(t, propagationDeadline, "the verdict's receipt on C in the traces", func() bool {
 		recs, err := eventtrace.ReadFiles(paths...)
 		if err != nil {
-			t.Fatal(err)
+			return false // not written yet
 		}
 		spreads := eventtrace.Join(recs)
 		i := slices.IndexFunc(spreads, func(s eventtrace.Spread) bool { return s.Event == v.ID })

@@ -169,12 +169,18 @@ block. A node measures none of them yet:
   for a copy the seen-cache dropped, or a reject reason from above for a
   message GossipSub dropped before validation). The file is opened like
   the audit log (append, mode 0640) and is never rotated or read by the
-  node. Lines are buffered and reach the file every second and when the
-  mesh stops, so that GossipSub's event loop, which traces the copies it
-  drops, never waits for the disk. A `published` line is written when
-  the node publishes, also for an event it holds while no peer is on the
-  topic (ADR 0026): the delays the join computes then include the wait. It grows by about 230 bytes per copy, so it is meant for
+  node. It grows by about 230 bytes per copy, so it is meant for
   simulations and short diagnostics. It holds peer IDs, not addresses.
+- **Writing it.** GossipSub's event loop traces the copies it drops, so
+  tracing must never wait for the disk: lines are collected in memory,
+  and one goroutine writes them, whole lines only, every second, once
+  64 KiB wait, and when the mesh stops. Beyond 16 MiB waiting, lines are
+  dropped with a warning. A failed write loses its lines and is logged
+  once; the next write starts on a line of its own, and so does the
+  first after a restart if a crash cut the last line short, which the
+  reader skips. A `published` line is written when the node publishes,
+  also for an event it holds while no peer is on the topic (ADR 0026):
+  the delays the join computes then include the wait.
 - `internal/eventtrace` writes and reads the lines and joins the files of
   several nodes: for every event, its origin, every node's first
   acceptance with the forwarding peer, the hop count and path back to the
