@@ -34,7 +34,9 @@ with 1,000,000 held indicators. Three things need a decision:
 ### Ended verdicts in the store
 
 - A new keyspace keeps the verdicts that ended, for **24 hours after the
-  verdict's expiry** (`store.EndedRetention`):
+  verdict's expiry** (`store.EndedRetention`; *30 days by default and
+  configurable in `store.ended_retention` since
+  [ADR 0032](0032-gossip-instrumentation-and-attribution.md)*):
   `h/r/<indicator>\x00<publisher>\x00<category>` for revoked and
   `h/x/<indicator>\x00<publisher>\x00<category>` for expired verdicts, the
   category being the evidence reason and the protocol as the decision

@@ -61,6 +61,9 @@ accepted or rejected recently. Four things need a decision:
   until others age out). Configured peers are always tallied, so that
   throwaway peers cannot crowd them out. The tally lives in the mesh and
   survives reconnects.
+- *Extended by [ADR 0032](0032-gossip-instrumentation-and-attribution.md):
+  the list and the peer page show each peer's GossipSub score, the
+  thresholds it is below and, on the peer page, the score's components.*
 
 ### Verdict counts
 
