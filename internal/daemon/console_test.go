@@ -27,16 +27,23 @@ func TestConsolePeerConversion(t *testing.T) {
 	at := time.Date(2026, 9, 28, 10, 0, 0, 0, time.UTC)
 	k := mesh.KnownPeer{
 		Peer: mesh.Peer{ID: self, Name: "alpha", Addrs: []string{"/ip4/192.0.2.1/tcp/4001"}, ConnectedSince: at,
-			Latency: time.Millisecond, TrustWeight: 0.7, Bootstrap: true},
+			Latency: time.Millisecond, TrustWeight: 0.7, Bootstrap: true,
+			GossipScore: &gossip.PeerScore{Score: -60, TimeInMesh: time.Minute, FirstMessageDeliveries: 1,
+				InvalidMessageDeliveries: 2.5, IPColocationFactor: 3, BehaviourPenalty: 4, AppSpecificScore: 5, ReadAt: at}},
 		Connected: true, Publisher: true, LastSeen: at.Add(time.Minute), DialError: "refused", DialFailedAt: at.Add(2 * time.Minute),
 		Events: map[gossip.Outcome]int{gossip.Accepted: 5, gossip.Duplicate: 2, gossip.InvalidSignature: 1, gossip.RateLimited: 3},
 	}
 	want := console.Peer{ID: self, Name: "alpha", Bootstrap: true, Publisher: true, Connected: true,
 		Addrs: []string{"/ip4/192.0.2.1/tcp/4001"}, ConnectedSince: at, Latency: time.Millisecond, LastSeen: at.Add(time.Minute),
 		DialError: "refused", DialFailedAt: at.Add(2 * time.Minute), Weight: 0.7,
-		Events: console.EventCounts{Accepted: 5, Duplicates: 2, Rejected: map[string]int{"invalid_signature": 1, "rate_limited": 3}}}
+		Events: console.EventCounts{Accepted: 5, Duplicates: 2, Rejected: map[string]int{"invalid_signature": 1, "rate_limited": 3}},
+		GossipScore: &console.GossipScore{Score: -60, Below: []string{"gossip"}, TimeInMesh: time.Minute, FirstMessageDeliveries: 1,
+			InvalidMessageDeliveries: 2.5, IPColocationFactor: 3, BehaviourPenalty: 4, AppSpecificScore: 5, ReadAt: at}}
 	if got := consolePeer(&k); !reflect.DeepEqual(got, want) {
 		t.Errorf("consolePeer = %+v\nwant          %+v", got, want)
+	}
+	if got := consoleGossipScore(nil); got != nil {
+		t.Errorf("no score converts to %+v", got)
 	}
 	if got := eventCounts(nil); got.Accepted != 0 || got.Rejected != nil {
 		t.Errorf("eventCounts(nil) = %+v", got)

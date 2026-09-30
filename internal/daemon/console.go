@@ -177,7 +177,20 @@ func consolePeer(k *mesh.KnownPeer) console.Peer {
 		DialFailedAt:   k.DialFailedAt,
 		Weight:         k.TrustWeight,
 		Events:         eventCounts(k.Events),
+		GossipScore:    consoleGossipScore(k.GossipScore),
 	}
+}
+
+// consoleGossipScore converts a peer's GossipSub score for the console;
+// nil for none.
+func consoleGossipScore(s *gossip.PeerScore) *console.GossipScore {
+	if s == nil {
+		return nil
+	}
+	return &console.GossipScore{Score: s.Score, Below: s.Below(), TimeInMesh: s.TimeInMesh,
+		FirstMessageDeliveries: s.FirstMessageDeliveries, InvalidMessageDeliveries: s.InvalidMessageDeliveries,
+		IPColocationFactor: s.IPColocationFactor, BehaviourPenalty: s.BehaviourPenalty,
+		AppSpecificScore: s.AppSpecificScore, ReadAt: s.ReadAt}
 }
 
 // eventCounts sorts the outcomes of a peer's events into accepted ones,

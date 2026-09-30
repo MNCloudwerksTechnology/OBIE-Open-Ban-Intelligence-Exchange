@@ -50,14 +50,19 @@ var (
 	testPeers = PeerSet{
 		Peers: []Peer{
 			{ID: idStray, Connected: true, Addrs: []string{"/ip4/198.51.100.9/tcp/40112"},
-				ConnectedSince: peersNow.Add(-5 * time.Minute), Events: EventCounts{Accepted: 3}},
+				ConnectedSince: peersNow.Add(-5 * time.Minute), Events: EventCounts{Accepted: 3},
+				GossipScore: &GossipScore{Score: -120.004, Below: []string{"gossip", "publish"}, InvalidMessageDeliveries: 3.4641,
+					ReadAt: peersNow.Add(-5 * time.Second)}},
 			{ID: idAlpha, Name: "alpha", Bootstrap: true, Publisher: true, Connected: true,
 				Addrs: []string{"/ip4/192.0.2.1/tcp/4001", "/ip4/192.0.2.1/udp/4001/quic-v1"}, ConnectedSince: peersNow.Add(-2 * time.Hour),
 				Latency: 12345 * time.Microsecond, Weight: 0.7,
-				Events: EventCounts{Accepted: 57, Duplicates: 4, Rejected: map[string]int{"invalid_signature": 2, "expired": 1}}},
+				Events: EventCounts{Accepted: 57, Duplicates: 4, Rejected: map[string]int{"invalid_signature": 2, "expired": 1}},
+				GossipScore: &GossipScore{Score: 1.25, TimeInMesh: 90*time.Second + 400*time.Millisecond, FirstMessageDeliveries: 2.5,
+					IPColocationFactor: 0, BehaviourPenalty: 0, AppSpecificScore: 0, ReadAt: peersNow.Add(-5 * time.Second)}},
 			{ID: idBravo, Name: "Bravo", Bootstrap: true, Addrs: []string{"/dns4/bravo.example.org/tcp/4001"},
 				LastSeen: peersNow.Add(-30 * time.Minute), DialError: "failed to dial: connection refused",
-				DialFailedAt: peersNow.Add(-time.Minute)},
+				DialFailedAt: peersNow.Add(-time.Minute),
+				GossipScore:  &GossipScore{Score: -250, Below: []string{"gossip", "publish", "graylist"}, ReadAt: peersNow.Add(-5 * time.Second)}},
 			{ID: idCharlie, Name: "charlie", Publisher: true, Weight: 0.5},
 		},
 		Verdicts: map[string]VerdictCount{
@@ -118,6 +123,10 @@ func TestBuildPeersListsEveryKnownPeer(t *testing.T) {
 		{"alpha events", fmt.Sprint(alpha.Accepted, alpha.Rejected, alpha.Duplicates, alpha.Reasons),
 			"57 3 4 [{invalid signature 2} {expired or dated in the future 1}]"},
 		{"alpha window", alpha.Window, "last hour"},
+		{"alpha score", alpha.Score.Value + "|" + alpha.Score.Badge + "|" + alpha.Score.ReadAt.Text, "1.25||2026-09-28 11:59:55 UTC"},
+		{"alpha score components", alpha.Score.Components, []scoreComponent{{"Time in this node's mesh", "1m30s"},
+			{"First deliveries of valid events", "2.5"}, {"Invalid messages", "0"}, {"Behaviour penalty", "0"},
+			{"IP colocation factor", "0"}, {"Application score", "0"}}},
 
 		// The unreachable bootstrap peer: disconnected, last seen, the failed dial.
 		{"bravo roles", strings.Join(bravo.Roles, ", "), "Bootstrap peer"},
@@ -128,6 +137,8 @@ func TestBuildPeersListsEveryKnownPeer(t *testing.T) {
 		{"bravo trust", bravo.Weight + "|" + fmt.Sprint(bravo.Default, bravo.NoInfluence), "0|true true"},
 		{"bravo verdicts", bravo.Held + "|" + bravo.HeldNote, "None|"},
 		{"bravo events", fmt.Sprint(bravo.Accepted, bravo.Rejected, bravo.Reasons), "0 0 []"},
+		{"bravo score", bravo.Score.Value + "|" + bravo.Score.Badge + "|" + bravo.Score.Components[0].Value,
+			"-250|Graylisted: its messages are ignored|not in this node's mesh"},
 
 		// A trusted publisher that never connected and is not dialed.
 		{"charlie connection", charlie.State + "|" + charlie.SinceLabel + "|" + charlie.Since.Text,
@@ -135,12 +146,16 @@ func TestBuildPeersListsEveryKnownPeer(t *testing.T) {
 		{"charlie addresses", charlie.AddrsFrom, "none known: the peer is not in mesh.bootstrap, so this node does not dial it"},
 		{"charlie verdicts", charlie.Held + "|" + charlie.HeldNote, "1|counts in decisions"},
 		{"charlie trust", charlie.Weight + "|" + fmt.Sprint(charlie.Default, charlie.NoInfluence), "0.5|false false"},
+		{"charlie score", fmt.Sprint(charlie.Score.Value == "", charlie.Score.Badge == "", charlie.Score.Components == nil),
+			"true true true"},
 
 		// A connected peer nobody configured: no influence on decisions.
 		{"stray title", stray.Title + "|" + fmt.Sprint(stray.Named), "Unnamed peer|false"},
 		{"stray roles", strings.Join(stray.Roles, ", ") + "|" + fmt.Sprint(stray.Configured), "Not configured|false"},
 		{"stray trust", stray.Weight + "|" + fmt.Sprint(stray.Default, stray.NoInfluence), "0|true true"},
 		{"stray verdicts", stray.Held + "|" + stray.HeldNote, "2|none counts in decisions"},
+		{"stray score", stray.Score.Value + "|" + stray.Score.Badge + "|" + stray.Score.Components[2].Value,
+			"-120|Below the publish threshold: gets none of this node's events|3.46"},
 	} {
 		if fmt.Sprint(c.got) != fmt.Sprint(c.want) {
 			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)
@@ -220,6 +235,7 @@ func TestBuildPeersSorts(t *testing.T) {
 		"trust":      {idAlpha, idCharlie, idBravo, idStray},
 		"verdicts":   {idAlpha, idStray, idCharlie, idBravo},
 		"rejected":   {idStray, idAlpha, idBravo, idCharlie},
+		"score":      {idBravo, idStray, idAlpha, idCharlie},
 	} {
 		p := peersOf(set, "sort="+sort)
 		if got := rowIDs(p); !slices.Equal(got, want) {
@@ -238,6 +254,7 @@ func TestBuildPeersSorts(t *testing.T) {
 		"Trust weight /peers?show=connected&sort=trust descending",
 		"Verdicts held /peers?show=connected&sort=verdicts ",
 		"Events, last hour /peers?show=connected&sort=rejected ",
+		"Gossip score /peers?show=connected&sort=score ",
 	}; !slices.Equal(cols, want) {
 		t.Errorf("columns = %q, want %q", cols, want)
 	}
