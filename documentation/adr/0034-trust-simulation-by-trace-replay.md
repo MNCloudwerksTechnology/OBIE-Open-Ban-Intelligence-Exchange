@@ -28,7 +28,7 @@ end-to-end test uses confidence 0.95 and the compose lab lowers the
 threshold to 1.5, which hides this.
 
 The work package asks for a simulator that replays attack and benign
-traffic against publishers of known behaviour, scores the enforced bans
+traffic against publishers of known behavior, scores the enforced bans
 against ground truth, and publishes the v0.1 baseline.
 
 ## Decision
@@ -51,8 +51,9 @@ against ground truth, and publishes the v0.1 baseline.
 
   A virtual clock replaces the wall clock through the existing
   `Options.Now` of store and engine. The adapter delivers each event with
-  `store.Put`. After every second that carries events, and every 5 virtual
-  minutes, it calls `store.Sweep` and `Engine.Flush`. The background
+  `store.Put` and evaluates it at once with `Engine.Flush`, so every event
+  is decided on its own and a run is deterministic. Every 5 virtual
+  minutes it calls `store.Sweep`, as the node's sweep does. The background
   timers of store and engine are set to 24 hours of wall time, so they
   never fire during a run. The harness does not re-implement a rule of
   the decision or the allow-list.
@@ -128,7 +129,7 @@ against ground truth, and publishes the v0.1 baseline.
   - ASNs are numbered from the private range 64512–65534 (RFC 6996).
     Each ASN is a /48, each published range a /64 inside it.
 
-### Publisher behaviour models
+### Publisher behavior models
 
 A run's publishers take the trace's operators in order: operator i is
 publisher slot i. For an adversary fraction f, the last round(N·f) slots

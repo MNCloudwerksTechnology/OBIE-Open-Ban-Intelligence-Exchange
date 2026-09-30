@@ -154,7 +154,7 @@ Dockerfile          multi-stage build of the distroless/static nonroot image (+ 
 test/
   e2e/              four complete obied nodes in one process: report → quorum block → revoke (ADR 0016)
   sandbox/          the sandbox's configurations, script and walkthrough; `make sandbox-check` runs documentation/sandbox.md (ADR 0029)
-  simtrust/         trust simulation: traces, publisher behaviour models, replay through the real engine, metrics and report; `make sim-trust` (ADR 0034)
+  simtrust/         trust simulation: traces, publisher behavior models, replay through the real engine, metrics and report; `make sim-trust` (ADR 0034)
   tutorial/         the forms of the tutorial and the how-to guides; `make tutorial-check` and `make guides-check` run documentation/getting-started.md and documentation/guides/ on a systemd host (ADR 0030, 0031)
 diagrams/           whitepaper diagrams (PlantUML sources + PNG)
 website/            public website, independent of the node (see Website)
