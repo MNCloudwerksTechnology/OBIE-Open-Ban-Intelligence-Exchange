@@ -42,7 +42,7 @@ No label ever carries an IP address or a [peer ID](../glossary.md#peer-id).
 | `obie_gossip_deliveries_total` | counter | | Events from peers that GossipSub accepted and delivered: the first valid copy of each. |
 | `obie_gossip_duplicates_total` | counter | | Copies of an event the node had already seen, dropped by GossipSub before the validator runs; `obie_events_received_total{outcome="duplicate"}` counts only those the store recognises. |
 | `obie_gossip_rejects_total` | counter | `reason` (`validation_failed`, `queue_full`, `throttled`, `signature`, `author`, `blacklisted`, `self_origin`, `other`) | Messages from peers that GossipSub dropped: `validation_failed` are those the validator rejected (`obie_events_received_total` says why), `queue_full` and `throttled` those validation had no room for. |
-| `obie_gossip_ignores_total` | counter | | Messages from peers the validator ignored: duplicates the store recognises, rate-limited and slightly expired events. |
+| `obie_gossip_ignores_total` | counter | | Messages from peers the validator ignored: duplicates the store recognises, rate-limited, slightly expired and future-dated events (issued further ahead than the clock skew allows). |
 | `obie_gossip_grafts_total` / `obie_gossip_prunes_total` | counter | | Peers added to and removed (by a PRUNE) from the node's mesh of the topic; a disconnect removes a peer without one. |
 | `obie_gossip_ihave_total` / `obie_gossip_iwant_total` | counter | `direction` (`sent`, `received`) | Event IDs announced in IHAVE gossip and requested in IWANT. |
 | `obie_gossip_mesh_peers` | gauge | | Peers in the node's mesh of the topic, to which it relays every event in full. |
@@ -123,8 +123,11 @@ Records follow the Elastic Common Schema (nested objects):
   adds about 150 bytes to the record. The store keeps a verdict for
   `store.ended_retention` (30 days by default) after it ended, so
   `obiectl` and the console's [verdicts view](console.md#the-verdicts-view)
-  still show it that long. A new verdict of a contributing publisher is a
-  `block-updated` even if score and expiry stay the same.
+  still show it that long — another publisher's only while the cap on
+  ended verdicts (a tenth of `store.max_indicators` per state) has room:
+  once it is full, newer ones are not kept until older ones are forgotten.
+  The audit record names them either way. A new verdict of a contributing
+  publisher is a `block-updated` even if score and expiry stay the same.
 - `obie.peer_id` and `obie.peer_name` (its `trust.publishers` name, if
   any) name the peer of `peer-connected` and `peer-disconnected`;
   `obie.settings` lists the settings a reload changed and applied,

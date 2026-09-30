@@ -91,13 +91,13 @@ func TestCheckStoresAcceptedEvents(t *testing.T) {
 	p := newPublisher(t)
 	ev := p.verdict(t, now, 3600)
 
-	if outcome, _ := v.check(peerA, marshal(t, ev)); outcome != Accepted {
+	if outcome, _ := v.check(peerA, marshal(t, ev), now); outcome != Accepted {
 		t.Fatalf("check() = %s, want accepted", outcome)
 	}
 	if _, err := st.Get(ev.ID); err != nil {
 		t.Fatalf("accepted event not stored: %v", err)
 	}
-	if outcome, result := v.check(peerB, marshal(t, ev)); outcome != Duplicate || result != pubsub.ValidationIgnore {
+	if outcome, result := v.check(peerB, marshal(t, ev), now); outcome != Duplicate || result != pubsub.ValidationIgnore {
 		t.Errorf("second copy: check() = %s, %v; want duplicate, ignore", outcome, result)
 	}
 }
@@ -115,7 +115,7 @@ func TestCheckRelaysEventsTheStoreIgnores(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if outcome, result := v.check(peerA, marshal(t, older)); outcome != Accepted || result != pubsub.ValidationAccept {
+	if outcome, result := v.check(peerA, marshal(t, older), now); outcome != Accepted || result != pubsub.ValidationAccept {
 		t.Errorf("check(older verdict) = %s, %v; want accepted, accept", outcome, result)
 	}
 	active, err := st.ActiveVerdicts(current.Key(), now)
@@ -132,14 +132,14 @@ func TestCheckRateLimitsPublishers(t *testing.T) {
 	// The publisher limit applies whichever peer forwards the events.
 	for i := range testBurst {
 		from := []peer.ID{peerA, peerB}[i%2]
-		if outcome, _ := v.check(from, marshal(t, flooder.verdict(t, now, 3600))); outcome != Accepted {
+		if outcome, _ := v.check(from, marshal(t, flooder.verdict(t, now, 3600)), now); outcome != Accepted {
 			t.Fatalf("event %d within the burst: %s", i+1, outcome)
 		}
 	}
-	if outcome, result := v.check(peerB, marshal(t, flooder.verdict(t, now, 3600))); outcome != RateLimited || result != pubsub.ValidationIgnore {
+	if outcome, result := v.check(peerB, marshal(t, flooder.verdict(t, now, 3600)), now); outcome != RateLimited || result != pubsub.ValidationIgnore {
 		t.Errorf("event beyond the burst: check() = %s, %v; want rate_limited, ignore", outcome, result)
 	}
-	if outcome, _ := v.check(peerB, marshal(t, other.verdict(t, now, 3600))); outcome != Accepted {
+	if outcome, _ := v.check(peerB, marshal(t, other.verdict(t, now, 3600)), now); outcome != Accepted {
 		t.Errorf("another publisher's event: %s, want accepted", outcome)
 	}
 }
@@ -150,14 +150,14 @@ func TestCheckRateLimitsForwardingPeers(t *testing.T) {
 
 	// Many publishers, one peer: the peer limit (2 × testBurst) applies.
 	for i := range 2 * testBurst {
-		if outcome, _ := v.check(peerA, marshal(t, newPublisher(t).verdict(t, now, 3600))); outcome != Accepted {
+		if outcome, _ := v.check(peerA, marshal(t, newPublisher(t).verdict(t, now, 3600)), now); outcome != Accepted {
 			t.Fatalf("event %d within the peer's burst: %s", i+1, outcome)
 		}
 	}
-	if outcome, _ := v.check(peerA, marshal(t, newPublisher(t).verdict(t, now, 3600))); outcome != RateLimited {
+	if outcome, _ := v.check(peerA, marshal(t, newPublisher(t).verdict(t, now, 3600)), now); outcome != RateLimited {
 		t.Errorf("event beyond the peer's burst: %s, want rate_limited", outcome)
 	}
-	if outcome, _ := v.check(peerB, marshal(t, newPublisher(t).verdict(t, now, 3600))); outcome != Accepted {
+	if outcome, _ := v.check(peerB, marshal(t, newPublisher(t).verdict(t, now, 3600)), now); outcome != Accepted {
 		t.Errorf("event from another peer: %s, want accepted", outcome)
 	}
 }
@@ -221,7 +221,7 @@ func TestCheckDocumentationRanges(t *testing.T) {
 			if tt.allow {
 				v.receive = []obieproto.Option{obieproto.ReceiveDocumentationRanges()}
 			}
-			if outcome, _ := v.check(peerA, marshal(t, ev)); outcome != tt.outcome {
+			if outcome, _ := v.check(peerA, marshal(t, ev), now); outcome != tt.outcome {
 				t.Errorf("check() = %s, want %s", outcome, tt.outcome)
 			}
 		})

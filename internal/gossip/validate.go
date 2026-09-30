@@ -38,10 +38,11 @@ func (v *validator) validate(_ context.Context, from peer.ID, msg *pubsub.Messag
 		// Publish already checked and stored the node's own event.
 		return pubsub.ValidationAccept
 	}
-	outcome, result := v.check(from, msg.GetData())
+	now := v.now()
+	outcome, result := v.check(from, msg.GetData(), now)
 	receivedTotal.WithLabelValues(string(outcome)).Inc()
 	v.metrics.Observe(from, outcome)
-	v.trace.Write(idOf(msg), from.String(), v.now(), string(outcome))
+	v.trace.Write(idOf(msg), from.String(), now, string(outcome))
 	return result
 }
 
@@ -54,13 +55,13 @@ func idOf(msg *pubsub.Message) string {
 }
 
 // check runs the checks in order — size, format and field rules,
-// signature, clock, duplicate, rate limits — and stores an accepted event.
-func (v *validator) check(from peer.ID, data []byte) (Outcome, pubsub.ValidationResult) {
+// signature, clock, duplicate, rate limits — on data received at now, and
+// stores an accepted event.
+func (v *validator) check(from peer.ID, data []byte, now time.Time) (Outcome, pubsub.ValidationResult) {
 	if len(data) > obieproto.MaxEventSize {
 		v.drop(from, TooLarge, nil)
 		return TooLarge, pubsub.ValidationReject
 	}
-	now := v.now()
 	ev, err := obieproto.Receive(data, v.receiveOptions(now)...)
 	if err != nil {
 		outcome, result := classify(err, data, v.receiveOptions(now.Add(-obieproto.MaxClockSkew)))

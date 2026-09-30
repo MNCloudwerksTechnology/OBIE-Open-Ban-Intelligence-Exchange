@@ -235,6 +235,15 @@ func TestReadSkipsLinesCutShort(t *testing.T) {
 	if err != nil || len(recs) != 2 {
 		t.Errorf("Read = %d records, %v; want the 2 whole ones", len(recs), err)
 	}
+
+	// A remote peer chooses the message ID of an invalid message; a line
+	// cut right after a "}" in it is skipped too.
+	braces := `{"node":"a","event":"}}}}","from":"b","at":"2026-09-30T12:00:00Z","outcome":"invalid_schema"}`
+	cut := braces[:strings.Index(braces, "}")+1]
+	recs, err = Read(strings.NewReader(braces + "\n" + cut + "\n" + full + "\n"))
+	if err != nil || len(recs) != 2 || recs[0].Event != "}}}}" || recs[1].Event != "e" {
+		t.Errorf("Read = %+v, %v; want the 2 whole records around %s", recs, err, cut)
+	}
 }
 
 // sink is a trace file that can fail once, or block, for the tests.
@@ -360,10 +369,11 @@ func TestWriterNeverSplitsLines(t *testing.T) {
 func TestWriterSurvivesAFailedWrite(t *testing.T) {
 	out := &sink{failAt: 1}
 	logs := &countingHandler{}
-	w := start(out, "trace.jsonl", "node-a", slog.New(logs), false)
+	w := start(out, "trace.jsonl", "node-a", slog.New(logs), false, time.Hour) // written only when kicked
 	t.Cleanup(func() { _ = w.Close() })
 	w.Write("lost-1", "node-b", t0, Accepted)
 	w.Write("lost-2", "node-b", t0, Accepted)
+	w.kick <- struct{}{} // both in one batch
 	waitFor(t, "the failed write", func() bool { return logs.count("writing the event trace failed; records are lost") == 1 })
 	w.Write("kept", "node-b", t0, Accepted)
 	if err := w.Close(); err != nil {
@@ -405,7 +415,7 @@ func TestOpenStartsAfterALineCutShort(t *testing.T) {
 func TestWriterDropsWhenFallingBehind(t *testing.T) {
 	out := &sink{release: make(chan struct{})}
 	logs := &countingHandler{}
-	w := start(out, "trace.jsonl", "node-a", slog.New(logs), false)
+	w := start(out, "trace.jsonl", "node-a", slog.New(logs), false, time.Hour) // no write makes room
 	w.maxPending = 4 * 1024
 	for i := range 100 { // about 10 KiB
 		w.Write(fmt.Sprintf("e%d", i), "node-b", t0, Accepted)
@@ -433,7 +443,7 @@ func TestWriterDropsWhenFallingBehind(t *testing.T) {
 // line, and every Close returns once the file is closed.
 func TestCloseRacesWrites(t *testing.T) {
 	out := &sink{}
-	w := start(out, "trace.jsonl", "node-a", slog.New(slog.DiscardHandler), false)
+	w := start(out, "trace.jsonl", "node-a", slog.New(slog.DiscardHandler), false, flushInterval)
 	var wg sync.WaitGroup
 	for g := range 4 {
 		wg.Go(func() {

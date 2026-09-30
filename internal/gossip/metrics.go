@@ -88,7 +88,7 @@ var (
 	ignoresTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "obie",
 		Name:      "gossip_ignores_total",
-		Help:      "Messages from peers that the validator ignored: duplicates known to the store, rate-limited or slightly expired events.",
+		Help:      "Messages from peers that the validator ignored: duplicates known to the store, rate-limited, slightly expired or future-dated events.",
 	})
 	graftsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "obie",

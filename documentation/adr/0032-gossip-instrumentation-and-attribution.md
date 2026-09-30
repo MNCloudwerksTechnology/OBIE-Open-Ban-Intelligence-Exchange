@@ -154,7 +154,12 @@ block. A node measures none of them yet:
   do not change: other publishers' ended verdicts are bounded by
   `store.max_indicators` / 10 per state, at most about 200 MB at the
   defaults, as before. A longer retention reaches that cap sooner: above
-  about 3,300 ended verdicts a day per state instead of 100,000. The
+  about 3,300 ended verdicts a day per state instead of 100,000. As
+  before, a full cap keeps the verdicts it holds and refuses newer ones
+  until older ones are forgotten, so the verdicts view then shows the
+  ones that ended first, not the latest 30 days; the audit log's
+  `obie.contributors` are not affected. Dropping the oldest instead, or
+  sizing the cap from the retention, is left to a later change. The
   node's own ended verdicts are never capped: a node that reports 1,000
   verdicts a day keeps about 30,000 of them, about 30 MB, instead of 1 MB.
 

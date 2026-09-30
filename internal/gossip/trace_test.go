@@ -96,6 +96,28 @@ func TestValidatorAndTracerWriteTheTrace(t *testing.T) {
 	}
 }
 
+// TestTraceTimesTheArrival: the validator's line carries the time the copy
+// arrived, at which the propagation delay is measured, not a later reading
+// of the clock after the checks and the store.
+func TestTraceTimesTheArrival(t *testing.T) {
+	arrived := time.Now().UTC().Truncate(time.Second)
+	w, path := openTrace(t, t.TempDir(), selfPeer)
+	v, _ := newValidator(t, newStore(t), arrived)
+	v.trace = w
+	readings := 0
+	v.now = func() time.Time { // a minute passes with every reading
+		readings++
+		return arrived.Add(time.Duration(readings-1) * time.Minute)
+	}
+	ev := newPublisher(t).verdict(t, arrived, 3600)
+	v.validate(context.Background(), peerA, &pubsub.Message{Message: &pb.Message{Data: marshal(t, ev)}, ID: ev.ID})
+	_ = w.Close()
+	recs, err := eventtrace.ReadFiles(path)
+	if err != nil || len(recs) != 1 || recs[0].Outcome != eventtrace.Accepted || !recs[0].At.Equal(arrived) {
+		t.Errorf("trace = %+v, %v; want one accepted copy at %s", recs, err, arrived)
+	}
+}
+
 // TestTraceShowsHops publishes on A in the line A–B–C, each node with a
 // trace file: joined, the traces show the event reaching B in one hop and
 // C in two, through B.

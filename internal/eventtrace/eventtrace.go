@@ -70,9 +70,10 @@ type Writer struct {
 	node string
 	log  *slog.Logger
 	path string
-	// out is the file; only the flushing goroutine writes to it, and Close
-	// closes it once that goroutine is done.
-	out io.WriteCloser
+	// out is the file; only the flushing goroutine writes to it, every
+	// interval, and Close closes it once that goroutine is done.
+	out      io.WriteCloser
+	interval time.Duration
 	// kick asks the flushing goroutine to write at once; stop ends it, and
 	// it closes done. closed is closed once Close has closed the file.
 	kick         chan struct{}
@@ -98,38 +99,41 @@ type Writer struct {
 // with peer ID node, creating it if needed; its directory must exist.
 // Close writes the records still waiting and closes it.
 func Open(path, node string, log *slog.Logger) (*Writer, error) {
-	midLine := endsMidLine(path)
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- the operator chooses mesh.trace_path.
 	if err != nil {
 		return nil, fmt.Errorf("open event trace: %w", err)
 	}
-	return start(f, path, node, log, midLine), nil
+	return start(f, path, node, log, endsMidLine(f, path), flushInterval), nil
 }
 
 // start returns a writer of node's records to out and starts its flushing
-// goroutine; midLine says that out ends in a line cut short.
-func start(out io.WriteCloser, path, node string, log *slog.Logger, midLine bool) *Writer {
-	w := &Writer{node: node, log: log, path: path, out: out, midLine: midLine, maxPending: maxPending,
-		kick: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}), closed: make(chan struct{})}
+// goroutine, which writes every interval; midLine says that out ends in a
+// line cut short.
+func start(out io.WriteCloser, path, node string, log *slog.Logger, midLine bool, interval time.Duration) *Writer {
+	w := &Writer{node: node, log: log, path: path, out: out, interval: interval, midLine: midLine,
+		maxPending: maxPending, kick: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}),
+		closed: make(chan struct{})}
 	go w.flush()
 	return w
 }
 
-// endsMidLine reports whether the file at path ends in a line a crash or a
-// failed write cut short, so that the next record starts on a line of its
-// own.
-func endsMidLine(path string) bool {
-	f, err := os.Open(path) // #nosec G304 -- the operator chooses mesh.trace_path.
+// endsMidLine reports whether f, opened for appending to the file at path,
+// is a regular file that ends in a line a crash or a failed write cut
+// short, so that the next record starts on a line of its own. Anything
+// else, e.g. a named pipe, is taken to start afresh: reading it could
+// block.
+func endsMidLine(f *os.File, path string) bool {
+	info, err := f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+		return false
+	}
+	r, err := os.Open(path) // #nosec G304 -- the operator chooses mesh.trace_path.
 	if err != nil {
 		return false
 	}
-	defer func() { _ = f.Close() }()
-	info, err := f.Stat()
-	if err != nil || info.Size() == 0 {
-		return false
-	}
+	defer func() { _ = r.Close() }()
 	var last [1]byte
-	_, err = f.ReadAt(last[:], info.Size()-1)
+	_, err = r.ReadAt(last[:], info.Size()-1)
 	return err == nil && last[0] != '\n'
 }
 
@@ -169,11 +173,11 @@ func (w *Writer) Write(event, from string, at time.Time, outcome string) {
 	}
 }
 
-// flush writes the waiting records every flushInterval and when kicked,
-// and a last time when stopped.
+// flush writes the waiting records every interval and when kicked, and a
+// last time when stopped.
 func (w *Writer) flush() {
 	defer close(w.done)
-	tick := time.NewTicker(flushInterval)
+	tick := time.NewTicker(w.interval)
 	defer tick.Stop()
 	for {
 		select {
@@ -258,14 +262,15 @@ const maxLine = 64 * 1024
 
 // Read decodes the records of a trace file, one JSON object per line.
 // Blank lines are skipped, and so is a line that a crash or a failed write
-// cut short: a record ends in the only "}" it holds.
+// cut short: no part of a record is valid JSON, even where the event ID, a
+// remote peer's choice, holds a "}".
 func Read(r io.Reader) ([]Record, error) {
 	var out []Record
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 4096), maxLine)
 	for n := 1; sc.Scan(); n++ {
 		line := bytes.TrimSpace(sc.Bytes())
-		if len(line) == 0 || !bytes.HasSuffix(line, []byte("}")) {
+		if len(line) == 0 || !json.Valid(line) {
 			continue
 		}
 		var rec Record
