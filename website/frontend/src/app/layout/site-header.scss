@@ -4,13 +4,14 @@ header {
   backdrop-filter: blur(8px);
 }
 
-// Phones: brand and actions on the first row, the navigation wraps below.
+// Phones: brand and actions on the first row, the navigation wraps below,
+// the language switch at its end, so "View on GitHub" keeps its room.
 .bar {
   display: grid;
   grid-template-areas:
-    'brand actions'
-    'nav nav';
-  grid-template-columns: 1fr auto;
+    'brand actions actions'
+    'nav nav lang';
+  grid-template-columns: 1fr auto auto;
   gap: var(--space-2) var(--space-4);
   align-items: center;
   padding-block: var(--space-3);
@@ -36,6 +37,11 @@ header {
 
 nav {
   grid-area: nav;
+}
+
+.lang {
+  grid-area: lang;
+  align-self: start;
 }
 
 ul {
@@ -93,8 +99,8 @@ nav li a {
   }
 
   .bar {
-    grid-template-areas: 'brand nav actions';
-    grid-template-columns: auto 1fr auto;
+    grid-template-areas: 'brand nav lang actions';
+    grid-template-columns: auto 1fr auto auto;
     min-height: var(--header-height);
     padding-block: var(--space-2);
   }
@@ -102,5 +108,11 @@ nav li a {
   nav ul {
     justify-content: center;
     gap: var(--space-5);
+  }
+
+  // Beside the theme toggle, as close as the actions are to each other.
+  .lang {
+    align-self: center;
+    margin-inline-end: calc(var(--space-2) - var(--space-4));
   }
 }

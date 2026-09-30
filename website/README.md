@@ -122,7 +122,7 @@ Durations use ISO-8601 (`PT3S` = 3 seconds, `PT1H` = 1 hour), periods too
 
 The founder section and the inquiry form (`/#contact`) take all their text
 from `frontend/src/app/content/landing.content.ts` (`founder` and
-`contact`). Nothing about the founder is invented: every gap is marked
+`contact`), in German from `landing.content.de.ts`. Nothing about the founder is invented: every gap is marked
 `TODO(operator)` in that file, and the page looks finished while the
 placeholders are in place. Search for `TODO(operator)` to find them.
 
@@ -142,15 +142,20 @@ The inquiry recipient is not content: it is `OBIE_INQUIRY_RECIPIENT` (see
 `/impressum` (§ 5 DDG, § 18 MStV) and `/privacy` (Art. 13 GDPR) take all
 their text from `frontend/src/app/content/legal.content.ts`; the footer links
 to both, and the inquiry form's consent checkbox links to `/privacy`. The
-pages are in English and show the German legal terms ("Impressum",
-"Datenschutzerklärung", and each section's German heading) alongside. A
-German version is a second `LegalContent` object provided through the
-`LEGAL_CONTENT` token.
+English pages show the German legal terms ("Impressum",
+"Datenschutzerklärung", and each section's German heading) alongside. The
+German pages, `/de/impressum` and `/de/datenschutz`, take their text from
+`legal.content.de.ts`, written as German legal text; they state the same
+facts, and a test keeps both files in the same shape (same sections, same
+`TODO(operator)` items). Fill in a TODO in both files. Facts both languages
+state (address, phone, retention periods) live once in
+`content/operator.ts`.
 
 **Review banner.** While `reviewPending` is `true`, both pages open with a
 notice that they must be reviewed by the operator before the site goes live.
-After the review, set `reviewPending: false` in `legal.content.ts`; that one
-flag removes the notice from both pages.
+After the review, set `reviewPending: false` in `legal.content.ts` (English
+pages) and `legal.content.de.ts` (German pages); a test keeps the two flags
+equal.
 
 The company data was supplied by the operator (WP #1677) and is in the file
 already. Nothing is invented: every gap is marked `TODO(operator)` and shows
@@ -161,9 +166,8 @@ on the page as it is. Search for `TODO(operator)` to find them.
 | Impressum: provider, address, representative, phone, e-mail | Supplied by the operator: Cloudwerks Technology GmbH, Pottenort 15, 45891 Gelsenkirchen; Markus Niewerth. | Change only if they change. |
 | Impressum: register entry, VAT ID | Supplied: Amtsgericht Gelsenkirchen, HRB 17839; DE363640900. | Change only if they change. |
 | Impressum: responsible under § 18 Abs. 2 MStV | Supplied: Markus Niewerth. | Change only if it changes. |
-| `privacy.hosting` | **TODO(operator): hosting provider.** | Name and address of the provider whose servers run the site and its database. |
-| `privacy.inquiries` | **TODO(operator): e-mail (SMTP) provider** (the server behind `OBIE_SMTP_HOST`) and **how long answered inquiries stay in the mailbox**. | Name and address of the provider; your mailbox retention. |
-| `privacy.third-countries` | **TODO(operator): transfers outside the EU/EEA.** | Confirm that the hosting and the e-mail provider process data only within the EU/EEA, or name the transfer and its safeguard. |
+| `privacy.hosting`, `privacy.analytics`, `privacy.third-countries`, mailbox retention in `privacy.inquiries` | Taken from [cloudwerks.de/datenschutz](https://cloudwerks.de/datenschutz), which the operator declared applicable, and the operator's answers (30 September 2026): the site, its database and Matomo run on Cloudwerks' own servers; nothing leaves the EU/EEA; an answered inquiry stays in the mailbox at most 3 years after the last contact (`INQUIRY_MAILBOX_RETENTION_YEARS`); Matomo keeps raw visit data 14 months (`ANALYTICS_RAW_DATA_RETENTION_MONTHS`); the policy does not claim that Matomo shortens IP addresses. | Change only when the deployment or the Cloudwerks policy changes. |
+| `privacy.inquiries` | **TODO(operator): e-mail (SMTP) provider** (the server behind `OBIE_SMTP_HOST`). | Name and address of the provider. It must process the e-mails within the EU/EEA: the policy says no data leave it. |
 
 Keep the privacy policy true to the deployment and the code:
 
@@ -178,12 +182,79 @@ Keep the privacy policy true to the deployment and the code:
 - **Client IP.** Rate limit and IP hash use the visitor's address only if
   `SERVER_FORWARD_HEADERS_STRATEGY=native` is set behind a reverse proxy (see
   [Configuration](#configuration)); otherwise they see the proxy's address.
-- **No cookies, no tracking, no third-party requests.** That is why the site
-  has no cookie banner. Adding any of them (analytics, embedded videos,
-  externally hosted fonts or scripts, anything stored in the browser) needs
-  a new privacy assessment, likely a consent banner, and an updated policy.
+- **No cookies; statistics only with consent.** The site sets no cookies,
+  and the browser contacts no server but this one until the visitor accepts
+  visitor statistics; then it also contacts the self-hosted Matomo (see
+  [Visitor statistics](#visitor-statistics-matomo)). The only thing stored
+  in the browser is that answer. Adding anything else (embedded videos,
+  externally hosted fonts or scripts, other storage, other analytics) needs a
+  new privacy assessment and an updated policy in both languages.
 - **New features that process personal data** (for example a new form
   field) need a matching change in the policy.
+
+## Languages: English and German
+
+Design decisions: [ADR 0032](../documentation/adr/0032-website-languages.md).
+
+- **URLs.** English is at the root (`/`, `/impressum`, `/privacy`), German
+  under `/de` (`/de`, `/de/impressum`, `/de/datenschutz`); `PAGE_PATHS` in
+  `frontend/src/app/i18n/languages.ts` lists them. Every page is prerendered
+  once per language, with `<html lang>`, its own canonical URL and
+  `hreflang` links to the other language (and `x-default` to English).
+  Unknown URLs under `/de/` get the German not-found page.
+- **The switch** in the header ("DE"/"EN") is a plain link to the same page
+  in the other language, which the browser loads like any other page. The
+  running application never changes its language, and nothing about the
+  language is stored.
+- **Copy.** Every user-visible string is in a typed content object per
+  language, registered with [Transloco](https://jsverse.gitbook.io/transloco)
+  as that language's translation (`i18n/site-translation*.ts`): landing page
+  (`landing.content.ts`, `landing.content.de.ts`), head tags and not-found
+  page (`seo.content*.ts`), consent dialog (`consent.content*.ts`) and, as the
+  scope `legal` loaded only on those pages, the legal pages
+  (`legal.content*.ts`). The translations are compiled in: English is part
+  of the main bundle, German a chunk that only German pages load. A missing
+  or misspelt German field is a compile error; `*.de.spec.ts` checks that
+  both languages have the same shape, links, placeholders and rules (caption
+  lengths, operator voice). Change the English and the German copy together.
+- **Adding a language** means a new code in `LANGS`, its prefix and paths,
+  one content object per file and the loader entries in
+  `i18n/site-translation-loader.ts`.
+- **Still English on German pages:** the back end's validation messages
+  (shown only when a request bypasses the form's own checks) and the
+  confirmation e-mail to the visitor.
+
+## Visitor statistics (Matomo)
+
+Design decisions: [ADR 0033](../documentation/adr/0033-website-visitor-statistics.md).
+
+- **Consent first.** On the first visit a dialog asks whether the visit may
+  be counted ("Accept" and "Decline", equally prominent, in the page's
+  language, with a link to the other language). Until the visitor accepts,
+  the browser never contacts the statistics server. The answer is kept in
+  local storage (`obie-analytics-consent-v1`: `granted` or `denied`) and can
+  be changed at any time with "Privacy settings" in the footer; declining
+  stops measuring at once. The dialog and the footer button appear only once
+  the page runs in the browser, never in the prerendered HTML.
+- **What is measured** (`core/analytics/analytics.ts`): a page view per page,
+  the not-found page as Matomo's `404/URL = …` title, links to other sites,
+  how long a page stays open (heartbeat), and the events `Inquiry / sent /
+  <type>` (never the content), `Demo / started` and `Demo / completed`.
+  Matomo runs without cookies (`disableCookies`).
+- **Server.** `https://metrics.cloudwerks.de/`, site id `5`
+  (`core/analytics/analytics.config.ts`). The Content Security Policy allows
+  exactly this origin for scripts, requests and images
+  (`SecurityHeadersFilter.ANALYTICS_ORIGIN`); a front-end test keeps both in
+  step, so change them together.
+- **In Matomo** (Administration), for site 5: delete old raw data after 14
+  months (`ANALYTICS_RAW_DATA_RETENTION_MONTHS`, which the privacy policy
+  states), and accept tracking only for the site's own URL, so a local run
+  of the site whose visitor clicks "Accept" is not counted. Anonymising IP
+  addresses is recommended; the policy does not promise it, so say so there
+  once it is switched on.
+- **Changing what is measured** means changing the privacy policy's
+  "analytics" section in both languages; a new purpose also means raising
+  the version in `CONSENT_STORAGE_KEY`, so everyone is asked again.
 
 ## The three-node demo: captions and numbers
 
@@ -356,10 +427,11 @@ Design decisions: [ADR 0015](../documentation/adr/0015-website-seo-and-delivery.
   commit. Every link that can leave the site has `rel="noopener"`; the
   front-end and smoke tests fail otherwise.
 - **Landing page copy.** Every user-visible string of the landing page lives
-  in `src/app/content/landing.content.ts`; templates only bind to it. Edit
-  copy there. A German version is a second `LandingContent` object provided
-  through the `LANDING_CONTENT` token. Describe only what the code does;
-  label everything else "in progress" or "planned".
+  in `src/app/content/landing.content.ts` and, in German,
+  `landing.content.de.ts`; templates only bind to the `LANDING_CONTENT`
+  token, which holds the page's language (see
+  [Languages](#languages-english-and-german)). Edit copy there. Describe only
+  what the code does; label everything else "in progress" or "planned".
 - **Legal pages.** `pages/legal/legal-page.ts` renders `/impressum` and
   `/privacy` from `src/app/content/legal.content.ts`; the route's
   `data.legalPage` picks the page (see
@@ -374,17 +446,21 @@ Design decisions: [ADR 0015](../documentation/adr/0015-website-seo-and-delivery.
   [ADR 0014](../documentation/adr/0014-website-github-project-stats.md).
 - **Security headers.** `SecurityHeadersFilter` sets CSP, HSTS,
   `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy` and
-  `frame-ancestors 'none'` on every response. Inline scripts are allowed only
-  by hash: the filter hashes the inline scripts of the packaged pages at
-  startup, so the front end needs no inline event handlers and no
-  `'unsafe-inline'`.
+  `frame-ancestors 'none'` on every response. The CSP allows the site's own
+  origin and, for scripts, requests and images, the self-hosted Matomo
+  (`ANALYTICS_ORIGIN`), which the front end contacts only after consent.
+  Inline scripts are allowed only by hash: the filter hashes the inline
+  scripts of the packaged pages at startup, so the front end needs no inline
+  event handlers and no `'unsafe-inline'`.
 - **Database changes.** Add a Flyway migration
   `backend/src/main/resources/db/migration/V<n>__<what>.sql`; never edit one
   that has been released.
-- **Adding a page.** Add the route to `src/app/app.routes.ts` and a
-  `RenderMode.Prerender` entry to `src/app/app.routes.server.ts`, and call
-  `SeoService.apply` in the page with a unique title and description. The
-  back end serves it and lists it in `sitemap.xml` without changes.
+- **Adding a page.** Add its path per language to `PAGE_PATHS`
+  (`src/app/i18n/languages.ts`) and the route to `pages()` in
+  `src/app/app.routes.ts` (the prerendered routes follow from `PAGE_PATHS`),
+  and call `SeoService.apply` in the page with a unique title and
+  description per language. The back end serves it and lists it in
+  `sitemap.xml` without changes.
 - **Dependency overrides.** `backend/pom.xml` overrides a few versions
   managed by Spring Boot to pick up security fixes; remove them when Spring
   Boot catches up.

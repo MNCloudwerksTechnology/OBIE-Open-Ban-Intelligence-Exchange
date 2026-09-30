@@ -58,6 +58,22 @@ class SecurityHeadersTest extends IntegrationTest {
   }
 
   @Test
+  void onlyTheSelfHostedMatomoIsAllowedBesidesTheSite() {
+    Map<String, String> csp =
+        directives(get("/", MediaType.TEXT_HTML).getHeaders().getFirst("Content-Security-Policy"));
+    String matomo = "https://metrics.cloudwerks.de";
+
+    assertThat(csp.get("script-src")).startsWith("'self' " + matomo + " ");
+    assertThat(csp.get("connect-src")).isEqualTo("'self' " + matomo);
+    assertThat(csp.get("img-src")).isEqualTo("'self' data: " + matomo);
+    assertThat(csp)
+        .containsEntry("default-src", "'self'")
+        .containsEntry("font-src", "'self'")
+        .containsEntry("style-src", "'self' 'unsafe-inline'")
+        .containsEntry("form-action", "'self'");
+  }
+
+  @Test
   void preflightFromTheSiteIsAllowed() {
     ResponseEntity<String> response = preflight(SITE);
 

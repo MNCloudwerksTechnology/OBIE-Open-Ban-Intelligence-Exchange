@@ -2,8 +2,10 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 
 import { LegalContent, LegalPageContent } from '../../content/legal-content.model';
-import { LEGAL_CONTENT } from '../../content/legal.content';
+import { LEGAL_CONTENT } from '../../content/legal-content.token';
 import { SeoService } from '../../core/seo';
+import { PAGE_PATHS } from '../../i18n/languages';
+import { LANG } from '../../i18n/provide-i18n';
 
 /** The legal pages; the route's `data.legalPage` names which one. */
 export type LegalPageKey = 'impressum' | 'privacy';
@@ -26,6 +28,6 @@ export class LegalPage {
   constructor() {
     const key = inject(ActivatedRoute).snapshot.data['legalPage'] as LegalPageKey;
     this.page = this.content[key];
-    inject(SeoService).apply({ ...this.page.meta, path: `/${key}` });
+    inject(SeoService).apply({ ...this.page.meta, path: PAGE_PATHS[key][inject(LANG)] });
   }
 }

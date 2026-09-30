@@ -14,6 +14,7 @@ import {
 
 import { DemoStepContent } from '../../content/landing-content.model';
 import { LANDING_CONTENT } from '../../content/landing.content';
+import { Analytics } from '../../core/analytics/analytics';
 import { fill } from './format';
 import { ServerId, ServerSetup } from './mesh-demo.model';
 import { MeshMap } from './mesh-map';
@@ -75,6 +76,7 @@ export class MeshDemo {
   private readonly document = inject(DOCUMENT);
   private readonly host: HTMLElement = inject(ElementRef).nativeElement;
   private readonly changeDetector = inject(ChangeDetectorRef);
+  private readonly analytics = inject(Analytics);
 
   protected readonly demo = this.content.howItWorks.demo;
   protected readonly total = FRAMES.length;
@@ -156,12 +158,16 @@ export class MeshDemo {
   /** A step the visitor chose: autoplay stops, the visitor has taken over. */
   private navigate(index: number): void {
     this.pause();
+    this.started();
     this.show(index);
   }
 
   private show(index: number): void {
     const { title, caption } = this.demo.steps[index];
     this.step.set(index);
+    if (this.last()) {
+      this.analytics.track({ category: 'Demo', action: 'completed' }, { once: true });
+    }
     this.announcement.set(
       fill(this.demo.controls.announcement, { n: index + 1, total: this.total, title, caption }),
     );
@@ -169,11 +175,17 @@ export class MeshDemo {
 
   /** Autoplay starts only here, when the visitor asks for it; from the last step it starts over. */
   private play(): void {
+    this.started();
     if (this.last()) {
       this.show(0);
     }
     this.playing.set(true);
     this.schedule();
+  }
+
+  /** Reported once per page view (visitor statistics, with consent only). */
+  private started(): void {
+    this.analytics.track({ category: 'Demo', action: 'started' }, { once: true });
   }
 
   private pause(): void {

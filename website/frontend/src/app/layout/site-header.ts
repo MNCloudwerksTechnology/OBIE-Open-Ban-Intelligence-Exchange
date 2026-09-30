@@ -1,21 +1,24 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 
 import { LANDING_CONTENT } from '../content/landing.content';
+import { sectionHref } from '../i18n/languages';
+import { LANG } from '../i18n/provide-i18n';
 import { GithubIcon, ObieMark } from './icons';
+import { LanguageSwitch } from './language-switch';
 import { ThemeToggle } from './theme-toggle';
 
 /**
- * Site header: the mark, anchored navigation to the page sections, theme
- * toggle and GitHub link.
+ * Site header: the mark, anchored navigation to the page sections, language
+ * switch, theme toggle and GitHub link.
  */
 @Component({
   selector: 'app-site-header',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [GithubIcon, ObieMark, ThemeToggle],
+  imports: [GithubIcon, LanguageSwitch, ObieMark, ThemeToggle],
   template: `
     <header id="top">
       <div class="container bar">
-        <a class="brand" href="#top" [attr.aria-label]="content.a11y.homeLink">
+        <a class="brand" [href]="href('top')" [attr.aria-label]="content.a11y.homeLink">
           <app-obie-mark />
           <span aria-hidden="true">OBIE</span>
         </a>
@@ -23,11 +26,12 @@ import { ThemeToggle } from './theme-toggle';
           <ul>
             @for (section of sections; track section.id) {
               <li>
-                <a [href]="'#' + section.id">{{ section.label }}</a>
+                <a [href]="href(section.id)">{{ section.label }}</a>
               </li>
             }
           </ul>
         </nav>
+        <app-language-switch class="lang" />
         <div class="actions">
           <app-theme-toggle />
           <a
@@ -46,6 +50,7 @@ import { ThemeToggle } from './theme-toggle';
 })
 export class SiteHeader {
   protected readonly content = inject(LANDING_CONTENT);
+  private readonly lang = inject(LANG);
 
   /** The sections listed in the navigation, in page order. */
   protected readonly sections = [
@@ -56,4 +61,9 @@ export class SiteHeader {
     this.content.getStarted,
     this.content.faq,
   ];
+
+  /** Link to a section of the home page in this page's language. */
+  protected href(id: string): string {
+    return sectionHref(this.lang, id);
+  }
 }

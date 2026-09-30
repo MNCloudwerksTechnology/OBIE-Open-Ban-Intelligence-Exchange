@@ -3,6 +3,8 @@ import { isPlatformBrowser } from '@angular/common';
 import { Meta, Title } from '@angular/platform-browser';
 
 import { SEO_CONTENT } from '../content/seo.content';
+import { DEFAULT_LANG, LANGS, OG_LOCALES, PAGE_PATHS, pageAt } from '../i18n/languages';
+import { LANG } from '../i18n/provide-i18n';
 
 /**
  * Origin written into the prerendered pages in place of the real one. The
@@ -49,8 +51,9 @@ const STRUCTURED_DATA_ID = 'structured-data';
 
 /**
  * Writes the head of the current page: title, description, canonical link,
- * robots, Open Graph and Twitter card tags and the JSON-LD. Every page calls
- * `apply` once; tags of a previous page that the new one lacks are removed.
+ * the links to the page in every language (`hreflang`), robots, Open Graph
+ * and Twitter card tags and the JSON-LD. Every page calls `apply` once; tags
+ * of a previous page that the new one lacks are removed.
  */
 @Injectable({ providedIn: 'root' })
 export class SeoService {
@@ -59,6 +62,7 @@ export class SeoService {
   private readonly meta = inject(Meta);
   private readonly content = inject(SEO_CONTENT);
   private readonly origin = inject(SITE_ORIGIN);
+  private readonly lang = inject(LANG);
 
   apply(page: PageMeta): void {
     const url = page.path === null ? null : this.absolute(page.path);
@@ -68,10 +72,15 @@ export class SeoService {
     this.setName('description', page.description);
     this.setName('robots', url === null ? 'noindex' : null);
     this.setCanonical(url);
+    this.setAlternates(page.path);
 
     this.setProperty('og:type', 'website');
     this.setProperty('og:site_name', this.content.siteName);
     this.setProperty('og:locale', this.content.locale);
+    this.meta.getTags('property="og:locale:alternate"').forEach((tag) => tag.remove());
+    for (const lang of LANGS.filter((other) => other !== this.lang)) {
+      this.meta.addTag({ property: 'og:locale:alternate', content: OG_LOCALES[lang] });
+    }
     this.setProperty('og:title', page.title);
     this.setProperty('og:description', page.description);
     this.setProperty('og:url', url);
@@ -121,6 +130,30 @@ export class SeoService {
       this.document.head.appendChild(link);
     }
     link.setAttribute('href', url);
+  }
+
+  /**
+   * One `<link rel="alternate" hreflang>` per language, and `x-default` for
+   * the default language, for pages that exist in every language.
+   */
+  private setAlternates(path: string | null): void {
+    const head = this.document.head;
+    head.querySelectorAll('link[rel="alternate"][hreflang]').forEach((link) => link.remove());
+    const page = path === null ? null : pageAt(path);
+    if (page === null) {
+      return;
+    }
+    const alternates: [string, string][] = [
+      ...LANGS.map((lang): [string, string] => [lang, PAGE_PATHS[page][lang]]),
+      ['x-default', PAGE_PATHS[page][DEFAULT_LANG]],
+    ];
+    for (const [hreflang, alternatePath] of alternates) {
+      const link = this.document.createElement('link');
+      link.setAttribute('rel', 'alternate');
+      link.setAttribute('hreflang', hreflang);
+      link.setAttribute('href', this.absolute(alternatePath));
+      head.appendChild(link);
+    }
   }
 
   private setStructuredData(objects: readonly object[]): void {

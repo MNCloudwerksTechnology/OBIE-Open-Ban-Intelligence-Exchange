@@ -7,8 +7,8 @@ import org.junit.jupiter.api.Test;
 class PrerenderedPagesTest {
 
   @Test
-  void listsEveryPrerenderedRouteExceptTheNotFoundPageHomeFirst() {
+  void listsEveryPrerenderedRouteExceptTheNotFoundPagesHomeFirst() {
     assertThat(PrerenderedPages.publicPaths("classpath:/prerendered-fixture/"))
-        .containsExactly("/", "/docs/guide", "/privacy");
+        .containsExactly("/", "/de", "/docs/guide", "/privacy");
   }
 }

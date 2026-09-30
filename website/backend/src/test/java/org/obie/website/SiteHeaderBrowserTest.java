@@ -7,13 +7,15 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.TestInstance;
 import org.junit.jupiter.api.TestInstance.Lifecycle;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
@@ -27,10 +29,11 @@ import org.testcontainers.utility.DockerImageName;
 
 /**
  * The site header in a real browser: Chromium (in a container) opens the packaged, prerendered home
- * page at phone, tablet and desktop widths in both themes. The navigation lists only the page
- * sections, its links share one baseline per row and one gap throughout, and on wide screens brand,
- * links and actions form a single row of the design height, the links on the baseline of "View on
- * GitHub".
+ * page in English and German at phone, tablet and desktop widths in both themes. The navigation
+ * lists only the page sections, its links share one baseline per row and one gap throughout, the
+ * actions (language switch, theme toggle, "View on GitHub") stay beside the brand without the page
+ * scrolling sideways, and on wide screens brand, links and actions form a single row of the design
+ * height, the links on the baseline of "View on GitHub".
  */
 @TestInstance(Lifecycle.PER_CLASS)
 class SiteHeaderBrowserTest extends IntegrationTest {
@@ -42,9 +45,21 @@ class SiteHeaderBrowserTest extends IntegrationTest {
 
   private static final Duration TIMEOUT = Duration.ofSeconds(30);
 
-  /** The section links, from the front end's content file, in page order. */
-  private static final List<String> SECTIONS =
-      List.of("The problem", "How it works", "Principles", "Status", "Get started", "FAQ");
+  /** The section links per language, from the front end's content files, in page order. */
+  private static final Map<String, List<String>> SECTIONS =
+      Map.of(
+          "en",
+          List.of("The problem", "How it works", "Principles", "Status", "Get started", "FAQ"),
+          "de",
+          List.of(
+              "Problem", "So funktioniert es", "Prinzipien", "Status", "Erste Schritte", "FAQ"));
+
+  /** The invitation to speak per language, which belongs to the footer, not the header. */
+  private static final Map<String, String> INVITATION =
+      Map.of("en", "Invite Markus to speak", "de", "Markus als Redner einladen");
+
+  /** The home page per language. */
+  private static final Map<String, String> HOME = Map.of("en", "/", "de", "/de");
 
   /** Subpixel rounding between boxes that line up. */
   private static final double TOLERANCE = 0.5;
@@ -65,8 +80,14 @@ class SiteHeaderBrowserTest extends IntegrationTest {
       const github = [...header.querySelector('a.github').childNodes]
         .find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
       const bar = header.querySelector('.bar');
+      const box = (selector) => header.querySelector(selector).getBoundingClientRect();
       return {
         text: header.textContent,
+        brandBottom: box('.brand').bottom,
+        actionsTop: box('.actions').top,
+        actionsRight: box('.actions').right,
+        viewportWidth: document.documentElement.clientWidth,
+        scrollWidth: document.documentElement.scrollWidth,
         links: [...header.querySelectorAll('nav a')].map((a) => {
           const box = a.getBoundingClientRect();
           return {label: a.textContent.trim(), baseline: textBottom(a), left: box.left, right: box.right};
@@ -105,17 +126,40 @@ class SiteHeaderBrowserTest extends IntegrationTest {
     }
   }
 
-  @ParameterizedTest(name = "{0} px, {1} theme")
-  @CsvSource({
-    "360, light", "360, dark", "768, light", "768, dark",
-    "1024, light", "1024, dark", "1440, light", "1440, dark"
-  })
-  void theNavigationListsOnlyTheSectionsOnOneBaselinePerRowWithOneGap(int width, String theme) {
-    Map<String, Object> header = open(width, theme);
+  static Stream<Arguments> everyWidth() {
+    return combinations(List.of(360, 768, 1024, 1440));
+  }
+
+  static Stream<Arguments> wideScreens() {
+    return combinations(List.of(1024, 1440));
+  }
+
+  private static Stream<Arguments> combinations(List<Integer> widths) {
+    return Stream.of("en", "de")
+        .flatMap(
+            lang ->
+                widths.stream()
+                    .flatMap(
+                        width ->
+                            Stream.of("light", "dark")
+                                .map(theme -> Arguments.of(width, theme, lang))));
+  }
+
+  @ParameterizedTest(name = "{0} px, {1} theme, {2}")
+  @MethodSource("everyWidth")
+  void theNavigationListsOnlyTheSectionsOnOneBaselinePerRowWithOneGap(
+      int width, String theme, String lang) {
+    Map<String, Object> header = open(width, theme, lang);
     List<Link> links = links(header);
 
-    assertThat(links).extracting(Link::label).containsExactlyElementsOf(SECTIONS);
-    assertThat((String) header.get("text")).doesNotContain("Invite Markus to speak");
+    assertThat(links).extracting(Link::label).containsExactlyElementsOf(SECTIONS.get(lang));
+    assertThat((String) header.get("text")).doesNotContain(INVITATION.get(lang));
+    // The actions fit beside the brand, and nothing pushes the page sideways.
+    assertThat(number(header.get("actionsTop"))).isLessThan(number(header.get("brandBottom")));
+    assertThat(number(header.get("actionsRight")))
+        .isLessThanOrEqualTo(number(header.get("viewportWidth")) + TOLERANCE);
+    assertThat(number(header.get("scrollWidth")))
+        .isLessThanOrEqualTo(number(header.get("viewportWidth")));
     List<Double> gaps = new ArrayList<>();
     for (List<Link> row : rows(links)) {
       double baseline = row.get(0).baseline();
@@ -130,10 +174,10 @@ class SiteHeaderBrowserTest extends IntegrationTest {
     assertThat(gaps).allSatisfy(gap -> assertThat(gap).isCloseTo(gaps.get(0), within(TOLERANCE)));
   }
 
-  @ParameterizedTest(name = "{0} px, {1} theme")
-  @CsvSource({"1024, light", "1024, dark", "1440, light", "1440, dark"})
-  void onWideScreensTheHeaderIsOneRowOfTheDesignHeight(int width, String theme) {
-    Map<String, Object> header = open(width, theme);
+  @ParameterizedTest(name = "{0} px, {1} theme, {2}")
+  @MethodSource("wideScreens")
+  void onWideScreensTheHeaderIsOneRowOfTheDesignHeight(int width, String theme, String lang) {
+    Map<String, Object> header = open(width, theme, lang);
     List<Link> links = links(header);
 
     assertThat(rows(links)).hasSize(1);
@@ -146,16 +190,16 @@ class SiteHeaderBrowserTest extends IntegrationTest {
   }
 
   /**
-   * Opens the home page {@code width} CSS pixels wide in {@code theme} and measures the header once
-   * the web fonts are in.
+   * Opens the home page in {@code lang}, {@code width} CSS pixels wide in {@code theme}, and
+   * measures the header once the web fonts are in.
    */
-  private Map<String, Object> open(int width, String theme) {
+  private Map<String, Object> open(int width, String theme, String lang) {
     ChromeOptions options = new ChromeOptions();
     options.setExperimentalOption(
         "mobileEmulation",
         Map.of("deviceMetrics", Map.of("width", width, "height", 900, "pixelRatio", 1)));
     driver = new RemoteWebDriver(browser.getSeleniumAddress(), options);
-    driver.get("http://host.testcontainers.internal:" + port + "/");
+    driver.get("http://host.testcontainers.internal:" + port + HOME.get(lang));
     // What the header's theme toggle does; nothing else writes data-theme.
     script("document.documentElement.setAttribute('data-theme', arguments[0])", theme);
     assertThat(script("return getComputedStyle(document.documentElement).colorScheme"))
