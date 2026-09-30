@@ -103,8 +103,13 @@ func engineWeight(n *Node, peerID string, _ time.Time) float64 {
 	return n.Weight(peerID)
 }
 
-// Run replays the trace t under spec through a new observer node.
+// Run replays the trace t under spec through a new observer node. The
+// trace must lie in the future (see worldStart and Trace.ShiftedTo).
 func Run(ctx context.Context, t *Trace, spec RunSpec, p ModelParams) (*Result, error) {
+	if now := time.Now(); t.Start.Before(now) {
+		return nil, fmt.Errorf("run %s: the trace starts at %s, before now: BadgerDB would expire its events by the wall clock",
+			spec, t.Start.Format(time.RFC3339))
+	}
 	return newRunner(t, spec, p, engineWeight).run(ctx)
 }
 

@@ -236,7 +236,7 @@ func streams(t *Trace, model Model, c cast, p ModelParams, seed uint64) []item {
 			members = append(members, s)
 		}
 	}
-	rng := rngOf(seed, string(model), 0)
+	rng := rngOf(seed, poisonStream(model), 0)
 	switch model {
 	case ModelNaive, ModelWhitewash:
 		for _, s := range members {
@@ -280,6 +280,21 @@ func (b *builder) add(it item) string {
 	it.id = b.ids.next(it.at)
 	b.items = append(b.items, it)
 	return it.id
+}
+
+// poisonStream names the random stream of a model's poison. Models that
+// differ only in what v0.1 ignores share one, so that their results differ
+// only by that: the coalitions by their ASNs, the whitewasher from the
+// naive poisoner by its new keys.
+func poisonStream(model Model) string {
+	switch model {
+	case ModelSybil1ASN, ModelSybilMASN:
+		return "sybil"
+	case ModelWhitewash:
+		return string(ModelNaive)
+	default:
+		return string(model)
+	}
 }
 
 // rngOf returns the generator of one part of a run with seed.

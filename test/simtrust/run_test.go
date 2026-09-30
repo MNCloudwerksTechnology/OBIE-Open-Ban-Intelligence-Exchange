@@ -153,3 +153,48 @@ func TestWhitewasherSwitchesKeys(t *testing.T) {
 		t.Errorf("neutralized %v after %v h, payoff %v", last[MetricNeutralizedShare], last[MetricNeutralizationHours], last[MetricWhitewashPayoff])
 	}
 }
+
+func TestRunRefusesThePast(t *testing.T) {
+	tr, p := smallWorld(t)
+	// The same trace some 75 years earlier.
+	const week = 7 * 24 * time.Hour
+	back := 3900 * week
+	past := *tr
+	past.Start = tr.Start.Add(-back)
+	past.Observations = nil
+	for _, o := range tr.Observations {
+		o.At = o.At.Add(-back)
+		past.Observations = append(past.Observations, o)
+	}
+	if _, err := Run(context.Background(), &past, RunSpec{Model: ModelHonest, Profile: ProfileDefault, Seed: 1}, p); err == nil {
+		t.Error("a trace in the past was run")
+	}
+	shifted := past.ShiftedTo(worldStart)
+	if shifted.Start.Before(worldStart) || shifted.Start.Sub(past.Start)%week != 0 {
+		t.Errorf("shifted from %s to %s, want whole weeks to %s or later", past.Start, shifted.Start, worldStart)
+	}
+	for i, o := range shifted.Observations {
+		if o.At.Sub(shifted.Start) != tr.Observations[i].At.Sub(tr.Start) {
+			t.Fatalf("observation %d is %s into the shifted trace, %s into the original", i, o.At.Sub(shifted.Start), tr.Observations[i].At.Sub(tr.Start))
+		}
+	}
+	if tr.ShiftedTo(testStart) != tr {
+		t.Error("a trace in the future was moved")
+	}
+}
+
+// TestCoalitionsDifferOnlyInASNs checks that the two coalitions poison
+// alike: v0.1 does not read publisher.asn, so their results are the same.
+func TestCoalitionsDifferOnlyInASNs(t *testing.T) {
+	t.Parallel()
+	tr, p := smallWorld(t)
+	one := runOf(t, tr, RunSpec{Model: ModelSybil1ASN, Fraction: 0.3, Profile: ProfileDefault, Seed: 21}, p)
+	many := runOf(t, tr, RunSpec{Model: ModelSybilMASN, Fraction: 0.3, Profile: ProfileDefault, Seed: 21}, p)
+	for h := range one.Hours {
+		for i := range numMetrics {
+			if x, y := one.Hours[h][WindowCumulative][i], many.Hours[h][WindowCumulative][i]; !near(x, y) {
+				t.Fatalf("hour %d, %s: %v in one ASN, %v in several", h, Metric(i), x, y)
+			}
+		}
+	}
+}

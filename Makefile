@@ -153,6 +153,20 @@ resources: build ## Measure one node's memory, CPU and disk in a 3-node mesh: id
 	$(GO) test -tags resources -run '^TestResources$$' -count=1 -v -timeout 0 ./test/resources \
 		-resources.bin=$(BIN_DIR) -resources.verdicts=$(RESOURCESVERDICTS) -resources.rate=$(RESOURCESRATE)
 
+# The trust simulation (ADR 0034): SCENARIO is baseline, reduced (the one CI
+# runs) or one behavior model; SEEDS the number of seeds; TRACE a trace file
+# to replay instead of the synthetic world; OUT the report's directory.
+sim-trust: SCENARIO ?= reduced
+sim-trust: SEEDS ?= 20
+sim-trust: TRACE ?=
+sim-trust: OUT ?= $(BIN_DIR)/sim-trust/$(SCENARIO)
+
+.PHONY: sim-trust
+sim-trust: ## Run the trust simulation SCENARIO (default reduced) over SEEDS seeds, report to OUT; not part of `make ci`
+	$(GO) test -tags simtrust -run '^TestSimTrust$$' -count=1 -v -timeout 0 ./test/simtrust \
+		-simtrust.scenario='$(SCENARIO)' -simtrust.seeds='$(SEEDS)' -simtrust.trace='$(TRACE)' \
+		-simtrust.out='$(OUT)' -simtrust.version='$(VERSION)'
+
 .PHONY: ci
 ci: fmt-check vet lint lint-workflows lint-md test vuln ## Run every check the CI gate runs
 

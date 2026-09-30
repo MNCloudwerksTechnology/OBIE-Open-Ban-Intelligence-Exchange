@@ -244,11 +244,14 @@ and cumulatively over [0, h+1), for every hour of the run.
     `careful`, `onoff`, `whitewash`, `sybil-1asn`, `sybil-masn`, `spies`,
     `suppressor`.
   - `reduced`: a 36-hour world of 11 operators at 10 attackers per hour
-    (newcomers at 6 h, defection at 12 h, P = 12 h), honest-only and four
-    models at 20 and 40 %, `default` and `lab`, 20 seeds. It asserts
-    what v0.1 guarantees: two trusted remotes at 0.8 never ban under
-    `default` and do under `lab`; weights never move; poisoners cause
-    false bans and are never neutralized.
+    (newcomers at 6 h, defection at 12 h, P = 12 h), honest-only and every
+    model at 20 and 40 %, `default` and `lab`, 20 seeds. It asserts what
+    v0.1 guarantees: in an honest-only run, an attacker the observer did
+    not ban itself is banned iff as many trusted remotes as a ban needs
+    reported it at the same time (three at 0.8 under `default`, two under
+    `lab`); weights never move; naive poisoners, Sybil coalitions and
+    spies cause false bans and are never neutralized; suppressors lower
+    the recall.
 - The harness is the package `test/simtrust`; its entry test carries the
   build tag `simtrust`, like `make soak`. Runs are spread over
   GOMAXPROCS workers. Its other tests run with `make test`.

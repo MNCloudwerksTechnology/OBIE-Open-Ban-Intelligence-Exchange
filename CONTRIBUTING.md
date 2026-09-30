@@ -31,6 +31,7 @@ first — it is the binding technical baseline.
 | `make test-privileged` | Tests including the `privileged` build tag (needs root)          |
 | `make fuzz`            | Every fuzz target for `FUZZTIME` each (default `30s`)            |
 | `make soak`            | The soak test: 3 nodes, 50 events/s for 30 min (not in CI)       |
+| `make sim-trust`       | The trust simulation's `SCENARIO` (default `reduced`, as in CI)  |
 | `make ci`              | fmt-check + vet + lint + lint-workflows + lint-md + test + vuln  |
 | `make clean`           | Removes `./bin/` including installed tools                       |
 
@@ -65,6 +66,10 @@ is a byte-identical copy for the public GitHub mirror — change both together;
   the [getting-started tutorial](documentation/getting-started.md) runs on
   a systemd host in a privileged container, against the release built from
   the change, and prints what the page shows). Nothing is pushed.
+- **trust simulation (reduced)** — `make sim-trust SCENARIO=reduced`: the
+  reduced scenario of the [trust simulation](#trust-simulation), 20 seeds,
+  checked against what v0.1's static weights guarantee; the report is
+  uploaded as an artifact.
 - **website** — `make -C website ci` for the website in `website/` (see
   [`website/README.md`](website/README.md)) and `make -C website smoke`
   (builds the website image and checks it in its production compose stack;
@@ -309,6 +314,37 @@ make soak SOAKTIME=15m SOAKRATE=100
 
 Record the results of a full run in
 [`documentation/operations/performance.md`](documentation/operations/performance.md).
+
+## Trust simulation
+
+`make sim-trust SCENARIO=…` runs `TestSimTrust` in `test/simtrust` (build
+tag `simtrust`, so never part of `make test`): it replays a trace of
+Fail2Ban bans and the verdicts of honest and adversarial publishers through
+the real store, allow-list and decision engine of one node in virtual time,
+and writes a report of every metric with its 95 % confidence interval over
+`SEEDS` seeds (default 20) to `OUT` (default `bin/sim-trust/<scenario>`).
+[ADR 0034](documentation/adr/0034-trust-simulation-by-trace-replay.md)
+defines the world, the behavior models and the metrics. The scenarios:
+
+- `reduced` (the default): a small world in about 20 seconds on four cores.
+  It also checks what v0.1's static weights guarantee, so CI runs it.
+- `baseline`: every model at 10, 20, 30 and 40 % in the default, lab and
+  allow-list settings, the scenario of the v0.1 trust baseline.
+- `honest`, `naive`, `careful`, `onoff`, `whitewash`, `sybil-1asn`,
+  `sybil-masn`, `spies`, `suppressor`: one model of the baseline.
+
+A work package that changes how the node weighs its publishers runs the
+scenarios before and after its change and compares its report with the
+baseline:
+
+```sh
+make sim-trust SCENARIO=baseline OUT=/tmp/after
+```
+
+`TRACE=<file>` replays a recorded trace instead of the synthetic world.
+`go run ./test/simtrust/cmd/trace-import` turns operators' Fail2Ban logs
+into one, with every address pseudonymized; see ADR 0034 before you use
+real logs.
 
 ## Releasing
 

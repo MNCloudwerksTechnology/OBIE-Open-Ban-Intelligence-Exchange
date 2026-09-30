@@ -88,6 +88,25 @@ type Trace struct {
 	Observations []Observation
 }
 
+// ShiftedTo returns the trace moved later by whole weeks, so that it
+// starts at from or after it, with its weekdays and times of day kept; t
+// itself if it does.
+func (t *Trace) ShiftedTo(from time.Time) *Trace {
+	if !t.Start.Before(from) {
+		return t
+	}
+	const week = 7 * 24 * time.Hour
+	by := (from.Sub(t.Start) + week - 1) / week * week
+	out := *t
+	out.Start = t.Start.Add(by)
+	out.Observations = make([]Observation, len(t.Observations))
+	for i, o := range t.Observations {
+		o.At = o.At.Add(by)
+		out.Observations[i] = o
+	}
+	return &out
+}
+
 // End returns the end of the trace.
 func (t *Trace) End() time.Time {
 	return t.Start.Add(time.Duration(t.Hours) * time.Hour)
