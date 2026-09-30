@@ -79,6 +79,37 @@ func (s NodeSpec) Config() (config.Config, error) {
 	return cfg, nil
 }
 
+// maxRemotes bounds the remotes RemotesNeeded tries.
+const maxRemotes = 64
+
+// RemotesNeeded returns how many fully trusted remotes with a ban verdict
+// at confidence on one address the decision engine's rule
+// (decision.Evaluate) needs to block it under profile p; 0 if no number
+// up to maxRemotes does. The harness asks the rule rather than computing
+// it.
+func RemotesNeeded(p Profile, confidence float64) (int, error) {
+	keys := make([]string, maxRemotes)
+	for i := range keys {
+		keys[i] = NewKey(0, fmt.Sprintf("remote-%02d", i)).PeerID
+	}
+	cfg, err := NodeSpec{Profile: p, Trusted: keys}.Config()
+	if err != nil {
+		return 0, err
+	}
+	policy := decision.NewPolicy(NewKey(0, "observer").PeerID, cfg.Trust, cfg.Decision)
+	ids := idSource{rng: rngOf(0, "remotes", 0)}
+	addr := netip.MustParseAddr("2001:db8::1")
+	now := worldStart
+	var verdicts []*obieproto.Event
+	for k := 1; k <= maxRemotes; k++ {
+		verdicts = append(verdicts, newVerdict(ids.next(now), publisherOf(keys[k-1], 0), addr, now, confidence, time.Hour))
+		if decision.Evaluate(indicatorOf(addr), verdicts, policy, now).State == decision.StateBlock {
+			return k, nil
+		}
+	}
+	return 0, nil
+}
+
 // virtualClock is the time of a run.
 type virtualClock struct {
 	mu sync.Mutex

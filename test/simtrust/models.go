@@ -323,12 +323,7 @@ func newWorldIndex(t *Trace) *worldIndex {
 	}
 	for _, a := range t.Addresses {
 		w.class[a.Addr] = a.Class
-		// An address's network is its ASN, or its /48 if the ASN is
-		// unknown, as in an imported trace.
-		w.network[a.Addr] = fmt.Sprint(a.ASN)
-		if a.ASN == 0 {
-			w.network[a.Addr] = netip.PrefixFrom(a.Addr, 48).Masked().String()
-		}
+		w.network[a.Addr] = networkOf(a)
 		if !a.Class.Benign() {
 			continue
 		}
@@ -341,6 +336,20 @@ func newWorldIndex(t *Trace) *worldIndex {
 		}
 	}
 	return w
+}
+
+// networkOf returns the network of an address: its ASN, or, if that is
+// unknown as in an imported trace, its original /24 (IPv4) or /48 (IPv6),
+// which the prefix-preserving pseudonym keeps.
+func networkOf(a Address) string {
+	switch {
+	case a.ASN != 0:
+		return fmt.Sprint(a.ASN)
+	case pseudoV4.Contains(a.Addr):
+		return netip.PrefixFrom(a.Addr, pseudoV4.Bits()+24).Masked().String()
+	default:
+		return netip.PrefixFrom(a.Addr, pseudoV6.Bits()+48).Masked().String()
+	}
 }
 
 // isPublished reports whether a is in a published range.

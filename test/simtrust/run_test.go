@@ -28,9 +28,10 @@ func runOf(t *testing.T, tr *Trace, spec RunSpec, p ModelParams) *Metrics {
 }
 
 // TestRunKeepsV01Invariants checks what v0.1 guarantees in a whole run:
-// an attacker that at most two trusted remotes reported at the same time
-// is banned under the lab's threshold, never under the default one, unless
-// the observer reported it itself; three always ban; weights never move.
+// an attacker on which exactly two trusted remotes, and never more, had
+// verdicts at the same time is banned under the lab's threshold, never
+// under the default one, unless the observer reported it itself; three
+// always ban; weights never move.
 func TestRunKeepsV01Invariants(t *testing.T) {
 	t.Parallel()
 	tr, p := smallWorld(t)

@@ -156,6 +156,21 @@ func TestNeutralizationAndPayoff(t *testing.T) {
 	}
 }
 
+// TestCausedWhenThePoisonCounts checks that a false ban that poison joins
+// later is caused in the hour the poison counted, not when the ban began.
+func TestCausedWhenThePoisonCounts(t *testing.T) {
+	r := handResult()
+	r.Episodes[1].Start, r.Episodes[1].Contributors[0].At = at(0, 5), at(0, 5)
+	r.Episodes[1].Contributors[1].At = at(2, 20)
+	m := Measure(r)
+	if h0, h2 := m.Hours[0][WindowHour][MetricFalseBansBeforeNeutralization], m.Hours[2][WindowHour][MetricFalseBansBeforeNeutralization]; h0 != 0 || h2 != 1 {
+		t.Errorf("caused false bans in hours 0 and 2: %v and %v, want 0 and 1", h0, h2)
+	}
+	if got := m.Hours[0][WindowHour][MetricFalseBans]; got != 1 {
+		t.Errorf("false bans in hour 0 = %v, want 1: the ban began then", got)
+	}
+}
+
 func TestNewcomerConvergence(t *testing.T) {
 	r := handResult()
 	r.Cast.roles[1] = RoleNewcomer

@@ -53,7 +53,9 @@ against ground truth, and publishes the v0.1 baseline.
   `Options.Now` of store and engine. The adapter delivers each event with
   `store.Put` and evaluates it at once with `Engine.Flush`, so every event
   is decided on its own and a run is deterministic. Every 5 virtual
-  minutes it calls `store.Sweep`, as the node's sweep does. The background
+  minutes it calls `store.Sweep`; `obied` sweeps every minute, so a ban
+  whose score falls when one of its verdicts expires may last up to 5
+  minutes longer than on a node. The background
   timers of store and engine are set to 24 hours of wall time, so they
   never fire during a run. The harness does not re-implement a rule of
   the decision or the allow-list.
@@ -151,14 +153,14 @@ The first two slots are *newcomers*: they join at hour 24. Adversaries
 
 | Model | What it does from its defection |
 |---|---|
-| honest | Reports each of its operator's bans: confidence 0.8, TTL = bantime. 1 % of its reports name a CDN edge instead, as a reverse proxy that logs the CDN's address would. Every adversary does this too, as camouflage. |
+| honest | Reports each of its operator's bans: confidence 0.8, TTL = bantime. 1 % of its reports name a CDN edge instead, as a reverse proxy that logs the CDN's address would. The observer reports its own bans alike, and every adversary does too, as camouflage. |
 | naive | Also reports victims from a pool of 100 benign addresses of any class, 20 per hour, confidence 1.0, TTL 7 days. |
 | careful | Like naive, but the pool avoids the published ranges (customers and NAT addresses only), 2 per hour, confidence 0.8, TTL 1 day. |
 | onoff | Careful poisoning at 8 per hour with a TTL of 1 hour, during the first D·P of every period P (P = 24 h, D = 0.25); honest otherwise. |
 | whitewash | Naive poisoning. Once its key has lost its weight, it waits an hour and goes on under a new key that no trust entry lists. |
 | sybil-1asn, sybil-masn | All adversaries are one coalition. Twice an hour it picks a careful-pool victim, and every member reports it within 2 minutes (confidence 0.8, TTL 1 day). Their `publisher.asn` is one ASN, or one of m = 3. |
 | spies | Half the adversaries (rounded up) poison like naive at 4 per hour with a TTL of 1 day; the others stay honest and corroborate each poison verdict within 1–10 minutes (confidence 0.8). EigenTrust's threat model D. |
-| suppressor | Shields the attackers of a third of the attackers' networks (their ASNs; /48s in an imported trace): of its bans of them, half are never published and half are revoked after 1–5 minutes. |
+| suppressor | Shields the attackers of a third of the attackers' networks (their ASNs; in an imported trace, their original /24s or /48s): of its bans of them, half are never published and half are revoked after 1–5 minutes. |
 
 Every event carries its publisher's `publisher.asn`, although v0.1 does
 not read it, so that #1777 can use it.
@@ -206,8 +208,8 @@ and cumulatively over [0, h+1), for every hour of the run.
   share neutralized is reported with it.
 - **False bans caused before neutralization.** False episodes to which a
   malicious verdict of a key not yet neutralized contributed, at the
-  start or an update. An adversary's honest reports, e.g. of a shared
-  NAT address, do not make it the cause.
+  start or an update, counted when it first did. An adversary's honest
+  reports, e.g. of a shared NAT address, do not make it the cause.
 - **Honest publishers' mean weight** as a fraction of the ceiling, over
   the 5-minute probes in the window, for the honest publishers that
   have joined.
@@ -215,7 +217,7 @@ and cumulatively over [0, h+1), for every hour of the run.
   weight first reaches 90 % of the ceiling, restricted like
   neutralization.
 - **Whitewashing payoff.** The false bans a whitewasher's malicious
-  verdicts contributed to, over all its keys, divided by the number of
+  verdicts caused, over all its keys, divided by the number of
   keys it burned (at least 1). A key is burned when its weight falls to
   0 after it was above 0; a key that was never trusted is not worth
   abandoning.
@@ -269,7 +271,9 @@ and cumulatively over [0, h+1), for every hour of the run.
   a result.
 - The report is `README.md` plus `summary.csv` (every metric at the end,
   cumulatively), `hourly.csv.gz` (every metric in every hour, within the
-  hour and cumulatively), `feeds.csv` and `corroboration.csv`. Its header
+  hour and cumulatively), `feeds.csv` (the feed metrics by role),
+  `publishers.csv.gz` (those of every publisher key of every run) and
+  `corroboration.csv`. Its header
   names the report format (1), the OBIE version, the scenario, the seeds
   and the trace; its findings are computed, not written by hand. The
   v0.1 baseline is committed under `documentation/validation/`.

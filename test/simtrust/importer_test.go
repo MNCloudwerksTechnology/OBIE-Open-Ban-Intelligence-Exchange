@@ -247,3 +247,54 @@ func TestRunImport(t *testing.T) {
 		}
 	}
 }
+
+// TestImportFillsSmallRanges checks that a published range too small for
+// the synthetic population gets what fits, and the import ends.
+func TestImportFillsSmallRanges(t *testing.T) {
+	benign, err := ReadBenignRanges(strings.NewReader("66.249.64.0/27 crawler\n192.0.2.1/32 cdn\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	logs := []OperatorLog{
+		{Operator{Name: "observer", Bantime: time.Hour}, strings.NewReader(observerLog)},
+		{Operator{Name: "publisher", Bantime: time.Hour}, strings.NewReader(publisherLog)},
+	}
+	tr, err := ImportFail2Ban(logs, benign, testPseudonymizer(t), time.UTC, DefaultWorld(), 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[Class]int{}
+	for _, a := range tr.Addresses {
+		counts[a.Class]++
+	}
+	// A /27 has 31 addresses besides its own; a /32 has none.
+	if counts[ClassCrawler] != 31 || counts[ClassCDN] != 0 {
+		t.Errorf("%d crawlers and %d CDN edges, want 31 and 0", counts[ClassCrawler], counts[ClassCDN])
+	}
+}
+
+// TestNetworksOfImportedAddresses checks that an imported address, whose
+// ASN is unknown, belongs to the network of its original /24 or /48.
+func TestNetworksOfImportedAddresses(t *testing.T) {
+	pz := testPseudonymizer(t)
+	network := func(s string) string {
+		return networkOf(Address{Addr: pz.Addr(netip.MustParseAddr(s)), Class: ClassAttacker})
+	}
+	for _, tt := range []struct {
+		a, b string
+		same bool
+	}{
+		{"198.51.100.7", "198.51.100.200", true},
+		{"198.51.100.7", "198.51.101.7", false},
+		{"203.0.113.1", "8.8.8.8", false},
+		{"2a00:1450:4001::1", "2a00:1450:4001:82a::200e", true},
+		{"2a00:1450:4001::1", "2a00:1450:4002::1", false},
+	} {
+		if got := network(tt.a) == network(tt.b); got != tt.same {
+			t.Errorf("%s and %s in one network: %v (%s, %s), want %v", tt.a, tt.b, got, network(tt.a), network(tt.b), tt.same)
+		}
+	}
+	if got := networkOf(Address{Addr: netip.MustParseAddr("2001:db8:5::1"), ASN: 64600}); got != "64600" {
+		t.Errorf("network with an ASN = %q, want the ASN", got)
+	}
+}

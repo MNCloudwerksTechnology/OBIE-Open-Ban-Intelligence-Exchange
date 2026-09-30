@@ -148,8 +148,14 @@ func complete(t *Trace, p WorldParams, seed uint64) {
 			g.addPublished(class, owners, ranges, hosts)
 			return
 		}
-		for range owners * ranges * hosts {
-			g.add(g.randomIn(published[g.rng.IntN(len(published))]), class, 0)
+		// Small ranges hold fewer addresses than wanted: the draws are
+		// bounded, and the class gets what fits.
+		want := owners * ranges * hosts
+		for tries := 0; want > 0 && tries < 64*owners*ranges*hosts; tries++ {
+			if a, ok := g.randomIn(published[g.rng.IntN(len(published))]); ok {
+				g.add(a, class, 0)
+				want--
+			}
 		}
 	}
 	fill(ClassCDN, p.CDNs, p.RangesPerCDN, p.EdgesPerRange)
@@ -163,18 +169,16 @@ func complete(t *Trace, p WorldParams, seed uint64) {
 	sortAddresses(t.Addresses)
 }
 
-// randomIn returns an unused random address inside the IPv6 range r, as
-// every pseudonymized range is.
-func (g *worldGen) randomIn(r netip.Prefix) netip.Addr {
-	for {
-		b := r.Addr().As16()
-		for i := r.Bits(); i < 128; i++ {
-			b[i/8] |= byte(g.rng.IntN(2)) << (7 - i%8) // #nosec G115 -- 0 or 1.
-		}
-		if a := netip.AddrFrom16(b); !g.used[a] && a != r.Addr() {
-			return a
-		}
+// randomIn draws a random address inside the IPv6 range r, as every
+// pseudonymized range is; ok is false if it is in use or the range's own
+// address.
+func (g *worldGen) randomIn(r netip.Prefix) (netip.Addr, bool) {
+	b := r.Addr().As16()
+	for i := r.Bits(); i < 128; i++ {
+		b[i/8] |= byte(g.rng.IntN(2)) << (7 - i%8) // #nosec G115 -- 0 or 1.
 	}
+	a := netip.AddrFrom16(b)
+	return a, !g.used[a] && a != r.Addr()
 }
 
 // RunImport is the trace-import command: it reads the operators' Fail2Ban

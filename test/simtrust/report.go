@@ -23,6 +23,7 @@ const (
 	summaryFile       = "summary.csv"
 	hourlyFile        = "hourly.csv.gz"
 	feedsFile         = "feeds.csv"
+	publishersFile    = "publishers.csv.gz"
 	corroborationFile = "corroboration.csv"
 )
 
@@ -47,6 +48,7 @@ func WriteReport(dir string, rep *Report, info ReportInfo) error {
 		{feedsFile, writeFeeds},
 		{corroborationFile, writeCorroboration},
 		{hourlyFile, writeHourly},
+		{publishersFile, writePublishers},
 		{reportFile, func(w io.Writer, rep *Report) error { return writeMarkdown(w, rep, info) }},
 	}
 	for _, f := range files {
@@ -102,11 +104,45 @@ func writeSummary(w io.Writer, rep *Report) error {
 	})
 }
 
+// writeGzipped writes the output of write gzipped, without name and
+// time, so that the same report gives the same file.
+func writeGzipped(w io.Writer, write func(io.Writer) error) error {
+	gz := gzip.NewWriter(w)
+	if err := write(gz); err != nil {
+		return err
+	}
+	return gz.Close()
+}
+
+// writePublishers writes the feed metrics of every publisher key of every
+// run, gzipped.
+func writePublishers(w io.Writer, rep *Report) error {
+	return writeGzipped(w, func(w io.Writer) error {
+		header := []string{"model", "fraction", "profile", "seed", "slot", "key", "role", "volume", "exclusive", "latency_minutes", "bound", "accuracy"}
+		return writeCSV(w, header, func(add func(...[]string) error) error {
+			for i, a := range rep.Aggregates {
+				for seed, pubs := range rep.Publishers[i] {
+					for _, p := range pubs {
+						if err := add(configFields(a.Config), []string{strconv.Itoa(seed + 1), strconv.Itoa(p.Slot), strconv.Itoa(p.Key), string(p.Role),
+							csvFloat(p.Volume), csvFloat(p.Exclusive), csvFloat(p.LatencyMinutes), csvFloat(p.Bound), csvFloat(p.Accuracy)}); err != nil {
+							return err
+						}
+					}
+				}
+			}
+			return nil
+		})
+	})
+}
+
 // writeHourly writes every metric of every configuration in both windows
 // of every hour, gzipped; a metric defined in no seed is left out.
 func writeHourly(w io.Writer, rep *Report) error {
-	gz := gzip.NewWriter(w) // no name, no time: the same report gives the same file
-	err := writeCSV(gz, []string{"model", "fraction", "profile", "hour", "window", "metric", "n", "mean", "ci_low", "ci_high"}, func(add func(...[]string) error) error {
+	return writeGzipped(w, func(gz io.Writer) error { return writeHourlyCSV(gz, rep) })
+}
+
+func writeHourlyCSV(gz io.Writer, rep *Report) error {
+	return writeCSV(gz, []string{"model", "fraction", "profile", "hour", "window", "metric", "n", "mean", "ci_low", "ci_high"}, func(add func(...[]string) error) error {
 		for _, a := range rep.Aggregates {
 			for h := range a.Hours {
 				for win := range numWindows {
@@ -124,10 +160,6 @@ func writeHourly(w io.Writer, rep *Report) error {
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return gz.Close()
 }
 
 // feedFields are the feed metrics by name.

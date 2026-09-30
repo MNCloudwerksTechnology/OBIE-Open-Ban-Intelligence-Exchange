@@ -35,6 +35,9 @@ type Report struct {
 	// Hours is the length of the runs.
 	Hours      int
 	Aggregates []Aggregate
+	// Publishers holds the feed metrics of every publisher key of every
+	// run, by configuration and seed.
+	Publishers [][][]PublisherFeed
 	// Runs counts the runs, Cached those taken from the cache; Wall is how
 	// long the others took together.
 	Runs, Cached int
@@ -157,6 +160,11 @@ feed:
 	rep.Runs, rep.Wall = len(sc.Configs)*opts.Seeds, time.Since(began)
 	for i, c := range sc.Configs {
 		rep.Aggregates = append(rep.Aggregates, aggregate(c, metrics[i], rep.Hours))
+		perSeed := make([][]PublisherFeed, opts.Seeds)
+		for seed, m := range metrics[i] {
+			perSeed[seed] = m.Publishers
+		}
+		rep.Publishers = append(rep.Publishers, perSeed)
 	}
 	return rep, nil
 }

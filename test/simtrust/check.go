@@ -11,7 +11,7 @@ import "fmt"
 //     had verdicts on it at the same time;
 //   - no defector is ever neutralized;
 //   - naive poisoners, Sybil coalitions and spies at the largest fraction
-//     cause false bans in every setting;
+//     cause false bans: the lower bound of the interval is above 0;
 //   - suppressors at the largest fraction lower the recall.
 func CheckV01(rep *Report) []string {
 	var out []string
@@ -33,11 +33,15 @@ func CheckV01(rep *Report) []string {
 		}
 		switch {
 		case a.Model == ModelHonest:
-			need, _, _ := minRemotes(a.Profile, rep.Scenario.Models.HonestConfidence)
+			need, err := RemotesNeeded(a.Profile, rep.Scenario.Models.HonestConfidence)
+			if err != nil {
+				fail("%s: %v", a.Config, err)
+				continue
+			}
 			for b := 1; b < supportBuckets; b++ {
 				c := a.Corroboration[b][0]
 				want := 0
-				if b >= need {
+				if need > 0 && b >= need {
 					want = c.TotalAttackers
 				}
 				if c.Total != want {

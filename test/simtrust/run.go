@@ -10,8 +10,8 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
-// probeInterval is how often in virtual time a run sweeps the store, as
-// obied does every minute at most, and reads the weights (ADR 0034).
+// probeInterval is how often in virtual time a run sweeps the store and
+// reads the weights; obied sweeps every minute (ADR 0034).
 const probeInterval = 5 * time.Minute
 
 // convergedShare of the ceiling is the weight at which a newcomer has

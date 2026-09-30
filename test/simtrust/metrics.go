@@ -33,7 +33,8 @@ const (
 )
 
 // metricInfo describes a metric: its CSV name, its title, and whether it
-// has a value within one hour.
+// has a value within one hour; the others are durations per key, reported
+// cumulatively only.
 type metricInfo struct {
 	name, title string
 	hourly      bool
@@ -62,10 +63,6 @@ func (m Metric) String() string { return metricInfos[m].name }
 
 // Title is the metric's name in a report.
 func (m Metric) Title() string { return metricInfos[m].title }
-
-// Hourly reports whether the metric has a value within one hour; the
-// others are durations per key, reported cumulatively only.
-func (m Metric) Hourly() bool { return metricInfos[m].hourly }
 
 // Window is the time a value covers.
 type Window int
@@ -118,14 +115,24 @@ type Feed struct {
 	Bound, Accuracy float64
 }
 
+// PublisherFeed are the feed metrics of one publisher key: the Key-th
+// key (from 0) of slot Slot, which has Role.
+type PublisherFeed struct {
+	Slot, Key int
+	Role      Role
+	Feed
+}
+
 // Metrics are the metrics of one run.
 type Metrics struct {
 	Spec RunSpec
 	// Hours holds the values of hour h in both windows.
 	Hours         [][numWindows]Values
 	Corroboration Corroboration
-	// Feeds are the mean feed metrics of the publishers of each role.
-	Feeds map[Role]Feed
+	// Feeds are the mean feed metrics of the publishers of each role;
+	// Publishers those of every publisher key.
+	Feeds      map[Role]Feed
+	Publishers []PublisherFeed
 }
 
 // measure holds what Measure derives from a result.
@@ -166,7 +173,7 @@ func Measure(r *Result) *Metrics {
 	m.weights(out)
 	m.calibration(out)
 	out.Corroboration = m.corroboration()
-	out.Feeds = m.feeds()
+	out.Feeds, out.Publishers = m.feeds()
 	return out
 }
 
@@ -233,10 +240,9 @@ func (m *measure) bans(out *Metrics) {
 		for h := m.hourOf(e.Start); h < m.hours && m.endOf(h-1).Before(e.End); h++ {
 			banHours[h] += overlap(e.Start, e.End, m.endOf(h-1), m.endOf(h)).Hours()
 		}
-		h := m.hourOf(e.Start)
-		falseByHour[h]++
-		if m.causedByDefector(e) {
-			causedByHour[h]++
+		falseByHour[m.hourOf(e.Start)]++
+		if at, ok := m.causedAt(e, func(keyRecord) bool { return true }); ok {
+			causedByHour[m.hourOf(at)]++
 		}
 		m.falseEp = append(m.falseEp, e)
 	}
@@ -314,20 +320,22 @@ func ratio(a, b int) float64 {
 	return float64(a) / float64(b)
 }
 
-// causedByDefector reports whether a malicious verdict of a key that was
-// not neutralized yet counted in the false ban e. An adversary's honest
-// reports, e.g. of a shared NAT address, do not make it the cause.
-func (m *measure) causedByDefector(e Episode) bool {
+// causedAt returns when a malicious verdict of a key that of selects, not
+// neutralized yet, first counted in the false ban e: at its start or an
+// update. An adversary's honest reports, e.g. of a shared NAT address, do
+// not make it a cause.
+func (m *measure) causedAt(e Episode, of func(keyRecord) bool) (time.Time, bool) {
+	var first time.Time
 	for _, c := range e.Contributors {
 		i, ok := m.keyOf[c.PeerID]
-		if !ok || !m.r.malicious[c.EventID] {
+		if !ok || !m.r.malicious[c.EventID] || !of(m.r.keys[i]) {
 			continue
 		}
-		if k := &m.r.keys[i]; k.neutralized.IsZero() || c.At.Before(k.neutralized) {
-			return true
+		if k := &m.r.keys[i]; (k.neutralized.IsZero() || c.At.Before(k.neutralized)) && (first.IsZero() || c.At.Before(first)) {
+			first = c.At
 		}
 	}
-	return false
+	return first, !first.IsZero()
 }
 
 // defectors computes the neutralization of the defecting keys, the
@@ -386,8 +394,8 @@ func countIn(times []time.Time, from, to time.Time) int {
 }
 
 // payoff is the whitewashers' mean false bans per burned key until end:
-// the false bans that a malicious verdict of any of an actor's keys
-// counted in, over the keys it burned, at least 1.
+// the false bans that a malicious verdict of any of an actor's keys caused
+// before the key was neutralized, over the keys it burned, at least 1.
 func (m *measure) payoff(end time.Time) float64 {
 	var sum float64
 	actors := 0
@@ -404,10 +412,7 @@ func (m *measure) payoff(end time.Time) float64 {
 		}
 		bans := 0
 		for _, e := range m.falseEp {
-			if e.Start.Before(end) && slices.ContainsFunc(e.Contributors, func(c Contribution) bool {
-				i, ok := m.keyOf[c.PeerID]
-				return ok && m.r.keys[i].actor == actor && m.r.malicious[c.EventID]
-			}) {
+			if at, ok := m.causedAt(e, func(k keyRecord) bool { return k.actor == actor }); ok && at.Before(end) {
 				bans++
 			}
 		}
@@ -604,9 +609,8 @@ func merge(ivs []interval) []interval {
 	return out
 }
 
-// feeds computes the feed metrics of every key and averages them by
-// role.
-func (m *measure) feeds() map[Role]Feed {
+// feeds computes the feed metrics of every key, and their means by role.
+func (m *measure) feeds() (map[Role]Feed, []PublisherFeed) {
 	first := make([]map[netip.Addr]time.Time, len(m.r.keys))
 	earliest := map[netip.Addr]time.Time{}
 	reporters := map[netip.Addr]int{}
@@ -624,7 +628,11 @@ func (m *measure) feeds() map[Role]Feed {
 		}
 	}
 	sums := map[Role]*[5]meanOf{}
+	var publishers []PublisherFeed
+	keysOf := map[int]int{}
 	for i, k := range m.r.keys {
+		n := keysOf[k.actor]
+		keysOf[k.actor]++
 		if len(first[i]) == 0 {
 			continue
 		}
@@ -643,23 +651,24 @@ func (m *measure) feeds() map[Role]Feed {
 				attackers++
 			}
 		}
-		n := len(first[i])
+		volume := float64(len(first[i]))
+		f := Feed{Volume: volume, Exclusive: float64(exclusive) / volume, LatencyMinutes: median(delays),
+			Bound: 1 - float64(inRanges)/volume, Accuracy: float64(attackers) / volume}
+		publishers = append(publishers, PublisherFeed{Slot: k.actor, Key: n, Role: k.role, Feed: f})
 		s := sums[k.role]
 		if s == nil {
 			s = &[5]meanOf{}
 			sums[k.role] = s
 		}
-		s[0].add(float64(n))
-		s[1].add(float64(exclusive) / float64(n))
-		s[2].add(median(delays))
-		s[3].add(1 - float64(inRanges)/float64(n))
-		s[4].add(float64(attackers) / float64(n))
+		for j, x := range []float64{f.Volume, f.Exclusive, f.LatencyMinutes, f.Bound, f.Accuracy} {
+			s[j].add(x)
+		}
 	}
 	out := map[Role]Feed{}
 	for role, s := range sums {
 		out[role] = Feed{Volume: s[0].mean(), Exclusive: s[1].mean(), LatencyMinutes: s[2].mean(), Bound: s[3].mean(), Accuracy: s[4].mean()}
 	}
-	return out
+	return out, publishers
 }
 
 // meanOf averages the values added to it, skipping NaN.

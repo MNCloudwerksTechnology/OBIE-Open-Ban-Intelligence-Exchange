@@ -336,3 +336,25 @@ func TestBanLogRejectsNonAddress(t *testing.T) {
 		t.Error("a block on a range was recorded as an address")
 	}
 }
+
+// TestRemotesNeeded asks the engine's rule how many trusted remotes a ban
+// needs.
+func TestRemotesNeeded(t *testing.T) {
+	for _, tt := range []struct {
+		profile    Profile
+		confidence float64
+		want       int
+	}{
+		{ProfileDefault, 0.8, 3},
+		{ProfileLab, 0.8, 2},
+		{ProfileAllowlist, 0.8, 3},
+		{ProfileDefault, 0.95, 2}, // the end-to-end test's confidence
+		{ProfileDefault, 0.6, 3},  // 0.6 × 3 reaches 1.8 despite rounding
+		{ProfileDefault, 0, 0},
+	} {
+		got, err := RemotesNeeded(tt.profile, tt.confidence)
+		if err != nil || got != tt.want {
+			t.Errorf("RemotesNeeded(%s, %v) = %d, %v; want %d", tt.profile, tt.confidence, got, err, tt.want)
+		}
+	}
+}

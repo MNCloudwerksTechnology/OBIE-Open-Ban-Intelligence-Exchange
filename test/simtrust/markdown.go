@@ -185,18 +185,26 @@ func runsOf(rep *Report) string {
 	return s
 }
 
-// minRemotes returns how many fully trusted remotes at confidence c a
-// ban needs under profile p.
-func minRemotes(p Profile, c float64) (int, float64, int) {
+// needed describes how many trusted remotes a ban needs under p at
+// confidence c, as the engine's rule answers: the number, 0 for none, and
+// the profile's threshold and quorum.
+func needed(p Profile, c float64) (k int, threshold float64, quorum int) {
 	cfg, err := NodeSpec{Profile: p}.Config()
 	if err != nil {
 		return 0, 0, 0
 	}
-	k := max(cfg.Decision.Quorum, 1)
-	for float64(k)*Ceiling*c < cfg.Decision.Threshold-1e-9 {
-		k++
+	if k, err = RemotesNeeded(p, c); err != nil {
+		return 0, 0, 0
 	}
 	return k, cfg.Decision.Threshold, cfg.Decision.Quorum
+}
+
+// remotes formats a number of remotes a ban needs.
+func remotes(k int) string {
+	if k == 0 {
+		return fmt.Sprintf("more than %d", maxRemotes)
+	}
+	return fmt.Sprint(k)
 }
 
 func (md *markdown) findings() {
@@ -228,9 +236,9 @@ func (md *markdown) remotesNeeded(honest []*Aggregate) {
 	md.line("### How many trusted remotes a ban needs")
 	md.line("")
 	for _, a := range honest {
-		k, thr, q := minRemotes(a.Profile, conf)
-		md.line("- `%s` (threshold %s, quorum %d): a ban on remote verdicts alone needs **%d** fully",
-			a.Profile, param(thr), q, k)
+		k, thr, q := needed(a.Profile, conf)
+		md.line("- `%s` (threshold %s, quorum %d): a ban on remote verdicts alone needs **%s** fully",
+			a.Profile, param(thr), q, remotes(k))
 		md.line("  trusted remotes at confidence %s, which score %d × %s = %s.", param(conf), k, param(conf), param(float64(k)*conf))
 	}
 	md.line("")
@@ -267,11 +275,10 @@ func (md *markdown) remotesNeeded(honest []*Aggregate) {
 	md.table(header, rows)
 	for _, a := range honest {
 		two := a.Corroboration[2][0]
-		k, thr, _ := minRemotes(a.Profile, conf)
-		md.line("- `%s`: %s of the attackers that at most two trusted remotes reported at the",
-			a.Profile, percentOf(two.Total, two.TotalAttackers))
-		md.line("  same time were banned; two remotes score %s against a threshold of %s,", param(2*conf), param(thr))
-		md.line("  so the engine needs %d.", k)
+		k, thr, _ := needed(a.Profile, conf)
+		md.line("- `%s`: of the attackers on which exactly two trusted remotes, and never", a.Profile)
+		md.line("  more, had verdicts at the same time, %s were banned; two", percentOf(two.Total, two.TotalAttackers))
+		md.line("  remotes score %s against a threshold of %s, and the engine needs %s.", param(2*conf), param(thr), remotes(k))
 	}
 	md.line("")
 }
@@ -345,11 +352,9 @@ func (md *markdown) adversaries(models []Model, profiles []Profile) {
 		}
 	}
 	if neutralizing == 0 {
-		md.line("No defector lost its weight in any run of the %d configurations with", configs)
-		md.line("adversaries: static weights never change. Every defector keeps its full")
-		md.line("weight until the run ends, so the time from its defection to its")
-		md.line("neutralization is the rest of the run, and the whitewashers never need a")
-		md.line("new key.")
+		md.line("No defector's weight fell to 0 in any run of the %d configurations with", configs)
+		md.line("adversaries, so none was neutralized: the time from a defection to its")
+		md.line("neutralization is the rest of the run, and no whitewasher burned a key.")
 	} else {
 		md.line("Some defectors were neutralized in %d of the %d configurations with", neutralizing, configs)
 		md.line("adversaries; see the results below.")
@@ -461,7 +466,8 @@ func (md *markdown) feeds() {
 	md.line("## Feeds of the publishers")
 	md.line("")
 	md.line("After Li et al. 2019, over the whole run, the mean of the publishers of")
-	md.line("each role; settings `%s`, honest-only and every model at %.0f %%. The", p, 100*f)
+	md.line("each role (`publishers.csv.gz` has every publisher of every run);")
+	md.line("settings `%s`, honest-only and every model at %.0f %%. The", p, 100*f)
 	md.line("benign-set bound is 1 − the share of a feed's addresses in the published")
 	md.line("ranges; the accuracy is its true share of attackers.")
 	md.line("")
@@ -493,13 +499,18 @@ func (md *markdown) boundFinding(p Profile, f float64) {
 	if honest == nil || careful == nil {
 		return
 	}
-	h, c := honest.Feeds[RoleHonest], careful.Feeds[Role(ModelCareful)]
+	h, okH := honest.Feeds[RoleHonest]
+	c, okC := careful.Feeds[Role(ModelCareful)]
+	if !okH || !okC || h.Bound.N == 0 || c.Bound.N == 0 {
+		return
+	}
 	md.line("A careful poisoner's benign-set bound is %s, an honest feed's %s, while", num(c.Bound.Mean), num(h.Bound.Mean))
 	md.line("their true accuracies are %s and %s: the bound, all that an outsider can", num(c.Accuracy.Mean), num(h.Accuracy.Mean))
 	md.line("compute, does not see poison that avoids the published ranges.")
 	if naive != nil {
-		n := naive.Feeds[Role(ModelNaive)]
-		md.line("A naive poisoner's bound is %s at a true accuracy of %s.", num(n.Bound.Mean), num(n.Accuracy.Mean))
+		if n, ok := naive.Feeds[Role(ModelNaive)]; ok && n.Bound.N > 0 {
+			md.line("A naive poisoner's bound is %s at a true accuracy of %s.", num(n.Bound.Mean), num(n.Accuracy.Mean))
+		}
 	}
 	md.line("")
 }
@@ -512,6 +523,8 @@ func (md *markdown) files() {
 	md.line("- `hourly.csv.gz`: every metric of every configuration in every hour, within")
 	md.line("  the hour and cumulatively: `model,fraction,profile,hour,window,metric,n,mean,ci_low,ci_high`.")
 	md.line("- `feeds.csv`: the feed metrics of every role: `model,fraction,profile,role,metric,n,mean,ci_low,ci_high`.")
+	md.line("- `publishers.csv.gz`: the feed metrics of every publisher key of every run:")
+	md.line("  `model,fraction,profile,seed,slot,key,role,volume,exclusive,latency_minutes,bound,accuracy`.")
 	md.line("- `corroboration.csv`: the attackers by the most trusted honest remotes at")
 	md.line("  once and by whether the observer reported them, and the share banned.")
 	md.line("")
