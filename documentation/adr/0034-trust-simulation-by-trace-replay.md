@@ -283,7 +283,7 @@ and cumulatively over [0, h+1), for every hour of the run.
   `corroboration.csv`, with 4 significant digits. Its header
   names the report format (1), the OBIE version, the scenario, the seeds
   and the trace; its findings are computed, not written by hand. The
-  v0.1 baseline is committed under `documentation/validation/`.
+  v0.1 baseline is committed in `documentation/validation/trust/`.
 - CI runs `make sim-trust SCENARIO=reduced` as a job of its own with a
   10-minute timeout.
 
