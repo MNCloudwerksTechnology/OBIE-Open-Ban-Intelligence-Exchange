@@ -4,8 +4,9 @@
 # this pipeline only runs it (and `make -C website ci` for the website), plus
 # the packaging checks (`make release`, `check-unit`, `image`, `lab-smoke`,
 # `sandbox-check`, `tutorial-check`, `guides-check`) without publishing
-# anything; release.yml publishes on v* tags, website-release.yml the website
-# image on website-v* tags.
+# anything, and the reduced trust simulation (`make sim-trust`); release.yml
+# publishes on v* tags, website-release.yml the website image on website-v*
+# tags.
 name: ci
 
 on:
@@ -131,6 +132,34 @@ jobs:
 
       - name: make fuzz
         run: make fuzz FUZZTIME=30s
+
+  sim-trust:
+    name: trust simulation (reduced)
+    # The reduced scenario of the trust simulation (ADR 0034): 20 seeds of a
+    # small world replayed through the real store, allow-list and decision
+    # engine, checked against what v0.1's static weights guarantee. The
+    # report is kept as an artifact.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make sim-trust SCENARIO=reduced
+        run: make sim-trust SCENARIO=reduced
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-trust-reduced
+          path: bin/sim-trust/reduced/
+          if-no-files-found: ignore
+          retention-days: 14
 
   package:
     name: release build, image and lab
