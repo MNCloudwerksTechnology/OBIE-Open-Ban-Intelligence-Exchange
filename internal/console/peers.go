@@ -408,7 +408,8 @@ type peerView struct {
 // scoreView is a peer's GossipSub score as the views show it (ADR 0032).
 type scoreView struct {
 	Value string
-	// Badge names the lowest threshold the score is below; empty if none.
+	// Badge names the lowest score limit (GossipSub threshold) the score is
+	// below; empty if none.
 	Badge string
 	// ReadAt is when the score was read.
 	ReadAt timestamp
@@ -419,11 +420,12 @@ type scoreView struct {
 // scoreComponent is one component of a GossipSub score.
 type scoreComponent struct{ Label, Value string }
 
-// thresholdBadges say what a score below each threshold means, lowest
-// threshold last.
+// thresholdBadges say what a score below each GossipSub threshold means,
+// lowest threshold last. The views call them score limits: a threshold is
+// what a decision's score must reach.
 var thresholdBadges = []struct{ threshold, badge string }{
-	{"gossip", "Below the gossip threshold: no gossip with it"},
-	{"publish", "Below the publish threshold: gets none of this node's events"},
+	{"gossip", "Below the gossip limit: no gossip with it"},
+	{"publish", "Below the publish limit: gets none of this node's events"},
 	{"graylist", "Graylisted: its messages are ignored"},
 }
 
@@ -446,7 +448,7 @@ func newScoreView(s *GossipScore) scoreView {
 		{"Time in this node's mesh", inMesh},
 		{"First deliveries of valid events", scoreNumber(s.FirstMessageDeliveries)},
 		{"Invalid messages", scoreNumber(s.InvalidMessageDeliveries)},
-		{"Behaviour penalty", scoreNumber(s.BehaviourPenalty)},
+		{"Behavior penalty", scoreNumber(s.BehaviourPenalty)},
 		{"IP colocation factor", scoreNumber(s.IPColocationFactor)},
 		{"Application score", scoreNumber(s.AppSpecificScore)},
 	}

@@ -72,7 +72,7 @@ func TestPeersPage(t *testing.T) {
 		// ADR 0032: the GossipSub score and the lowest threshold it is below.
 		`<span class="cell-label">Gossip score</span>`+"\n        "+`<span class="weight">1.25</span>`+"\n      </td>",
 		`<span class="weight">-250</span>`+"\n        "+`<span class="badge">Graylisted: its messages are ignored</span>`,
-		`<span class="weight">-120</span>`+"\n        "+`<span class="badge">Below the publish threshold: gets none of this node&#39;s events</span>`,
+		`<span class="weight">-120</span>`+"\n        "+`<span class="badge">Below the publish limit: gets none of this node&#39;s events</span>`,
 		`<span class="cell-label">Gossip score</span>`+"\n        "+`<span class="cell-note">Not scored</span>`,
 		// AC1, AC2: a connected bootstrap peer that is a trusted publisher.
 		`<a class="peer-name" href="/peers/`+idAlpha+`">alpha</a>`,
@@ -178,7 +178,7 @@ func TestPeerPage(t *testing.T) {
 		`<li>4 already known (duplicates are normal in gossip)</li>`,
 		// ADR 0032: the GossipSub score with its components.
 		`<dt>Gossip score</dt>`,
-		`<strong>1.25</strong>, read <time datetime="2026-09-28T11:59:55Z">2026-09-28 11:59:55 UTC</time>. Above every threshold.`,
+		`<strong>1.25</strong>, read <time datetime="2026-09-28T11:59:55Z">2026-09-28 11:59:55 UTC</time>. Above every score limit.`,
 		`<li>Time in this node&#39;s mesh: 1m30s</li>`,
 		`<li>First deliveries of valid events: 2.5</li>`,
 		`<li>Invalid messages: 0</li>`,

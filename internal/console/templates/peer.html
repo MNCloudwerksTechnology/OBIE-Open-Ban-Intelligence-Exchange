@@ -94,7 +94,7 @@
   <dd>
     {{- with .Score}}
     {{- if .Value}}
-    <strong>{{.Value}}</strong>, read <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time>.{{with .Badge}} <span class="badge">{{.}}</span>{{else}} Above every threshold.{{end}}
+    <strong>{{.Value}}</strong>, read <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time>.{{with .Badge}} <span class="badge">{{.}}</span>{{else}} Above every score limit.{{end}}
     <ul class="events">
       {{- range .Components}}
       <li>{{.Label}}: {{.Value}}</li>

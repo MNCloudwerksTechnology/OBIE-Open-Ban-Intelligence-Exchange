@@ -125,7 +125,7 @@ func TestBuildPeersListsEveryKnownPeer(t *testing.T) {
 		{"alpha window", alpha.Window, "last hour"},
 		{"alpha score", alpha.Score.Value + "|" + alpha.Score.Badge + "|" + alpha.Score.ReadAt.Text, "1.25||2026-09-28 11:59:55 UTC"},
 		{"alpha score components", alpha.Score.Components, []scoreComponent{{"Time in this node's mesh", "1m30s"},
-			{"First deliveries of valid events", "2.5"}, {"Invalid messages", "0"}, {"Behaviour penalty", "0"},
+			{"First deliveries of valid events", "2.5"}, {"Invalid messages", "0"}, {"Behavior penalty", "0"},
 			{"IP colocation factor", "0"}, {"Application score", "0"}}},
 
 		// The unreachable bootstrap peer: disconnected, last seen, the failed dial.
@@ -155,7 +155,7 @@ func TestBuildPeersListsEveryKnownPeer(t *testing.T) {
 		{"stray trust", stray.Weight + "|" + fmt.Sprint(stray.Default, stray.NoInfluence), "0|true true"},
 		{"stray verdicts", stray.Held + "|" + stray.HeldNote, "2|none counts in decisions"},
 		{"stray score", stray.Score.Value + "|" + stray.Score.Badge + "|" + stray.Score.Components[2].Value,
-			"-120|Below the publish threshold: gets none of this node's events|3.46"},
+			"-120|Below the publish limit: gets none of this node's events|3.46"},
 	} {
 		if fmt.Sprint(c.got) != fmt.Sprint(c.want) {
 			t.Errorf("%s = %v, want %v", c.name, c.got, c.want)

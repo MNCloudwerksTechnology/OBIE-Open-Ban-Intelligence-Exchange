@@ -162,7 +162,7 @@ block. A node measures none of them yet:
   for a copy the seen-cache dropped, or a reject reason from above for a
   message GossipSub dropped before validation). The file is opened like
   the audit log (append, mode 0640) and is never rotated or read by the
-  node. It grows by about 200 bytes per copy, so it is meant for
+  node. It grows by about 230 bytes per copy, so it is meant for
   simulations and short diagnostics. It holds peer IDs, not addresses.
 - `internal/eventtrace` writes and reads the lines and joins the files of
   several nodes: for every event, its origin, every node's first

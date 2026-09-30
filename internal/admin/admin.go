@@ -109,7 +109,7 @@ type GossipScoreResponse struct {
 	FirstMessageDeliveries   float64 `json:"first_message_deliveries"`
 	InvalidMessageDeliveries float64 `json:"invalid_message_deliveries"`
 	IPColocationFactor       float64 `json:"ip_colocation_factor"`
-	BehaviourPenalty         float64 `json:"behaviour_penalty"`
+	BehaviourPenalty         float64 `json:"behavior_penalty"`
 	AppSpecificScore         float64 `json:"app_specific_score"`
 	// ReadAt is when the score was read.
 	ReadAt time.Time `json:"read_at"`

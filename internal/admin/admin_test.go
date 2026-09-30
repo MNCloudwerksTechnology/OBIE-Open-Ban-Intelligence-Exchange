@@ -110,7 +110,7 @@ func TestPeersHandler(t *testing.T) {
 		}, `{"peers":[{"peer_id":"12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd","addresses":[],` +
 			`"connected_since":"2026-09-27T10:00:00Z","trust_weight":0,"bootstrap":false,"gossip_score":{"score":-90.5,` +
 			`"below":["gossip"],"time_in_mesh_seconds":60,"first_message_deliveries":1,"invalid_message_deliveries":3,` +
-			`"ip_colocation_factor":0.5,"behaviour_penalty":0.25,"app_specific_score":0,"read_at":"2026-09-27T10:01:00Z"}}]}` + "\n"},
+			`"ip_colocation_factor":0.5,"behavior_penalty":0.25,"app_specific_score":0,"read_at":"2026-09-27T10:01:00Z"}}]}` + "\n"},
 		"none":    {func() []PeerResponse { return nil }, `{"peers":[]}` + "\n"},
 		"no mesh": {nil, `{"peers":[]}` + "\n"},
 	} {

@@ -50,6 +50,24 @@ The first release, v0.1.0 "Stable Base".
 - **Observability.** Prometheus metrics, `/healthz` and `/readyz`, a
   Grafana dashboard, and a JSON-lines decision audit log with Elastic
   Common Schema fields ([monitoring](documentation/operations/monitoring.md)).
+- **Gossip instrumentation and attribution.** A GossipSub tracer feeds
+  `obie_gossip_*` metrics — deliveries, duplicates dropped before
+  validation, rejects by reason, ignores, grafts, prunes, IHAVE and IWANT
+  by direction, and the mesh size — and the peer scores, read every 10
+  seconds, feed a histogram and the counts of peers scored and below the
+  gossip, publish and graylist thresholds; no metric names a peer or an
+  address. Each peer's score and its components are in `GET /v1/peers`
+  (`obiectl peers --json`) and the console's peers view.
+  `obie_propagation_delay_seconds` is measured to the millisecond from the
+  creation time an event's UUIDv7 ID carries, as obie/0.1 gives
+  `issued_at` in whole seconds. Every `block-added`, `block-updated` and
+  `block-removed` audit record names its contributing publishers in
+  `obie.contributors` (peer ID, weight, confidence, verdict ID). Revoked
+  and expired verdicts are kept for `store.ended_retention`, 30 days by
+  default. An opt-in per-event trace (`mesh.trace_path`) writes a JSON
+  line per copy of an event, and `internal/eventtrace` joins the traces of
+  several nodes into hop counts and paths
+  ([ADR 0032](documentation/adr/0032-gossip-instrumentation-and-attribution.md)).
 - **Setup assistant and self-check.** `obied setup` asks where the node
   keeps its state and audit log, which peers it connects to and how much
   it trusts them, whether it starts in observe mode and which addresses it
