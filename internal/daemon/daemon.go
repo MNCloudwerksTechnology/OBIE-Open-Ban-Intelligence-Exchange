@@ -20,6 +20,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce/nft"
+	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
 	"github.com/MNCloudwerksTechnology/obie/internal/logging"
@@ -415,9 +416,28 @@ func peerResponses(peers []mesh.Peer) []admin.PeerResponse {
 			LatencySeconds: p.Latency.Seconds(),
 			TrustWeight:    p.TrustWeight,
 			Bootstrap:      p.Bootstrap,
+			GossipScore:    gossipScoreResponse(p.GossipScore),
 		}
 	}
 	return out
+}
+
+// gossipScoreResponse converts a peer's GossipSub score; nil for none.
+func gossipScoreResponse(s *gossip.PeerScore) *admin.GossipScoreResponse {
+	if s == nil {
+		return nil
+	}
+	return &admin.GossipScoreResponse{
+		Score:                    s.Score,
+		Below:                    append([]string{}, s.Below()...),
+		TimeInMeshSeconds:        s.TimeInMesh.Seconds(),
+		FirstMessageDeliveries:   s.FirstMessageDeliveries,
+		InvalidMessageDeliveries: s.InvalidMessageDeliveries,
+		IPColocationFactor:       s.IPColocationFactor,
+		BehaviourPenalty:         s.BehaviourPenalty,
+		AppSpecificScore:         s.AppSpecificScore,
+		ReadAt:                   s.ReadAt.UTC(),
+	}
 }
 
 // decisionResponse converts a decision into its admin API summary.

@@ -114,6 +114,24 @@ var (
 		Name:      "gossip_mesh_peers",
 		Help:      "Peers in this node's mesh of the topic, to which it relays every event in full.",
 	})
+
+	// The GossipSub peer scores (ADR 0032).
+	peerScoreHistogram = prometheus.NewHistogram(prometheus.HistogramOpts{
+		Namespace: "obie",
+		Name:      "gossip_peer_score",
+		Help:      "GossipSub peer scores: one observation per scored peer every 10 seconds.",
+		Buckets:   []float64{graylistThreshold, publishThreshold, gossipThreshold, -10, -1, 0, 1, 5, 10},
+	})
+	peersBelowThreshold = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "obie",
+		Name:      "gossip_peers_below_threshold",
+		Help:      "Peers whose GossipSub score was below a threshold (gossip, publish, graylist) at the last reading.",
+	}, []string{"threshold"})
+	scoredPeers = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "obie",
+		Name:      "gossip_scored_peers",
+		Help:      "Peers with a GossipSub score at the last reading: the connected ones and those that left within the hour.",
+	})
 )
 
 func init() {
@@ -130,9 +148,12 @@ func init() {
 		ihaveTotal.WithLabelValues(d)
 		iwantTotal.WithLabelValues(d)
 	}
+	for _, th := range Thresholds {
+		peersBelowThreshold.WithLabelValues(th.Name)
+	}
 	prometheus.MustRegister(receivedTotal, publishedTotal, propagationDelay,
 		deliveriesTotal, duplicatesTotal, rejectsTotal, ignoresTotal, graftsTotal, prunesTotal, ihaveTotal, iwantTotal,
-		meshPeers)
+		meshPeers, peerScoreHistogram, peersBelowThreshold, scoredPeers)
 }
 
 // typeLabel returns the type label of an event type: "indicator.verdict"

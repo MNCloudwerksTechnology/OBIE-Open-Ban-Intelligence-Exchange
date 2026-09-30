@@ -89,6 +89,30 @@ type PeerResponse struct {
 	TrustWeight float64 `json:"trust_weight"`
 	// Bootstrap is set for peers listed in mesh.bootstrap.
 	Bootstrap bool `json:"bootstrap"`
+	// GossipScore is the peer's GossipSub score at the last reading;
+	// omitted while it has none (ADR 0032).
+	GossipScore *GossipScoreResponse `json:"gossip_score,omitempty"`
+}
+
+// GossipScoreResponse is a peer's GossipSub score and its components
+// (ADR 0009, ADR 0032).
+type GossipScoreResponse struct {
+	Score float64 `json:"score"`
+	// Below names the thresholds the score is below, highest first:
+	// gossip, publish, graylist; empty if none.
+	Below []string `json:"below"`
+	// TimeInMeshSeconds is how long the peer has been in the node's mesh
+	// of the topic; 0 if it is not in it.
+	TimeInMeshSeconds float64 `json:"time_in_mesh_seconds"`
+	// FirstMessageDeliveries and InvalidMessageDeliveries are the decayed
+	// counters of the first valid copies and the invalid messages it sent.
+	FirstMessageDeliveries   float64 `json:"first_message_deliveries"`
+	InvalidMessageDeliveries float64 `json:"invalid_message_deliveries"`
+	IPColocationFactor       float64 `json:"ip_colocation_factor"`
+	BehaviourPenalty         float64 `json:"behaviour_penalty"`
+	AppSpecificScore         float64 `json:"app_specific_score"`
+	// ReadAt is when the score was read.
+	ReadAt time.Time `json:"read_at"`
 }
 
 // Latency returns the latency as a duration; 0 while not yet measured.

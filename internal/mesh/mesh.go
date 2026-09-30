@@ -93,6 +93,9 @@ type Options struct {
 	DialTimeout time.Duration
 	// PingInterval is how often connected peers are pinged for latency.
 	PingInterval time.Duration
+	// ScoreInspectInterval is how often the GossipSub peer scores are
+	// read; zero for gossip.ScoreInspectInterval.
+	ScoreInspectInterval time.Duration
 }
 
 // Mesh is the libp2p host as a lifecycle subsystem. It implements
@@ -261,6 +264,7 @@ func (m *Mesh) Start(context.Context) error {
 		PeerLimit:      m.opts.RateLimit.Peer,
 		Metrics:        metrics,
 
+		ScoreInspectInterval:     m.opts.ScoreInspectInterval,
 		AllowDocumentationRanges: m.opts.AllowDocumentationRanges,
 	}, m.log)
 	if err != nil {

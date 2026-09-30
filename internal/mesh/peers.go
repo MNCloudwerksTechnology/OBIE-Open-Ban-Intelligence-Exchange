@@ -27,6 +27,9 @@ type Peer struct {
 	TrustWeight float64
 	// Bootstrap is set for peers listed in mesh.bootstrap.
 	Bootstrap bool
+	// GossipScore is the peer's GossipSub score at the last reading; nil
+	// if it has none (ADR 0032).
+	GossipScore *gossip.PeerScore
 }
 
 // Peers returns the connected peers sorted by peer ID; nil before Start.
@@ -54,9 +57,10 @@ func (m *Mesh) peerOf(h host.Host, id peer.ID) (Peer, bool) {
 		return Peer{}, false
 	}
 	p := Peer{
-		ID:        id.String(),
-		Latency:   h.Peerstore().LatencyEWMA(id),
-		Bootstrap: m.isBootstrap(id),
+		ID:          id.String(),
+		Latency:     h.Peerstore().LatencyEWMA(id),
+		Bootstrap:   m.isBootstrap(id),
+		GossipScore: m.gossipScore(id),
 	}
 	p.Name, p.TrustWeight = m.trustOf(id)
 	for _, c := range conns {
@@ -143,9 +147,26 @@ func (m *Mesh) KnownPeers() []KnownPeer {
 // configuredPeer describes the configured peer id, which is not connected,
 // with its configured addresses addrs.
 func (m *Mesh) configuredPeer(id peer.ID, addrs []string) Peer {
-	p := Peer{ID: id.String(), Addrs: addrs, Bootstrap: m.isBootstrap(id)}
+	p := Peer{ID: id.String(), Addrs: addrs, Bootstrap: m.isBootstrap(id), GossipScore: m.gossipScore(id)}
 	p.Name, p.TrustWeight = m.trustOf(id)
 	return p
+}
+
+// gossipScore returns the GossipSub score of peer id at the last reading;
+// nil if it has none or the mesh is not running. GossipSub keeps the
+// score of a peer that left for an hour.
+func (m *Mesh) gossipScore(id peer.ID) *gossip.PeerScore {
+	m.mu.Lock()
+	g := m.gossip
+	m.mu.Unlock()
+	if g == nil {
+		return nil
+	}
+	s, ok := g.PeerScore(id)
+	if !ok {
+		return nil
+	}
+	return &s
 }
 
 // publisherIDs returns the peers listed in trust.publishers.

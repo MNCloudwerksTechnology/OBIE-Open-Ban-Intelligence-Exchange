@@ -76,6 +76,9 @@ type Options struct {
 	Metrics Metrics
 	// Now is the clock events are checked against; nil for time.Now.
 	Now func() time.Time
+	// ScoreInspectInterval is how often the peer scores are read; zero
+	// for ScoreInspectInterval.
+	ScoreInspectInterval time.Duration
 	// AllowDocumentationRanges accepts indicators in the documentation
 	// ranges (obieproto.ReceiveDocumentationRanges). Only for multi-node
 	// tests; production nodes never set it.
@@ -93,8 +96,10 @@ type Gossip struct {
 	receive []obieproto.Option
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
-	// tracer counts what GossipSub does in the obie_gossip_* metrics.
+	// tracer counts what GossipSub does in the obie_gossip_* metrics;
+	// scores keeps and exports the peer scores.
 	tracer *tracer
+	scores *scoreBoard
 
 	// pubMu serializes the node's publications, so that held events go
 	// out before any later one, and guards the fields below.
@@ -134,6 +139,9 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 	if opts.Metrics == nil {
 		opts.Metrics = nopMetrics{}
 	}
+	if opts.ScoreInspectInterval <= 0 {
+		opts.ScoreInspectInterval = ScoreInspectInterval
+	}
 	var receive []obieproto.Option
 	if opts.AllowDocumentationRanges {
 		receive = append(receive, obieproto.ReceiveDocumentationRanges())
@@ -153,21 +161,26 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	tr := newTracer(h.ID())
-	topic, sub, err := join(ctx, h, v, tr, validateQueueBursts*opts.PeerLimit.Burst)
+	tr, scores := newTracer(h.ID()), newScoreBoard(opts.Now)
+	topic, sub, err := join(ctx, h, v, validateQueueBursts*opts.PeerLimit.Burst,
+		pubsub.WithRawTracer(tr),
+		pubsub.WithPeerScoreInspect(pubsub.ExtendedPeerScoreInspectFn(scores.inspect), opts.ScoreInspectInterval))
 	if err != nil {
 		cancel()
 		tr.close()
+		scores.close()
 		return nil, err
 	}
 	peers, err := topic.EventHandler()
 	if err != nil {
 		cancel()
 		tr.close()
+		scores.close()
 		return nil, fmt.Errorf("watch the peers of %s: %w", obieproto.Topic, err)
 	}
 	g := &Gossip{topic: topic, self: h.ID(), store: opts.Store, now: opts.Now, log: log, receive: receive, cancel: cancel,
-		tracer: tr, heldLimit: maxHeld, heldBatch: heldBatch, heldInterval: heldInterval, wake: make(chan struct{}, 1)}
+		tracer: tr, scores: scores, heldLimit: maxHeld, heldBatch: heldBatch, heldInterval: heldInterval,
+		wake: make(chan struct{}, 1)}
 	// Subscribing makes the node a member of the topic's mesh. Accepted
 	// events are stored by the validator, so deliveries are discarded.
 	g.wg.Go(func() {
@@ -204,11 +217,12 @@ func bucketOrDefault(b, def config.TokenBucket) config.TokenBucket {
 	return b
 }
 
-// join starts GossipSub on h, traced by tr, and subscribes to the topic
-// with v as its validator, which up to queueSize received messages wait
-// for.
-func join(ctx context.Context, h host.Host, v *validator, tr *tracer, queueSize int) (*pubsub.Topic, *pubsub.Subscription, error) {
-	ps, err := pubsub.NewGossipSub(ctx, h,
+// join starts GossipSub on h with the options instruments, which trace
+// it, and subscribes to the topic with v as its validator, which up to
+// queueSize received messages wait for.
+func join(ctx context.Context, h host.Host, v *validator, queueSize int, instruments ...pubsub.Option) (*pubsub.Topic,
+	*pubsub.Subscription, error) {
+	ps, err := pubsub.NewGossipSub(ctx, h, append([]pubsub.Option{
 		// Events carry their own signature: messages have no author,
 		// sequence number or pubsub signature, and are rejected if they do.
 		pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign),
@@ -222,8 +236,7 @@ func join(ctx context.Context, h host.Host, v *validator, tr *tracer, queueSize 
 		// threshold, not only to its mesh peers (GossipSub v1.1 flood
 		// publishing): one peer dropping them does not lose them.
 		pubsub.WithFloodPublish(true),
-		pubsub.WithRawTracer(tr),
-	)
+	}, instruments...)...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start gossipsub: %w", err)
 	}
@@ -417,4 +430,10 @@ func (g *Gossip) Close() {
 	g.cancel()
 	g.wg.Wait()
 	g.tracer.close()
+	g.scores.close()
 }
+
+// PeerScore returns the GossipSub score of peer id as it was last read;
+// false if it had none: it was never on the topic, left more than an hour
+// ago, or no reading has been taken yet (ADR 0032).
+func (g *Gossip) PeerScore(id peer.ID) (PeerScore, bool) { return g.scores.get(id) }

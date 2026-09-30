@@ -128,6 +128,7 @@ func TestKnownPeersConnected(t *testing.T) {
 	idA, idB, idC := newIdentity(t), newIdentity(t), newIdentity(t)
 	tuning := func(o Options) Options {
 		o.InitialBackoff, o.MaxBackoff, o.DialTimeout = 50*time.Millisecond, 200*time.Millisecond, time.Second
+		o.ScoreInspectInterval = 20 * time.Millisecond
 		return o
 	}
 	a := startMesh(t, idA, tuning(Options{Listen: []string{"/ip4/127.0.0.1/tcp/0"}}))
@@ -173,6 +174,14 @@ func TestKnownPeersConnected(t *testing.T) {
 	if n := knownPeers(t, b)[idA.PeerID()].Events[gossip.Accepted]; n < 1 {
 		t.Errorf("B counted %d accepted events from A, want at least 1", n)
 	}
+	// B reads A's GossipSub score, which grows with A's first deliveries.
+	waitFor(t, 5*time.Second, "B to score A's first deliveries", func() bool {
+		s := knownPeers(t, b)[idA.PeerID()].GossipScore
+		return s != nil && s.FirstMessageDeliveries >= 1 && s.Score > 0
+	})
+	if p := peerIDs(b)[idA.PeerID()]; p.GossipScore == nil || p.GossipScore.Score <= 0 {
+		t.Errorf("B's connected peer A has the score %+v, want one above 0", p.GossipScore)
+	}
 
 	stopped := time.Now()
 	if err := a.Stop(context.Background()); err != nil {
@@ -183,6 +192,10 @@ func TestKnownPeersConnected(t *testing.T) {
 	if k.LastSeen.Before(stopped) || k.LastSeen.After(time.Now()) || !k.ConnectedSince.IsZero() ||
 		!reflect.DeepEqual(k.Addrs, []string{tcpA}) || k.Events[gossip.Accepted] < 1 {
 		t.Errorf("B's view of A after it stopped = %+v", k)
+	}
+	// GossipSub keeps the score of a peer that left for an hour.
+	if k.GossipScore == nil {
+		t.Error("B forgot A's score as A left")
 	}
 	waitFor(t, 5*time.Second, "B's redial of A to fail", func() bool { return knownPeers(t, b)[idA.PeerID()].DialError != "" })
 }
