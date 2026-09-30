@@ -18,6 +18,7 @@ const (
 	MetricF1
 	MetricFalseBans
 	MetricFalseBansPerVictim
+	MetricFalseBanHours
 	MetricNeutralizedShare
 	MetricNeutralizationHours
 	MetricNeutralizationEvents
@@ -44,6 +45,7 @@ var metricInfos = [numMetrics]metricInfo{
 	MetricF1:                            {"f1", "F1", true},
 	MetricFalseBans:                     {"false_bans", "False bans", true},
 	MetricFalseBansPerVictim:            {"false_bans_per_victim", "False bans per protected victim", true},
+	MetricFalseBanHours:                 {"false_ban_hours", "False ban hours", true},
 	MetricNeutralizedShare:              {"neutralized_share", "Defectors neutralized", false},
 	MetricNeutralizationHours:           {"neutralization_hours", "Defection to neutralization (h)", false},
 	MetricNeutralizationEvents:          {"neutralization_events", "Defection to neutralization (events)", false},
@@ -223,9 +225,13 @@ func (m *measure) bans(out *Metrics) {
 		}
 	}
 	falseByHour, causedByHour := make([]int, m.hours), make([]int, m.hours)
+	banHours := make([]float64, m.hours)
 	for _, e := range m.r.Episodes {
 		if !m.w.class[e.Addr].Benign() {
 			continue
+		}
+		for h := m.hourOf(e.Start); h < m.hours && m.endOf(h-1).Before(e.End); h++ {
+			banHours[h] += overlap(e.Start, e.End, m.endOf(h-1), m.endOf(h)).Hours()
 		}
 		h := m.hourOf(e.Start)
 		falseByHour[h]++
@@ -236,6 +242,7 @@ func (m *measure) bans(out *Metrics) {
 	}
 	victims := float64(len(m.w.benign))
 	var cum struct{ banned, bannedAttackers, active, activeBanned, falseBans, caused int }
+	var cumBanHours float64
 	for h := range m.hours {
 		var hour struct{ bannedAttackers, activeBanned int }
 		for a := range banned[h] {
@@ -267,6 +274,9 @@ func (m *measure) bans(out *Metrics) {
 		cum.caused += causedByHour[h]
 		setBans(&out.Hours[h][WindowHour], hour.bannedAttackers, len(banned[h]), hour.activeBanned, len(active[h]), falseByHour[h], causedByHour[h], victims)
 		setBans(&out.Hours[h][WindowCumulative], cum.bannedAttackers, cum.banned, cum.activeBanned, cum.active, cum.falseBans, cum.caused, victims)
+		cumBanHours += banHours[h]
+		out.Hours[h][WindowHour][MetricFalseBanHours] = banHours[h]
+		out.Hours[h][WindowCumulative][MetricFalseBanHours] = cumBanHours
 	}
 }
 
@@ -282,6 +292,18 @@ func setBans(v *Values, bannedAttackers, banned, activeBanned, active, falseBans
 	v[MetricFalseBans] = float64(falseBans)
 	v[MetricFalseBansPerVictim] = float64(falseBans) / victims
 	v[MetricFalseBansBeforeNeutralization] = float64(caused)
+}
+
+// overlap returns how long [a, b) and [c, d) overlap.
+func overlap(a, b, c, d time.Time) time.Duration {
+	from, to := a, b
+	if c.After(from) {
+		from = c
+	}
+	if d.Before(to) {
+		to = d
+	}
+	return max(to.Sub(from), 0)
 }
 
 // ratio returns a/b, NaN if b is 0.

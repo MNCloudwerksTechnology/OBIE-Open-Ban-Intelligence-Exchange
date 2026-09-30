@@ -79,6 +79,12 @@ func TestMeasure(t *testing.T) {
 		{2, WindowCumulative, MetricPrecision, 1.0 / 3},
 		{2, WindowCumulative, MetricRecall, 1.0 / 3},
 		{1, WindowHour, MetricFalseBans, 1},
+		// The customer is banned from 1:10 to 2:10, the CDN edge from
+		// 2:00 to 2:05.
+		{1, WindowHour, MetricFalseBanHours, 50.0 / 60},
+		{2, WindowHour, MetricFalseBanHours, 15.0 / 60},
+		{2, WindowCumulative, MetricFalseBanHours, 65.0 / 60},
+		{0, WindowHour, MetricFalseBanHours, 0},
 		{2, WindowCumulative, MetricFalseBans, 2},
 		{2, WindowCumulative, MetricFalseBansPerVictim, 1}, // 2 of 2 protected addresses
 		// Only the customer's ban has a malicious verdict among its

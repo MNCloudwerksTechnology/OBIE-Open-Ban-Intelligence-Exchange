@@ -194,6 +194,9 @@ and cumulatively over [0, h+1), for every hour of the run.
   and fraction of a seed.
 - **False bans per protected victim.** Episodes on benign addresses that
   start in the window, divided by the size of the protected population.
+  A victim that stays banned counts once, one banned again and again each
+  time, so the **false ban hours** — the hours benign addresses spent
+  banned within the window — are reported with them.
 - **Defection to neutralization.** A key defects with its first malicious
   act: a poison verdict, a corroboration of one, a withheld or revoked
   ban. It is neutralized at the first probe after that at which its

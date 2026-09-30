@@ -60,14 +60,15 @@ func TestScenarios(t *testing.T) {
 	}
 }
 
-// tinyScenario runs in seconds: a 12-hour world, two models, one setting.
+// tinyScenario runs in seconds: a 12-hour world, three models, two
+// settings.
 func tinyScenario() Scenario {
 	w := DefaultWorld()
 	w.Hours, w.Operators, w.AttackersPerHour = 12, 11, 10
 	p := DefaultModels()
 	p.JoinAt, p.DefectAt = 2*time.Hour, 4*time.Hour
 	return Scenario{Name: "tiny", Description: "a test", World: w, Models: p,
-		Configs: configsOf([]Model{ModelHonest, ModelNaive}, []float64{0.4}, []Profile{ProfileDefault, ProfileLab})}
+		Configs: configsOf([]Model{ModelHonest, ModelNaive, ModelCareful}, []float64{0.4}, []Profile{ProfileDefault, ProfileLab})}
 }
 
 func TestExecuteAndReport(t *testing.T) {
@@ -78,7 +79,7 @@ func TestExecuteAndReport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runs != 12 || rep.Runs != 12 || len(rep.Aggregates) != 4 || rep.Hours != 12 {
+	if runs != 18 || rep.Runs != 18 || len(rep.Aggregates) != 6 || rep.Hours != 12 {
 		t.Fatalf("%d runs reported, %d counted, %d aggregates, %d hours", runs, rep.Runs, len(rep.Aggregates), rep.Hours)
 	}
 	if problems := CheckV01(rep); len(problems) > 0 {
@@ -95,7 +96,7 @@ func TestExecuteAndReport(t *testing.T) {
 	for _, want := range []string{
 		"# Trust simulation: tiny\n", "| Format | 1 |", "`v0.1.0-test`", "### How many trusted remotes a ban needs",
 		"needs **3** fully\n  trusted remotes at confidence 0.8, which score 3 × 0.8 = 2.4.", "needs **2** fully", "### Adversaries at 40 %",
-		"No defector lost its weight", "### Settings `lab`", "## Hour by hour", "## Feeds of the publishers", "## Limitations",
+		"No defector lost its weight", "Hours: `lab`", "A careful poisoner's benign-set bound", "### Settings `lab`", "## Hour by hour", "## Feeds of the publishers", "## Limitations",
 	} {
 		if !bytes.Contains(readme, []byte(want)) {
 			t.Errorf("report lacks %q", want)
@@ -104,11 +105,11 @@ func TestExecuteAndReport(t *testing.T) {
 	checkTables(t, string(readme))
 
 	summary := readCSV(t, filepath.Join(dir, summaryFile), false)
-	if len(summary) != 1+4*int(numMetrics) || strings.Join(summary[0], ",") != "model,fraction,profile,metric,n,mean,ci_low,ci_high" {
+	if len(summary) != 1+6*int(numMetrics) || strings.Join(summary[0], ",") != "model,fraction,profile,metric,n,mean,ci_low,ci_high" {
 		t.Errorf("summary.csv has %d lines, header %q", len(summary), summary[0])
 	}
 	hourly := readCSV(t, filepath.Join(dir, hourlyFile), true)
-	if len(hourly) < 1+4*12*2*9 || hourly[1][3] != "0" || hourly[1][4] != "hour" {
+	if len(hourly) < 1+6*12*2*9 || hourly[1][3] != "0" || hourly[1][4] != "hour" {
 		t.Errorf("hourly.csv.gz has %d lines, first %q", len(hourly), hourly[1])
 	}
 	for _, name := range []string{feedsFile, corroborationFile} {

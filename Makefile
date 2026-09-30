@@ -166,8 +166,8 @@ sim-trust: SIMCACHE ?= $(BIN_DIR)/sim-trust/cache
 .PHONY: sim-trust
 sim-trust: ## Run the trust simulation SCENARIO (default reduced) over SEEDS seeds, report to OUT; not part of `make ci`
 	$(GO) test -tags simtrust -run '^TestSimTrust$$' -count=1 -v -timeout 0 ./test/simtrust \
-		-simtrust.scenario='$(SCENARIO)' -simtrust.seeds='$(SEEDS)' -simtrust.trace='$(TRACE)' \
-		-simtrust.out='$(OUT)' -simtrust.cache='$(SIMCACHE)' -simtrust.version='$(VERSION)'
+		-simtrust.scenario='$(SCENARIO)' -simtrust.seeds='$(SEEDS)' -simtrust.trace='$(abspath $(TRACE))' \
+		-simtrust.out='$(abspath $(OUT))' -simtrust.cache='$(abspath $(SIMCACHE))' -simtrust.version='$(VERSION)'
 
 .PHONY: ci
 ci: fmt-check vet lint lint-workflows lint-md test vuln ## Run every check the CI gate runs

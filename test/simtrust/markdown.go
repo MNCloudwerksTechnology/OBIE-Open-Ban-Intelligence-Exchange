@@ -284,7 +284,7 @@ func (md *markdown) honestOnly(honest []*Aggregate) {
 	md.line("addresses that attackers use and the CDN edges that misconfigured")
 	md.line("publishers report.")
 	md.line("")
-	metrics := []Metric{MetricPrecision, MetricRecall, MetricF1, MetricFalseBans, MetricFalseBansPerVictim, MetricECE, MetricBrier}
+	metrics := []Metric{MetricPrecision, MetricRecall, MetricF1, MetricFalseBans, MetricFalseBansPerVictim, MetricFalseBanHours, MetricECE, MetricBrier}
 	header := []string{"Settings"}
 	for _, m := range metrics {
 		header = append(header, m.Title())
@@ -307,21 +307,29 @@ func (md *markdown) adversaries(models []Model, profiles []Profile) {
 	f := md.maxFraction()
 	md.line("### Adversaries at %.0f %%", 100*f)
 	md.line("")
-	md.line("False bans that malicious verdicts caused before their key was")
-	md.line("neutralized, per run, at the end:")
+	md.line("Per run, at the end: the false bans that malicious verdicts caused before")
+	md.line("their key was neutralized, and the hours protected addresses spent banned,")
+	md.line("whatever the cause. A false ban lasts as long as its block: a victim that")
+	md.line("stays banned counts once, one banned again and again each time, so the")
+	md.line("hours are the fairer measure of harm.")
 	md.line("")
 	header := []string{"Model"}
 	for _, p := range profiles {
-		header = append(header, "`"+string(p)+"`")
+		header = append(header, "Caused: `"+string(p)+"`", "Hours: `"+string(p)+"`")
 	}
 	var rows [][]string
-	for _, m := range models {
+	for _, m := range append([]Model{ModelHonest}, models...) {
 		row := []string{string(m)}
+		fraction := f
+		if m == ModelHonest {
+			fraction, row[0] = 0, "honest-only"
+		}
 		for _, p := range profiles {
-			if a := md.find(m, f, p); a != nil {
-				row = append(row, cell(a.End()[MetricFalseBansBeforeNeutralization], md.rep.Seeds))
+			if a := md.find(m, fraction, p); a != nil {
+				end := a.End()
+				row = append(row, cell(end[MetricFalseBansBeforeNeutralization], md.rep.Seeds), cell(end[MetricFalseBanHours], md.rep.Seeds))
 			} else {
-				row = append(row, "—")
+				row = append(row, "—", "—")
 			}
 		}
 		rows = append(rows, row)
@@ -351,7 +359,7 @@ func (md *markdown) adversaries(models []Model, profiles []Profile) {
 
 // resultMetrics are the columns of the results tables.
 var resultMetrics = []Metric{
-	MetricPrecision, MetricRecall, MetricF1, MetricFalseBansPerVictim, MetricFalseBansBeforeNeutralization,
+	MetricPrecision, MetricRecall, MetricF1, MetricFalseBansPerVictim, MetricFalseBanHours, MetricFalseBansBeforeNeutralization,
 	MetricNeutralizedShare, MetricNeutralizationHours, MetricNeutralizationEvents, MetricHonestWeight,
 	MetricNewcomerConvergenceHours, MetricWhitewashPayoff, MetricECE, MetricBrier,
 }
@@ -475,6 +483,25 @@ func (md *markdown) feeds() {
 		}
 	}
 	md.table(header, rows)
+	md.boundFinding(p, f)
+}
+
+// boundFinding compares the benign-set bound of the poisoners' feeds with
+// their true accuracy.
+func (md *markdown) boundFinding(p Profile, f float64) {
+	honest, careful, naive := md.find(ModelHonest, 0, p), md.find(ModelCareful, f, p), md.find(ModelNaive, f, p)
+	if honest == nil || careful == nil {
+		return
+	}
+	h, c := honest.Feeds[RoleHonest], careful.Feeds[Role(ModelCareful)]
+	md.line("A careful poisoner's benign-set bound is %s, an honest feed's %s, while", num(c.Bound.Mean), num(h.Bound.Mean))
+	md.line("their true accuracies are %s and %s: the bound, all that an outsider can", num(c.Accuracy.Mean), num(h.Accuracy.Mean))
+	md.line("compute, does not see poison that avoids the published ranges.")
+	if naive != nil {
+		n := naive.Feeds[Role(ModelNaive)]
+		md.line("A naive poisoner's bound is %s at a true accuracy of %s.", num(n.Bound.Mean), num(n.Accuracy.Mean))
+	}
+	md.line("")
 }
 
 func (md *markdown) files() {
