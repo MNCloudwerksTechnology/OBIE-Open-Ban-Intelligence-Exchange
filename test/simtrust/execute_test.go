@@ -85,8 +85,8 @@ func TestExecuteAndReport(t *testing.T) {
 	if problems := CheckV01(rep); len(problems) > 0 {
 		t.Errorf("v0.1 invariants: %q", problems)
 	}
-	dir := t.TempDir()
-	if err := WriteReport(dir, rep, ReportInfo{Version: "v0.1.0-test", Generated: testStart}); err != nil {
+	dir, info := t.TempDir(), ReportInfo{Version: "v0.1.0-test", Generated: testStart, ADR: "../adr/0034.md"}
+	if err := WriteReport(dir, rep, info); err != nil {
 		t.Fatal(err)
 	}
 	readme, err := os.ReadFile(filepath.Join(dir, reportFile)) // #nosec G304 -- a file the test wrote.
@@ -97,6 +97,8 @@ func TestExecuteAndReport(t *testing.T) {
 		"# Trust simulation: tiny\n", "| Format | 1 |", "`v0.1.0-test`", "### How many trusted remotes a ban needs",
 		"needs **3** fully\n  trusted remotes at confidence 0.8, which score 3 × 0.8 = 2.4.", "needs **2** fully", "### Adversaries at 40 %",
 		"No defector's weight fell to 0", "Hours: `lab`", "A careful poisoner's benign-set bound", "### Settings `lab`", "## Hour by hour", "## Feeds of the publishers", "## Limitations",
+		"[ADR 0034](../adr/0034.md) defines", "by the class of the victim", "| Settings | `cdn` | `crawler` | `customer` | `nat` |",
+		"Every value has 4 significant digits.", "(`neutralized_share`, `neutralization_hours`, `neutralization_events`, `newcomers_converged`, `newcomer_convergence_hours`, `whitewash_payoff`)",
 	} {
 		if !bytes.Contains(readme, []byte(want)) {
 			t.Errorf("report lacks %q", want)
@@ -105,8 +107,12 @@ func TestExecuteAndReport(t *testing.T) {
 	checkTables(t, string(readme))
 
 	summary := readCSV(t, filepath.Join(dir, summaryFile), false)
-	if len(summary) != 1+6*int(numMetrics) || strings.Join(summary[0], ",") != "model,fraction,profile,metric,n,mean,ci_low,ci_high" {
+	// Every metric and the false bans of the four benign classes.
+	if len(summary) != 1+6*(int(numMetrics)+4) || strings.Join(summary[0], ",") != "model,fraction,profile,metric,n,mean,ci_low,ci_high" {
 		t.Errorf("summary.csv has %d lines, header %q", len(summary), summary[0])
+	}
+	if last := summary[len(summary)-1]; last[3] != "false_bans_nat" {
+		t.Errorf("last row of summary.csv: %q, want the false bans of NAT addresses", last)
 	}
 	hourly := readCSV(t, filepath.Join(dir, hourlyFile), true)
 	if len(hourly) < 1+6*12*2*9 || hourly[1][3] != "0" || hourly[1][4] != "hour" {
@@ -124,7 +130,7 @@ func TestExecuteAndReport(t *testing.T) {
 	}
 	// The same report gives the same files, the gzipped one included.
 	again := t.TempDir()
-	if err := WriteReport(again, rep, ReportInfo{Version: "v0.1.0-test", Generated: testStart}); err != nil {
+	if err := WriteReport(again, rep, info); err != nil {
 		t.Fatal(err)
 	}
 	for _, name := range []string{reportFile, summaryFile, hourlyFile, publishersFile} {
@@ -133,6 +139,18 @@ func TestExecuteAndReport(t *testing.T) {
 		if !bytes.Equal(a, b) {
 			t.Errorf("%s differs between two writes of one report", name)
 		}
+	}
+}
+
+// TestCheckV01OneSeed checks that a quick run of a single seed, which has
+// no intervals, is checked by its means.
+func TestCheckV01OneSeed(t *testing.T) {
+	rep, err := Execute(context.Background(), tinyScenario(), ExecOptions{Seeds: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if problems := CheckV01(rep); len(problems) > 0 {
+		t.Errorf("v0.1 invariants of one seed: %q", problems)
 	}
 }
 
@@ -174,6 +192,19 @@ func readCSV(t *testing.T, path string, gzipped bool) [][]string {
 		t.Fatal(err)
 	}
 	return rows
+}
+
+func TestCSVFloat(t *testing.T) {
+	for _, tt := range []struct {
+		x    float64
+		want string
+	}{
+		{0.89531234, "0.8953"}, {12345.6, "12350"}, {536.44, "536.4"}, {1, "1"}, {0, "0"}, {0.000012345, "0.00001234"}, {math.NaN(), ""},
+	} {
+		if got := csvFloat(tt.x); got != tt.want {
+			t.Errorf("csvFloat(%v) = %q, want %q", tt.x, got, tt.want)
+		}
+	}
 }
 
 func TestCellFormats(t *testing.T) {

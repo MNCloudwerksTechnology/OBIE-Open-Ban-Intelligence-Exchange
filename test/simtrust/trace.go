@@ -40,6 +40,9 @@ const (
 // classes are the valid classes, attackers first.
 var classes = []Class{ClassAttacker, ClassCDN, ClassCrawler, ClassCustomer, ClassNAT}
 
+// benignClasses are the classes the network must protect.
+var benignClasses = classes[1:]
+
 // Benign reports whether the address is one the network must protect.
 func (c Class) Benign() bool {
 	return c != ClassAttacker

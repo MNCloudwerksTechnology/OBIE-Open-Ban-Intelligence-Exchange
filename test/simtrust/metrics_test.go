@@ -1,6 +1,7 @@
 package simtrust
 
 import (
+	"maps"
 	"math"
 	"net/netip"
 	"testing"
@@ -38,9 +39,9 @@ func handResult() *Result {
 			{Addr: cdn, Start: at(2, 0), End: at(2, 5), Contributors: []Contribution{{"p2", "h3", at(2, 0)}}},
 		},
 		keys: []keyRecord{
-			{peerID: "p0", actor: 0, role: RoleObserver, joined: testStart},
-			{peerID: "p1", actor: 1, role: RoleHonest, joined: testStart},
-			{peerID: "p2", actor: 2, role: Role(ModelNaive), joined: testStart, defected: at(1, 0),
+			{peerID: "p0", actor: 0, role: RoleObserver, joined: testStart, trusted: testStart},
+			{peerID: "p1", actor: 1, role: RoleHonest, joined: testStart, trusted: testStart},
+			{peerID: "p2", actor: 2, role: Role(ModelNaive), joined: testStart, trusted: testStart, defected: at(1, 0),
 				events: []time.Time{at(0, 10), at(1, 0), at(1, 30), at(2, 30)}},
 		},
 		weights: []weightSample{{at(0, 0), 1}, {at(0, 30), 1}, {at(1, 0), 0.5}, {at(2, 0), 0.5}},
@@ -122,6 +123,33 @@ func TestMeasure(t *testing.T) {
 	}
 	if f := m.Feeds[Role(ModelNaive)]; f.Volume != 1 || f.Exclusive != 1 || f.Bound != 1 || f.Accuracy != 0 || !math.IsNaN(f.LatencyMinutes) {
 		t.Errorf("poisoner's feed = %+v, want one exclusive customer", f)
+	}
+	if want := map[Class]int{ClassCustomer: 1, ClassCDN: 1}; !maps.Equal(m.FalseBansByClass, want) {
+		t.Errorf("false bans by class = %v, want %v", m.FalseBansByClass, want)
+	}
+}
+
+// TestNeverTrustedIsNotNeutralized checks that a defector that was never
+// trusted, as a whitewasher's new key, is left out of the neutralization:
+// it had nothing to lose.
+func TestNeverTrustedIsNotNeutralized(t *testing.T) {
+	r := handResult()
+	r.keys[2].trusted = time.Time{}
+	last := Measure(r).Hours[2][WindowCumulative]
+	for _, metric := range []Metric{MetricNeutralizedShare, MetricNeutralizationHours, MetricNeutralizationEvents} {
+		if got := last[metric]; !math.IsNaN(got) {
+			t.Errorf("%s = %v, want none", metric, got)
+		}
+	}
+	// Trusted only after its defection, it counts from then on, and from
+	// its defection.
+	r.keys[2].trusted = at(2, 0)
+	m := Measure(r)
+	if got := m.Hours[1][WindowCumulative][MetricNeutralizationHours]; !math.IsNaN(got) {
+		t.Errorf("hour 1: %v h to neutralization, want none before it was trusted", got)
+	}
+	if got := m.Hours[2][WindowCumulative][MetricNeutralizationHours]; !near(got, 2) {
+		t.Errorf("hour 2: %v h to neutralization, want 2 since its defection", got)
 	}
 }
 

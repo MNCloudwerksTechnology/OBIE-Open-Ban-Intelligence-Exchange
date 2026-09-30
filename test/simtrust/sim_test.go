@@ -5,6 +5,7 @@ package simtrust
 import (
 	"context"
 	"flag"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -54,7 +55,7 @@ func TestSimTrust(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteReport(out, rep, ReportInfo{Version: *flagVersion, Generated: time.Now()}); err != nil {
+	if err := WriteReport(out, rep, ReportInfo{Version: *flagVersion, Generated: time.Now(), ADR: adrFrom(out)}); err != nil {
 		t.Fatal(err)
 	}
 	t.Logf("%d runs in %s; report: %s", rep.Runs, rep.Wall.Round(time.Second), filepath.Join(out, reportFile))
@@ -63,4 +64,28 @@ func TestSimTrust(t *testing.T) {
 			t.Error(problem)
 		}
 	}
+}
+
+// adrPath is ADR 0034 from the package's directory, in which a test runs.
+var adrPath = filepath.Join("..", "..", "documentation", "adr", "0034-trust-simulation-by-trace-replay.md")
+
+// adrFrom returns the path of ADR 0034 relative to the report directory
+// dir, for the report's link; empty if either is not found.
+func adrFrom(dir string) string {
+	adr, err := filepath.Abs(adrPath)
+	if err != nil {
+		return ""
+	}
+	if _, err := os.Stat(adr); err != nil {
+		return ""
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(abs, adr)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
 }

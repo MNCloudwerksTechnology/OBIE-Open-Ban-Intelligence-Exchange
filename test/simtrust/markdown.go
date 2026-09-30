@@ -167,8 +167,11 @@ func (md *markdown) header(info ReportInfo) {
 	md.line("the bans of the trace and the verdicts of publishers of known behavior")
 	md.line("through the store, allow-list and decision engine of one observer node,")
 	md.line("and scores the bans that the engine enforces against the ground truth.")
-	md.line("[ADR 0034](../../adr/0034-trust-simulation-by-trace-replay.md) defines the")
-	md.line("world, the models and every metric.")
+	adr := "ADR 0034"
+	if info.ADR != "" {
+		adr = fmt.Sprintf("[%s](%s)", adr, info.ADR)
+	}
+	md.line("%s defines the world, the models and every metric.", adr)
 	md.line("")
 	md.line("A value is the mean over the seeds ± half the width of its 95 %% confidence")
 	md.line("interval (Student t). A dash means the metric is not defined, e.g. precision")
@@ -237,8 +240,14 @@ func (md *markdown) remotesNeeded(honest []*Aggregate) {
 	md.line("")
 	for _, a := range honest {
 		k, thr, q := needed(a.Profile, conf)
-		md.line("- `%s` (threshold %s, quorum %d): a ban on remote verdicts alone needs **%s** fully",
-			a.Profile, param(thr), q, remotes(k))
+		if k == 0 {
+			md.line("- `%s` (threshold %s, quorum %d): no number of fully trusted remotes up to %d",
+				a.Profile, param(thr), q, maxRemotes)
+			md.line("  at confidence %s bans on remote verdicts alone.", param(conf))
+			continue
+		}
+		md.line("- `%s` (threshold %s, quorum %d): a ban on remote verdicts alone needs **%d** fully",
+			a.Profile, param(thr), q, k)
 		md.line("  trusted remotes at confidence %s, which score %d × %s = %s.", param(conf), k, param(conf), param(float64(k)*conf))
 	}
 	md.line("")
@@ -287,9 +296,7 @@ func (md *markdown) remotesNeeded(honest []*Aggregate) {
 func (md *markdown) honestOnly(honest []*Aggregate) {
 	md.line("### Honest publishers only")
 	md.line("")
-	md.line("At the end of the run, cumulatively. The false bans are the shared NAT")
-	md.line("addresses that attackers use and the CDN edges that misconfigured")
-	md.line("publishers report.")
+	md.line("At the end of the run, cumulatively.")
 	md.line("")
 	metrics := []Metric{MetricPrecision, MetricRecall, MetricF1, MetricFalseBans, MetricFalseBansPerVictim, MetricFalseBanHours, MetricECE, MetricBrier}
 	header := []string{"Settings"}
@@ -302,6 +309,23 @@ func (md *markdown) honestOnly(honest []*Aggregate) {
 		end := a.End()
 		for _, m := range metrics {
 			row = append(row, cell(end[m], md.rep.Seeds))
+		}
+		rows = append(rows, row)
+	}
+	md.table(header, rows)
+	md.line("Their false bans per run by the class of the victim. A shared NAT")
+	md.line("address carries attackers, so honest publishers report it; a CDN edge is")
+	md.line("what a misconfigured publisher reports.")
+	md.line("")
+	header = []string{"Settings"}
+	for _, class := range benignClasses {
+		header = append(header, "`"+string(class)+"`")
+	}
+	rows = nil
+	for _, a := range honest {
+		row := []string{"`" + string(a.Profile) + "`"}
+		for _, class := range benignClasses {
+			row = append(row, cell(a.FalseBansByClass[class], md.rep.Seeds))
 		}
 		rows = append(rows, row)
 	}
@@ -354,7 +378,7 @@ func (md *markdown) adversaries(models []Model, profiles []Profile) {
 	if neutralizing == 0 {
 		md.line("No defector's weight fell to 0 in any run of the %d configurations with", configs)
 		md.line("adversaries, so none was neutralized: the time from a defection to its")
-		md.line("neutralization is the rest of the run, and no whitewasher burned a key.")
+		md.line("neutralization is the rest of the run.")
 	} else {
 		md.line("Some defectors were neutralized in %d of the %d configurations with", neutralizing, configs)
 		md.line("adversaries; see the results below.")
@@ -435,8 +459,8 @@ func (md *markdown) hourByHour() {
 	md.line("## Hour by hour")
 	md.line("")
 	md.line("Settings `%s`, honest-only and every model at %.0f %%, within single hours;", p, 100*f)
-	md.line("`hourly.csv.gz` has every metric of every configuration, per hour and")
-	md.line("cumulatively. The adversaries defect at hour %d.", int(md.rep.Scenario.Models.DefectAt.Hours()))
+	md.line("`hourly.csv.gz` has every metric of every configuration in every hour.")
+	md.line("The adversaries defect at hour %d.", int(md.rep.Scenario.Models.DefectAt.Hours()))
 	md.line("")
 	for _, m := range []Metric{MetricPrecision, MetricRecall, MetricFalseBans} {
 		md.line("### %s per hour", m.Title())
@@ -518,10 +542,24 @@ func (md *markdown) boundFinding(p Profile, f float64) {
 func (md *markdown) files() {
 	md.line("## Files")
 	md.line("")
-	md.line("- `summary.csv`: every metric of every configuration at the end, cumulatively:")
+	var falseBans, cumulativeOnly []string
+	for _, class := range benignClasses {
+		falseBans = append(falseBans, "`"+falseBansOf(class)+"`")
+	}
+	for i := range numMetrics {
+		if !Metric(i).Hourly() {
+			cumulativeOnly = append(cumulativeOnly, "`"+Metric(i).String()+"`")
+		}
+	}
+	md.line("Every value has %d significant digits.", csvDigits)
+	md.line("")
+	md.line("- `summary.csv`: every metric of every configuration at the end, cumulatively,")
+	md.line("  and the false bans by the class of their victim (%s):", strings.Join(falseBans, ", "))
 	md.line("  `model,fraction,profile,metric,n,mean,ci_low,ci_high`.")
-	md.line("- `hourly.csv.gz`: every metric of every configuration in every hour, within")
-	md.line("  the hour and cumulatively: `model,fraction,profile,hour,window,metric,n,mean,ci_low,ci_high`.")
+	md.line("- `hourly.csv.gz`: every metric of every configuration in every hour,")
+	md.line("  cumulatively and within the hour, except the durations per key, which")
+	md.line("  have a value only cumulatively (%s):", strings.Join(cumulativeOnly, ", "))
+	md.line("  `model,fraction,profile,hour,window,metric,n,mean,ci_low,ci_high`.")
 	md.line("- `feeds.csv`: the feed metrics of every role: `model,fraction,profile,role,metric,n,mean,ci_low,ci_high`.")
 	md.line("- `publishers.csv.gz`: the feed metrics of every publisher key of every run:")
 	md.line("  `model,fraction,profile,seed,slot,key,role,volume,exclusive,latency_minutes,bound,accuracy`.")

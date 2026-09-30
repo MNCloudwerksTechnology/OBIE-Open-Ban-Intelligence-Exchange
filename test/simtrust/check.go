@@ -13,6 +13,9 @@ import "fmt"
 //   - naive poisoners, Sybil coalitions and spies at the largest fraction
 //     cause false bans: the lower bound of the interval is above 0;
 //   - suppressors at the largest fraction lower the recall.
+//
+// With a single seed there is no interval, and the mean stands for both
+// of its bounds.
 func CheckV01(rep *Report) []string {
 	var out []string
 	fail := func(format string, args ...any) { out = append(out, fmt.Sprintf(format, args...)) }
@@ -25,7 +28,7 @@ func CheckV01(rep *Report) []string {
 				fail("%s: %s defined in %d of %d seeds", a.Config, m, end[m].N, rep.Seeds)
 			}
 		}
-		if w := end[MetricHonestWeight]; w.Mean != 1 || w.Low != 1 || w.High != 1 {
+		if w := end[MetricHonestWeight]; w.Mean != 1 || lowOf(w) != 1 || highOf(w) != 1 {
 			fail("%s: honest weight %+v, want 1: static weights never move", a.Config, w)
 		}
 		if s := end[MetricNeutralizedShare]; s.N > 0 && s.Mean != 0 {
@@ -51,8 +54,8 @@ func CheckV01(rep *Report) []string {
 			}
 		case a.Fraction != top:
 		case a.Model == ModelNaive || a.Model == ModelSybil1ASN || a.Model == ModelSybilMASN || a.Model == ModelSpies:
-			if e := end[MetricFalseBansBeforeNeutralization]; !(e.Low > 0) {
-				fail("%s: false bans by defectors %+v, want some in every run", a.Config, e)
+			if e := end[MetricFalseBansBeforeNeutralization]; !(lowOf(e) > 0) {
+				fail("%s: false bans by defectors %+v, want the interval's lower bound above 0", a.Config, e)
 			}
 		case a.Model == ModelSuppressor:
 			if h := md.find(ModelHonest, 0, a.Profile); h != nil && !(end[MetricRecall].Mean < h.End()[MetricRecall].Mean) {
@@ -61,4 +64,22 @@ func CheckV01(rep *Report) []string {
 		}
 	}
 	return out
+}
+
+// lowOf returns the lower bound of e's interval, or its mean if it has
+// none, as with a single seed.
+func lowOf(e Estimate) float64 {
+	if e.N < 2 {
+		return e.Mean
+	}
+	return e.Low
+}
+
+// highOf returns the upper bound of e's interval, or its mean if it has
+// none.
+func highOf(e Estimate) float64 {
+	if e.N < 2 {
+		return e.Mean
+	}
+	return e.High
 }

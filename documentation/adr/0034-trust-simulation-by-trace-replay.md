@@ -198,14 +198,19 @@ and cumulatively over [0, h+1), for every hour of the run.
   start in the window, divided by the size of the protected population.
   A victim that stays banned counts once, one banned again and again each
   time, so the **false ban hours** — the hours benign addresses spent
-  banned within the window — are reported with them.
+  banned within the window — are reported with them. The false bans of
+  the whole run are also split by the class of the victim.
 - **Defection to neutralization.** A key defects with its first malicious
   act: a poison verdict, a corroboration of one, a withheld or revoked
   ban. It is neutralized at the first probe after that at which its
   weight is 0: it no longer contributes to any ban. Hours and events
   (the key's own events) from its defection until then. A key not
   neutralized counts until the window ends (restricted mean), and the
-  share neutralized is reported with it.
+  share neutralized is reported with it. Only keys that have been
+  trusted (weight above 0 at a probe) count: a key that never was, such
+  as a whitewasher's new key under static weights, has nothing to
+  neutralize, and the harm it does shows in the false bans and the
+  payoff.
 - **False bans caused before neutralization.** False episodes to which a
   malicious verdict of a key not yet neutralized contributed, at the
   start or an update, counted when it first did. An adversary's honest
@@ -226,7 +231,8 @@ and cumulatively over [0, h+1), for every hour of the run.
   score is the mean of (confidence − outcome)². The ECE is computed over
   10 equal-width bins (Guo et al. 2017).
 - Durations per key (neutralization, convergence, payoff) have no
-  meaning within one hour. Their hourly rows carry the cumulative value.
+  meaning within one hour. They are reported for every hour cumulatively
+  only, as their value at the end of the hour.
 - **Feed metrics** per publisher over the whole run, after Li et al. 2019:
   - volume: the addresses it reported;
   - exclusive contribution: the share of those no other feed reported;
@@ -270,10 +276,11 @@ and cumulatively over [0, h+1), for every hour of the run.
   run, so an interrupted scenario resumes and a code change never reuses
   a result.
 - The report is `README.md` plus `summary.csv` (every metric at the end,
-  cumulatively), `hourly.csv.gz` (every metric in every hour, within the
-  hour and cumulatively), `feeds.csv` (the feed metrics by role),
+  cumulatively, and the false bans by class), `hourly.csv.gz` (every
+  metric in every hour, cumulatively and, but for the durations per key,
+  within the hour), `feeds.csv` (the feed metrics by role),
   `publishers.csv.gz` (those of every publisher key of every run) and
-  `corroboration.csv`. Its header
+  `corroboration.csv`, with 4 significant digits. Its header
   names the report format (1), the OBIE version, the scenario, the seeds
   and the trace; its findings are computed, not written by hand. The
   v0.1 baseline is committed under `documentation/validation/`.

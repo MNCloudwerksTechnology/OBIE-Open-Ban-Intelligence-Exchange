@@ -32,6 +32,9 @@ type ReportInfo struct {
 	// Version names the OBIE build, e.g. from git describe.
 	Version   string
 	Generated time.Time
+	// ADR is the path of ADR 0034 relative to the report's directory, for
+	// a link; the report names the ADR without a link if it is empty.
+	ADR string
 }
 
 // WriteReport writes the report of rep into dir: the Markdown report and
@@ -59,12 +62,19 @@ func WriteReport(dir string, rep *Report, info ReportInfo) error {
 	return nil
 }
 
-// csvFloat formats x for a CSV file; NaN is empty.
+// csvDigits are the significant digits of a value in a CSV file: more
+// than the intervals over 20 seeds resolve, and few enough to keep the
+// committed baseline small.
+const csvDigits = 4
+
+// csvFloat formats x for a CSV file, rounded to csvDigits significant
+// digits and without an exponent; NaN is empty.
 func csvFloat(x float64) string {
 	if math.IsNaN(x) {
 		return ""
 	}
-	return strconv.FormatFloat(x, 'g', 6, 64)
+	rounded, _ := strconv.ParseFloat(strconv.FormatFloat(x, 'g', csvDigits, 64), 64) // a formatted float always parses
+	return strconv.FormatFloat(rounded, 'f', -1, 64)
 }
 
 // estimateFields are the CSV fields of an estimate.
@@ -89,7 +99,7 @@ func writeCSV(w io.Writer, header []string, rows func(add func(...[]string) erro
 }
 
 // writeSummary writes every metric of every configuration at the end of
-// the run, cumulatively.
+// the run, cumulatively, and the false bans by the class of their victim.
 func writeSummary(w io.Writer, rep *Report) error {
 	return writeCSV(w, []string{"model", "fraction", "profile", "metric", "n", "mean", "ci_low", "ci_high"}, func(add func(...[]string) error) error {
 		for _, a := range rep.Aggregates {
@@ -99,9 +109,19 @@ func writeSummary(w io.Writer, rep *Report) error {
 					return err
 				}
 			}
+			for _, class := range benignClasses {
+				if err := add(configFields(a.Config), []string{falseBansOf(class)}, estimateFields(a.FalseBansByClass[class])); err != nil {
+					return err
+				}
+			}
 		}
 		return nil
 	})
+}
+
+// falseBansOf names the summary's metric of the false bans of class.
+func falseBansOf(class Class) string {
+	return MetricFalseBans.String() + "_" + string(class)
 }
 
 // writeGzipped writes the output of write gzipped, without name and

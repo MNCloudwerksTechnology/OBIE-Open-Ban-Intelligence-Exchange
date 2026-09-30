@@ -141,16 +141,23 @@ func TestWhitewasherSwitchesKeys(t *testing.T) {
 		t.Fatalf("keys of the whitewashers: %v, want four whitewashers", keys)
 	}
 	for actor, ks := range keys {
-		// The new key is never trusted, so it is never burned.
+		// The new key is never trusted, so it is never burned, and it is
+		// never neutralized either: it had nothing to lose.
 		if len(ks) != 2 || ks[0].burned.IsZero() || !ks[1].burned.IsZero() || len(ks[1].events) == 0 {
 			t.Fatalf("whitewasher %d: keys %+v, want one burned and a new one in use", actor, ks)
+		}
+		if ks[0].neutralized.IsZero() || !ks[1].trusted.IsZero() || !ks[1].neutralized.IsZero() {
+			t.Errorf("whitewasher %d: keys %+v, want the first neutralized and the new one never trusted nor neutralized", actor, ks)
 		}
 		if d := ks[1].joined.Sub(ks[0].burned); d != p.SwitchDelay {
 			t.Errorf("whitewasher %d switched %s after burning its key, want %s", actor, d, p.SwitchDelay)
 		}
 	}
+	// Only the first keys count, each neutralized at the first probe half
+	// an hour after its defection.
 	last := Measure(res).Hours[tr.Hours-1][WindowCumulative]
-	if last[MetricNeutralizedShare] != 1 || last[MetricNeutralizationHours] > 1 || math.IsNaN(last[MetricWhitewashPayoff]) {
+	if h := last[MetricNeutralizationHours]; last[MetricNeutralizedShare] != 1 || h < 0.5 || h > (30*time.Minute+probeInterval).Hours() ||
+		math.IsNaN(last[MetricWhitewashPayoff]) {
 		t.Errorf("neutralized %v after %v h, payoff %v", last[MetricNeutralizedShare], last[MetricNeutralizationHours], last[MetricWhitewashPayoff])
 	}
 }

@@ -53,6 +53,9 @@ type Aggregate struct {
 	// attackers per seed and the share of them banned; Banned and
 	// Attackers are the totals over the seeds.
 	Corroboration [supportBuckets][2]CorroborationEstimate
+	// FalseBansByClass estimates the false bans per run by the class of
+	// their victim.
+	FalseBansByClass map[Class]Estimate
 	// Feeds are the estimates of the feed metrics of each role.
 	Feeds map[Role]FeedEstimate
 }
@@ -171,7 +174,8 @@ feed:
 
 // aggregate estimates the metrics of config c over its runs.
 func aggregate(c Config, runs []*Metrics, hours int) Aggregate {
-	a := Aggregate{Config: c, Hours: make([][numWindows][numMetrics]Estimate, hours), Feeds: map[Role]FeedEstimate{}}
+	a := Aggregate{Config: c, Hours: make([][numWindows][numMetrics]Estimate, hours), FalseBansByClass: map[Class]Estimate{},
+		Feeds: map[Role]FeedEstimate{}}
 	xs := make([]float64, len(runs))
 	for h := range hours {
 		for w := range numWindows {
@@ -195,6 +199,12 @@ func aggregate(c Config, runs []*Metrics, hours int) Aggregate {
 			}
 			ce.Attackers, ce.Share = estimate(attackers), estimate(shares)
 		}
+	}
+	for _, class := range benignClasses {
+		for s, m := range runs {
+			xs[s] = float64(m.FalseBansByClass[class])
+		}
+		a.FalseBansByClass[class] = estimate(xs)
 	}
 	var roles []Role
 	for _, m := range runs {

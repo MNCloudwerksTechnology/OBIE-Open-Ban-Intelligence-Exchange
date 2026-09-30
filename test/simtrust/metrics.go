@@ -33,8 +33,8 @@ const (
 )
 
 // metricInfo describes a metric: its CSV name, its title, and whether it
-// has a value within one hour; the others are durations per key, reported
-// cumulatively only.
+// has a value within one hour; the others are durations per key, which
+// have a value only cumulatively.
 type metricInfo struct {
 	name, title string
 	hourly      bool
@@ -60,6 +60,9 @@ var metricInfos = [numMetrics]metricInfo{
 }
 
 func (m Metric) String() string { return metricInfos[m].name }
+
+// Hourly reports whether the metric has a value within one hour.
+func (m Metric) Hourly() bool { return metricInfos[m].hourly }
 
 // Title is the metric's name in a report.
 func (m Metric) Title() string { return metricInfos[m].title }
@@ -129,6 +132,9 @@ type Metrics struct {
 	// Hours holds the values of hour h in both windows.
 	Hours         [][numWindows]Values
 	Corroboration Corroboration
+	// FalseBansByClass counts the false bans of the run by the class of
+	// their victim.
+	FalseBansByClass map[Class]int
 	// Feeds are the mean feed metrics of the publishers of each role;
 	// Publishers those of every publisher key.
 	Feeds      map[Role]Feed
@@ -160,7 +166,7 @@ func Measure(r *Result) *Metrics {
 	for i, k := range r.keys {
 		m.keyOf[k.peerID] = i
 	}
-	out := &Metrics{Spec: r.Spec, Hours: make([][numWindows]Values, m.hours)}
+	out := &Metrics{Spec: r.Spec, Hours: make([][numWindows]Values, m.hours), FalseBansByClass: map[Class]int{}}
 	for h := range out.Hours {
 		for w := range numWindows {
 			for i := range out.Hours[h][w] {
@@ -241,6 +247,7 @@ func (m *measure) bans(out *Metrics) {
 			banHours[h] += overlap(e.Start, e.End, m.endOf(h-1), m.endOf(h)).Hours()
 		}
 		falseByHour[m.hourOf(e.Start)]++
+		out.FalseBansByClass[m.w.class[e.Addr]]++
 		if at, ok := m.causedAt(e, func(keyRecord) bool { return true }); ok {
 			causedByHour[m.hourOf(at)]++
 		}
@@ -340,7 +347,10 @@ func (m *measure) causedAt(e Episode, of func(keyRecord) bool) (time.Time, bool)
 
 // defectors computes the neutralization of the defecting keys, the
 // convergence of the newcomers and the whitewashing payoff, as their
-// running values at the end of every hour.
+// running values at the end of every hour. A defecting key counts once it
+// has been trusted: one that never was, such as a whitewasher's new key
+// under static weights, has nothing to neutralize, and the harm it does
+// shows in the false bans and the payoff.
 func (m *measure) defectors(out *Metrics) {
 	for h := range m.hours {
 		end := m.endOf(h)
@@ -351,7 +361,7 @@ func (m *measure) defectors(out *Metrics) {
 		var convergence float64
 		for i := range m.r.keys {
 			k := &m.r.keys[i]
-			if k.role.Adversary() && !k.defected.IsZero() && k.defected.Before(end) {
+			if k.role.Adversary() && !k.defected.IsZero() && k.defected.Before(end) && !k.trusted.IsZero() && k.trusted.Before(end) {
 				until := end
 				if !k.neutralized.IsZero() && k.neutralized.Before(end) {
 					until = k.neutralized

@@ -36,13 +36,13 @@ type keyRecord struct {
 	peerID string
 	actor  int
 	role   Role
-	// joined is when the key could first publish; defected when it first
-	// acted maliciously, neutralized when its weight was 0 after that,
-	// converged when a newcomer's weight first reached convergedShare of
-	// the ceiling, burned when a whitewasher abandoned it; zero if never.
-	joined, defected, neutralized, converged, burned time.Time
-	// trusted is set once the key's weight was above 0.
-	trusted bool
+	// joined is when the key could first publish; trusted when its weight
+	// was first above 0; defected when it first acted maliciously;
+	// neutralized when its weight was 0 after it was trusted and had
+	// defected; converged when a newcomer's weight first reached
+	// convergedShare of the ceiling; burned when a whitewasher abandoned
+	// it. Zero if never.
+	joined, trusted, defected, neutralized, converged, burned time.Time
 	// events are the times of the events delivered under the key.
 	events []time.Time
 }
@@ -229,8 +229,10 @@ func (r *runner) probe(at time.Time) error {
 		w := r.weight(r.node, k.peerID, at)
 		switch {
 		case w > 0:
-			k.trusted = true
-		case !k.defected.IsZero() && k.neutralized.IsZero():
+			if k.trusted.IsZero() {
+				k.trusted = at
+			}
+		case !k.trusted.IsZero() && !k.defected.IsZero() && k.neutralized.IsZero():
 			k.neutralized = at
 		}
 		if k.role == RoleNewcomer && k.converged.IsZero() && w >= convergedShare*Ceiling {
@@ -240,7 +242,7 @@ func (r *runner) probe(at time.Time) error {
 			sum += w / Ceiling
 			honest++
 		}
-		if k.role == Role(ModelWhitewash) && w <= 0 && k.trusted && k.burned.IsZero() && r.current[k.actor] == i {
+		if k.role == Role(ModelWhitewash) && w <= 0 && !k.trusted.IsZero() && k.burned.IsZero() && r.current[k.actor] == i {
 			k.burned = at
 			r.current[k.actor], r.switchAt[k.actor] = -1, at.Add(r.p.SwitchDelay)
 		}
