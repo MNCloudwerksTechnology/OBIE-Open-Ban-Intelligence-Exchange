@@ -1,7 +1,7 @@
 # Operating a node
 
 Day-2 tasks for a [node](../glossary.md#node) installed with `install.sh`
-and the systemd unit ([quick start](quickstart.md)). For the container
+and the systemd unit ([Get started](../getting-started.md)). For the container
 image, see [Installing and upgrading](install.md#run-the-container-image).
 
 ## Metrics and health

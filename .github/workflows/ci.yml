@@ -3,8 +3,8 @@
 # fails if the two copies differ. The local `make ci` is the source of truth —
 # this pipeline only runs it (and `make -C website ci` for the website), plus
 # the packaging checks (`make release`, `check-unit`, `image`, `lab-smoke`,
-# `sandbox-check`) without publishing anything; release.yml publishes on v* tags,
-# website-release.yml the website image on website-v* tags.
+# `sandbox-check`, `tutorial-check`) without publishing anything; release.yml
+# publishes on v* tags, website-release.yml the website image on website-v* tags.
 name: ci
 
 on:
@@ -60,8 +60,8 @@ jobs:
           key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       # TestFail2BanAcceptsAction checks the Fail2Ban action with
-      # `fail2ban-client -t` (a command of the quick start); it is skipped
-      # without Fail2Ban.
+      # `fail2ban-client -t` (a command of the getting-started tutorial); it
+      # is skipped without Fail2Ban.
       - name: Install Fail2Ban
         run: |
           if ! command -v fail2ban-client >/dev/null; then
@@ -135,9 +135,10 @@ jobs:
     name: release build, image and lab
     # Everything the release workflow publishes, built and checked but never
     # pushed: reproducible `make release`, the systemd unit, the container
-    # image and the compose lab's smoke test; and the sandbox walkthrough.
+    # image and the compose lab's smoke test; and the sandbox walkthrough and
+    # the getting-started tutorial.
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -164,10 +165,10 @@ jobs:
           GOCACHE="$(mktemp -d)" make release VERSION=0.0.0-ci
           diff "$RUNNER_TEMP/SHA256SUMS" dist/release/SHA256SUMS
 
-      # The install commands of documentation/operations/quickstart.md, on
-      # the tarball just built: verify, extract, install (staged below
-      # DESTDIR, without root and systemd) and check the installed config.
-      - name: quickstart steps on the release tarball
+      # The install commands of documentation/getting-started.md, on the
+      # tarball just built: verify, extract, install (staged below DESTDIR,
+      # without root and systemd) and check the installed config.
+      - name: install steps on the release tarball
         run: |
           cp dist/release/obie-0.0.0-ci-linux-amd64.tar.gz dist/release/SHA256SUMS "$RUNNER_TEMP/"
           cd "$RUNNER_TEMP"
@@ -199,6 +200,12 @@ jobs:
       # each output compared with the page (ADR 0029).
       - name: make sandbox-check
         run: make sandbox-check
+
+      # Every command of documentation/getting-started.md on a systemd host
+      # in a privileged container, against the release built from this
+      # commit, each output compared with the page (ADR 0030).
+      - name: make tutorial-check
+        run: make tutorial-check
 
   website:
     name: website

@@ -57,7 +57,9 @@ first-run setup assistant and the node self-check in
 command-line help, error messages, shell completion and manual pages in
 [ADR 0028](documentation/adr/0028-command-line-help-and-messages.md); the
 newcomer sandbox and its walkthrough, run as a test, in
-[ADR 0029](documentation/adr/0029-sandbox-and-checked-walkthrough.md); the website
+[ADR 0029](documentation/adr/0029-sandbox-and-checked-walkthrough.md); the
+getting-started tutorial, run as a test on a systemd host in a container, in
+[ADR 0030](documentation/adr/0030-getting-started-tutorial-checked-on-a-systemd-host.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -122,6 +124,7 @@ pkg/
 documentation/
   introduction.md   "What is OBIE?", the plain-language entry point; faq.md, glossary.md
   sandbox.md        "Try OBIE in a sandbox", the walkthrough that `make sandbox-check` runs
+  getting-started.md  "Get started with OBIE", the tutorial for a first node that `make tutorial-check` runs
   images/           diagrams of the newcomer documentation (SVG with text alternatives)
   adr/              architecture decision records
   examples/         commented example configuration (tested against the schema)
@@ -142,6 +145,7 @@ Dockerfile          multi-stage build of the distroless/static nonroot image (+ 
 test/
   e2e/              four complete obied nodes in one process: report → quorum block → revoke (ADR 0016)
   sandbox/          the sandbox's configurations, script and walkthrough; `make sandbox-check` runs documentation/sandbox.md (ADR 0029)
+  tutorial/         the getting-started tutorial's form; `make tutorial-check` runs documentation/getting-started.md on a systemd host (ADR 0030)
 diagrams/           whitepaper diagrams (PlantUML sources + PNG)
 website/            public website, independent of the node (see Website)
 ```

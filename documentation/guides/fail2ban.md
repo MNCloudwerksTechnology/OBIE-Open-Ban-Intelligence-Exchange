@@ -80,11 +80,12 @@ obiectl --socket /run/obie/obie.sock --timeout 5s report --ip <ip> \
              obie
    ```
 
-3. Check the configuration and reload:
+3. Check the configuration and restart Fail2Ban. A reload is not enough:
+   it does not add an action to a jail that is already running.
 
    ```sh
    sudo fail2ban-client -t
-   sudo fail2ban-client reload
+   sudo systemctl restart fail2ban
    ```
 
 If `admin.socket` in `obie.yaml` is not the default `/run/obie/obie.sock`, pass
@@ -145,10 +146,11 @@ For a jail that does not detect authentication failures, set a matching
 
 ## Verify
 
-1. Check that Fail2Ban loaded the action:
+1. Check that the running jail uses the action. The list must name `obie`;
+   if it does not, restart Fail2Ban:
 
    ```sh
-   sudo fail2ban-client -d | grep "'obie'"
+   sudo fail2ban-client get sshd actions
    ```
 
 2. Test the path to `obied` without publishing anything by banning an address

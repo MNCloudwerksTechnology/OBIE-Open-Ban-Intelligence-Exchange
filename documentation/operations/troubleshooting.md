@@ -26,6 +26,22 @@ tools and every warning and error of the log, with what it means and what
 to do. Every command explains itself: `obiectl --help`,
 `obiectl help <command>`, `man obiectl`.
 
+## The installation fails
+
+The requirements check or the installation of
+[Get started](../getting-started.md) stops with an error.
+
+| What you see | Cause and fix |
+|--------------|---------------|
+| `ps -p 1 -o comm=` prints another program than `systemd` | The server does not run systemd, which the installed service needs. OBIE runs without it, but you have to start `obied` yourself, and no guide covers that yet ([what OBIE needs](../capabilities.md#what-it-needs)). |
+| `fail2ban-client: command not found` | Fail2Ban is not installed. Go on without it, or install it first ([Get started without Fail2Ban](../getting-started.md#if-this-server-has-no-fail2ban)). |
+| `curl: (22) The requested URL returned error: 404` | There is no file of that name. Check the version, which appears twice in the address (`v0.1.0` and `0.1.0`), and the processor (`amd64` or `arm64`, from `uname -m`). |
+| `curl: (6) Could not resolve host` or `(7) Failed to connect` | The server cannot reach GitHub. Download the two files on another computer and copy them over, for example with `scp`. |
+| `sha256sum` says `FAILED`, or `no file was verified` | The archive is incomplete, or its name does not match `SHA256SUMS`. Download both files again, into an empty directory. |
+| `tar` says `Cannot open: No such file or directory` | The archive is not in the current directory. Run `tar` where you downloaded it. |
+| `install.sh: must run as root` | Run it with `sudo`. |
+| `install.sh: … is missing; run install.sh from an extracted release tarball` | The archive was not unpacked completely. Remove the directory `obie-<version>-linux-<arch>` and run `tar` again. |
+
 ## Locked out
 
 You cannot reach the host any more, and suspect OBIE blocked you.
@@ -71,9 +87,11 @@ them while the node runs in [enforce mode](../glossary.md#enforce-mode),
 because it re-applies its decisions at start.
 
 To prevent it: keep the allow-list complete *before* switching to
-`enforce` ([quick start, step 5](quickstart.md#5-enforce)), keep a console
-path, and consider `enforce.nftables.teardown_on_stop: true`, so that
-stopping the service lifts every block.
+`enforce`
+([Get started, step 10](../getting-started.md#10-switch-to-enforcement-optional)),
+keep a console path, and consider
+`enforce.nftables.teardown_on_stop: true`, so that stopping the service
+lifts every block.
 
 ## Nothing is enforced
 
@@ -165,10 +183,11 @@ sudo journalctl -t obie-fail2ban -n 20
 | `obiectl exit code 127` (`not found`) | Fail2Ban cannot find `obiectl` on its `PATH`; set `obie[obiectl=/usr/local/bin/obiectl]`. |
 | `overlaps the allow-listed network` or `is not a public address` | Working as intended: `obied` never reports allow-listed or non-public addresses. |
 
-No message at all: check that the jail lists `obie` among its actions
-(`sudo fail2ban-client -d | grep "'obie'"`) and that Fail2Ban was
-reloaded. The [Fail2Ban guide](../guides/fail2ban.md#verify) has a
-step-by-step check.
+No message at all: check that the running jail uses the action.
+`sudo fail2ban-client get sshd actions` must list `obie`. If it does
+not, restart Fail2Ban (`sudo systemctl restart fail2ban`): a reload does
+not add an action to a jail that is already running. The
+[Fail2Ban guide](../guides/fail2ban.md#verify) has a step-by-step check.
 
 ## The web console does not open
 

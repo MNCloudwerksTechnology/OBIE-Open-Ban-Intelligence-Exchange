@@ -61,7 +61,10 @@ is a byte-identical copy for the public GitHub mirror — change both together;
   `make sandbox-check` (every step of the
   [sandbox walkthrough](documentation/sandbox.md) runs and prints what the
   page shows; a change to `obiectl`'s output or the console that the page
-  shows needs the page updated). Nothing is pushed.
+  shows needs the page updated) and `make tutorial-check` (every command of
+  the [getting-started tutorial](documentation/getting-started.md) runs on
+  a systemd host in a privileged container, against the release built from
+  the change, and prints what the page shows). Nothing is pushed.
 - **website** — `make -C website ci` for the website in `website/` (see
   [`website/README.md`](website/README.md)) and `make -C website smoke`
   (builds the website image and checks it in its production compose stack;
@@ -328,7 +331,7 @@ Before you tag:
    versions the action works with, besides the fuzzing and the soak test
    above.
 3. Set the new version in the install commands of the README and the
-   [quick start](documentation/operations/quickstart.md), and turn
+   [getting-started tutorial](documentation/getting-started.md), and turn
    `[Unreleased]` in the [changelog](CHANGELOG.md) into the release.
 
 Then tag the merged commit on `main`

@@ -194,13 +194,24 @@ func TestNormalize(t *testing.T) {
 		"12D3KooWH1bVLmkqCEXCfUHqKQ42VDRibnVo3tbgRajXDCg2Qt32 node2 1 300µs /ip4/172.18.0.5/tcp/4001\n\n" +
 		"node3 http://127.0.0.1:19403/ token SPOxHIIpn1QczycnrwFQjAUcdZYkZFkWnbVEkHGKJmM\n" +
 		"1.2.3.4/32 2026-10-07T08:00:00Z 6d23h59m58s"
-	if a, b := normalize(run1), normalize(run2); a != b {
-		t.Errorf("two runs of the same story differ:\n%s\n---\n%s", a, b)
+	// Two nodes that dialed each other at the same moment: node1 and node2
+	// each have a second connection, node2's from a port of its own, which
+	// sorts before or after the mesh port.
+	run3 := strings.NewReplacer("/ip4/172.18.0.2/tcp/4001\n", "/ip4/172.18.0.2/tcp/4001,/ip4/172.18.0.2/tcp/4001\n",
+		"/ip4/172.18.0.5/tcp/4001\n", "/ip4/172.18.0.5/tcp/35804,/ip4/172.18.0.5/tcp/4001\n").Replace(run2)
+	run4 := strings.Replace(run2, "/ip4/172.18.0.5/tcp/4001\n", "/ip4/172.18.0.5/tcp/4001,/ip4/172.18.0.5/tcp/51234\n", 1)
+	for _, run := range []string{run2, run3, run4} {
+		if a, b := normalize(run1), normalize(run); a != b {
+			t.Errorf("two runs of the same story differ:\n%s\n---\n%s", a, b)
+		}
 	}
 	for _, differs := range []string{
 		strings.Replace(run1, "(7d)", "(12h)", 1),
 		strings.Replace(run1, "node2  1", "node2  0", 1),
 		strings.Replace(run1, "1.2.3.4/32", "1.2.3.5/32", 1),
+		strings.Replace(run1, "/ip4/172.23.0.3/tcp/4001", "/ip4/172.23.0.3/tcp/4002", 1),
+		strings.Replace(run1, "/ip4/172.23.0.3/tcp/4001", "/ip4/172.23.0.3/tcp/35804,/ip4/172.23.0.3/tcp/35805", 1),
+		strings.Replace(run1, "/ip4/172.23.0.3/tcp/4001", "/ip4/172.23.0.3/tcp/35804,/ip4/172.23.0.3/tcp/4001,/ip4/172.23.0.3/tcp/51234", 1),
 	} {
 		if normalize(differs) == normalize(run1) {
 			t.Errorf("normalize hides a real difference:\n%s", differs)

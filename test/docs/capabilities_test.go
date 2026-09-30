@@ -13,6 +13,9 @@ import (
 
 const capabilitiesPath = "documentation/capabilities.md"
 
+// tutorialPath is the getting-started tutorial, which installs a release.
+const tutorialPath = "documentation/getting-started.md"
+
 // capabilitySections are the sections of the capability overview, in the
 // order an evaluator reads them (WP-1692). What the release cannot do
 // follows what it can do directly, at the same level.
@@ -101,8 +104,8 @@ var (
 	describedRelease = regexp.MustCompile(`\*\*OBIE (\d+\.\d+\.\d+)\*\*`)
 	// namedRelease is any mention of a release on the overview.
 	namedRelease = regexp.MustCompile(`OBIE (\d+\.\d+\.\d+)`)
-	// installedRelease is the release the README's install commands
-	// download.
+	// installedRelease is the release the install commands of the README
+	// and the tutorial download.
 	installedRelease = regexp.MustCompile(`/releases/download/v(\d+\.\d+\.\d+)/`)
 	// releasePlatforms is the default of PLATFORMS in packaging/release.sh:
 	// the platforms a release is built for.
@@ -340,9 +343,9 @@ const releasing = "../CONTRIBUTING.md#releasing"
 
 // TestCapabilitiesDescribeCurrentRelease checks that the overview names
 // the release it describes before its first section, that this is the
-// release the README and the quick start install, that it names no other
-// release, and that it says how it is kept current with every release
-// (make release refuses a version it does not name:
+// release the README and the getting-started tutorial install, that it
+// names no other release, and that it says how it is kept current with
+// every release (make release refuses a version it does not name:
 // TestReleaseRefusesStaleCapabilities in packaging).
 func TestCapabilitiesDescribeCurrentRelease(t *testing.T) {
 	doc := readRepoFile(t, capabilitiesPath)
@@ -352,7 +355,7 @@ func TestCapabilitiesDescribeCurrentRelease(t *testing.T) {
 		t.Fatal("the overview does not name the release it describes, as **OBIE x.y.z**, before its first section")
 	}
 	release := m[1]
-	for _, page := range []string{"README.md", quickstartPath} {
+	for _, page := range []string{"README.md", tutorialPath} {
 		installs := installedRelease.FindAllStringSubmatch(readRepoFile(t, page), -1)
 		if len(installs) == 0 {
 			t.Errorf("%s installs no release", page)

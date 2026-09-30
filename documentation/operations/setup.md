@@ -7,8 +7,9 @@ and the server and tells you, for everything that is not right, what to
 do next. Both come with every release. Run them as root: the configuration,
 the node's state and its admin interface are closed to other users.
 
-The [quick start](quickstart.md) uses both. This page explains what they
-ask, what they check and how to use them in scripts.
+The [getting-started tutorial](../getting-started.md) uses both. This
+page explains what they ask, what they check and how to use them in
+scripts.
 
 ## Set up the node
 
@@ -51,7 +52,7 @@ replaced file is kept as `/etc/obie/obie.yaml.bak` (or `.bak.1`, `.bak.2`,
 
 When it has written the file, the assistant tells you what to do next:
 start the node, run the self-check and open the
-[tutorial](quickstart.md#3-connect-fail2ban) where it goes on with
+[tutorial](../getting-started.md#6-connect-fail2ban) where it goes on with
 Fail2Ban. If your SSH session comes from an address the new configuration
 does not protect, it warns you of a lockout first. For another file than
 `/etc/obie/obie.yaml`, the commands it shows name that file, and the first
@@ -145,7 +146,7 @@ Every warning and problem is followed by a line `Next:` with what to do.
 | Node (`node`) | `obied` is running, every part of it is ready, and it is the installed version | a stopped node is a warning |
 | Peers (`peers`) | peers are configured, each peer in `mesh.bootstrap` answers on its port, and, while the node runs, each is connected; no peers at all is a warning, as a node on its own may be what you want | only whether the peers answer |
 | Clock (`clock`) | the time is plausible and kept in sync by NTP: verdicts expire by this clock, and peers drop verdicts dated more than five minutes ahead | the same |
-| Fail2Ban (`fail2ban`) | Fail2Ban is installed, OBIE's action is installed, a jail uses it, and bans reach the node: the node holds verdicts of its own, or the action's last message says why not | whether bans arrive shows once the node runs |
+| Fail2Ban (`fail2ban`) | Fail2Ban is installed, OBIE's action is installed, a jail uses it in the configuration and in the running Fail2Ban, and bans reach the node: the node holds verdicts of its own, or the action's last message says why not | whether bans arrive shows once the node runs |
 | Firewall (`firewall`) | in enforce mode, the nftables backend can block; the running node's mode matches the configuration | nftables is probed without changing anything |
 | SSH session (`session`) | the address your SSH session comes from is protected from being blocked, by the allow-list or an [override](../glossary.md#override) | the allow-list of the configuration |
 

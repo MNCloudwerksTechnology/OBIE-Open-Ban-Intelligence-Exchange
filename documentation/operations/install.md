@@ -11,8 +11,8 @@ OBIE ships in three forms (ADR 0017), and a sandbox to try it in
 | Sandbox (`packaging/sandbox`) | watching OBIE work, guided step by step, with web consoles | no (dryrun) |
 
 New to OBIE? [What is OBIE?](../introduction.md) explains it in five
-minutes, and the [quick start](quickstart.md) walks through a first node
-step by step; [Operations](operations.md) covers upgrades, backups and
+minutes, and [Get started](../getting-started.md) walks through a first
+node step by step; [Operations](operations.md) covers upgrades, backups and
 uninstalling in more detail.
 
 ## Release artefacts

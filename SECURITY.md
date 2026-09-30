@@ -9,7 +9,7 @@
 
 OBIE v0.1 is a first release. Read the [threat model](#threat-model)
 below before you let it enforce on a production host, and start in
-observe mode ([quick start](documentation/operations/quickstart.md)).
+observe mode ([Get started](documentation/getting-started.md)).
 Fixes land on `develop` first and are released from there.
 
 ## Reporting a vulnerability

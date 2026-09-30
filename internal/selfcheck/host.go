@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/admin"
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
@@ -29,18 +30,24 @@ const commandTimeout = 10 * time.Second
 var jailAction = regexp.MustCompile(`\['(?:multi-)?set', '([^']+)', '(?:add)?action', 'obie'`)
 
 // refusedAsIntended are parts of obied's answers to reports it refuses by
-// design; the quick start tests the way from Fail2Ban with one of them.
+// design; the getting-started tutorial tests the way from Fail2Ban with one
+// of them.
 var refusedAsIntended = []string{"is not a public address", "overlaps the allow-listed network"}
 
 // Next steps of the Fail2Ban check.
 const (
 	nextInstallFail2Ban = "to report bans, install Fail2Ban (e.g. sudo apt install fail2ban), run install.sh from the release " +
 		"again to add OBIE's action, and follow documentation/guides/fail2ban.md"
-	nextAddJail = "add obie to the action of a jail in /etc/fail2ban/jail.local and reload Fail2Ban " +
-		"(quick start, step 3: documentation/operations/quickstart.md#3-connect-fail2ban)"
+	nextAddJail = "add obie to the action of a jail in /etc/fail2ban/jail.local and restart Fail2Ban " +
+		"(getting started, step 6: documentation/getting-started.md#6-connect-fail2ban)"
 	nextTestBan = "test the way from Fail2Ban to the node: sudo fail2ban-client set sshd banip 203.0.113.7, " +
-		"then sudo journalctl -t obie-fail2ban -n 5 (quick start, step 4)"
+		"then sudo journalctl -t obie-fail2ban -n 1 -o cat (getting started, step 6)"
+	nextRestartFail2Ban = "restart Fail2Ban (a reload is not enough): sudo systemctl restart fail2ban"
 )
+
+// runningActions is how fail2ban-client get <jail> actions starts its
+// answer: the actions follow, separated by commas.
+var runningActions = regexp.MustCompile(`^The jail (\S+) has the following actions:\s*$`)
 
 // checkFail2Ban: Fail2Ban has OBIE's action, a jail uses it, and its
 // reports reach the node.
@@ -88,11 +95,40 @@ func (r *run) jails(client string, lookErr error) (int, finding) {
 		}
 	}
 	if len(names) == 0 {
-		// As without Fail2Ban, the node works; the quick start connects a
-		// jail only after the first start.
+		// As without Fail2Ban, the node works; the tutorial connects a jail
+		// only after the first start.
 		return 0, warn("no Fail2Ban jail uses OBIE's action yet, so no ban is reported", nextAddJail)
 	}
+	// Fail2Ban adds an action to a running jail only when it restarts: a
+	// reload keeps the jail's actions as they were.
+	var stale []string
+	for _, name := range names {
+		if actions, known := r.runningActions(client, name); known && !slices.Contains(actions, "obie") {
+			stale = append(stale, name)
+		}
+	}
+	if len(stale) > 0 {
+		return len(names), warn(fmt.Sprintf("Fail2Ban's configuration gives %s OBIE's action, but the running jail does not use it yet, "+
+			"so its bans are not reported", strings.Join(stale, ", ")), nextRestartFail2Ban)
+	}
 	return len(names), ok("jails that report every ban to the node: " + strings.Join(names, ", "))
+}
+
+// runningActions returns the actions the running Fail2Ban uses in a jail;
+// known is false if Fail2Ban does not say, for example because it does
+// not run.
+func (r *run) runningActions(client, jail string) (actions []string, known bool) {
+	ctx, cancel := context.WithTimeout(r.ctx, commandTimeout)
+	defer cancel()
+	out, err := r.env.Command(ctx, client, "get", jail, "actions")
+	if err != nil {
+		return nil, false
+	}
+	head, list, _ := strings.Cut(string(out), "\n")
+	if m := runningActions.FindStringSubmatch(head); m == nil || m[1] != jail {
+		return nil, false
+	}
+	return strings.FieldsFunc(list, func(r rune) bool { return r == ',' || unicode.IsSpace(r) }), true
 }
 
 // reportsFinding says whether bans reach the node: it holds verdicts of
