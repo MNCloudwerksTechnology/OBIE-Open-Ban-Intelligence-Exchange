@@ -18,7 +18,7 @@ import (
 // it runs next to the tutorial's check.
 const guidesName = "obie-guides-check"
 
-var keep = flag.Bool("guides.keep", false, "leave the server of the last guide running, to look at it (docker exec -it "+guidesName+" bash); the next run removes it")
+var keep = flag.Bool("guides.keep", false, "leave the server of the last guide and its image, to look at it (docker exec -it "+guidesName+" bash); the next run removes the server")
 
 // scenarios are what the reader of a guide brings along beyond the
 // tutorial's steps, played by the check before the guide runs. The guides'
@@ -26,9 +26,27 @@ var keep = flag.Bool("guides.keep", false, "leave the server of the last guide r
 var scenarios = map[string]func(c *check){
 	// The friend's node reports an address before the reader connects to
 	// it, and sends the verdict once connected.
-	"connect-a-peer.md":       func(c *check) { c.peerReports(friendReports) },
-	"stop-trusting-a-peer.md": func(c *check) { c.peerReports(friendReports) },
+	"connect-a-peer.md":               func(c *check) { c.peerReports(friendReports) },
+	"stop-trusting-a-peer.md":         func(c *check) { c.peerReports(friendReports) },
+	"review-what-would-be-blocked.md": func(c *check) { c.peerReports(friendReports) },
+	// A customer mistypes their password five times, and the node blocks
+	// them.
+	"unblock-an-address.md": func(c *check) {
+		c.failLogins(customer)
+		c.waitForBlock(customer)
+	},
+	// The reader reports the wrong address.
+	"withdraw-a-verdict.md": func(c *check) {
+		c.asRoot("obiectl report --protocol ssh --reason password_bruteforce " + mistake)
+	},
 }
+
+const (
+	// customer is the address of a customer that Fail2Ban bans by mistake.
+	customer = "85.10.4.12"
+	// mistake is the address the reader reports by mistake.
+	mistake = "85.10.0.19"
+)
 
 // friendReports is the address the friend's node reports.
 const friendReports = "85.10.0.66"
@@ -55,7 +73,11 @@ func TestGuides(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &check{t: t, root: root, name: guidesName, version: releaseOf(t, tutorial), host: guidesName}
-	t.Cleanup(c.remove)
+	t.Cleanup(func() {
+		if !*keep {
+			c.remove()
+		}
+	})
 	c.removeContainers() // what an interrupted run left
 	c.release = t.TempDir()
 	for _, v := range versionsOf(tutorial, guides) {
@@ -237,4 +259,11 @@ func pageText(page string) string {
 // the friend's Fail2Ban would.
 func (c *check) peerReports(address string) {
 	c.asRoot(fmt.Sprintf("ip netns exec peer /srv/peer/bin/obiectl --socket /run/obie-peer/obie.sock report --protocol ssh --reason bruteforce --events 5 %s", address))
+}
+
+// waitForBlock waits until the node blocks the address, or would in
+// observe mode.
+func (c *check) waitForBlock(address string) {
+	c.until("sudo obiectl explain "+address, "the node does not block "+address,
+		func(out string) bool { return strings.Contains(out, "\nDecision:              block until ") })
 }

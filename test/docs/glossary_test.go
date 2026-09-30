@@ -86,6 +86,11 @@ var glossaryGuides = []string{
 	"documentation/guides/README.md",
 	"documentation/guides/connect-a-peer.md",
 	"documentation/guides/stop-trusting-a-peer.md",
+	"documentation/guides/review-what-would-be-blocked.md",
+	"documentation/guides/why-is-an-address-blocked.md",
+	"documentation/guides/unblock-an-address.md",
+	"documentation/guides/block-an-address.md",
+	"documentation/guides/withdraw-a-verdict.md",
 	"packaging/compose/README.md",
 }
 
