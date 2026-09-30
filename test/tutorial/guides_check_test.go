@@ -35,6 +35,14 @@ var scenarios = map[string]func(c *check){
 		c.failLogins(customer)
 		c.waitForBlock(customer)
 	},
+	// The reader mistypes their password five times at home, and the node
+	// locks them out.
+	"recover-from-a-lockout.md": func(c *check) {
+		c.failLogins(home)
+		c.waitForBlock(home)
+		c.until("sudo obiectl enforced", "the firewall does not block "+home,
+			func(out string) bool { return strings.Contains(out, "\n"+home+"/32 ") })
+	},
 	// The reader reports the wrong address.
 	"withdraw-a-verdict.md": func(c *check) {
 		c.asRoot("obiectl report --protocol ssh --reason password_bruteforce " + mistake)
@@ -46,6 +54,8 @@ const (
 	customer = "85.10.4.12"
 	// mistake is the address the reader reports by mistake.
 	mistake = "85.10.0.19"
+	// home is the reader's address at home, which Fail2Ban bans.
+	home = "85.10.3.30"
 )
 
 // friendReports is the address the friend's node reports.

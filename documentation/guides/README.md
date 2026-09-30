@@ -29,6 +29,14 @@ back a [verdict](../glossary.md#verdict) your node reported.
 - [How do I block an address manually?](block-an-address.md)
 - [How do I withdraw a verdict I published by mistake?](withdraw-a-verdict.md)
 
+## Let your node block, or stop it
+
+Switch between observing and blocking, and get back into your server if
+the node ever locks you out.
+
+- [How do I switch from observe to enforce, and back?](switch-enforcement.md)
+- [How do I recover after locking myself out?](recover-from-a-lockout.md)
+
 ## Work with other nodes
 
 Exchange verdicts with [peers](../glossary.md#peer), the nodes of people
@@ -58,6 +66,8 @@ What a reader brings along is played by the check, as for the tutorial:
 - The customer `85.10.4.12` mistypes their password five times, and
   Fail2Ban bans them.
 - The reader reports `85.10.0.19` by mistake.
+- The reader mistypes their password five times from `85.10.3.30`, their
+  address at home, and Fail2Ban bans it.
 
 Before it compares, the check replaces what differs from run to run:
 peer IDs, event IDs, fingerprints, times and durations. It ignores column

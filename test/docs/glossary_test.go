@@ -91,6 +91,8 @@ var glossaryGuides = []string{
 	"documentation/guides/unblock-an-address.md",
 	"documentation/guides/block-an-address.md",
 	"documentation/guides/withdraw-a-verdict.md",
+	"documentation/guides/switch-enforcement.md",
+	"documentation/guides/recover-from-a-lockout.md",
 	"packaging/compose/README.md",
 }
 
