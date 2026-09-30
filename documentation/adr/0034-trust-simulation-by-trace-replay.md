@@ -153,7 +153,7 @@ The first two slots are *newcomers*: they join at hour 24. Adversaries
 | whitewash | Naive poisoning. Once its key's weight is 0, it waits an hour and goes on under a new key that no trust entry lists. |
 | sybil-1asn, sybil-masn | All adversaries are one coalition. Twice an hour it picks a careful-pool victim, and every member reports it within 2 minutes (confidence 0.8, TTL 1 day). Their `publisher.asn` is one ASN, or one of m = 3. |
 | spies | Half the adversaries (rounded up) poison like naive at 4 per hour with a TTL of 1 day; the others stay honest and corroborate each poison verdict within 1–10 minutes (confidence 0.8). EigenTrust's threat model D. |
-| suppressor | Shields the attackers of a third of the hosting ASNs: of its bans on them, half are never published and half are revoked after 1–5 minutes. |
+| suppressor | Shields the attackers of a third of the attackers' networks (their ASNs; /48s in an imported trace): of its bans of them, half are never published and half are revoked after 1–5 minutes. |
 
 Every event carries its publisher's `publisher.asn`, although v0.1 does
 not read it, so that #1777 can use it.
@@ -186,27 +186,27 @@ and cumulatively over [0, h+1), for every hour of the run.
   publisher's Fail2Ban) that were banned in it.
 - **False bans per protected victim.** Episodes on benign addresses that
   start in the window, divided by the size of the protected population.
-- **Defection to neutralisation.** A publisher key is neutralised when its
+- **Defection to neutralization.** A publisher key is neutralized when its
   weight falls to 0: it no longer contributes to any ban. Hours and
   events (the key's own events) from its defection until then. A key not
-  neutralised counts until the window ends (restricted mean), and the
-  share neutralised is reported with it.
-- **False bans caused before neutralisation.** False episodes among whose
+  neutralized counts until the window ends (restricted mean), and the
+  share neutralized is reported with it.
+- **False bans caused before neutralization.** False episodes among whose
   contributors, at the start or an update, is an adversary key not yet
-  neutralised.
+  neutralized.
 - **Honest publishers' mean weight** as a fraction of the ceiling, over
   the 5-minute probes in the window, for the honest publishers that
   have joined.
 - **Newcomer convergence.** Hours from a newcomer's joining until its
   weight first reaches 90 % of the ceiling, restricted like
-  neutralisation.
+  neutralization.
 - **Whitewashing payoff.** A whitewasher's false bans, over all its keys,
   divided by the number of keys it burned (at least 1).
 - **Calibration.** Over the ban verdicts the observer receives in the
   window, the outcome is 1 for an attacker and 0 otherwise. The Brier
   score is the mean of (confidence − outcome)². The ECE is computed over
   10 equal-width bins (Guo et al. 2017).
-- Durations per key (neutralisation, convergence, payoff) have no
+- Durations per key (neutralization, convergence, payoff) have no
   meaning within one hour. Their hourly rows carry the cumulative value.
 - **Feed metrics** per publisher over the whole run, after Li et al. 2019:
   - volume: the addresses it reported;
@@ -239,7 +239,7 @@ and cumulatively over [0, h+1), for every hour of the run.
     models at 20 and 40 %, `default` and `lab`, 20 seeds. It asserts
     what v0.1 guarantees: two trusted remotes at 0.8 never ban under
     `default` and do under `lab`; weights never move; poisoners cause
-    false bans and are never neutralised.
+    false bans and are never neutralized.
 - The harness is the package `test/simtrust`; its entry test carries the
   build tag `simtrust`, like `make soak`. Runs are spread over
   GOMAXPROCS workers. Its other tests run with `make test`.
