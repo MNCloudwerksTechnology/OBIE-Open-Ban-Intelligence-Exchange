@@ -68,6 +68,24 @@ The first release, v0.1.0 "Stable Base".
   line per copy of an event, and `internal/eventtrace` joins the traces of
   several nodes into hop counts and paths
   ([ADR 0032](documentation/adr/0032-gossip-instrumentation-and-attribution.md)).
+- **Trust simulation and the v0.1 trust baseline.**
+  `make sim-trust SCENARIO=…` replays Fail2Ban bans and the verdicts of
+  honest and adversarial publishers — naive and careful poisoners, on-off attackers,
+  whitewashers, Sybil coalitions in one or several ASNs, spies and
+  suppressors, at 10 to 40 % — through the real store, allow-list and
+  decision engine of one node in virtual time. It reports precision,
+  recall and F1 of the enforced bans, false bans, the time to neutralize
+  a defector, the honest publishers' weight, newcomer convergence, the
+  whitewashing payoff, ECE and Brier score, and the feed metrics of every
+  publisher, per hour and cumulatively with 95 % intervals over 20 seeds;
+  a reduced scenario runs in CI. The
+  [v0.1 trust baseline](documentation/validation/trust/README.md) finds
+  that at the default confidence of 0.8 a ban on remote verdicts needs
+  three fully trusted remotes under the default threshold of 1.8, and
+  that static weights never neutralize a defector.
+  `go run ./test/simtrust/cmd/trace-import` turns operators' Fail2Ban logs
+  into a trace with every address pseudonymized
+  ([ADR 0034](documentation/adr/0034-trust-simulation-by-trace-replay.md)).
 - **Setup assistant and self-check.** `obied setup` asks where the node
   keeps its state and audit log, which peers it connects to and how much
   it trusts them, whether it starts in observe mode and which addresses it

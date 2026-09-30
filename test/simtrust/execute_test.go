@@ -96,7 +96,7 @@ func TestExecuteAndReport(t *testing.T) {
 	for _, want := range []string{
 		"# Trust simulation: tiny\n", "| Format | 1 |", "`v0.1.0-test`", "### How many trusted remotes a ban needs",
 		"needs **3** fully\n  trusted remotes at confidence 0.8, which score 3 × 0.8 = 2.4.", "needs **2** fully", "### Adversaries at 40 %",
-		"No defector's weight fell to 0", "Hours: `lab`", "A careful poisoner's benign-set bound", "### Settings `lab`", "## Hour by hour", "## Feeds of the publishers", "## Limitations",
+		"No defector's weight fell to 0", "Hours: `lab`", "A careful poisoner's benign-set bound", "### Settings `lab`", "## Hour by hour", "### False ban hours per hour", "## Feeds of the publishers", "## Limitations",
 		"[ADR 0034](../adr/0034.md) defines", "by the class of the victim", "| Settings | `cdn` | `crawler` | `customer` | `nat` |",
 		"Every value has 4 significant digits.", "(`neutralized_share`, `neutralization_hours`, `neutralization_events`, `newcomers_converged`, `newcomer_convergence_hours`, `whitewash_payoff`)",
 	} {
@@ -192,6 +192,21 @@ func readCSV(t *testing.T, path string, gzipped bool) [][]string {
 		t.Fatal(err)
 	}
 	return rows
+}
+
+// TestOnOffPhaseNote checks that the report says when the on-off
+// attackers poison if the hours it shows all fall in their off phase.
+func TestOnOffPhaseNote(t *testing.T) {
+	md := &markdown{rep: &Report{Scenario: Scenario{Models: DefaultModels()}}}
+	md.onOffPhase([]int{23, 47, 71, 95})
+	if want := "poison in hours 48 to 53, 72 to 77 and so on"; !strings.Contains(md.String(), want) {
+		t.Errorf("note %q lacks %q", md.String(), want)
+	}
+	md = &markdown{rep: md.rep}
+	md.onOffPhase([]int{23, 47, 50})
+	if md.Len() != 0 {
+		t.Errorf("note %q, want none: hour 50 is in the on phase", md.String())
+	}
 }
 
 func TestCSVFloat(t *testing.T) {

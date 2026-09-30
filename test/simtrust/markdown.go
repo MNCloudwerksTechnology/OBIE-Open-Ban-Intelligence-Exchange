@@ -462,7 +462,7 @@ func (md *markdown) hourByHour() {
 	md.line("`hourly.csv.gz` has every metric of every configuration in every hour.")
 	md.line("The adversaries defect at hour %d.", int(md.rep.Scenario.Models.DefectAt.Hours()))
 	md.line("")
-	for _, m := range []Metric{MetricPrecision, MetricRecall, MetricFalseBans} {
+	for _, m := range []Metric{MetricPrecision, MetricRecall, MetricFalseBans, MetricFalseBanHours} {
 		md.line("### %s per hour", m.Title())
 		md.line("")
 		header := []string{"Model"}
@@ -479,6 +479,24 @@ func (md *markdown) hourByHour() {
 		}
 		md.table(header, rows)
 	}
+	if slices.ContainsFunc(shown, func(a *Aggregate) bool { return a.Model == ModelOnOff }) {
+		md.onOffPhase(hours)
+	}
+}
+
+// onOffPhase notes when the on-off attackers poison if none of the hours
+// shown falls in their on phase.
+func (md *markdown) onOffPhase(hours []int) {
+	p := md.rep.Scenario.Models
+	defect, period := int(p.DefectAt/time.Hour), int(p.Period/time.Hour)
+	on := int(math.Ceil(p.Duty * float64(period)))
+	if period <= 0 || on <= 0 || slices.ContainsFunc(hours, func(h int) bool { return h >= defect && (h-defect)%period < on }) {
+		return
+	}
+	md.line("The on-off attackers poison in hours %d to %d, %d to %d and so on: the", defect, defect+on-1, defect+period, defect+period+on-1)
+	md.line("first %d of every %d hours from their defection. The hours shown miss", on, period)
+	md.line("that phase; `hourly.csv.gz` has every hour.")
+	md.line("")
 }
 
 func (md *markdown) feeds() {

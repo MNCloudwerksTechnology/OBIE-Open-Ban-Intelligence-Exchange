@@ -336,7 +336,7 @@ defines the world, the behavior models and the metrics. The scenarios:
 A work package that changes how the node weighs its publishers runs the
 scenarios before and after its change and compares its report with the
 [v0.1 trust baseline](documentation/validation/trust/README.md), which
-the first command below wrote (about an hour on 32 cores):
+the first command below wrote (about 40 minutes on 32 cores):
 
 ```sh
 make sim-trust SCENARIO=baseline OUT=documentation/validation/trust
