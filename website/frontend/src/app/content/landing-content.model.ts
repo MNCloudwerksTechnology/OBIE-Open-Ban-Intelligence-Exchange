@@ -52,8 +52,6 @@ export interface A11yContent {
 
 export interface HeaderContent {
   readonly github: Link;
-  /** Call to action next to the navigation; opens the inquiry form. */
-  readonly invite: Link;
 }
 
 export interface HeroContent {

@@ -304,9 +304,8 @@ describe('Landing page content', () => {
     }
   });
 
-  it('opens the inquiry form from the header and the founder section', () => {
+  it('opens the inquiry form from the founder section', () => {
     expect(content.contact.id).toBe(CONTACT_ID);
-    expect(content.header.invite.href).toBe(`#${CONTACT_ID}`);
     expect(content.founder.invite.href).toBe(`#${CONTACT_ID}`);
   });
 

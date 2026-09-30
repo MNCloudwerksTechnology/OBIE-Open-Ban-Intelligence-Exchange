@@ -56,7 +56,6 @@ export const LANDING_CONTENT_EN: LandingContent = {
   },
   header: {
     github: { label: 'View on GitHub', href: LINKS.repository },
-    invite: { label: 'Invite Markus to speak', href: `#${CONTACT_ID}` },
   },
   hero: {
     eyebrow: 'OBIE · Open Ban Intelligence Exchange',
