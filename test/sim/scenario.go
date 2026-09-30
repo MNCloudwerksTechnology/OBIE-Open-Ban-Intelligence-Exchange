@@ -264,25 +264,32 @@ func scenarioB(f float64) *Scenario {
 	}
 }
 
-// junkKeys returns n identities of weight-0 publishers.
-func junkKeys(w *world, n int) ([]*simIdentity, error) {
-	out := make([]*simIdentity, n)
-	for i := range out {
+// junkSigner holds the identities of weight-0 publishers that sign junk
+// verdicts in turn, across every sybil of a run (the run's actions use it
+// one at a time).
+type junkSigner struct {
+	keys []*simIdentity
+	n    uint64
+}
+
+// newJunkSigner returns a signer with n identities.
+func newJunkSigner(w *world, n int) (*junkSigner, error) {
+	keys := make([]*simIdentity, n)
+	for i := range keys {
 		id, err := w.newIdentity()
 		if err != nil {
 			return nil, err
 		}
-		out[i] = id
+		keys[i] = id
 	}
-	return out, nil
+	return &junkSigner{keys: keys}, nil
 }
 
-// flood schedules junk verdicts, signed by keys in turn, that the sybil
-// injects at rate per second from from to to, each to all of targets or,
-// with distinct, a fresh one to each.
-func flood(w *world, s *node, keys []*simIdentity, targets []int32, from, to time.Duration, rate float64, distinct bool) {
+// flood schedules junk verdicts, signed by the signer's keys in turn, that
+// the sybil injects at rate per second from from to to, each to all of
+// targets or, with distinct, a fresh one to each.
+func flood(w *world, s *node, junk *junkSigner, targets []int32, from, to time.Duration, rate float64, distinct bool) {
 	salt := w.rng.Uint32()
-	var n uint64
 	for _, t := range uniform(from, to, rate) {
 		w.at(t, "junk", func() error {
 			s.mu.Lock()
@@ -299,9 +306,9 @@ func flood(w *world, s *node, keys []*simIdentity, targets []int32, from, to tim
 				}
 			}
 			for _, g := range groups {
-				key := keys[n%uint64(len(keys))]
-				ev := newVerdict(key, w.start.Add(w.elapsed()), junkTTL, salt, n)
-				n++
+				key := junk.keys[junk.n%uint64(len(junk.keys))]
+				ev := newVerdict(key, w.start.Add(w.elapsed()), junkTTL, salt, junk.n)
+				junk.n++
 				data, err := marshalEvent(ev)
 				if err != nil {
 					return err
@@ -329,7 +336,7 @@ func scenarioFlood() *Scenario {
 		Params: [][2]string{
 			{"honest nodes", "200 (10 % publish), static-bootstrap graph, real store (BadgerDB in memory) with store.max_indicators 2,000 (scaled from 1,000,000)"},
 			{"trusted verdicts", "Poisson, 1/s from 30 s, TTL 7 days; the retained share counts those published before the flood (30–150 s)"},
-			{"flood", "10 Sybil hosts, 10 links each; 100 junk verdicts/s network-wide from 150 s to 210 s (6,000), TTL 30 days, signed by 1,000 weight-0 keys"},
+			{"flood", "10 Sybil hosts, 10 links each, that forward honest traffic; 100 junk verdicts/s network-wide from 150 s to 210 s (6,000), TTL 30 days, signed by 1,000 weight-0 keys in turn"},
 			{"run", "240 s; publishing stops at 210 s"},
 		},
 		build: func(w *world) error {
@@ -341,17 +348,17 @@ func scenarioFlood() *Scenario {
 			pubs := w.choosePublishers(publisherShare)
 			w.end = end
 			w.verdicts(pubs, poisson(w.rng, trafficFrom, end-drain, 1))
-			syb, err := addSybils(w, flooders, perFlooder, h, 0, 0)
+			syb, err := addSybils(w, flooders, perFlooder, h, 0, -1)
 			if err != nil {
 				return err
 			}
-			keys, err := junkKeys(w, 1000)
+			junk, err := newJunkSigner(w, 1000)
 			if err != nil {
 				return err
 			}
 			for _, s := range syb {
 				targets := toInt32(w.nodes[s].dials)
-				flood(w, w.nodes[s], keys, targets, floodFrom, floodTo, rate/flooders, false)
+				flood(w, w.nodes[s], junk, targets, floodFrom, floodTo, rate/flooders, false)
 			}
 			w.trusted = window{name: "trusted", from: trafficFrom, to: floodFrom}
 			w.windows = []window{{name: "before the flood", from: trafficFrom, to: floodFrom},
@@ -371,7 +378,7 @@ func scenarioJunk() *Scenario {
 		Summary: "two Sybil hosts inject valid junk into one hub at the per-peer rate limit; the hub relays it and its neighbors' buckets for it run dry",
 		Params: [][2]string{
 			{"honest nodes", "300 (10 % publish), static-bootstrap graph (6 hubs)"},
-			{"junk", "2 Sybil hosts linked to hub 0, each injecting 50 junk verdicts/s (the per-peer limit) from 60 s to 180 s, signed by 500 weight-0 keys"},
+			{"junk", "2 Sybil hosts linked to hub 0 that forward honest traffic, each injecting 50 junk verdicts/s (the per-peer limit) from 60 s to 180 s, signed by 500 weight-0 keys in turn"},
 			{"traffic", "Poisson, 1 verdict/s network-wide, from 30 s"},
 			{"run", "210 s; publishing stops at 180 s"},
 		},
@@ -382,16 +389,16 @@ func scenarioJunk() *Scenario {
 			}
 			w.end = end
 			w.verdicts(w.choosePublishers(publisherShare), poisson(w.rng, trafficFrom, end-drain, 1))
-			syb, err := addSybils(w, 2, 1, hubs[:1], 0, 0)
+			syb, err := addSybils(w, 2, 1, hubs[:1], 0, -1)
 			if err != nil {
 				return err
 			}
-			keys, err := junkKeys(w, 500)
+			junk, err := newJunkSigner(w, 500)
 			if err != nil {
 				return err
 			}
 			for _, s := range syb {
-				flood(w, w.nodes[s], keys, hubs[:1], junkFrom, junkTo, rate, true)
+				flood(w, w.nodes[s], junk, hubs[:1], junkFrom, junkTo, rate, true)
 			}
 			w.windows = []window{{name: "before the junk", from: trafficFrom, to: junkFrom},
 				{name: "during the junk", from: junkFrom, to: junkTo}}
@@ -411,7 +418,7 @@ func scenarioPreempt() *Scenario {
 		Params: [][2]string{
 			{"honest nodes", "1,000 (10 % publish), static-bootstrap graph"},
 			{"preempters", "10, each linked to 100 random honest nodes and to the 3 revokers; they forward everything else"},
-			{"chosen revocations", "3 per seed, at 60, 90 and 120 s, each by a different publisher of a verdict it published 20 s before"},
+			{"chosen revocations", "3 per seed, at 60, 90 and 120 s, each by a different random publisher of a verdict it published 20 s before"},
 			{"traffic", "Poisson, 1 verdict/s network-wide, from 30 s"},
 			{"run", "180 s; publishing stops at 150 s"},
 		},
@@ -423,7 +430,11 @@ func scenarioPreempt() *Scenario {
 			w.end = end
 			pubs := w.choosePublishers(publisherShare)
 			w.verdicts(pubs, poisson(w.rng, trafficFrom, end-drain, 1))
-			revokers := pubs[:len(revocations)]
+			// pubs is sorted by index, and the hubs come first.
+			revokers := make([]int32, 0, len(revocations))
+			for _, p := range pick(w.rng, len(pubs), len(revocations), -1) {
+				revokers = append(revokers, pubs[p])
+			}
 			syb, err := addSybils(w, preempters, perPreempter, h, 0, -1)
 			if err != nil {
 				return err

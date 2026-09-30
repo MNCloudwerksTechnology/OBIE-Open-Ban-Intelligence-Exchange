@@ -296,7 +296,8 @@ func (w *world) healthy() func(sample) bool {
 }
 
 // retained returns the share of the trusted verdicts in the trusted window
-// that the honest nodes accepted and still hold in their stores.
+// that the honest nodes accepted and still hold in their stores. The
+// publisher is left out: a store never evicts its own node's verdicts.
 func (w *world) retained(j *joined) (float64, bool) {
 	var held, got int
 	for e, ev := range w.events {
@@ -304,7 +305,7 @@ func (w *world) retained(j *joined) (float64, bool) {
 			continue
 		}
 		for _, n := range w.nodes {
-			if !n.honest || n.db == nil || j.d[e][n.idx].parent < 0 {
+			if !n.honest || n.db == nil || n.idx == ev.publisher || j.d[e][n.idx].parent < 0 {
 				continue
 			}
 			got++

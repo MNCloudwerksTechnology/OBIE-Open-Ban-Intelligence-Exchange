@@ -40,18 +40,25 @@ func TestRouting(t *testing.T) {
 	cache := Cache{Dir: *simCache}
 	results := newCollector()
 	var missing []Run
+	others := map[string]int{}
 	for _, r := range runs {
 		res, err := cache.Load(r)
 		switch {
 		case err != nil:
 			t.Fatal(err)
 		case res != nil:
+			if res.Version != *simVersion {
+				others[res.Version]++
+			}
 			results.add(res)
 		default:
 			missing = append(missing, r)
 		}
 	}
 	t.Logf("%d runs, %d cached, %d to run", len(runs), len(runs)-len(missing), len(missing))
+	if len(others) > 0 {
+		t.Logf("cached results of other versions than %s (runs by version): %v; empty the cache if the code they ran has changed", *simVersion, others)
+	}
 	t.Run("runs", func(t *testing.T) {
 		for _, r := range missing {
 			t.Run(r.Name(), func(t *testing.T) {

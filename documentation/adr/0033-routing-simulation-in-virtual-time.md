@@ -208,14 +208,18 @@ Every configuration below runs 20 seeds.
     - 200 nodes with the real store, `store.max_indicators` 2,000.
     - Trusted verdicts (7-day TTL) from 30 s.
     - From 150 s to 210 s, 10 Sybil hosts inject 100 junk verdicts/s
-      (30-day TTL) from 1,000 weight-0 keys.
-    - The run measures the trusted verdicts retained.
+      (30-day TTL), signed by 1,000 weight-0 keys in turn. The hosts
+      forward honest traffic, so only the flood is measured.
+    - The run measures the trusted verdicts retained by the nodes that
+      accepted them. The publisher is left out, because a store never
+      evicts its own node's verdicts.
   - `C-junk`: 300 nodes. From 60 s to 180 s, two Sybil hosts linked to one
     hub each inject junk at the per-peer bucket rate (50/s); the hub relays
-    it to its neighbors.
+    it to its neighbors. The hosts forward honest traffic.
   - `C-preempt`: 1,000 nodes and 10 preempters, each with 100 links and a
     link to each chosen revoker. Three chosen revocations per seed, at 60,
-    90 and 120 s. The run ends at 180 s.
+    90 and 120 s, each by a different random publisher. The run ends at
+    180 s.
   - `C-offline`: 300 nodes. 10 of them are offline from 60 s to 3,660 s,
     then rejoin with the same identity and store. The run ends at 3,780 s.
   - `C-bootkill`: 1,000 nodes. All hubs stop at 600 s. The run ends at
@@ -252,17 +256,23 @@ Every configuration below runs 20 seeds.
   - **Mesh recovery time**: seconds from the disruption until the Sybil
     share falls to 10 % or less and stays there. After an outage or a hub
     kill, until the honest mesh slots are back to 90 % of their level
-    before. A run that does not recover is reported as not recovered.
+    before. A run that does not recover is reported as not recovered. The
+    report averages the recovery time over the seeds that recovered and
+    says how many did.
   - **Trusted verdicts retained under flood** (C-flood).
   - **Loss by cause**: the outcome of the first copy of an event it lost
     that a node validated. GossipSub remembers that copy's ID, so the node
     ignores later copies. Copies that arrive at the same instant are
     validated in parallel, so a duplicate can be recorded before the copy
-    it duplicates; duplicates are therefore passed over. A node that got
+    it duplicates; duplicates are therefore passed over. So is a copy
+    dropped from a full validation queue, because GossipSub does not
+    remember its ID and validates the next copy. A node that got
     no copy at all counts as `never_received`, or as `offline` if it was
     down at the time.
 - **Across seeds**: each metric is the mean of its per-seed values, with a
-  95 % confidence interval from Student's t over the seeds.
+  95 % confidence interval from Student's t over the seeds. The interval
+  is clipped to the values the metric can take: never below 0, and never
+  above 1 for a share.
 
 ### The report and CI
 

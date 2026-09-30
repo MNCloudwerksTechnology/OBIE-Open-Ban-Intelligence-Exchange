@@ -3,12 +3,15 @@ package sim
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+
+	"github.com/MNCloudwerksTechnology/obie/internal/store"
 )
 
 // fakeWorld returns a world of honest running nodes and adversaries that
@@ -136,6 +139,50 @@ func TestCauseIsTheValidatedCopy(t *testing.T) {
 	w.measureDelivery(r, join(w), w.eligible())
 	if len(r.Loss) != 1 || r.Loss[causePreempted] != 1 {
 		t.Errorf("loss %v, want all preempted", r.Loss)
+	}
+}
+
+// TestCauseSkipsAFullQueue: GossipSub forgets a copy it dropped from a
+// full validation queue, so a loss is the next copy's; only a node that got
+// nothing else lost the event to the queue.
+func TestCauseSkipsAFullQueue(t *testing.T) {
+	w := fakeWorld(t, 3, 0)
+	e := fakeEvent(t, w, 0, 10*time.Second)
+	rec(w, 0, 10*time.Second, e, 0, published)
+	rec(w, 1, 10*time.Second+ms(10), e, 0, queueFull)
+	rec(w, 1, 10*time.Second+ms(90), e, 2, rateLimited)
+	rec(w, 2, 10*time.Second+ms(10), e, 0, queueFull)
+	r := &Result{Metrics: map[string]float64{}, Hops: map[string]float64{}, Loss: map[string]float64{}}
+	w.measureDelivery(r, join(w), w.eligible())
+	if len(r.Loss) != 2 || r.Loss["rate_limited"] != 0.5 || r.Loss["queue_full"] != 0.5 {
+		t.Errorf("loss %v, want half rate_limited and half queue_full", r.Loss)
+	}
+}
+
+// TestRetainedLeavesOutThePublisher: a store never evicts its own node's
+// verdicts, so only the other nodes' stores show what a flood evicted.
+func TestRetainedLeavesOutThePublisher(t *testing.T) {
+	w := fakeWorld(t, 3, 0)
+	w.useRealStores(store.Options{})
+	for _, n := range w.nodes {
+		if err := n.db.Start(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = n.db.Stop(context.Background()) })
+	}
+	e := fakeEvent(t, w, 0, 10*time.Second)
+	rec(w, 0, 10*time.Second, e, 0, published)
+	rec(w, 1, 10*time.Second+ms(50), e, 0, accepted)
+	rec(w, 2, 10*time.Second+ms(60), e, 0, accepted)
+	// The publisher and node 1 hold the verdict; node 2 lost it.
+	for _, n := range w.nodes[:2] {
+		if _, err := n.db.Put(w.events[e].ev); err != nil {
+			t.Fatal(err)
+		}
+	}
+	w.trusted = window{from: 0, to: 20 * time.Second}
+	if got, ok := w.retained(join(w)); !ok || got != 0.5 {
+		t.Errorf("retained %v, %v; want 0.5 of the two nodes that accepted it", got, ok)
 	}
 }
 

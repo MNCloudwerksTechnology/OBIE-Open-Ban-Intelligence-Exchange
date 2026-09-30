@@ -165,7 +165,7 @@ var metricLabels = [][2]string{
 	{mDuplicates, "Duplicate factor (copies per delivered verdict)"},
 	{mHops, "Hop count, mean"},
 	{mSybilShare, "Sybil share of mesh slots"},
-	{mRecovery, "Mesh recovery time (s)"},
+	{mRecovery, "Mesh recovery time (s), seeds that recovered"},
 	{mRecovered, "Seeds whose mesh recovered (share)"},
 	{mRetained, "Trusted verdicts retained under flood"},
 	{mMeshDegree, "Mesh degree at the end"},
@@ -220,8 +220,62 @@ func metricNames(byVariant map[string][]*Result) []string {
 			windows = append(windows, m)
 		}
 	}
-	slices.Sort(windows)
+	slices.SortFunc(windows, func(a, b string) int {
+		if ra, rb := windowRank(a), windowRank(b); ra != rb {
+			return ra - rb
+		}
+		return strings.Compare(a, b)
+	})
 	return append(out, windows...)
+}
+
+// windowRank orders the windows in time: before a disruption, during it,
+// after it, then the others.
+func windowRank(metric string) int {
+	name := strings.TrimPrefix(metric, windowPrefix)
+	for i, first := range []string{"before ", "during ", "after "} {
+		if strings.HasPrefix(name, first) {
+			return i
+		}
+	}
+	return 3
+}
+
+// metricValues returns the values of the metric the report summarizes. A
+// recovery time counts only where the mesh recovered: a run that did not
+// recover records how long it watched.
+func metricValues(results []*Result, metric string) []float64 {
+	if metric != mRecovery {
+		return values(results, metric)
+	}
+	var out []float64
+	for _, r := range results {
+		if v, ok := r.Metrics[mRecovery]; ok && r.Metrics[mRecovered] == 1 {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// metricSummary is the summary of the metric the report shows.
+func metricSummary(results []*Result, metric string) summary {
+	upper := math.Inf(1)
+	switch {
+	case metric == mDelivery, metric == mSybilShare, metric == mRecovered, metric == mRetained,
+		strings.HasPrefix(metric, windowPrefix):
+		upper = 1
+	}
+	return clipped(summarize(metricValues(results, metric)), upper)
+}
+
+// clipped returns s with its confidence interval clipped to [0, upper]:
+// no metric is negative, and the t interval of a share near 0 or 1 reaches
+// past what the share can be.
+func clipped(s summary, upper float64) summary {
+	if s.n > 1 {
+		s.low, s.high = max(s.low, 0), min(s.high, upper)
+	}
+	return s
 }
 
 func label(metric string) string {
@@ -351,7 +405,12 @@ func writeMarkdown(out io.Writer, h Header, sc *Scenario, byVariant map[string][
 	for _, m := range metricNames(byVariant) {
 		p("| %s |", label(m))
 		for _, v := range sc.Variants {
-			p(" %s |", formatSummary(summarize(values(byVariant[v], m)), digitsFor(m)))
+			s := metricSummary(byVariant[v], m)
+			p(" %s", formatSummary(s, digitsFor(m)))
+			if seeds := len(byVariant[v]); s.n > 1 && s.n < seeds {
+				p(" (%d of %d seeds)", s.n, seeds)
+			}
+			p(" |")
 		}
 		p("\n")
 	}
@@ -367,7 +426,7 @@ func writeMarkdown(out io.Writer, h Header, sc *Scenario, byVariant map[string][
 	for _, k := range keys(byVariant, hopsOf, hopOrder()) {
 		p("| %s |", k)
 		for _, v := range sc.Variants {
-			p(" %s |", formatSummary(summarize(mapValues(byVariant[v], hopsOf, k)), 4))
+			p(" %s |", formatSummary(clipped(summarize(mapValues(byVariant[v], hopsOf, k)), 1), 4))
 		}
 		p("\n")
 	}
@@ -382,7 +441,7 @@ func writeMarkdown(out io.Writer, h Header, sc *Scenario, byVariant map[string][
 		for _, k := range causes {
 			p("| `%s` |", k)
 			for _, v := range sc.Variants {
-				p(" %s |", formatSummary(summarize(mapValues(byVariant[v], lossOf, k)), 4))
+				p(" %s |", formatSummary(clipped(summarize(mapValues(byVariant[v], lossOf, k)), 1), 4))
 			}
 			p("\n")
 		}
@@ -534,13 +593,13 @@ func writeSummaryCSV(out io.Writer, sc *Scenario, byVariant map[string][]*Result
 	lossOf := func(r *Result) map[string]float64 { return r.Loss }
 	for _, v := range sc.Variants {
 		for _, m := range metricNames(byVariant) {
-			row(v, m, summarize(values(byVariant[v], m)))
+			row(v, m, metricSummary(byVariant[v], m))
 		}
 		for _, k := range keys(byVariant, hopsOf, hopOrder()) {
-			row(v, "hops:"+k, summarize(mapValues(byVariant[v], hopsOf, k)))
+			row(v, "hops:"+k, clipped(summarize(mapValues(byVariant[v], hopsOf, k)), 1))
 		}
 		for _, k := range keys(byVariant, lossOf, nil) {
-			row(v, "loss:"+k, summarize(mapValues(byVariant[v], lossOf, k)))
+			row(v, "loss:"+k, clipped(summarize(mapValues(byVariant[v], lossOf, k)), 1))
 		}
 	}
 	w.Flush()

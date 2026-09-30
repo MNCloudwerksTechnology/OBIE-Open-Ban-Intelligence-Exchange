@@ -44,10 +44,10 @@ func TestWriteReport(t *testing.T) {
 		"| go-libp2p-pubsub | `v0.17.0` |",
 		"| Seeds | 1, 2 per variant |",
 		"| Generated | 2026-09-30 |",
-		"| Delivery ratio | 0.9500 [0.3147, 1.5853] | – | 1.0000 [1.0000, 1.0000] |",
+		"| Delivery ratio | 0.9500 [0.3147, 1.0000] | – | 1.0000 [1.0000, 1.0000] |",
 		"| Delivery ratio, during the attack |",
 		"| Hop count predicted, ln N / ln(D−1) | 3.55 (N 1000, D 8) | 3.55 (N 1000, D 8) | 4.29 (N 1000, D 6) |",
-		"| `never_received` | 0.0500 [-0.5853, 0.6853] | – | 0.0000 [0.0000, 0.0000] |",
+		"| `never_received` | 0.0500 [0.0000, 0.6853] | – | 0.0000 [0.0000, 0.0000] |",
 		"| plain GossipSub loses verdicts (measurable loss) | **fail** |",
 		"| `v0.1` | 2 | 1000 | 4000 | 410000 | 180 | 100 |",
 	} {
@@ -69,6 +69,47 @@ func TestWriteReport(t *testing.T) {
 		return slices.Equal(r, []string{"A-eclipse", "plain", "2", "delivery_ratio", "0.9"})
 	}) {
 		t.Errorf("the seed rows lack plain seed 2's delivery ratio: %v", seeds)
+	}
+}
+
+// TestReportRecoveryAndWindows: the recovery time is the mean of the seeds
+// that recovered, with how many did; windows come in time order.
+func TestReportRecoveryAndWindows(t *testing.T) {
+	res := func(seed int64, recovered, recovery float64) *Result {
+		return &Result{Scenario: "C-bootkill", Variant: V01, Seed: seed, Version: "v",
+			Metrics: map[string]float64{mDelivery: 1, mRecovered: recovered, mRecovery: recovery,
+				windowPrefix + "after the kill": 0.5, windowPrefix + "before the kill": 1}}
+	}
+	sc := Scenarios()["C-bootkill"]
+	byVariant := map[string][]*Result{V01: {res(1, 1, 10), res(2, 1, 20), res(3, 0, 300)}}
+	var md strings.Builder
+	if err := writeMarkdown(&md, Header{}, sc, byVariant, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		// 10 and 20 s: t(1) = 12.706 gives ±63.5, clipped at 0.
+		"| Mesh recovery time (s), seeds that recovered | 15.0 [0.0, 78.5] (2 of 3 seeds) |",
+		"| Seeds whose mesh recovered (share) | 0.6667 [0.0000, 1.0000] |",
+	} {
+		if !strings.Contains(md.String(), want) {
+			t.Errorf("the report lacks %q:\n%s", want, md.String())
+		}
+	}
+	if before, after := strings.Index(md.String(), "before the kill"), strings.Index(md.String(), "after the kill"); before < 0 || after < before {
+		t.Errorf("the window before the kill comes at %d, the one after it at %d; want it first", before, after)
+	}
+	var csvOut strings.Builder
+	if err := writeSummaryCSV(&csvOut, sc, byVariant); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := csv.NewReader(strings.NewReader(csvOut.String())).ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(rows, func(r []string) bool {
+		return slices.Equal(r[:6], []string{"C-bootkill", V01, mRecovery, "2", "15", "0"})
+	}) {
+		t.Errorf("the summary lacks the recovery time of the 2 seeds that recovered: %v", rows)
 	}
 }
 

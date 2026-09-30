@@ -193,11 +193,11 @@ func TestFlooderInjectsJunk(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		keys, err := junkKeys(w, 20)
+		signer, err := newJunkSigner(w, 20)
 		if err != nil {
 			return err
 		}
-		flood(w, w.nodes[syb[0]], keys, honest[:1], 10*time.Second, 20*time.Second, junk/10, false)
+		flood(w, w.nodes[syb[0]], signer, honest[:1], 10*time.Second, 20*time.Second, junk/10, false)
 		for _, i := range honest {
 			stores = append(stores, w.nodes[i].store.(*memStore))
 		}

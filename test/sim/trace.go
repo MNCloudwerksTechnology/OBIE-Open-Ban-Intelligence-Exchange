@@ -33,8 +33,12 @@ const (
 	invalidSignature
 	invalidSchema
 	tooLarge
-	// throttled: GossipSub's validation queue was full.
+	// throttled: GossipSub's validation throttle dropped the copy after it
+	// remembered the copy's ID.
 	throttled
+	// queueFull: GossipSub's validation queue was full; it dropped the copy
+	// without remembering its ID, so a later copy is validated.
+	queueFull
 	// blacklisted: GossipSub dropped the copy of a graylisted peer.
 	blacklisted
 	// relayed: an adversary got the copy.
@@ -45,7 +49,7 @@ const (
 var outcomeNames = [...]string{
 	none: "none", published: "published", accepted: "accepted", duplicate: "duplicate",
 	rateLimited: "rate_limited", expired: "expired", invalidSignature: "invalid_signature",
-	invalidSchema: "invalid_schema", tooLarge: "too_large", throttled: "throttled",
+	invalidSchema: "invalid_schema", tooLarge: "too_large", throttled: "throttled", queueFull: "queue_full",
 	blacklisted: "blacklisted", relayed: "relayed", other: "other",
 }
 
@@ -172,7 +176,9 @@ func (t tracer) DuplicateMessage(msg *pubsub.Message) { t.record(msg.ID, msg.Rec
 func (t tracer) RejectMessage(msg *pubsub.Message, reason string) {
 	switch reason {
 	case pubsub.RejectValidationFailed, pubsub.RejectValidationIgnored:
-	case pubsub.RejectValidationQueueFull, pubsub.RejectValidationThrottled:
+	case pubsub.RejectValidationQueueFull:
+		t.record(msg.ID, msg.ReceivedFrom, queueFull)
+	case pubsub.RejectValidationThrottled:
 		t.record(msg.ID, msg.ReceivedFrom, throttled)
 	case pubsub.RejectBlacklstedPeer, pubsub.RejectBlacklistedSource:
 		t.record(msg.ID, msg.ReceivedFrom, blacklisted)
@@ -205,11 +211,16 @@ type delivery struct {
 	// copies counts the copies the node received.
 	copies int32
 	// first is the outcome of the first copy GossipSub validated: the first
-	// that was not a duplicate, or duplicate if every copy was. Copies
-	// that arrive at the same instant are validated in parallel, so a
-	// duplicate can be recorded before the copy it duplicates.
+	// whose outcome is not provisional, or the first copy's if every
+	// outcome is.
 	first outcome
 }
+
+// provisional reports whether a copy's outcome leaves the loss to a later
+// copy. Copies that arrive at the same instant are validated in parallel,
+// so a duplicate can be recorded before the copy it duplicates; and
+// GossipSub forgets a copy it dropped from a full validation queue.
+func provisional(o outcome) bool { return o == duplicate || o == queueFull }
 
 // joined is the trace of a run joined per event and node.
 type joined struct {
@@ -236,7 +247,7 @@ func join(w *world) *joined {
 			if r.outcome != published {
 				d.copies++
 			}
-			if d.first == none || (d.first == duplicate && r.outcome != duplicate) {
+			if d.first == none || (provisional(d.first) && !provisional(r.outcome)) {
 				d.first = r.outcome
 			}
 			if d.parent < 0 && (r.outcome == accepted || r.outcome == published || r.outcome == relayed) {
