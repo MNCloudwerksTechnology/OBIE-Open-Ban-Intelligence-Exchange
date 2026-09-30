@@ -198,8 +198,8 @@ var volatile = []struct {
 	// obiectl peers lists one address per open connection. Two nodes
 	// that dial each other at the same moment both keep their connection,
 	// the second dialed from any port if the mesh port is taken: a peer's
-	// connections compare as the one to its mesh port.
-	{regexp.MustCompile(`(/ip4/<address>/tcp/\d+,)*/ip4/<address>/tcp/4001\b(,/ip4/<address>/tcp/\d+)*`), "/ip4/<address>/tcp/4001"},
+	// two connections compare as the one to its mesh port.
+	{regexp.MustCompile(`/ip4/<address>/tcp/\d+,/ip4/<address>/tcp/4001\b|/ip4/<address>/tcp/4001,/ip4/<address>/tcp/\d+\b`), "/ip4/<address>/tcp/4001"},
 	{regexp.MustCompile(`127\.0\.0\.1:\d+`), "127.0.0.1:<port>"},
 	{regexp.MustCompile(`\btoken [A-Za-z0-9_-]+`), "token <token>"},
 }
