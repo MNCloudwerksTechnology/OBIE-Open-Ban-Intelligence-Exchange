@@ -52,13 +52,14 @@ func paperParams() pubsub.GossipSubParams {
 }
 
 // plainParams are the paper's plain GossipSub (pGM): its honest nodes set
-// only D, D_lo and D_hi (gossipsub-hardening, honest_vanilla.go), so D_lazy
-// stays the library default of 2020, 6. The mitigations go-libp2p-pubsub
-// lets one switch off are off: the outbound quota and adaptive gossip;
-// without peer scoring there is no opportunistic grafting either.
+// only D, D_lo and D_hi (gossipsub-hardening, honest_vanilla.go), and the
+// library of 2020 gossiped to D peers outside the mesh (v0.2.7,
+// emitGossip), so D_lazy is D, 8. The mitigations go-libp2p-pubsub lets
+// one switch off are off: the outbound quota and adaptive gossip; without
+// peer scoring there is no opportunistic grafting either.
 func plainParams() pubsub.GossipSubParams {
 	p := pubsub.DefaultGossipSubParams()
-	p.D, p.Dlo, p.Dhi, p.Dlazy = 8, 6, 12, 6
+	p.D, p.Dlo, p.Dhi, p.Dlazy = 8, 6, 12, 8
 	p.Dout = 0
 	p.GossipFactor = 0
 	return p

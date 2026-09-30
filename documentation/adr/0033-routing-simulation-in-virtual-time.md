@@ -120,12 +120,13 @@ attacker (`badboy.go`), the scenario files and the exact score parameters.
 | Variant | GossipSub parameters | Peer scoring | Other |
 |---|---|---|---|
 | `v0.1` | library defaults (D 6, D_lo 5, D_hi 12, D_lazy 6, D_out 2) | v0.1 (ADR 0009) | flood publish; connection manager 32/128 |
-| `plain` | paper: D 8, D_lo 6, D_hi 12; D_lazy 6, D_out 0, gossip factor 0 | off | no flood publish; no connection manager |
+| `plain` | paper: D 8, D_lo 6, D_hi 12; D_lazy 8, D_out 0, gossip factor 0 | off | no flood publish; no connection manager |
 | `paper` | paper: D 8, D_lo 6, D_hi 12, D_score 6, D_lazy 12, opportunistic graft every 60 heartbeats, outbound queue 128 | the paper's parameters (below) | flood publish; no connection manager |
 
 `plain` is the paper's plain GossipSub, as far as go-libp2p-pubsub v0.17
 allows. The paper's plain nodes set only D, D_lo and D_hi
-(`honest_vanilla.go`), so D_lazy stays the library default of 2020, 6.
+(`honest_vanilla.go`). The library of 2020 gossiped to D peers outside
+the mesh (go-libp2p-pubsub v0.2.7, `emitGossip`), so D_lazy is 8.
 v0.17 applies some v1.1 hardening unconditionally:
 
 - the GRAFT and PRUNE backoff;
@@ -170,6 +171,9 @@ The paper's score parameters come from its scenario files
     (ADR 0007).
   - **Random regular**: every node has degree 20. The dialer of each edge
     is chosen at random, and the edge is in the dialer's bootstrap list.
+  - **The paper's testbed** (scenario A): every honest node dials 20
+    random honest nodes (`RandomHonestTopology`), so it has about 40
+    links.
 - **Traffic.**
   - 10 % of the honest nodes publish.
   - Verdicts arrive as a Poisson process at 1 verdict/s across the whole
@@ -183,8 +187,12 @@ The paper's score parameters come from its scenario files
 
 Every configuration below runs 20 seeds.
 
-- **A: reproduces the paper.** 1,000 honest nodes on a random 20-regular
-  graph and 4,000 Sybils, in the variants `plain`, `paper` and `v0.1`:
+- **A: reproduces the paper.** 1,000 honest nodes on the paper's testbed
+  topology and 4,000 Sybils, in the variants `plain`, `paper` and `v0.1`.
+  The testbed's honest nodes each dial 20, which the paper's "20
+  connections" means; a 20-regular graph halves their honest links, and
+  plain GossipSub then loses 47 % rather than the paper's ~10 % in the
+  eclipse attack (`documentation/validation/routing/harness-validation.md`):
   - `A-eclipse`: the network warms up. At 60 s the Sybils connect, 100
     links each, and drop everything. The run ends at 240 s.
   - `A-coldboot`: the Sybils, 20 links each, connect as the honest nodes

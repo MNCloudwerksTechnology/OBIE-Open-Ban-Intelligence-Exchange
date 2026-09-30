@@ -43,6 +43,34 @@ func TestRandomRegularImpossible(t *testing.T) {
 	}
 }
 
+func TestRandomDial(t *testing.T) {
+	const n, k = 1000, 20
+	g, err := randomDial(testRNG(4), n, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, targets := range g.dials {
+		if len(targets) != k || slices.Contains(targets, i) {
+			t.Fatalf("node %d dials %v, want %d others", i, targets, k)
+		}
+	}
+	// Every node dials 20 and is dialed by 20 on average; a pair that dials
+	// each other is one link, so the mean degree is just under 40.
+	total := 0
+	for i, d := range g.degrees() {
+		if d < k {
+			t.Errorf("node %d has degree %d, want at least %d", i, d, k)
+		}
+		total += d
+	}
+	if mean := float64(total) / n; mean < 39 || mean > 40 {
+		t.Errorf("mean degree %.2f, want just under %d", mean, 2*k)
+	}
+	if _, err := randomDial(testRNG(1), 5, 5); err == nil {
+		t.Error("randomDial(5, 5) succeeded, want an error")
+	}
+}
+
 func TestStaticBootstrap(t *testing.T) {
 	const n, k = 300, 6
 	g, err := staticBootstrap(testRNG(7), n, k, 2, 3)

@@ -76,6 +76,21 @@ func randomRegular(rng *rand.Rand, n, d int) (*graph, error) {
 	return g, nil
 }
 
+// randomDial returns a graph on n nodes in which every node dials k
+// distinct random others, so a node has about 2k links: the honest
+// topology of the paper's testbed (gossipsub-hardening,
+// RandomHonestTopology).
+func randomDial(rng *rand.Rand, n, k int) (*graph, error) {
+	if k >= n {
+		return nil, fmt.Errorf("no graph on %d nodes in which each dials %d", n, k)
+	}
+	g := newGraph(n)
+	for i := range n {
+		g.dials[i] = pick(rng, n, k, i)
+	}
+	return g, nil
+}
+
 // repair removes self-loops and repeated edges from the multigraph edges
 // by switching each bad edge with a random other one, keeping every
 // node's degree.

@@ -57,6 +57,9 @@ func Scenarios() map[string]*Scenario {
 const (
 	publisherShare = 0.10
 	regularDegree  = 20
+	// In the paper's testbed every honest node dials honestDials random
+	// honest nodes.
+	honestDials = 20
 	// A static-bootstrap graph has a hub per nodesPerHub nodes; every node
 	// lists hubsPerNode hubs, every hub hubsPerHub others.
 	nodesPerHub = 50
@@ -72,6 +75,21 @@ func regularHonest(w *world, n int) ([]int32, error) {
 		return nil, err
 	}
 	g, err := randomRegular(w.rng, n, regularDegree)
+	if err != nil {
+		return nil, err
+	}
+	w.setGraph(idx, g)
+	return idx, nil
+}
+
+// paperHonest adds n honest nodes that each dial honestDials random
+// honest nodes, as in the paper's testbed.
+func paperHonest(w *world, n int) ([]int32, error) {
+	idx, err := w.addNodes(n, true)
+	if err != nil {
+		return nil, err
+	}
+	g, err := randomDial(w.rng, n, honestDials)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +171,7 @@ func scenarioA(attack string) *Scenario {
 	return &Scenario{
 		Name: "A-" + attack, Group: "A", Summary: summary, Variants: []string{Plain, Paper, V01}, Honest: honest,
 		Params: [][2]string{
-			{"honest nodes", "1,000 (10 % publish), random 20-regular graph"},
+			{"honest nodes", "1,000 (10 % publish); each dials 20 random honest nodes (about 40 links each), as in the paper's testbed"},
 			{"Sybils", fmt.Sprintf("4,000, %d links each to random honest nodes, connect at %v", perSybil, connectAt)},
 			{"attack", fmt.Sprintf("Sybils drop everything from %v", disrupt)},
 			{"traffic", "Poisson, 1 verdict/s network-wide, from 30 s"},
@@ -161,7 +179,7 @@ func scenarioA(attack string) *Scenario {
 		},
 		Checks: validationChecks(),
 		build: func(w *world) error {
-			h, err := regularHonest(w, honest)
+			h, err := paperHonest(w, honest)
 			if err != nil {
 				return err
 			}
