@@ -181,7 +181,7 @@ func TestTutorialEndsWithWhatNext(t *testing.T) {
 	}
 	got := links(s.paragraphs)
 	for what, prefix := range map[string]string{
-		"how-to guides":   "guides/",
+		"how-to guides":   "guides/README.md",
 		"the web console": "operations/console.md",
 		"federation":      "operations/federation.md",
 		"operations":      "operations/operations.md",

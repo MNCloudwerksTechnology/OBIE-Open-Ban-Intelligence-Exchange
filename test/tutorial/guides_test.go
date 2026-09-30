@@ -284,3 +284,88 @@ func TestGuideIndexListsEveryGuide(t *testing.T) {
 		}
 	}
 }
+
+// tasks are the routine jobs of an operator (WP-1697), each with the guide
+// that asks how to do it.
+var tasks = []struct{ task, guide, title string }{
+	{"connect with a friend's or partner's node and choose a sensible trust level", "connect-a-peer.md", "How do I connect with a friend's node and choose a trust level?"},
+	{"review what my node would block before enforcing", "review-what-would-be-blocked.md", "How do I review what my node would block before enforcing?"},
+	{"find out why an address is blocked", "why-is-an-address-blocked.md", "How do I find out why an address is blocked?"},
+	{"unblock an address I trust (a false positive) now and permanently", "unblock-an-address.md", "How do I unblock an address I trust, now and for good?"},
+	{"block an address manually", "block-an-address.md", "How do I block an address manually?"},
+	{"withdraw a verdict I published by mistake", "withdraw-a-verdict.md", "How do I withdraw a verdict I published by mistake?"},
+	{"switch from observe to enforce, and back", "switch-enforcement.md", "How do I switch from observe to enforce, and back?"},
+	{"stop trusting a peer", "stop-trusting-a-peer.md", "How do I stop trusting a peer?"},
+	{"recover after locking myself out", "recover-from-a-lockout.md", "How do I recover after locking myself out?"},
+	{"back up and restore the node identity", "back-up-the-identity.md", "How do I back up and restore the node identity?"},
+	{"upgrade to a new release", "upgrade.md", "How do I upgrade to a new release?"},
+	{"uninstall completely, including the firewall rules", "uninstall.md", "How do I uninstall OBIE completely, firewall rules included?"},
+}
+
+// consoleGuides are the guides whose task the web console makes easier:
+// they show the console's way next to the command line's.
+var consoleGuides = []string{
+	"review-what-would-be-blocked.md",
+	"why-is-an-address-blocked.md",
+	"unblock-an-address.md",
+	"block-an-address.md",
+	"withdraw-a-verdict.md",
+}
+
+// TestEveryTaskHasAGuide checks that every routine job has its guide,
+// titled as the task, and that there is no guide beyond them, so that the
+// index and this list stay one.
+func TestEveryTaskHasAGuide(t *testing.T) {
+	guides := map[string]guide{}
+	for _, g := range readGuides(t) {
+		guides[g.file] = g
+	}
+	for _, task := range tasks {
+		g, ok := guides[task.guide]
+		switch {
+		case !ok:
+			t.Errorf("no guide %s/%s to %s", guidesDir, task.guide, task.task)
+		case g.title != task.title:
+			t.Errorf("%s/%s is titled %q, want %q", guidesDir, task.guide, g.title, task.title)
+		}
+		delete(guides, task.guide)
+	}
+	for file := range guides {
+		t.Errorf("%s/%s is a guide to no task of this list; add its task", guidesDir, file)
+	}
+}
+
+// TestGuidesShowTheConsoleWhereItIsEasier checks that the guides whose task
+// the web console makes easier show its way, and that only they do.
+func TestGuidesShowTheConsoleWhereItIsEasier(t *testing.T) {
+	for _, g := range readGuides(t) {
+		shows := len(g.hints) > 0
+		if want := slices.Contains(consoleGuides, g.file); shows != want {
+			t.Errorf("%s/%s shows the console: %v, want %v", guidesDir, g.file, shows, want)
+		}
+		for _, h := range g.hints {
+			if h.section != stepsSection && h.section != checkSection {
+				t.Errorf("%s/%s:%d: the console's way is in %q; it belongs in %q or %q", guidesDir, g.file, h.line, h.section, stepsSection, checkSection)
+			}
+		}
+	}
+}
+
+// TestGuideIndexIsLinked checks that a reader finds the index of the guides
+// from the pages they come from: the introduction, the tutorial and the
+// README.
+func TestGuideIndexIsLinked(t *testing.T) {
+	for page, link := range map[string]string{
+		"documentation/introduction.md":    "guides/README.md",
+		"documentation/getting-started.md": "guides/README.md",
+		"README.md":                        "documentation/guides/README.md",
+	} {
+		var all []string
+		for _, s := range parsePage(readRepoFile(t, page)).sections {
+			all = append(all, links(s.paragraphs)...)
+		}
+		if !slices.Contains(all, link) {
+			t.Errorf("%s does not link %s", page, link)
+		}
+	}
+}

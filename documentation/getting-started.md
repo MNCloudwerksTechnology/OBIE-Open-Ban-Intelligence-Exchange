@@ -964,7 +964,10 @@ server, lines that name versions, jails or times may differ.
 
 ## What next
 
-- **How-to guides:** the [Fail2Ban guide](guides/fail2ban.md) reports
+- **How-to guides:** [a short guide for each routine job](guides/README.md),
+  such as connecting a friend's node, unblocking an address you trust,
+  switching enforcement on and off, recovering after a lockout, upgrading
+  and uninstalling. The [Fail2Ban guide](guides/fail2ban.md) reports
   more jails and tunes them; the [nftables guide](guides/nftables.md)
   explains how blocking works and how to block traffic that passes
   through the server.
