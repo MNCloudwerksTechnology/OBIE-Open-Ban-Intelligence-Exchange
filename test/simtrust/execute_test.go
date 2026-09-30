@@ -196,6 +196,43 @@ func readCSV(t *testing.T, path string, gzipped bool) [][]string {
 	return rows
 }
 
+// TestBurnedAndConvergedNotes checks that the report says that no
+// whitewasher burned a key and that every newcomer converged at once only
+// where the metrics show it.
+func TestBurnedAndConvergedNotes(t *testing.T) {
+	none := Estimate{Mean: math.NaN(), Low: math.NaN(), High: math.NaN()}
+	zero := Estimate{N: 20}
+	some := Estimate{Mean: 0.5, Low: 0.2, High: 0.8, N: 20}
+	config := func(model Model, burned, convergence Estimate) Aggregate {
+		a := Aggregate{Config: Config{Model: model, Fraction: 0.4, Profile: ProfileDefault}, Hours: make([][numWindows][numMetrics]Estimate, 1)}
+		end := &a.Hours[0][WindowCumulative]
+		for i := range end {
+			end[i] = none
+		}
+		end[MetricKeysBurned], end[MetricNewcomerConvergenceHours] = burned, convergence
+		return a
+	}
+	const burnedNote, convergedNote = "No whitewasher burned a key", "Every newcomer had converged"
+	for _, tt := range []struct {
+		name              string
+		configs           []Aggregate
+		burned, converged bool
+	}{
+		{"static weights", []Aggregate{config(ModelWhitewash, zero, zero), config(ModelNaive, none, zero)}, true, true},
+		{"a key burned, a newcomer late", []Aggregate{config(ModelWhitewash, zero, zero), config(ModelWhitewash, some, some)}, false, false},
+		{"no whitewasher, no newcomer", []Aggregate{config(ModelNaive, none, none)}, false, false},
+	} {
+		md := &markdown{rep: &Report{Seeds: 20, Aggregates: tt.configs}}
+		md.adversaries(md.adversarialModels(), md.profiles())
+		if got := strings.Contains(md.String(), burnedNote); got != tt.burned {
+			t.Errorf("%s: %q said: %v, want %v", tt.name, burnedNote, got, tt.burned)
+		}
+		if got := strings.Contains(md.String(), convergedNote); got != tt.converged {
+			t.Errorf("%s: %q said: %v, want %v", tt.name, convergedNote, got, tt.converged)
+		}
+	}
+}
+
 // TestOnOffPhaseNote checks that the report says when the on-off
 // attackers poison if the hours it shows all fall in their off phase.
 func TestOnOffPhaseNote(t *testing.T) {

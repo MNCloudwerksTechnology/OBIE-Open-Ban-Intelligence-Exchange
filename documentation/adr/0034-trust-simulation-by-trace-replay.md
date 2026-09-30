@@ -283,9 +283,11 @@ and cumulatively over [0, h+1), for every hour of the run.
   within the hour), `feeds.csv` (the feed metrics by role),
   `publishers.csv.gz` (those of every publisher key of every run) and
   `corroboration.csv`. A mean and the bounds of its interval are rounded
-  to the second significant digit of the half-width, and no value has
-  more than 6 significant digits, which keeps the baseline small and
-  every interval intact. Its header
+  to the second significant digit of the half-width, beyond which the
+  seeds do not resolve them, and no value has more than 6 significant
+  digits (a value smaller than the rounding step keeps one). That keeps
+  the baseline small; only an interval narrower than 6 digits resolve
+  would print as a single value. Its header
   names the report format (1), the OBIE version, the scenario, the seeds
   and the trace; its findings are computed, not written by hand. The
   v0.1 baseline is committed in `documentation/validation/trust/`.
