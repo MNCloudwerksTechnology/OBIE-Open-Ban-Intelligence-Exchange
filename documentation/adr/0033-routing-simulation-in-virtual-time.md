@@ -234,8 +234,13 @@ Every configuration below runs 20 seeds.
 - **T: traffic and topology without attack.** Variant `v0.1`:
   - `T-static` and `T-regular`: 1,000 nodes, 1/s.
   - `T-lowrate`: 1,000 nodes on the static graph, 0.1/s for 600 s.
-  - `T-burst-static` and `T-burst-regular`: 300 nodes, 1/s plus 200/s
-    from 60 s to 120 s.
+  - `T-burst-static` and `T-burst-regular`: 1/s plus 200/s from 60 s to
+    120 s, from 30 publishers, so each sends 6.7/s, below the
+    per-publisher limit of 10/s. `T-burst-static` runs 300 nodes,
+    `T-burst-regular` 100. On a healthy mesh every node validates all
+    200 verdicts/s, and every copy arrives at an instant of its own, so a
+    run advances on little more than one core: on 300 nodes the burst
+    alone took about 17 minutes per seed.
 - **`reduced`** (CI): 100 honest nodes on a 20-regular graph and 400 cold
   boot Sybils (20 links each), one seed per variant.
 

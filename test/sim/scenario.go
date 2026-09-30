@@ -46,7 +46,11 @@ func Scenarios() map[string]*Scenario {
 		scenarioFlood(), scenarioJunk(), scenarioPreempt(), scenarioOffline(), scenarioBootKill(),
 		scenarioTraffic("T-static", "static", 1000, 1, false), scenarioTraffic("T-regular", "regular", 1000, 1, false),
 		scenarioTraffic("T-lowrate", "static", 1000, 0.1, false),
-		scenarioTraffic("T-burst-static", "static", 300, 1, true), scenarioTraffic("T-burst-regular", "regular", 300, 1, true),
+		// A burst on a healthy mesh costs about 17 s of real time per
+		// virtual second on 300 nodes: every copy arrives at an instant of
+		// its own, so the run advances on about one core. The regular
+		// graph's burst therefore runs on 100 nodes (ADR 0033).
+		scenarioTraffic("T-burst-static", "static", 300, 1, true), scenarioTraffic("T-burst-regular", "regular", 100, 1, true),
 		scenarioReduced(),
 	} {
 		out[s.Name] = s
@@ -67,6 +71,9 @@ const (
 	hubsPerNode = 2
 	hubsPerHub  = 3
 	trafficFrom = 30 * time.Second
+	// burstPublishers send a scanning burst: 200 verdicts/s from 30
+	// publishers is 6.7/s each, below the per-publisher limit (10/s).
+	burstPublishers = 30
 )
 
 // regularHonest adds n honest nodes on a random regular graph.
@@ -561,8 +568,14 @@ func scenarioTraffic(name, topology string, honest int, rate float64, burst bool
 		end = 660 * time.Second
 	}
 	const burstFrom, burstTo, burstRate = 60 * time.Second, 120 * time.Second, 200.0
+	share, publish := publisherShare, "10 % publish"
+	if burst {
+		// A burst comes from burstPublishers whatever the network's size,
+		// so each sends the same share of it.
+		share, publish = float64(burstPublishers)/float64(honest), fmt.Sprintf("%d publish", burstPublishers)
+	}
 	params := [][2]string{
-		{"honest nodes", fmt.Sprintf("%d (10 %% publish), %s graph", honest, topologyName(topology))},
+		{"honest nodes", fmt.Sprintf("%d (%s), %s graph", honest, publish, topologyName(topology))},
 		{"traffic", fmt.Sprintf("Poisson, %v verdict/s network-wide, from 30 s", rate)},
 		{"run", fmt.Sprintf("%s; publishing stops at %s", seconds(end), seconds(end-drain))},
 	}
@@ -578,7 +591,7 @@ func scenarioTraffic(name, topology string, honest int, rate float64, burst bool
 				return err
 			}
 			w.end = end
-			pubs := w.choosePublishers(publisherShare)
+			pubs := w.choosePublishers(share)
 			times := poisson(w.rng, trafficFrom, end-drain, rate)
 			if burst {
 				times = append(times, poisson(w.rng, burstFrom, burstTo, burstRate)...)
