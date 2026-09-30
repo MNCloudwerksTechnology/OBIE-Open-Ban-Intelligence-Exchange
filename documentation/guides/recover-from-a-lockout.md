@@ -141,8 +141,9 @@ Override set: force_allow on ipv4:85.10.3.30, until removed (note: "my address a
 Decision now: allowed — operator force-allow override on ipv4:85.10.3.30 (note: "my address at home"); verdicts: local autoblock: this node's own ban verdict (score 0.8 < threshold 1.8, 1 < quorum 2)
 ```
 
-Your node also sent its [verdict](../glossary.md#verdict) on your address
-to your peers. Withdraw it, so that they do not block you either:
+If the reason named `local autoblock`, your node also sent its
+[verdict](../glossary.md#verdict) on your address to your peers.
+Withdraw it, so that they do not block you either:
 
 ```sh
 sudo obiectl revoke 85.10.3.30

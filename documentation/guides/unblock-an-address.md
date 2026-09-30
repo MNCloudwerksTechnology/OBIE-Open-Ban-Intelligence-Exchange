@@ -35,6 +35,9 @@ sudo sed -i 's/ 85\.10\.4\.12\b//' /etc/fail2ban/jail.d/trusted-addresses.local
 sudo systemctl restart fail2ban
 ```
 
+If you added the address to `ignoreip` in `/etc/fail2ban/jail.local`
+instead, delete it there before the restart.
+
 Then remove the [override](../glossary.md#override):
 
 ```sh

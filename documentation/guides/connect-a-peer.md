@@ -25,11 +25,12 @@ minutes.
 
 ## Undo
 
-To disconnect again and stop trusting the other node, put back the copy
-of the configuration that the steps make first, and restart the node:
+To disconnect again and stop trusting the other node, delete the two
+entries the steps add: its address, and its peer ID with its name and
+weight. Then restart the node:
 
 ```sh
-sudo cp /etc/obie/obie.yaml.before-friend /etc/obie/obie.yaml
+sudo sed -i -e '\|/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf"$|d' -e '/^    - peer_id: "12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf"$/,/^      weight: /d' /etc/obie/obie.yaml
 sudo systemctl restart obied
 ```
 
@@ -84,12 +85,6 @@ the fingerprint out to them, so that they know the peer ID is yours. They
 give you their node's address in return, such as
 `/ip4/198.51.100.20/tcp/4001/p2p/12D3KooWKrKnKarP5Ne57JSKsV1sPmXitDQq7ijNTxgw7WSGqEXf`,
 and read out its fingerprint.
-
-Keep a copy of the configuration, to undo:
-
-```sh
-sudo cp /etc/obie/obie.yaml /etc/obie/obie.yaml.before-friend
-```
 
 Add the other node's address to the peers your node connects to,
 `mesh.bootstrap`. Paste the address you received in place of the

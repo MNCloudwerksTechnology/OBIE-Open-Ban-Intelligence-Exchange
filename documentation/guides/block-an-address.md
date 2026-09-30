@@ -8,8 +8,8 @@ too, report the address as well.
 > **Warning:** In [enforce mode](../glossary.md#enforce-mode), this drops
 > all traffic from the address at once. A manual block overrules your
 > [allow-list](../glossary.md#allow-list): only the
-> [protected addresses](../glossary.md#protected-addresses) are never
-> blocked. Make sure that the address, or the range you block, holds none
+> [protected addresses](../glossary.md#protected-addresses), and those you
+> always allow, are never blocked. Make sure that the address, or the range you block, holds none
 > of yours: not your office, your monitoring or a customer.
 
 ## Before you start
