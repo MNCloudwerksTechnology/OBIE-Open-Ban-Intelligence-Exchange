@@ -142,3 +142,21 @@ func TestParsePageReadsConsoleHints(t *testing.T) {
 		}
 	}
 }
+
+// TestReadsOnly checks which commands the check may repeat: those that
+// only look, and none that also changes something.
+func TestReadsOnly(t *testing.T) {
+	for cmd, want := range map[string]bool{
+		"sudo obiectl explain 85.10.0.7":                        true,
+		"sudo grep -A 1 'name: \"friend\"' /etc/obie/obie.yaml": true,
+		"docker exec obie obiectl status":                       true,
+		"sudo obiectl allow 85.10.0.7":                          false,
+		"sudo systemctl restart obied":                          false,
+		"sudo grep -q '^enforce:' /etc/obie/obie.yaml || printf 'x' | sudo tee -a /etc/obie/obie.yaml": false,
+		"sudo obiectl decisions > decisions.txt":                                                       false,
+	} {
+		if got := readsOnly(cmd); got != want {
+			t.Errorf("readsOnly(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}

@@ -57,11 +57,8 @@ var (
 	promptLine = regexp.MustCompile(`^(.*(?:\]|\(empty: done\)):)(?: (.*))?$`)
 	// interactive is a command that asks questions on a terminal.
 	interactive = regexp.MustCompile(`^sudo obied setup$`)
-	// reading is a command that only looks, and may be repeated.
-	reading = regexp.MustCompile(`^(sudo )?(uname|ps|sha256sum|journalctl|grep|nft list|fail2ban-client (version|status|-t)|obied (self-check|identity|--config)|obiectl (status|peers|identity|indicators|decisions|explain|enforced|overrides|show))\b` +
-		`|^docker exec obie obiectl (status|identity)\b`)
-	// containerNames are what the container section names, replaced by
-	// the check's own, in this order.
+	// containerNames are what the tutorial's container section names,
+	// replaced by the tutorial check's own, in this order.
 	containerNames = []struct {
 		re   *regexp.Regexp
 		with string
@@ -229,7 +226,7 @@ func (c *check) run(s step, cmd string) {
 		if err == nil && (!s.hasWant || matches(s.want, got)) {
 			return
 		}
-		if !reading.MatchString(cmd) || time.Now().After(deadline) {
+		if !readsOnly(cmd) || time.Now().After(deadline) {
 			break
 		}
 		time.Sleep(time.Second)
@@ -342,7 +339,7 @@ func (c *check) buildHostImage() {
 // buildContainerImage builds OBIE's container image, for the tutorial's
 // container section.
 func (c *check) buildContainerImage() {
-	c.must(buildBound, "docker", "build", "-q", "--build-arg", "VERSION="+c.version, "-t", checkName+"-image:"+c.version, ".")
+	c.must(buildBound, "docker", "build", "-q", "--build-arg", "VERSION="+c.version, "-t", c.name+"-image:"+c.version, ".")
 }
 
 // startServer starts the server with systemd, and serves the releases to
@@ -461,14 +458,15 @@ func (c *check) diagnose() {
 	c.t.Logf("the server's failed units and logs:\n%s", out)
 }
 
-// removeContainers removes the check's containers and volume.
+// removeContainers removes the check's containers and volume: the server,
+// and the node and volume of the tutorial's container section.
 func (c *check) removeContainers() {
-	_, _ = c.command(time.Minute, "docker", "rm", "-f", "-v", c.host, checkName+"-node")
-	_, _ = c.command(time.Minute, "docker", "volume", "rm", "-f", checkName+"-state")
+	_, _ = c.command(time.Minute, "docker", "rm", "-f", "-v", c.host, c.name+"-node")
+	_, _ = c.command(time.Minute, "docker", "volume", "rm", "-f", c.name+"-state")
 }
 
 // remove removes the check's containers, volume and images.
 func (c *check) remove() {
 	c.removeContainers()
-	_, _ = c.command(time.Minute, "docker", "image", "rm", "-f", c.name+"-host", checkName+"-image:"+c.version)
+	_, _ = c.command(time.Minute, "docker", "image", "rm", "-f", c.name+"-host", c.name+"-image:"+c.version)
 }
