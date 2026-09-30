@@ -18,7 +18,7 @@ An automated test runs every `./sandbox` command this page shows with its
 output, on every change to OBIE, and compares the output with the page. Only
 what changes from run to run differs in yours:
 [peer IDs](glossary.md#peer-id), event IDs, times, latencies, container
-addresses and tokens.
+addresses and tokens. A peer can also show a second address.
 
 ## What you need
 
@@ -110,6 +110,10 @@ PEER ID                                               NAME   TRUST  BOOTSTRAP  C
 
 node1 and node2 have trust 1. The peer without a name and with trust 0 is
 the stranger: node3 does not know it, but lets it connect.
+
+ADDRESSES lists one address per connection. When two nodes dial each other
+at the same moment, both connections stay open, and the peer shows two
+addresses.
 
 The same story is visible in the web consoles, one per trusted node. Open
 <http://127.0.0.1:9403/> in a browser on this computer and sign in with

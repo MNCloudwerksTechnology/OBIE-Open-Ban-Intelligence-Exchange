@@ -73,7 +73,8 @@ port ends with a message that says what to do.
   run in CI with the lab's smoke test) starts a sandbox under its own
   project name and ports, runs every step in order, compares the output
   with the page after replacing what differs from run to run (peer IDs,
-  event IDs, times, durations, container addresses, ports, tokens) and
+  event IDs, times, durations, container addresses, ports, tokens, the
+  second connection of two nodes that dialed each other at once) and
   sorting the rows of tables, signs in to the consoles and checks the
   pages, and after `./sandbox down` checks that nothing of the project is
   left. Reading commands are repeated for up to 30 seconds, since
