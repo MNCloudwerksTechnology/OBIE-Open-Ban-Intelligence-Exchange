@@ -59,7 +59,9 @@ command-line help, error messages, shell completion and manual pages in
 newcomer sandbox and its walkthrough, run as a test, in
 [ADR 0029](documentation/adr/0029-sandbox-and-checked-walkthrough.md); the
 getting-started tutorial, run as a test on a systemd host in a container, in
-[ADR 0030](documentation/adr/0030-getting-started-tutorial-checked-on-a-systemd-host.md); the website
+[ADR 0030](documentation/adr/0030-getting-started-tutorial-checked-on-a-systemd-host.md); the
+how-to guides for everyday tasks, run as a test on the same kind of host, in
+[ADR 0031](documentation/adr/0031-how-to-guides-checked-on-a-systemd-host.md); the website
 stack and build in
 [ADR 0010](documentation/adr/0010-website-stack-and-build.md); the landing
 page content file and design system in
@@ -145,7 +147,7 @@ Dockerfile          multi-stage build of the distroless/static nonroot image (+ 
 test/
   e2e/              four complete obied nodes in one process: report → quorum block → revoke (ADR 0016)
   sandbox/          the sandbox's configurations, script and walkthrough; `make sandbox-check` runs documentation/sandbox.md (ADR 0029)
-  tutorial/         the getting-started tutorial's form; `make tutorial-check` runs documentation/getting-started.md on a systemd host (ADR 0030)
+  tutorial/         the forms of the tutorial and the how-to guides; `make tutorial-check` and `make guides-check` run documentation/getting-started.md and documentation/guides/ on a systemd host (ADR 0030, 0031)
 diagrams/           whitepaper diagrams (PlantUML sources + PNG)
 website/            public website, independent of the node (see Website)
 ```
