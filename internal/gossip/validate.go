@@ -77,7 +77,7 @@ func (v *validator) check(from peer.ID, data []byte) (Outcome, pubsub.Validation
 	if _, err := v.store.Put(ev); err != nil && !errors.Is(err, store.ErrClosed) {
 		v.log.Error("storing received event failed", "event", ev.ID, "err", err)
 	}
-	observeDelay(ev.IssuedAt.Time, now)
+	observeDelay(createdAt(ev), now)
 	return Accepted, pubsub.ValidationAccept
 }
 

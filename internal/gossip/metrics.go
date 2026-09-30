@@ -64,8 +64,9 @@ var (
 	propagationDelay = prometheus.NewHistogram(prometheus.HistogramOpts{
 		Namespace: "obie",
 		Name:      "propagation_delay_seconds",
-		Help:      "Time from an accepted event's issued_at to its receipt by this node; issued_at has whole-second precision.",
-		Buckets:   []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
+		Help: "Time from an accepted event's creation to its receipt by this node: from the millisecond time its UUIDv7 " +
+			"id carries if that lies within the second of its issued_at, else from issued_at.",
+		Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
 	})
 
 	// What GossipSub does with the topic's messages (ADR 0032).
@@ -162,8 +163,19 @@ func typeLabel(eventType string) string {
 	return strings.TrimPrefix(eventType, "indicator.")
 }
 
-// observeDelay records the delay from an accepted event's issued_at to
+// observeDelay records the delay from an accepted event's creation to
 // now, clamped at zero for a publisher whose clock is ahead.
-func observeDelay(issued, now time.Time) {
-	propagationDelay.Observe(max(now.Sub(issued), 0).Seconds())
+func observeDelay(created, now time.Time) {
+	propagationDelay.Observe(max(now.Sub(created), 0).Seconds())
+}
+
+// createdAt returns when ev was created: the millisecond time its UUIDv7
+// id carries if that lies within the second its issued_at names, else its
+// issued_at, which obie/0.1 gives in whole seconds (ADR 0032).
+func createdAt(ev *obieproto.Event) time.Time {
+	issued := ev.IssuedAt.Time
+	if t, ok := obieproto.IDTime(ev.ID); ok && !t.Before(issued) && t.Before(issued.Add(time.Second)) {
+		return t
+	}
+	return issued
 }
