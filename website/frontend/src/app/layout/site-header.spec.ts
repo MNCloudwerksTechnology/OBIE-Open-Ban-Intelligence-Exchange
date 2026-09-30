@@ -39,7 +39,7 @@ describe('SiteHeader', () => {
     ]);
   });
 
-  it('leaves the invitation to speak to the founder and contact sections', () => {
+  it('does not offer the invitation to speak', () => {
     expect(header.textContent).not.toContain(LANDING_CONTENT_EN.founder.invite.label);
     expect(header.querySelector(`a[href="#${CONTACT_ID}"]`)).toBeNull();
   });

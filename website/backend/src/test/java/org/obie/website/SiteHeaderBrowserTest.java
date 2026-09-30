@@ -125,6 +125,8 @@ class SiteHeaderBrowserTest extends IntegrationTest {
         gaps.add(row.get(i).left() - row.get(i - 1).right());
       }
     }
+    // Links stacked one per row would leave nothing to compare.
+    assertThat(gaps).isNotEmpty();
     assertThat(gaps).allSatisfy(gap -> assertThat(gap).isCloseTo(gaps.get(0), within(TOLERANCE)));
   }
 
