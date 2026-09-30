@@ -185,3 +185,37 @@ func TestCellFormats(t *testing.T) {
 		}
 	}
 }
+
+// TestExecuteResumes checks the run cache: a second execution takes every
+// run from it and aggregates the same, and a damaged entry is run again.
+func TestExecuteResumes(t *testing.T) {
+	sc := tinyScenario()
+	sc.Configs = sc.Configs[:2]
+	cache := t.TempDir()
+	first, err := Execute(context.Background(), sc, ExecOptions{Seeds: 2, Cache: cache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := filepath.Glob(filepath.Join(cache, "*.gob"))
+	if err != nil || len(entries) != 4 || first.Cached != 0 {
+		t.Fatalf("%d cached runs after the first execution (%d taken from the cache), %v; want 4 and 0", len(entries), first.Cached, err)
+	}
+	if err := os.WriteFile(entries[0], []byte("damaged"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := Execute(context.Background(), sc, ExecOptions{Seeds: 2, Cache: cache})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Cached != 3 {
+		t.Errorf("%d runs taken from the cache, want 3: one entry was damaged", second.Cached)
+	}
+	for i := range first.Aggregates {
+		a, b := first.Aggregates[i].End(), second.Aggregates[i].End()
+		for m := range numMetrics {
+			if !near(a[m].Mean, b[m].Mean) || a[m].N != b[m].N {
+				t.Errorf("%s, %s: %+v first, %+v resumed", first.Aggregates[i].Config, Metric(m), a[m], b[m])
+			}
+		}
+	}
+}

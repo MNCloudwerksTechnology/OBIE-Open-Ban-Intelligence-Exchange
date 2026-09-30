@@ -160,7 +160,7 @@ func (md *markdown) header(info ReportInfo) {
 		{"Trace", rep.Trace},
 		{"Hours", fmt.Sprint(rep.Hours)},
 		{"Seeds", fmt.Sprintf("%d (1 to %d)", rep.Seeds, rep.Seeds)},
-		{"Runs", fmt.Sprintf("%d in %s", rep.Runs, rep.Wall.Round(time.Second))},
+		{"Runs", runsOf(rep)},
 		{"Generated", info.Generated.UTC().Format("2006-01-02")},
 	})
 	md.line("`make sim-trust SCENARIO=%s` wrote this report; do not edit it. Each run replays", rep.Scenario.Name)
@@ -174,6 +174,15 @@ func (md *markdown) header(info ReportInfo) {
 	md.line("interval (Student t). A dash means the metric is not defined, e.g. precision")
 	md.line("without bans; (n=k) marks a value defined in only k seeds.")
 	md.line("")
+}
+
+// runsOf says how many runs the report holds and how long they took.
+func runsOf(rep *Report) string {
+	s := fmt.Sprintf("%d in %s", rep.Runs, rep.Wall.Round(time.Second))
+	if rep.Cached > 0 {
+		s += fmt.Sprintf(", %d of them finished by earlier invocations", rep.Cached)
+	}
+	return s
 }
 
 // minRemotes returns how many fully trusted remotes at confidence c a

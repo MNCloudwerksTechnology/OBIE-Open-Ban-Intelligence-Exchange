@@ -66,6 +66,11 @@ against ground truth, and publishes the v0.1 baseline.
   - *Documentation ranges.* The simulated world lives in `2001:db8::/32`,
     so the adapter sets `sovereignty.Env.OmitDocumentationRanges`, the
     hook the multi-node tests use. No other built-in range is touched.
+- **Virtual time lies in the future.** The store gives each BadgerDB entry
+  its event's expiry, and BadgerDB hides an entry once the wall clock
+  passes it. A synthetic world therefore starts in 2100, and a recorded
+  trace is moved there by whole weeks, keeping its weekdays and times of
+  day. A run of a trace in the past is refused rather than left empty.
 - **Attribution.** The block change stream names the verdicts that count
   in each block (ADR 0032). The harness attributes every enforced ban to
   its publishers from them.
@@ -254,12 +259,17 @@ and cumulatively over [0, h+1), for every hour of the run.
     the recall.
 - The harness is the package `test/simtrust`; its entry test carries the
   build tag `simtrust`, like `make soak`. Runs are spread over
-  GOMAXPROCS workers. Its other tests run with `make test`.
-- The report is a Markdown file plus `summary.csv` (cumulative at the end),
-  `hourly.csv` (every hour, both windows) and `feeds.csv`. Its header
-  names the report format (1), the OBIE version and commit, the scenario,
-  the seeds and the trace. The v0.1 baseline is committed under
-  `documentation/validation/`.
+  GOMAXPROCS workers. Its other tests run with `make test`. A finished
+  run's metrics are kept in `SIMCACHE` (default `bin/sim-trust/cache`),
+  keyed by the hash of the test binary, the scenario, the trace and the
+  run, so an interrupted scenario resumes and a code change never reuses
+  a result.
+- The report is `README.md` plus `summary.csv` (every metric at the end,
+  cumulatively), `hourly.csv.gz` (every metric in every hour, within the
+  hour and cumulatively), `feeds.csv` and `corroboration.csv`. Its header
+  names the report format (1), the OBIE version, the scenario, the seeds
+  and the trace; its findings are computed, not written by hand. The
+  v0.1 baseline is committed under `documentation/validation/`.
 - CI runs `make sim-trust SCENARIO=reduced` as a job of its own with a
   10-minute timeout.
 

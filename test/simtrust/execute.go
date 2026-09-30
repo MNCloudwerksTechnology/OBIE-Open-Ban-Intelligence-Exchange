@@ -21,6 +21,9 @@ type ExecOptions struct {
 	Workers int
 	// Progress, if set, is called after every run.
 	Progress func(done, total int, spec RunSpec, took time.Duration)
+	// Cache, if set, is a directory that keeps the metrics of every run,
+	// so that an interrupted scenario resumes where it stopped.
+	Cache string
 }
 
 // Report is the outcome of a scenario over its seeds.
@@ -32,9 +35,10 @@ type Report struct {
 	// Hours is the length of the runs.
 	Hours      int
 	Aggregates []Aggregate
-	// Runs counts the runs, Wall is how long they took together.
-	Runs int
-	Wall time.Duration
+	// Runs counts the runs, Cached those taken from the cache; Wall is how
+	// long the others took together.
+	Runs, Cached int
+	Wall         time.Duration
 }
 
 // Aggregate is a configuration's metrics over the seeds.
@@ -85,8 +89,13 @@ func Execute(ctx context.Context, sc Scenario, opts ExecOptions) (*Report, error
 		}
 	}
 	rep := &Report{Scenario: sc, Seeds: opts.Seeds, Trace: "a synthetic world per seed (ADR 0034)", Hours: traces[0].Hours}
+	var replayed *Trace
 	if opts.Trace != nil {
-		rep.Trace = opts.Trace.Source
+		rep.Trace, replayed = opts.Trace.Source, traces[0]
+	}
+	cache, err := newRunCache(opts.Cache, sc, replayed)
+	if err != nil {
+		return nil, err
 	}
 	type job struct{ config, seed int }
 	jobs := make(chan job)
@@ -105,12 +114,22 @@ func Execute(ctx context.Context, sc Scenario, opts ExecOptions) (*Report, error
 				c := sc.Configs[j.config]
 				spec := RunSpec{Model: c.Model, Fraction: c.Fraction, Profile: c.Profile, Seed: uint64(j.seed + 1)} // #nosec G115 -- seed >= 0.
 				started := time.Now()
-				res, err := Run(ctx, traces[j.seed], spec, sc.Models)
+				m, cached := cache.load(spec)
+				var err error
+				if !cached {
+					var res *Result
+					if res, err = Run(ctx, traces[j.seed], spec, sc.Models); err == nil {
+						m = Measure(res)
+						err = cache.store(m)
+					}
+				}
 				mu.Lock()
 				if err != nil {
 					errs = append(errs, err)
-				} else {
-					metrics[j.config][j.seed] = Measure(res)
+				}
+				metrics[j.config][j.seed] = m
+				if cached {
+					rep.Cached++
 				}
 				done++
 				if opts.Progress != nil {

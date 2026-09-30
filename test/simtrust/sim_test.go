@@ -17,6 +17,7 @@ var (
 	flagOut      = flag.String("simtrust.out", "", "directory to write the report to; a temporary one if empty")
 	flagVersion  = flag.String("simtrust.version", "dev", "OBIE version the report names")
 	flagWorkers  = flag.Int("simtrust.workers", 0, "runs at once; GOMAXPROCS if 0")
+	flagCache    = flag.String("simtrust.cache", "", "directory that keeps finished runs, so that an interrupted scenario resumes")
 )
 
 // TestSimTrust runs a scenario of the trust simulation and writes its
@@ -42,6 +43,7 @@ func TestSimTrust(t *testing.T) {
 		Seeds:   *flagSeeds,
 		Trace:   tr,
 		Workers: *flagWorkers,
+		Cache:   *flagCache,
 		Progress: func(done, total int, spec RunSpec, took time.Duration) {
 			if step := done * 50 / total; step != shown {
 				shown = step
