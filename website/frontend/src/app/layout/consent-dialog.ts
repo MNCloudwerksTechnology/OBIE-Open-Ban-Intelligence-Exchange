@@ -90,6 +90,22 @@ import { LanguageSwitch } from './language-switch';
       justify-content: space-between;
     }
 
+    // A short fade-in. It also keeps the dialog, which is not the page's
+    // content, from counting as its Largest Contentful Paint: an element
+    // first painted invisible is no candidate.
+    @media (prefers-reduced-motion: no-preference) {
+      .consent {
+        animation: consent-in 240ms ease-out both;
+      }
+    }
+
+    @keyframes consent-in {
+      from {
+        opacity: 0;
+        transform: translateY(0.5rem);
+      }
+    }
+
     .title {
       font-size: var(--text-lg);
       font-weight: 700;

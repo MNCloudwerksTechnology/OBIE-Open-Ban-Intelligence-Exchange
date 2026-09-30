@@ -1,13 +1,17 @@
 // Runs after `ng build` on the prerendered output (dist/frontend/browser):
 //
-// 1. checks the performance budget: initial JavaScript at most 150 KB gzip;
+// 1. checks the performance budget: initial JavaScript at most 150 KB gzip
+//    on the home page of every language;
 // 2. checks every <img> for explicit width and height and a modern format;
 // 3. preloads the fonts the first screen needs (their names carry the build hash)
 //    and inlines the @font-face rules, which otherwise arrive only with the
 //    stylesheet that Angular loads after the first paint: without them the
 //    text is painted twice, first in the fallback font, and the second paint
 //    delays the Largest Contentful Paint;
-// 4. writes Brotli (.br) and gzip (.gz) variants of the text assets, which the
+// 4. preloads, on the pages of a language other than English, the module of
+//    its translation (ADR 0033), which the application loads before it starts:
+//    otherwise it is requested only after the main bundle has run;
+// 5. writes Brotli (.br) and gzip (.gz) variants of the text assets, which the
 //    back end serves to browsers that accept them (ADR 0015).
 //
 // Pages are not precompressed: the back end rewrites them when serving
@@ -27,6 +31,8 @@ const PRELOADED_FONTS = [
   'inter-latin-600-normal',
   'inter-latin-700-normal',
 ];
+/** Per directory of a language's pages, the source of its translation module. */
+const TRANSLATION_MODULES = { 'de/': 'src/app/i18n/site-translation.de.ts' };
 const IMAGE_FORMATS = ['.svg', '.webp', '.avif'];
 const PRECOMPRESSED = ['.js', '.css', '.svg', '.ico', '.txt', '.json', '.xml', '.webmanifest'];
 const MIN_COMPRESS_SIZE = 1024;
@@ -36,10 +42,14 @@ const files = walk(dist);
 const pages = files.filter((file) => file.endsWith('.html'));
 const problems = [];
 
-checkInitialJs(join(dist, 'index.html'));
 pages.forEach(checkImages);
 const fontHead = [...fontPreloads(), `<style>${fontFaces()}</style>`].join('');
-pages.forEach((page) => addToHead(page, fontHead));
+const translationChunks = translationChunkFiles();
+pages.forEach((page) => addToHead(page, fontHead + translationPreload(page)));
+// After the preloads: a language's translation module counts towards its budget.
+['index.html', ...Object.keys(TRANSLATION_MODULES).map((dir) => `${dir}index.html`)].forEach(
+  (page) => checkInitialJs(join(dist, page)),
+);
 const compressed = files.filter(shouldPrecompress).map(precompress);
 
 if (problems.length > 0) {
@@ -68,9 +78,12 @@ function checkInitialJs(page) {
   const total = [...new Set(sources)]
     .map((source) => gzipSync(readFileSync(join(dist, source)), { level: 9 }).length)
     .reduce((sum, size) => sum + size, 0);
-  console.log(`postbuild: initial JavaScript ${(total / 1024).toFixed(1)} KB gzip`);
+  const name = `/${relative(dist, page)}`.replace(/index\.html$/, '');
+  console.log(`postbuild: initial JavaScript of ${name} ${(total / 1024).toFixed(1)} KB gzip`);
   if (sources.length === 0 || total > INITIAL_JS_BUDGET) {
-    problems.push(`initial JavaScript is ${total} bytes gzip, the budget is ${INITIAL_JS_BUDGET}`);
+    problems.push(
+      `initial JavaScript of ${name} is ${total} bytes gzip, the budget is ${INITIAL_JS_BUDGET}`,
+    );
   }
 }
 
@@ -102,6 +115,30 @@ function fontPreloads() {
 }
 
 /** The global stylesheet's @font-face rules, with URLs relative to `<base href="/">`. */
+/** Per directory of a language's pages, the output chunk of its translation module. */
+function translationChunkFiles() {
+  // The bundler's metafile (angular.json: statsJson) names each chunk's sources.
+  const stats = JSON.parse(readFileSync(resolve(dist, '../browser-stats.json'), 'utf8'));
+  return Object.fromEntries(
+    Object.entries(TRANSLATION_MODULES).map(([directory, source]) => {
+      const chunk = Object.entries(stats.outputs).find(
+        ([output, meta]) => output.endsWith('.js') && source in (meta.inputs ?? {}),
+      );
+      if (!chunk) {
+        problems.push(`no chunk contains ${source}`);
+      }
+      return [directory, chunk ? chunk[0].split('/').pop() : null];
+    }),
+  );
+}
+
+function translationPreload(page) {
+  const path = relative(dist, page).split('\\').join('/');
+  const directory = Object.keys(translationChunks).find((prefix) => path.startsWith(prefix));
+  const chunk = directory && translationChunks[directory];
+  return chunk ? `<link rel="modulepreload" href="${chunk}">` : '';
+}
+
 function fontFaces() {
   const stylesheet = readdirSync(dist).find((name) => /^styles-[A-Z0-9]+\.css$/.test(name));
   const css = stylesheet ? readFileSync(join(dist, stylesheet), 'utf8') : '';

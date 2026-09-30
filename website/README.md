@@ -381,10 +381,14 @@ Design decisions: [ADR 0015](../documentation/adr/0015-website-seo-and-delivery.
   `frontend/` (headless Chrome; `CHROME=/path/to/chrome` picks another one)
   and commit it.
 - **Build checks and delivery.** `npm run build` ends with
-  `scripts/postbuild.mjs`: it fails when the initial JavaScript exceeds
-  150 KB gzip or an image lacks `width`/`height` or is not SVG, WebP or AVIF,
-  preloads the Inter weights listed in `PRELOADED_FONTS`, and writes `.br`
-  and `.gz` variants of the text assets. The back end serves those variants,
+  `scripts/postbuild.mjs`: it fails when the initial JavaScript of a
+  language's home page exceeds 150 KB gzip or an image lacks
+  `width`/`height` or is not SVG, WebP or AVIF, preloads the Inter weights
+  listed in `PRELOADED_FONTS` (every weight the first screen uses: a font
+  that arrives late can re-wrap the header and shift the page), preloads a
+  language's translation module on its pages (`TRANSLATION_MODULES`, found
+  through `dist/frontend/browser-stats.json`), and writes `.br` and `.gz`
+  variants of the text assets. The back end serves those variants,
   gzips pages and API responses, sends hashed files (`*-<hash>.js|css`,
   `media/`) with a one-year `immutable` cache and everything else with
   `no-cache`. The legal pages are loaded on demand, the inquiry form's and
