@@ -51,8 +51,7 @@ class SiteHeaderBrowserTest extends IntegrationTest {
           "en",
           List.of("The problem", "How it works", "Principles", "Status", "Get started", "FAQ"),
           "de",
-          List.of(
-              "Problem", "So funktioniert es", "Prinzipien", "Status", "Erste Schritte", "FAQ"));
+          List.of("Problem", "Funktionsweise", "Prinzipien", "Status", "Loslegen", "FAQ"));
 
   /** The invitation to speak per language, which belongs to the footer, not the header. */
   private static final Map<String, String> INVITATION =
@@ -77,8 +76,7 @@ class SiteHeaderBrowserTest extends IntegrationTest {
         range.selectNodeContents(node);
         return range.getBoundingClientRect().bottom;
       };
-      const github = [...header.querySelector('a.github').childNodes]
-        .find((node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+      const github = header.querySelector('a.github .label');
       const bar = header.querySelector('.bar');
       const box = (selector) => header.querySelector(selector).getBoundingClientRect();
       return {

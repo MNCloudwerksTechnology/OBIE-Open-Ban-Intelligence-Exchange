@@ -31,8 +31,8 @@ import { ThemeToggle } from './theme-toggle';
             }
           </ul>
         </nav>
-        <app-language-switch class="lang" />
         <div class="actions">
+          <app-language-switch />
           <app-theme-toggle />
           <a
             class="button button--primary github"
@@ -40,7 +40,7 @@ import { ThemeToggle } from './theme-toggle';
             rel="noopener"
           >
             <app-github-icon />
-            {{ content.header.github.label }}
+            <span class="label">{{ content.header.github.label }}</span>
           </a>
         </div>
       </div>

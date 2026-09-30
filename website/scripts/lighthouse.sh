@@ -54,5 +54,8 @@ curl -fsS "$ORIGIN/api/health" >/dev/null
 curl -fsS "$ORIGIN/sitemap.xml" | grep -q "<loc>$ORIGIN/impressum</loc>"
 curl -fsS "$ORIGIN/robots.txt" | grep -q "Sitemap: $ORIGIN/sitemap.xml"
 
+# Every page in both languages (ADR 0033).
 npx --yes "@lhci/cli@${LHCI_VERSION}" autorun --config=lighthouserc.json \
-  --collect.url="$ORIGIN/" --collect.url="$ORIGIN/impressum" --collect.url="$ORIGIN/privacy"
+  --collect.url="$ORIGIN/" --collect.url="$ORIGIN/impressum" --collect.url="$ORIGIN/privacy" \
+  --collect.url="$ORIGIN/de" --collect.url="$ORIGIN/de/impressum" \
+  --collect.url="$ORIGIN/de/datenschutz"

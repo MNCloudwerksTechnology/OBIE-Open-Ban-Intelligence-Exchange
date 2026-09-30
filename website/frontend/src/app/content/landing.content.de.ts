@@ -78,7 +78,9 @@ export const LANDING_CONTENT_DE: LandingContent = {
   },
   howItWorks: {
     id: 'how-it-works',
-    label: 'So funktioniert es',
+    // Section labels are also the header links: short, so the links keep the same
+    // rows on phones in the fallback font and in Inter (no layout shift).
+    label: 'Funktionsweise',
     heading: 'Sechs Schritte von einem Angriff zum gemeinsamen Schutz.',
     intro:
       'OBIE läuft als kleines Programm neben den Werkzeugen, die Sie schon nutzen. Hier sehen Sie, was passiert, wenn ein Server einen Angriff bemerkt, so wie es für Version 0.1 vorgesehen ist.',
@@ -420,7 +422,7 @@ export const LANDING_CONTENT_DE: LandingContent = {
   },
   getStarted: {
     id: 'get-started',
-    label: 'Erste Schritte',
+    label: 'Loslegen',
     heading: 'In drei Schritten ausprobieren.',
     intro:
       'OBIE ist für Fachleute gebaut, die ihre eigenen Linux-Server betreiben. Zum Bauen brauchen Sie Go 1.26 oder neuer.',

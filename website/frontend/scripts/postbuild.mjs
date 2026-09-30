@@ -17,8 +17,16 @@ import { extname, join, relative, resolve } from 'node:path';
 import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 
 const INITIAL_JS_BUDGET = 150 * 1024;
-/** Fonts of the body text and the headings above the fold; the others load on demand. */
-const PRELOADED_FONTS = ['inter-latin-400-normal', 'inter-latin-700-normal'];
+/**
+ * Fonts of the first screen: body text, headings and the header's section
+ * links (600); the others load on demand. A header link painted in a
+ * fallback font first can wrap into another row and shift the page (CLS).
+ */
+const PRELOADED_FONTS = [
+  'inter-latin-400-normal',
+  'inter-latin-600-normal',
+  'inter-latin-700-normal',
+];
 const IMAGE_FORMATS = ['.svg', '.webp', '.avif'];
 const PRECOMPRESSED = ['.js', '.css', '.svg', '.ico', '.txt', '.json', '.xml', '.webmanifest'];
 const MIN_COMPRESS_SIZE = 1024;

@@ -4,14 +4,16 @@ header {
   backdrop-filter: blur(8px);
 }
 
-// Phones: brand and actions on the first row, the navigation wraps below,
-// the language switch at its end, so "View on GitHub" keeps its room.
+// Phones: brand and actions on the first row, the navigation wraps below
+// across the whole width. Its rows must not depend on the web font: the
+// links are painted in a fallback font first, and a row that appears or
+// disappears when Inter arrives shifts the whole page (CLS).
 .bar {
   display: grid;
   grid-template-areas:
-    'brand actions actions'
-    'nav nav lang';
-  grid-template-columns: 1fr auto auto;
+    'brand actions'
+    'nav nav';
+  grid-template-columns: 1fr auto;
   gap: var(--space-2) var(--space-4);
   align-items: center;
   padding-block: var(--space-3);
@@ -37,11 +39,6 @@ header {
 
 nav {
   grid-area: nav;
-}
-
-.lang {
-  grid-area: lang;
-  align-self: start;
 }
 
 ul {
@@ -82,11 +79,29 @@ nav li a {
   white-space: nowrap;
 }
 
-// The narrowest phones: the mark alone names the brand (the link keeps its
-// accessible name), so "View on GitHub" stays on one line.
-@media (max-width: 22rem) {
+// Phones: the mark alone names the brand (the link keeps its accessible
+// name), so the language switch, the theme toggle and "View on GitHub" fit
+// beside it on one line.
+@media (max-width: 26.99rem) {
   .brand span {
     display: none;
+  }
+}
+
+// The narrowest phones: "View on GitHub" becomes its icon, the label stays
+// the link's accessible name.
+@media (max-width: 22rem) {
+  .github {
+    padding-inline: var(--space-3);
+  }
+
+  .github .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 
@@ -99,8 +114,8 @@ nav li a {
   }
 
   .bar {
-    grid-template-areas: 'brand nav lang actions';
-    grid-template-columns: auto 1fr auto auto;
+    grid-template-areas: 'brand nav actions';
+    grid-template-columns: auto 1fr auto;
     min-height: var(--header-height);
     padding-block: var(--space-2);
   }
@@ -108,11 +123,5 @@ nav li a {
   nav ul {
     justify-content: center;
     gap: var(--space-5);
-  }
-
-  // Beside the theme toggle, as close as the actions are to each other.
-  .lang {
-    align-self: center;
-    margin-inline-end: calc(var(--space-2) - var(--space-4));
   }
 }
