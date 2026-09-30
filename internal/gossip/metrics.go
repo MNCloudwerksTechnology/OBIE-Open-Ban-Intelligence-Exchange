@@ -67,6 +67,53 @@ var (
 		Help:      "Time from an accepted event's issued_at to its receipt by this node; issued_at has whole-second precision.",
 		Buckets:   []float64{0.5, 1, 2, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
 	})
+
+	// What GossipSub does with the topic's messages (ADR 0032).
+	deliveriesTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "obie",
+		Name:      "gossip_deliveries_total",
+		Help:      "Messages from mesh peers that GossipSub accepted and delivered: the first valid copy of each event.",
+	})
+	duplicatesTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "obie",
+		Name:      "gossip_duplicates_total",
+		Help:      "Copies of a message this node had already seen, dropped by GossipSub before validation.",
+	})
+	rejectsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "obie",
+		Name:      "gossip_rejects_total",
+		Help:      "Messages from mesh peers that GossipSub dropped, by reason; ignored ones are in obie_gossip_ignores_total.",
+	}, []string{"reason"})
+	ignoresTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "obie",
+		Name:      "gossip_ignores_total",
+		Help:      "Messages from mesh peers that the validator ignored: duplicates known to the store, rate-limited or slightly expired events.",
+	})
+	graftsTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "obie",
+		Name:      "gossip_grafts_total",
+		Help:      "Peers added to this node's mesh of the topic (GRAFT).",
+	})
+	prunesTotal = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "obie",
+		Name:      "gossip_prunes_total",
+		Help:      "Peers removed from this node's mesh of the topic by a PRUNE; a disconnect removes one without.",
+	})
+	ihaveTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "obie",
+		Name:      "gossip_ihave_total",
+		Help:      "Message IDs announced in IHAVE gossip, by direction (sent, received).",
+	}, []string{"direction"})
+	iwantTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "obie",
+		Name:      "gossip_iwant_total",
+		Help:      "Message IDs requested in IWANT, by direction (sent, received).",
+	}, []string{"direction"})
+	meshPeers = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "obie",
+		Name:      "gossip_mesh_peers",
+		Help:      "Peers in this node's mesh of the topic, to which it relays every event in full.",
+	})
 )
 
 func init() {
@@ -76,7 +123,16 @@ func init() {
 	for _, typ := range eventTypes {
 		publishedTotal.WithLabelValues(typ)
 	}
-	prometheus.MustRegister(receivedTotal, publishedTotal, propagationDelay)
+	for _, r := range RejectReasons {
+		rejectsTotal.WithLabelValues(r)
+	}
+	for _, d := range []string{directionSent, directionReceived} {
+		ihaveTotal.WithLabelValues(d)
+		iwantTotal.WithLabelValues(d)
+	}
+	prometheus.MustRegister(receivedTotal, publishedTotal, propagationDelay,
+		deliveriesTotal, duplicatesTotal, rejectsTotal, ignoresTotal, graftsTotal, prunesTotal, ihaveTotal, iwantTotal,
+		meshPeers)
 }
 
 // typeLabel returns the type label of an event type: "indicator.verdict"

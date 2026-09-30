@@ -55,11 +55,12 @@ block. A node measures none of them yet:
 
   The reasons are `validation_failed` (OBIE's validator rejected it;
   `obie_events_received_total` says why), `queue_full` and `throttled`
-  (validation capacity), `invalid_signature`, `missing_signature`,
-  `unexpected_signature` and `unexpected_auth_info` (the StrictNoSign
-  policy of ADR 0009), `blacklisted`, `self_origin` and `other`. Ignored
-  messages are not rejects: GossipSub reports both through `RejectMessage`,
-  and the tracer separates them.
+  (validation capacity), `signature` and `author` (a GossipSub signature
+  or an author, which the StrictNoSign policy of ADR 0009 forbids; kept
+  apart from the event signature, whose failures are `validation_failed`),
+  `blacklisted`, `self_origin` and `other`. Ignored messages are not
+  rejects: GossipSub reports both through `RejectMessage`, and the tracer
+  separates them.
 - The node's own publications are not deliveries: they are in
   `obie_events_published_total`. A disconnecting peer leaves the mesh
   without a PRUNE, so the tracer keeps the mesh's members itself and

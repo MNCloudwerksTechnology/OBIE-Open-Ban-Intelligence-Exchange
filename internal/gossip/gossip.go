@@ -93,6 +93,8 @@ type Gossip struct {
 	receive []obieproto.Option
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
+	// tracer counts what GossipSub does in the obie_gossip_* metrics.
+	tracer *tracer
 
 	// pubMu serializes the node's publications, so that held events go
 	// out before any later one, and guards the fields below.
@@ -151,18 +153,21 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	topic, sub, err := join(ctx, h, v, validateQueueBursts*opts.PeerLimit.Burst)
+	tr := newTracer(h.ID())
+	topic, sub, err := join(ctx, h, v, tr, validateQueueBursts*opts.PeerLimit.Burst)
 	if err != nil {
 		cancel()
+		tr.close()
 		return nil, err
 	}
 	peers, err := topic.EventHandler()
 	if err != nil {
 		cancel()
+		tr.close()
 		return nil, fmt.Errorf("watch the peers of %s: %w", obieproto.Topic, err)
 	}
 	g := &Gossip{topic: topic, self: h.ID(), store: opts.Store, now: opts.Now, log: log, receive: receive, cancel: cancel,
-		heldLimit: maxHeld, heldBatch: heldBatch, heldInterval: heldInterval, wake: make(chan struct{}, 1)}
+		tracer: tr, heldLimit: maxHeld, heldBatch: heldBatch, heldInterval: heldInterval, wake: make(chan struct{}, 1)}
 	// Subscribing makes the node a member of the topic's mesh. Accepted
 	// events are stored by the validator, so deliveries are discarded.
 	g.wg.Go(func() {
@@ -199,9 +204,10 @@ func bucketOrDefault(b, def config.TokenBucket) config.TokenBucket {
 	return b
 }
 
-// join starts GossipSub on h and subscribes to the topic with v as its
-// validator, which up to queueSize received messages wait for.
-func join(ctx context.Context, h host.Host, v *validator, queueSize int) (*pubsub.Topic, *pubsub.Subscription, error) {
+// join starts GossipSub on h, traced by tr, and subscribes to the topic
+// with v as its validator, which up to queueSize received messages wait
+// for.
+func join(ctx context.Context, h host.Host, v *validator, tr *tracer, queueSize int) (*pubsub.Topic, *pubsub.Subscription, error) {
 	ps, err := pubsub.NewGossipSub(ctx, h,
 		// Events carry their own signature: messages have no author,
 		// sequence number or pubsub signature, and are rejected if they do.
@@ -216,6 +222,7 @@ func join(ctx context.Context, h host.Host, v *validator, queueSize int) (*pubsu
 		// threshold, not only to its mesh peers (GossipSub v1.1 flood
 		// publishing): one peer dropping them does not lose them.
 		pubsub.WithFloodPublish(true),
+		pubsub.WithRawTracer(tr),
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start gossipsub: %w", err)
@@ -409,4 +416,5 @@ func (g *Gossip) TopicPeers() int { return len(g.topic.ListPeers()) }
 func (g *Gossip) Close() {
 	g.cancel()
 	g.wg.Wait()
+	g.tracer.close()
 }
