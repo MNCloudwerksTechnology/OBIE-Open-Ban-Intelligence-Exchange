@@ -90,10 +90,22 @@ func goldenRecords() []Record {
 	revoked := Revocation(revoke)
 	revoked.Origin = Origin{Via: OriginConsole, UserID: "1000", UserName: "alice"}
 
+	// Blocks name the verdicts that count in them; a removal those of the
+	// block that ended (ADR 0032).
+	alpha := decision.Contributor{PeerID: "12D3KooWPeerA", EventID: "0199a1b2-c3d4-7e5f-8a6b-00000000000a", Weight: 1,
+		Confidence: 0.9}
+	bravo := decision.Contributor{PeerID: "12D3KooWPeerB", EventID: "0199a1b2-c3d4-7e5f-8a6b-00000000000b", Weight: 0.9,
+		Confidence: 1}
+	self := decision.Contributor{PeerID: "12D3KooWSelf", EventID: "0199a1b2-c3d4-7e5f-8a6b-00000000000c", Weight: 1,
+		Confidence: 1}
+
 	return []Record{
-		BlockChange(decision.Change{Type: decision.ChangeAdded, Key: consensus.Indicator.Key(), Decision: consensus, Cause: "verdict"}),
-		BlockChange(decision.Change{Type: decision.ChangeUpdated, Key: autoblock.Indicator.Key(), Decision: autoblock, Cause: "refresh"}),
-		BlockChange(decision.Change{Type: decision.ChangeRemoved, Key: removed.Indicator.Key(), Decision: removed, Cause: "revoke"}),
+		BlockChange(decision.Change{Type: decision.ChangeAdded, Key: consensus.Indicator.Key(), Decision: consensus, Cause: "verdict",
+			Contributors: []decision.Contributor{alpha, bravo}}),
+		BlockChange(decision.Change{Type: decision.ChangeUpdated, Key: autoblock.Indicator.Key(), Decision: autoblock, Cause: "refresh",
+			Contributors: []decision.Contributor{self}}),
+		BlockChange(decision.Change{Type: decision.ChangeRemoved, Key: removed.Indicator.Key(), Decision: removed, Cause: "revoke",
+			Contributors: []decision.Contributor{alpha, bravo}}),
 		Allowed(decision.Transition{Key: allowed.Indicator.Key(), From: decision.StateNone, Decision: allowed, Cause: "verdict"}),
 		set,
 		BlockChange(decision.Change{Type: decision.ChangeAdded, Key: forced.Indicator.Key(), Decision: forced, Cause: "override"}),
@@ -156,6 +168,7 @@ func TestLinesAreECS(t *testing.T) {
 			Rule      struct{ Name string }
 			Obie      struct {
 				Indicator, Mode string
+				Contributors    *[]Contributor
 			}
 		}
 		if err := json.Unmarshal([]byte(line), &doc); err != nil {
@@ -167,6 +180,10 @@ func TestLinesAreECS(t *testing.T) {
 		}
 		if about := aboutAddress(Action(doc.Event.Action)); about != (doc.Rule.Name != "") || about != (doc.Obie.Indicator != "") {
 			t.Errorf("line %d: rule %q, indicator %q for %s", i+1, doc.Rule.Name, doc.Obie.Indicator, doc.Event.Action)
+		}
+		// Every block record lists its contributors, [] if none (ADR 0032).
+		if block := strings.HasPrefix(doc.Event.Action, "block-"); block != (doc.Obie.Contributors != nil) {
+			t.Errorf("line %d: contributors %v for %s", i+1, doc.Obie.Contributors, doc.Event.Action)
 		}
 		if isRange := strings.HasPrefix(doc.Obie.Indicator, "cidr:") || doc.Obie.Indicator == ""; isRange != (doc.Source == nil) {
 			t.Errorf("line %d: source = %+v for %s", i+1, doc.Source, doc.Obie.Indicator)

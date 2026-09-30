@@ -62,6 +62,11 @@ type Change struct {
 	// Cause is what triggered the evaluation: a store.Reason, CauseStartup,
 	// CauseRefresh, CauseSnapshot or CauseReload.
 	Cause string
+	// Contributors are the verdicts that count in the block, by publisher:
+	// those of the new decision for ChangeAdded and ChangeUpdated, those of
+	// the block that ended for ChangeRemoved; empty, not nil, if none
+	// counts, e.g. in a force-block (ADR 0032).
+	Contributors []Contributor
 }
 
 // Transition is an entry of the state transition stream: the decision on
@@ -256,8 +261,8 @@ func (e *Engine) Subscribe(fn func(Change)) (unsubscribe func()) {
 	// snapshot, so no change is missed or delivered twice.
 	e.workMu.Lock()
 	defer e.workMu.Unlock()
-	for _, d := range e.list(StateBlock, false) {
-		fn(Change{Type: ChangeAdded, Key: d.Indicator.Key(), Decision: d, Cause: CauseSnapshot})
+	for _, c := range e.blocks() {
+		fn(c)
 	}
 	e.subsMu.Lock()
 	defer e.subsMu.Unlock()
@@ -486,6 +491,22 @@ func (e *Engine) list(state State, hideExpired bool) []Decision {
 	return out
 }
 
+// blocks returns every kept block, blocked or not at now, as a
+// ChangeAdded with CauseSnapshot, by key.
+func (e *Engine) blocks() []Change {
+	e.mu.RLock()
+	var out []Change
+	for i := range e.kept.items {
+		if k := &e.kept.items[i]; k.d.State == StateBlock {
+			out = append(out, Change{Type: ChangeAdded, Key: k.key, Decision: k.d, Cause: CauseSnapshot,
+				Contributors: contributorsOf(k.contributors)})
+		}
+	}
+	e.mu.RUnlock()
+	slices.SortFunc(out, func(a, b Change) int { return strings.Compare(a.Key, b.Key) })
+	return out
+}
+
 // load reads the overrides and decides on every indicator with active
 // verdicts or a force-block.
 func (e *Engine) load(ctx context.Context) error {
@@ -700,16 +721,21 @@ func (e *Engine) indicatorOf(key string, verdicts []*obieproto.Event) (obieproto
 func (e *Engine) apply(key string, d Decision, cause string) {
 	held := heldOf(d.Publishers)
 	active := len(held) > 0 || d.State == StateBlock
+	var contributors []keptContributor
+	if d.State == StateBlock {
+		contributors = keptContributorsOf(d.Publishers)
+	}
 	d.Publishers = nil
 	e.mu.Lock()
 	var prev Decision
+	var prevContributors []keptContributor
 	k, had := e.kept.get(key)
 	if had {
-		prev = k.d
+		prev, prevContributors = k.d, k.contributors
 		e.count(k.held, -1)
 	}
 	if active {
-		e.kept.put(key, d, held)
+		e.kept.put(key, d, held, contributors)
 	} else {
 		e.kept.remove(key)
 	}
@@ -731,12 +757,17 @@ func (e *Engine) apply(key string, d Decision, cause string) {
 		typ = ChangeAdded
 	case wasBlock && !isBlock:
 		typ = ChangeRemoved
-	case wasBlock && blockChanged(&prev, &d):
+	case wasBlock && (blockChanged(&prev, &d) || !slices.Equal(prevContributors, contributors)):
 		typ = ChangeUpdated
 	}
 	if typ != "" {
 		e.log.Debug("block decision changed", "indicator", key, "change", typ, "cause", cause, "reason", d.Reason)
-		e.notify(Change{Type: typ, Key: key, Decision: d, Cause: cause})
+		// A removal names the verdicts of the block that ended: those that
+		// remain do not explain what was blocked.
+		if typ == ChangeRemoved {
+			contributors = prevContributors
+		}
+		e.notify(Change{Type: typ, Key: key, Decision: d, Cause: cause, Contributors: contributorsOf(contributors)})
 	}
 	// A decision that is not kept (e.g. allowed without verdicts) is no
 	// transition: it would be announced again at every evaluation.

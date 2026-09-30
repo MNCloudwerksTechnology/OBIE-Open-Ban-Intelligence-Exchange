@@ -55,9 +55,13 @@ func (c *Config) validate(lines lineMap, decodeProblems problems) error {
 	}
 	v.tokenBucket("mesh.rate_limit.publisher", c.Mesh.RateLimit.Publisher)
 	v.tokenBucket("mesh.rate_limit.peer", c.Mesh.RateLimit.Peer)
+	v.absPath("mesh.trace_path", c.Mesh.TracePath, true)
 
 	if c.Store.MaxIndicators < 1 {
 		v.addf("store.max_indicators", "must be at least 1, got %d", c.Store.MaxIndicators)
+	}
+	if r := c.Store.EndedRetention; r < MinEndedRetention || r > MaxEndedRetention {
+		v.addf("store.ended_retention", "must lie between 1h and 365d, got %s", r)
 	}
 
 	v.publishers(c.Trust.Publishers)

@@ -177,7 +177,20 @@ func consolePeer(k *mesh.KnownPeer) console.Peer {
 		DialFailedAt:   k.DialFailedAt,
 		Weight:         k.TrustWeight,
 		Events:         eventCounts(k.Events),
+		GossipScore:    consoleGossipScore(k.GossipScore),
 	}
+}
+
+// consoleGossipScore converts a peer's GossipSub score for the console;
+// nil for none.
+func consoleGossipScore(s *gossip.PeerScore) *console.GossipScore {
+	if s == nil {
+		return nil
+	}
+	return &console.GossipScore{Score: s.Score, Below: s.Below(), TimeInMesh: s.TimeInMesh,
+		FirstMessageDeliveries: s.FirstMessageDeliveries, InvalidMessageDeliveries: s.InvalidMessageDeliveries,
+		IPColocationFactor: s.IPColocationFactor, BehaviourPenalty: s.BehaviourPenalty,
+		AppSpecificScore: s.AppSpecificScore, ReadAt: s.ReadAt}
 }
 
 // eventCounts sorts the outcomes of a peer's events into accepted ones,
@@ -492,7 +505,7 @@ func (v *consoleVerdicts) Totals() (console.VerdictTotals, error) {
 		return console.VerdictTotals{}, err
 	}
 	t := console.VerdictTotals{ByPublisher: make(map[string]console.VerdictCounts, len(ended.ByPublisher)),
-		Retention: store.EndedRetention, EndedMax: ended.Max, EndedFull: map[string]bool{
+		Retention: v.store.EndedRetention(), EndedMax: ended.Max, EndedFull: map[string]bool{
 			console.VerdictRevoked: ended.Full[store.EndedRevoked], console.VerdictExpired: ended.Full[store.EndedExpired]}}
 	for id, c := range v.engine.PublisherCounts() {
 		t.ByPublisher[id] = console.VerdictCounts{Active: c.Verdicts, Counting: c.Counting}

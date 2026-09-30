@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +20,8 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce/nft"
+	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
+	"github.com/MNCloudwerksTechnology/obie/internal/mesh"
 	"github.com/MNCloudwerksTechnology/obie/internal/sovereignty"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -430,6 +433,31 @@ func TestExplanationResponse(t *testing.T) {
 	if len(r.Publishers) != 1 || r.Publishers[0].Reason != "port_scan" || r.Publishers[0].Protocol != "tcp" ||
 		r.Publishers[0].Score != 0.5 || !r.Publishers[0].Contributes {
 		t.Errorf("publishers = %+v", r.Publishers)
+	}
+}
+
+// TestPeerResponsesCarryGossipScore: a peer's GossipSub score reaches the
+// admin API with the thresholds it is below; a peer without one has none
+// (ADR 0032).
+func TestPeerResponsesCarryGossipScore(t *testing.T) {
+	read := time.Date(2026, 9, 30, 12, 0, 0, 0, time.FixedZone("x", 3600))
+	got := peerResponses([]mesh.Peer{
+		{ID: self, GossipScore: &gossip.PeerScore{Score: -120, TimeInMesh: 90 * time.Second, FirstMessageDeliveries: 2,
+			InvalidMessageDeliveries: 4, IPColocationFactor: 1, BehaviourPenalty: 0.5, AppSpecificScore: -1, ReadAt: read}},
+		{ID: self, GossipScore: &gossip.PeerScore{Score: 3}},
+		{ID: self},
+	})
+	want := admin.GossipScoreResponse{Score: -120, Below: []string{"gossip", "publish"}, TimeInMeshSeconds: 90,
+		FirstMessageDeliveries: 2, InvalidMessageDeliveries: 4, IPColocationFactor: 1, BehaviourPenalty: 0.5,
+		AppSpecificScore: -1, ReadAt: read.UTC()}
+	if s := got[0].GossipScore; s == nil || !reflect.DeepEqual(*s, want) {
+		t.Errorf("score below two thresholds = %+v, want %+v", s, want)
+	}
+	if s := got[1].GossipScore; s == nil || s.Below == nil || len(s.Below) != 0 {
+		t.Errorf("score above every threshold = %+v, want an empty list of thresholds", s)
+	}
+	if got[2].GossipScore != nil {
+		t.Errorf("a peer without a score has %+v", got[2].GossipScore)
 	}
 }
 

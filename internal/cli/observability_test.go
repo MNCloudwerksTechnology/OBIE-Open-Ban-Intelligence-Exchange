@@ -102,7 +102,11 @@ func TestObservabilityAgainstInProcessDaemon(t *testing.T) {
 	for _, name := range []string{"build_info", "node_mode", "peers_connected", "peers_configured",
 		"events_received_total", "events_published_total", "store_active_indicators", "store_active_verdicts",
 		"decisions", "enforcer_entries", "enforcer_apply_total", "enforcer_apply_duration_seconds",
-		"enforcer_skipped_total", "propagation_delay_seconds", "admin_requests_total"} {
+		"enforcer_skipped_total", "propagation_delay_seconds", "admin_requests_total",
+		// ADR 0032: what GossipSub does, and the peer scores.
+		"gossip_deliveries_total", "gossip_duplicates_total", "gossip_rejects_total", "gossip_ignores_total",
+		"gossip_grafts_total", "gossip_prunes_total", "gossip_ihave_total", "gossip_iwant_total", "gossip_mesh_peers",
+		"gossip_peer_score", "gossip_peers_below_threshold", "gossip_scored_peers"} {
 		if !strings.Contains(body, "# TYPE obie_"+name+" ") {
 			t.Errorf("/metrics lacks obie_%s", name)
 		}

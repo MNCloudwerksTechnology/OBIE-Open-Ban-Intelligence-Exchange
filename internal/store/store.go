@@ -7,8 +7,9 @@
 // publisher are ignored. Subscribers are notified whenever the set of active
 // verdicts or the override of an indicator changes, including by expiry. See
 // ADR 0008 for the key layout and the rules. Verdicts that were revoked or
-// expired are kept for a day after their expiry, for the operator to see
-// (ADR 0023).
+// expired are kept for store.ended_retention (30 days by default) after
+// their expiry, for the operator to see and to trace blocks back to them
+// (ADR 0023, ADR 0032).
 package store
 
 import (

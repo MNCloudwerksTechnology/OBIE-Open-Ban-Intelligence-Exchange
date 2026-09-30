@@ -31,6 +31,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/eventtrace"
 	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
@@ -93,6 +94,12 @@ type Options struct {
 	DialTimeout time.Duration
 	// PingInterval is how often connected peers are pinged for latency.
 	PingInterval time.Duration
+	// ScoreInspectInterval is how often the GossipSub peer scores are
+	// read; zero for gossip.ScoreInspectInterval.
+	ScoreInspectInterval time.Duration
+	// TracePath is the file of the per-event trace (mesh.trace_path),
+	// opened by Start and closed by Stop; empty for none (ADR 0032).
+	TracePath string
 }
 
 // Mesh is the libp2p host as a lifecycle subsystem. It implements
@@ -121,6 +128,7 @@ type Mesh struct {
 	mu     sync.Mutex
 	host   host.Host
 	gossip *gossip.Gossip
+	trace  *eventtrace.Writer
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
@@ -255,28 +263,40 @@ func (m *Mesh) Start(context.Context) error {
 	if m.opts.GossipMetrics != nil {
 		metrics = observers{m.tally, m.opts.GossipMetrics}
 	}
+	var trace *eventtrace.Writer
+	if m.opts.TracePath != "" {
+		if trace, err = eventtrace.Open(m.opts.TracePath, h.ID().String(), m.log); err != nil {
+			_ = h.Close()
+			return fmt.Errorf("mesh.trace_path: %w", err)
+		}
+		m.log.Info("tracing every event received and published", "path", m.opts.TracePath)
+	}
 	g, err := gossip.New(h, gossip.Options{
 		Store:          m.opts.Store,
 		PublisherLimit: m.opts.RateLimit.Publisher,
 		PeerLimit:      m.opts.RateLimit.Peer,
 		Metrics:        metrics,
+		Trace:          trace,
 
+		ScoreInspectInterval:     m.opts.ScoreInspectInterval,
 		AllowDocumentationRanges: m.opts.AllowDocumentationRanges,
 	}, m.log)
 	if err != nil {
+		_ = trace.Close()
 		_ = h.Close()
 		return fmt.Errorf("gossip: %w", err)
 	}
 	sub, err := h.EventBus().Subscribe(new(event.EvtPeerConnectednessChanged))
 	if err != nil {
 		g.Close()
+		_ = trace.Close()
 		_ = h.Close()
 		return fmt.Errorf("subscribe to connection events: %w", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	m.mu.Lock()
-	m.host, m.gossip, m.cancel = h, g, cancel
+	m.host, m.gossip, m.trace, m.cancel = h, g, trace, cancel
 	m.mu.Unlock()
 
 	changed := make(map[peer.ID]chan struct{}, len(m.bootstrap))
@@ -359,8 +379,8 @@ func (m *Mesh) newHost() (host.Host, error) {
 // its connections.
 func (m *Mesh) Stop(ctx context.Context) error {
 	m.mu.Lock()
-	h, g, cancel := m.host, m.gossip, m.cancel
-	m.host, m.gossip, m.cancel = nil, nil, nil
+	h, g, trace, cancel := m.host, m.gossip, m.trace, m.cancel
+	m.host, m.gossip, m.trace, m.cancel = nil, nil, nil, nil
 	m.mu.Unlock()
 	if h == nil {
 		return nil
@@ -373,6 +393,10 @@ func (m *Mesh) Stop(ctx context.Context) error {
 	g.Close()
 	err := h.Close()
 	peersConnected.Set(0)
+	// Validations still running may write a last line or drop it.
+	if terr := trace.Close(); terr != nil {
+		m.log.Warn("closing the event trace failed", "error", terr)
+	}
 
 	done := make(chan struct{})
 	go func() {

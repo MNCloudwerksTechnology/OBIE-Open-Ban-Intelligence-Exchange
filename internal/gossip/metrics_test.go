@@ -11,6 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
+
+	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
 // histogram returns the sample count and sum of h.
@@ -96,4 +98,49 @@ func TestPublishCountsPublishedEvents(t *testing.T) {
 	waitFor(t, propagationDeadline, "the held verdict to count", func() bool {
 		return testutil.ToFloat64(publishedTotal.WithLabelValues("verdict"))-before == 1
 	})
+}
+
+// TestCreatedAt: the id's millisecond time refines issued_at only within
+// the second issued_at names (ADR 0032).
+func TestCreatedAt(t *testing.T) {
+	issued := time.Date(2026, 9, 30, 12, 0, 7, 0, time.UTC)
+	for _, c := range []struct {
+		name string
+		id   string
+		want time.Time
+	}{
+		{"within the second", obieproto.NewID(issued.Add(345 * time.Millisecond)), issued.Add(345 * time.Millisecond)},
+		{"at the second", obieproto.NewID(issued), issued},
+		{"its last millisecond", obieproto.NewID(issued.Add(999 * time.Millisecond)), issued.Add(999 * time.Millisecond)},
+		{"a second later", obieproto.NewID(issued.Add(time.Second)), issued},
+		{"earlier", obieproto.NewID(issued.Add(-time.Millisecond)), issued},
+		{"not a UUIDv7", "0199a1b2-c3d4-4e5f-8a6b-000000000001", issued},
+	} {
+		ev := &obieproto.Event{ID: c.id, IssuedAt: obieproto.NewTimestamp(issued)}
+		if got := createdAt(ev); !got.Equal(c.want) {
+			t.Errorf("%s: createdAt = %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestValidateRecordsSubSecondDelay: an event created 1.25 s before its
+// receipt records 1.25 s, not the 2 s since its whole-second issued_at.
+func TestValidateRecordsSubSecondDelay(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second).Add(500 * time.Millisecond)
+	v, _ := newValidator(t, newStore(t), now)
+	p := newPublisher(t)
+	created := now.Add(-1250 * time.Millisecond)
+	ev := p.verdict(t, created, 3600)
+	ev.ID, ev.Publisher.Signature = obieproto.NewID(created), ""
+	p.sign(t, ev)
+	count, sum := histogram(t, propagationDelay)
+
+	msg := &pubsub.Message{Message: &pb.Message{Data: marshal(t, ev)}}
+	if got := v.validate(context.Background(), peerA, msg); got != pubsub.ValidationAccept {
+		t.Fatalf("validate = %v, want accept", got)
+	}
+	gotCount, gotSum := histogram(t, propagationDelay)
+	if gotCount-count != 1 || math.Abs(gotSum-sum-1.25) > 1e-9 {
+		t.Errorf("obie_propagation_delay_seconds: %d samples summing to %v, want one of 1.25s", gotCount-count, gotSum-sum)
+	}
 }

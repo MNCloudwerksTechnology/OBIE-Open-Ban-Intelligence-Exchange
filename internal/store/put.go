@@ -140,8 +140,8 @@ func (s *DB) putVerdict(txn *badger.Txn, ev *obieproto.Event, now time.Time) (ou
 	if err != nil && !errors.Is(err, ErrNotFound) {
 		return outcome{}, err
 	}
-	// A record past its expiry is kept for EndedRetention, but no verdict
-	// supersedes an ended one (ADR 0023).
+	// A record past its expiry is kept for Options.EndedRetention, but no
+	// verdict supersedes an ended one (ADR 0023).
 	if cur != nil && !cur.Event.Expired(now) && !newer(ev, cur.Event) {
 		return outcome{result: resultStale}, nil
 	}
@@ -317,12 +317,12 @@ func setEvent(txn *badger.Txn, ev *obieproto.Event) error {
 	return txn.SetEntry(e)
 }
 
-// setRecord stores rec under key until EndedRetention after its verdict
-// expires, so the sweep can still archive it after a downtime (ADR 0023),
-// and enters it into the expiry index, revoked or not: the index holds
-// exactly one entry per verdict record, which the sweep and the eviction
-// rely on. It returns 1 if the index entry is new, else 0. Callers hold
-// writeMu.
+// setRecord stores rec under key until Options.EndedRetention after its
+// verdict expires, so the sweep can still archive it after a downtime
+// (ADR 0023), and enters it into the expiry index, revoked or not: the
+// index holds exactly one entry per verdict record, which the sweep and
+// the eviction rely on. It returns 1 if the index entry is new, else 0.
+// Callers hold writeMu.
 func (s *DB) setRecord(txn *badger.Txn, key []byte, rec *record) (int, error) {
 	data, err := json.Marshal(rec)
 	if err != nil {
@@ -330,7 +330,7 @@ func (s *DB) setRecord(txn *badger.Txn, key []byte, rec *record) (int, error) {
 	}
 	expires := rec.Event.ExpiresAt()
 	e := badger.NewEntry(key, data)
-	e.ExpiresAt = badgerExpiry(expires.Add(EndedRetention))
+	e.ExpiresAt = badgerExpiry(expires.Add(s.opts.EndedRetention))
 	if err := txn.SetEntry(e); err != nil {
 		return 0, err
 	}

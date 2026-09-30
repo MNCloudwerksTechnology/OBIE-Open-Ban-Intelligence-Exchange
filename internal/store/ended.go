@@ -13,10 +13,16 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
-// EndedRetention is how long the store keeps a verdict after its expiry:
-// its record, so that the sweep can still archive it after a downtime, and
-// the verdict once it ended, so that the operator can see it (ADR 0023).
-const EndedRetention = 24 * time.Hour
+// EndedRetention returns how long the store keeps a verdict after its
+// expiry, and once it ended (Options.EndedRetention).
+func (s *DB) EndedRetention() time.Duration { return s.opts.EndedRetention }
+
+// DefaultEndedRetention is Options.EndedRetention when it is zero: how
+// long the store keeps a verdict after its expiry — its record, so that
+// the sweep can still archive it after a downtime, and the verdict once it
+// ended, so that the operator can see it and trace the blocks it caused
+// back to it (ADR 0023, ADR 0032).
+const DefaultEndedRetention = 30 * 24 * time.Hour
 
 // minMaxEnded is the least default of Options.MaxEnded.
 const minMaxEnded = 1000
@@ -50,7 +56,7 @@ func revocationOf(ev *obieproto.Event) *Revocation {
 }
 
 // EndedVerdict is a verdict that was revoked or expired, kept until
-// EndedRetention after its expiry.
+// Options.EndedRetention after its expiry.
 type EndedVerdict struct {
 	Event *obieproto.Event
 	State EndedState
@@ -242,11 +248,11 @@ func categoryOf(ev *obieproto.Event) string {
 }
 
 // archive keeps the verdict of rec as one that ended in state, with the
-// revocation rev that ended it, until EndedRetention after its expiry, and
-// adds it to kept unless it replaces an earlier verdict of the same
-// publisher and category on the same indicator that ended the same way.
-// Once the store keeps Options.MaxEnded of other publishers' verdicts that
-// ended in state, it keeps no more of them, so a flood of short-lived
+// revocation rev that ended it, until Options.EndedRetention after its
+// expiry, and adds it to kept unless it replaces an earlier verdict of the
+// same publisher and category on the same indicator that ended the same
+// way. Once the store keeps Options.MaxEnded of other publishers' verdicts
+// that ended in state, it keeps no more of them, so a flood of short-lived
 // verdicts cannot fill the disk; this node's own are always kept
 // (ADR 0023).
 func (s *DB) archive(txn *badger.Txn, rec *record, state EndedState, rev *Revocation, kept *[]keptEnded) error {
@@ -268,7 +274,7 @@ func (s *DB) archive(txn *badger.Txn, rec *record, state EndedState, rev *Revoca
 		return err
 	}
 	e := badger.NewEntry(key, data)
-	e.ExpiresAt = badgerExpiry(ev.ExpiresAt().Add(EndedRetention))
+	e.ExpiresAt = badgerExpiry(ev.ExpiresAt().Add(s.opts.EndedRetention))
 	if err := txn.SetEntry(e); err != nil {
 		return err
 	}

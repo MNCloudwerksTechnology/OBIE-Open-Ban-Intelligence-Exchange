@@ -10,6 +10,7 @@ import (
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/eventtrace"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
@@ -20,8 +21,10 @@ type validator struct {
 	self    peer.ID
 	store   store.Store
 	metrics Metrics
-	log     *slog.Logger
-	now     func() time.Time
+	// trace records every message's outcome; nil for none.
+	trace *eventtrace.Writer
+	log   *slog.Logger
+	now   func() time.Time
 	// receive are the obieproto.Receive options besides the clock.
 	receive    []obieproto.Option
 	publishers *limiter
@@ -35,20 +38,30 @@ func (v *validator) validate(_ context.Context, from peer.ID, msg *pubsub.Messag
 		// Publish already checked and stored the node's own event.
 		return pubsub.ValidationAccept
 	}
-	outcome, result := v.check(from, msg.GetData())
+	now := v.now()
+	outcome, result := v.check(from, msg.GetData(), now)
 	receivedTotal.WithLabelValues(string(outcome)).Inc()
 	v.metrics.Observe(from, outcome)
+	v.trace.Write(idOf(msg), from.String(), now, string(outcome))
 	return result
 }
 
+// idOf returns the message ID of msg: the event ID of an event.
+func idOf(msg *pubsub.Message) string {
+	if msg.ID != "" {
+		return msg.ID
+	}
+	return messageID(msg.Message)
+}
+
 // check runs the checks in order — size, format and field rules,
-// signature, clock, duplicate, rate limits — and stores an accepted event.
-func (v *validator) check(from peer.ID, data []byte) (Outcome, pubsub.ValidationResult) {
+// signature, clock, duplicate, rate limits — on data received at now, and
+// stores an accepted event.
+func (v *validator) check(from peer.ID, data []byte, now time.Time) (Outcome, pubsub.ValidationResult) {
 	if len(data) > obieproto.MaxEventSize {
 		v.drop(from, TooLarge, nil)
 		return TooLarge, pubsub.ValidationReject
 	}
-	now := v.now()
 	ev, err := obieproto.Receive(data, v.receiveOptions(now)...)
 	if err != nil {
 		outcome, result := classify(err, data, v.receiveOptions(now.Add(-obieproto.MaxClockSkew)))
@@ -77,7 +90,7 @@ func (v *validator) check(from peer.ID, data []byte) (Outcome, pubsub.Validation
 	if _, err := v.store.Put(ev); err != nil && !errors.Is(err, store.ErrClosed) {
 		v.log.Error("storing received event failed", "event", ev.ID, "err", err)
 	}
-	observeDelay(ev.IssuedAt.Time, now)
+	observeDelay(createdAt(ev), now)
 	return Accepted, pubsub.ValidationAccept
 }
 

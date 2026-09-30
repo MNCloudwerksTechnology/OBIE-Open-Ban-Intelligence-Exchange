@@ -102,6 +102,15 @@ func TestPeersHandler(t *testing.T) {
 		"peers": {func() []PeerResponse { return testPeers }, `{"peers":[{"peer_id":"12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd",` +
 			`"name":"seed","addresses":["/ip4/192.0.2.1/tcp/4001"],"connected_since":"2026-09-27T10:01:00Z",` +
 			`"latency_seconds":0.0125,"trust_weight":0.8,"bootstrap":true}]}` + "\n"},
+		"scored": {func() []PeerResponse {
+			return []PeerResponse{{PeerID: "12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd", Addresses: []string{},
+				ConnectedSince: started, GossipScore: &GossipScoreResponse{Score: -90.5, Below: []string{"gossip"},
+					TimeInMeshSeconds: 60, FirstMessageDeliveries: 1, InvalidMessageDeliveries: 3, IPColocationFactor: 0.5,
+					BehaviourPenalty: 0.25, AppSpecificScore: 0, ReadAt: started.Add(time.Minute)}}}
+		}, `{"peers":[{"peer_id":"12D3KooWGzBX6MWMMz3kHmFfyT3vJxFoy4xQF8NbXN7xBAFhGyvd","addresses":[],` +
+			`"connected_since":"2026-09-27T10:00:00Z","trust_weight":0,"bootstrap":false,"gossip_score":{"score":-90.5,` +
+			`"below":["gossip"],"time_in_mesh_seconds":60,"first_message_deliveries":1,"invalid_message_deliveries":3,` +
+			`"ip_colocation_factor":0.5,"behavior_penalty":0.25,"app_specific_score":0,"read_at":"2026-09-27T10:01:00Z"}}]}` + "\n"},
 		"none":    {func() []PeerResponse { return nil }, `{"peers":[]}` + "\n"},
 		"no mesh": {nil, `{"peers":[]}` + "\n"},
 	} {

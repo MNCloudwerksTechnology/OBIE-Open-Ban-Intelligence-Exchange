@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/eventtrace"
 	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
@@ -99,5 +102,61 @@ func TestPublishBeforeStart(t *testing.T) {
 	}
 	if events, wait := m.Backlog(); m.Held(signedVerdict(t, id, 0).ID) || m.TopicPeers() != 0 || events != 0 || wait != 0 {
 		t.Error("Held, TopicPeers or Backlog report something before Start")
+	}
+}
+
+// TestMeshTracesEvents: with a trace path, the mesh opens the file at
+// Start, the node's own publications and the events it receives are
+// traced, and Stop closes it; a trace path in a missing directory fails
+// the start (ADR 0032).
+func TestMeshTracesEvents(t *testing.T) {
+	dir := t.TempDir()
+	idA, idB := newIdentity(t), newIdentity(t)
+	storeA := newStore(t)
+	traceA := filepath.Join(dir, "a.jsonl")
+	a := startMesh(t, idA, Options{Listen: []string{"/ip4/127.0.0.1/tcp/0"}, Store: storeA, TracePath: traceA})
+	b := startMesh(t, idB, Options{
+		Listen:    []string{"/ip4/127.0.0.1/tcp/0"},
+		Bootstrap: []string{listenAddr(t, a, 6) + "/p2p/" + idA.PeerID()},
+		TracePath: filepath.Join(dir, "b.jsonl"),
+	})
+	waitFor(t, 10*time.Second, "B to connect to A", func() bool { return len(a.Peers()) == 1 })
+	var ev *obieproto.Event
+	waitFor(t, 10*time.Second, "an event of B on A", func() bool {
+		ev = signedVerdict(t, idB, int(time.Now().UnixNano()%1e9))
+		if err := b.Publish(context.Background(), ev); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(100 * time.Millisecond)
+		_, err := storeA.Get(ev.ID)
+		return err == nil
+	})
+	// Stopping B flushes its trace; A's reaches the file within a second.
+	if err := b.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, 5*time.Second, "B's publication and A's acceptance in the traces", func() bool {
+		recs, err := eventtrace.ReadFiles(traceA, filepath.Join(dir, "b.jsonl"))
+		if err != nil {
+			return false // not written yet
+		}
+		var published, accepted bool
+		for _, r := range recs {
+			published = published || (r.Event == ev.ID && r.Node == idB.PeerID() && r.From == idB.PeerID() &&
+				r.Outcome == eventtrace.Published)
+			accepted = accepted || (r.Event == ev.ID && r.Node == idA.PeerID() && r.From == idB.PeerID() &&
+				r.Outcome == eventtrace.Accepted)
+		}
+		return published && accepted
+	})
+
+	m, err := New(newIdentity(t), Options{Store: newStore(t), Listen: []string{"/ip4/127.0.0.1/tcp/0"},
+		TracePath: filepath.Join(dir, "missing", "trace.jsonl")}, discardLogger())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Start(context.Background()); err == nil || !strings.Contains(err.Error(), "mesh.trace_path") {
+		_ = m.Stop(context.Background())
+		t.Errorf("Start with a trace in a missing directory = %v, want an error naming mesh.trace_path", err)
 	}
 }
