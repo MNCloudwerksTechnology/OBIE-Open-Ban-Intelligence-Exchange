@@ -130,10 +130,11 @@ block. A node measures none of them yet:
 - The decision engine's block change stream (`decision.Change`) carries
   the contributors. To name them when a block ends, the engine keeps, for
   every block, each contributing verdict's publisher (interned), verdict
-  ID (16 bytes) and the weight and confidence it counted with: about
-  64 bytes per contributor, 50 MB for the 495,299 blocks of the resource
-  measurement (+2 % of its 2.5 GiB). A change of contributing verdict
-  IDs is now also a `block-updated`, even if score and expiry stay.
+  ID (16 bytes) and the weight and confidence it counted with: 40 bytes
+  per contributor and 24 per block, about 52 MB for the 495,299 blocks of
+  the resource measurement at two contributors each (+2 % of its
+  2.5 GiB). A change of contributing verdict IDs is now also a
+  `block-updated`, even if score and expiry stay.
 
 ### Ended verdicts kept for 30 days
 

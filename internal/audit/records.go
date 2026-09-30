@@ -26,9 +26,15 @@ var changeActions = map[decision.ChangeType]Action{
 }
 
 // BlockChange returns the record of a change of the decision engine's
-// block stream.
+// block stream, with the verdicts that count in the block: for a removal,
+// those of the block that ended (ADR 0032).
 func BlockChange(c decision.Change) Record {
-	return decisionRecord(changeActions[c.Type], &c.Decision, c.Cause)
+	r := decisionRecord(changeActions[c.Type], &c.Decision, c.Cause)
+	r.Contributors = make([]Contributor, len(c.Contributors))
+	for i, k := range c.Contributors {
+		r.Contributors[i] = Contributor{PeerID: k.PeerID, Weight: k.Weight, Confidence: k.Confidence, VerdictID: k.EventID}
+	}
+	return r
 }
 
 // Allowed returns the record of a transition to decision.StateAllowed.

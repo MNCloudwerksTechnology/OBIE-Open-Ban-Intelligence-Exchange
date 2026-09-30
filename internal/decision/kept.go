@@ -16,6 +16,9 @@ type keptDecision struct {
 	prefix netip.Prefix
 	// held lists the decision's active verdicts (ADR 0021).
 	held []heldVerdict
+	// contributors lists the verdicts that count in a block; nil for
+	// other decisions (ADR 0032).
+	contributors []keptContributor
 }
 
 // keptSet holds the kept decisions in one slice, so that a pass over all
@@ -40,10 +43,11 @@ func (s *keptSet) get(key string) (*keptDecision, bool) {
 	return &s.items[i], true
 }
 
-// put keeps d with its held verdicts under key, replacing a kept one.
-func (s *keptSet) put(key string, d Decision, held []heldVerdict) {
+// put keeps d with its held verdicts and the contributors of a block
+// under key, replacing a kept one.
+func (s *keptSet) put(key string, d Decision, held []heldVerdict, contributors []keptContributor) {
 	if k, ok := s.get(key); ok {
-		k.d, k.held = d, held
+		k.d, k.held, k.contributors = d, held, contributors
 		return
 	}
 	if s.index == nil {
@@ -51,7 +55,7 @@ func (s *keptSet) put(key string, d Decision, held []heldVerdict) {
 	}
 	prefix, _ := sovereignty.PrefixOf(d.Indicator)
 	s.index[key] = len(s.items)
-	s.items = append(s.items, keptDecision{key: key, d: d, prefix: prefix, held: held})
+	s.items = append(s.items, keptDecision{key: key, d: d, prefix: prefix, held: held, contributors: contributors})
 }
 
 // remove drops the decision with key, moving the last one into its place.
