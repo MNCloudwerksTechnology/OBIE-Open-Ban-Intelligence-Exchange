@@ -42,6 +42,14 @@ attacker (`badboy.go`), the scenario files and the exact score parameters.
   - Hosts are go-libp2p `mocknet` peers. Their links carry a latency drawn
     from a geographic matrix. Streams deliver in order, after the link's
     latency.
+  - The harness carries a copy of go-libp2p's mocknet
+    (`test/sim/internal/mocknet`, MIT) with two changes. First, a write
+    never waits for an earlier one to arrive, and no goroutine carries it:
+    the reader waits for its arrival time. The original accepts a write of
+    256 bytes or more only once the previous one arrived, so a link carried
+    about two messages per latency, and one goroutine per stream end made
+    up a third of a run's goroutines. Second, a stream opened while its
+    connection closes is reset rather than left running.
 - **Why not Shadow.**
   - *Fidelity.* Shadow would add the real TCP/QUIC stacks and the
     subsystems outside routing. It would add nothing to the routing
@@ -61,8 +69,8 @@ attacker (`badboy.go`), the scenario files and the exact score parameters.
 ### What each node runs
 
 - **An honest node runs the real routing code.** It runs `internal/mesh` —
-  host, bootstrap redial with backoff, connection manager (32/128,
-  bootstrap peers protected) and ping — and `internal/gossip` in full:
+  host, bootstrap redial with backoff and connection manager (32/128,
+  bootstrap peers protected) — and `internal/gossip` in full:
   - message ID = event ID;
   - `StrictNoSign`;
   - the validator (`obieproto.Receive`, then `store.Seen`, then the
@@ -75,8 +83,10 @@ attacker (`badboy.go`), the scenario files and the exact score parameters.
   event.
 - **Subsystems that are not run.** The decision engine, enforcement, admin
   API, console and ops server take no part in routing. They also listen on
-  real sockets, which would stop the virtual clock. This is where the
-  simulation's fidelity ends. The daemon's hooks (ADR 0016) do not reach
+  real sockets, which would stop the virtual clock. The mesh pings its
+  peers only once a day: pings only estimate latency for the admin API,
+  and every peer pinged every 15 s cost a tenth of an eclipse run's CPU.
+  This is where the simulation's fidelity ends. The daemon's hooks (ADR 0016) do not reach
   far enough, so two new hooks follow its rule ("test hooks, never
   configuration"). Production leaves both zero, and neither can be reached
   from the configuration file:
@@ -102,18 +112,21 @@ attacker (`badboy.go`), the scenario files and the exact score parameters.
   - The **junk flooder** injects valid verdicts signed by fresh keys. No
     node trusts those keys (trust weight 0).
   - The **preempter** answers a chosen event at once with a forged
-    message carrying the same ID. This is the attack ADR 0009 describes.
+    message carrying the same ID, and withholds the genuine one. This is
+    the attack ADR 0009 describes.
 
 ### Router variants
 
 | Variant | GossipSub parameters | Peer scoring | Other |
 |---|---|---|---|
 | `v0.1` | library defaults (D 6, D_lo 5, D_hi 12, D_lazy 6, D_out 2) | v0.1 (ADR 0009) | flood publish; connection manager 32/128 |
-| `plain` | paper: D 8, D_lo 6, D_hi 12, D_score 6, D_lazy 12, D_out 0, gossip factor 0 | off | no flood publish; no connection manager |
+| `plain` | paper: D 8, D_lo 6, D_hi 12; D_lazy 6, D_out 0, gossip factor 0 | off | no flood publish; no connection manager |
 | `paper` | paper: D 8, D_lo 6, D_hi 12, D_score 6, D_lazy 12, opportunistic graft every 60 heartbeats, outbound queue 128 | the paper's parameters (below) | flood publish; no connection manager |
 
 `plain` is the paper's plain GossipSub, as far as go-libp2p-pubsub v0.17
-allows. v0.17 applies some v1.1 hardening unconditionally:
+allows. The paper's plain nodes set only D, D_lo and D_hi
+(`honest_vanilla.go`), so D_lazy stays the library default of 2020, 6.
+v0.17 applies some v1.1 hardening unconditionally:
 
 - the GRAFT and PRUNE backoff;
 - refusing an inbound GRAFT at D_hi;
@@ -189,11 +202,12 @@ Every configuration below runs 20 seeds.
     - From 150 s to 210 s, 10 Sybil hosts inject 100 junk verdicts/s
       (30-day TTL) from 1,000 weight-0 keys.
     - The run measures the trusted verdicts retained.
-  - `C-junk`: 300 nodes. From 60 s to 180 s, two Sybil hosts at each hub
-    inject junk at the per-peer bucket rate (50/s).
+  - `C-junk`: 300 nodes. From 60 s to 180 s, two Sybil hosts linked to one
+    hub each inject junk at the per-peer bucket rate (50/s); the hub relays
+    it to its neighbors.
   - `C-preempt`: 1,000 nodes and 10 preempters, each with 100 links and a
     link to each chosen revoker. Three chosen revocations per seed, at 60,
-    90 and 120 s.
+    90 and 120 s. The run ends at 180 s.
   - `C-offline`: 300 nodes. 10 of them are offline from 60 s to 3,660 s,
     then rejoin with the same identity and store. The run ends at 3,780 s.
   - `C-bootkill`: 1,000 nodes. All hubs stop at 600 s. The run ends at
@@ -232,10 +246,13 @@ Every configuration below runs 20 seeds.
     kill, until the honest mesh slots are back to 90 % of their level
     before. A run that does not recover is reported as not recovered.
   - **Trusted verdicts retained under flood** (C-flood).
-  - **Loss by cause**: the outcome of the first copy a node got of an
-    event it lost. GossipSub remembers that copy's ID, so the node ignores
-    later copies. A node that got no copy at all counts as
-    `never_received`, or as `offline` if it was down at the time.
+  - **Loss by cause**: the outcome of the first copy of an event it lost
+    that a node validated. GossipSub remembers that copy's ID, so the node
+    ignores later copies. Copies that arrive at the same instant are
+    validated in parallel, so a duplicate can be recorded before the copy
+    it duplicates; duplicates are therefore passed over. A node that got
+    no copy at all counts as `never_received`, or as `offline` if it was
+    down at the time.
 - **Across seeds**: each metric is the mean of its per-seed values, with a
   95 % confidence interval from Student's t over the seeds.
 
@@ -244,21 +261,24 @@ Every configuration below runs 20 seeds.
 - **The report.** `make sim-routing SCENARIO=<name|A|B|C|T|all>` runs
   `go test -tags sim` in `test/sim` with `SEEDS` (default 20), `SIMPARALLEL`
   runs at once and `SIMOUT`. For each scenario it writes
-  `routing-<scenario>.md` and `routing-<scenario>.csv` (a summary with CIs
-  plus one row per seed). The report header records:
+  `routing-<scenario>.md`, `routing-<scenario>.csv` (the summary with
+  CIs) and `routing-<scenario>-seeds.csv` (one row per seed and metric).
+  The report header records:
   - the report format version;
-  - OBIE's version (`git describe`);
-  - the go-libp2p-pubsub version;
+  - the OBIE version (`git describe`) that produced the results;
+  - the go-libp2p-pubsub and go-libp2p versions;
   - the seeds;
   - the scenario's parameters.
 
-  Each seed's result is cached, so an interrupted run resumes.
+  Each run's result is kept in `SIMCACHE`, so an interrupted run resumes.
+  `SIMBUDGET` stops starting runs after a while; the report is written
+  once every run of a scenario has a result.
 - **CI.** The baseline of v0.1 lives in `documentation/validation/routing/`.
   A CI job runs the `reduced` scenario with assertions: `paper` loses
-  nothing, `plain` loses something, and `v0.1` keeps its baseline delivery
-  within a tolerance. The job's timeout is 10 min.
+  nothing, `plain` loses something, and `v0.1` delivers at least 99 % (its
+  baseline delivers everything). The job's timeout is 10 min.
 - **Why the scenario runs outside `make test`.** The race detector allows
-  8,128 live goroutines, and the reduced scenario needs about 70,000, so
+  8,128 live goroutines, and the reduced scenario needs about 47,000, so
   it runs without `-race` outside `make test`. The harness's unit tests
   run in `make ci`.
 
@@ -280,14 +300,16 @@ Every configuration below runs 20 seeds.
   compares with the committed baseline. A change in routing code shows up
   in the reduced CI scenario first.
 - **Size of the eclipse attack.** The eclipse attack (400,000 honest–Sybil
-  connections) needs about 40 GB and runs one seed at a time. The full
-  baseline takes hours. CI runs only `reduced`.
+  connections) needs about 40 GB and 2–7 minutes per seed, and runs one
+  seed at a time. The full baseline takes about ten hours on the
+  development machine. CI runs only `reduced`.
 - **What is not modelled.** Processing time, bandwidth limits, packet
   loss, TCP and QUIC behaviour, and every subsystem outside the mesh.
   Results about queueing under CPU load therefore do not transfer.
 - **Scaled parameters.** `C-flood` scales `store.max_indicators` from
-  1,000,000 to 2,000, keeping the ratio of flood to capacity that decides
-  what is evicted.
+  1,000,000 to 2,000. Its flood of 6,000 junk verdicts is three times the
+  store's capacity; at the default capacity the same flood would last
+  about eight hours.
 - **Hooks.** The hooks widen `gossip.Options` and `mesh.Options` by one
   `Testing` field each. Both default to production behaviour.
 - **Once #1764 is merged,** its per-event trace files have the harness's

@@ -6,13 +6,15 @@ run:
   timeout: 5m
   tests: true
   # The soak test (make soak), the resource measurement (make resources),
-  # the sandbox walkthrough check (make sandbox-check) and the tutorial
-  # check (make tutorial-check) are linted like every other test.
+  # the sandbox walkthrough check (make sandbox-check), the tutorial check
+  # (make tutorial-check) and the routing simulation (make sim-routing) are
+  # linted like every other test.
   build-tags:
     - soak
     - resources
     - sandbox
     - tutorial
+    - sim
 
 linters:
   default: none
@@ -26,6 +28,11 @@ linters:
     - revive
     - staticcheck
     - unused
+  exclusions:
+    paths:
+      # A copy of go-libp2p's mocknet for the routing simulation (ADR 0033),
+      # kept close to upstream; formatting still applies.
+      - test/sim/internal/mocknet
   settings:
     misspell:
       locale: US

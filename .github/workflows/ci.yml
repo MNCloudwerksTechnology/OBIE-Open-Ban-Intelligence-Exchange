@@ -2,10 +2,11 @@
 # for byte, in .github/workflows/ (public GitHub mirror); `make lint-workflows`
 # fails if the two copies differ. The local `make ci` is the source of truth —
 # this pipeline only runs it (and `make -C website ci` for the website), plus
-# the packaging checks (`make release`, `check-unit`, `image`, `lab-smoke`,
-# `sandbox-check`, `tutorial-check`, `guides-check`) without publishing
-# anything; release.yml publishes on v* tags, website-release.yml the website
-# image on website-v* tags.
+# the reduced routing simulation (`make sim-routing`) and the packaging checks
+# (`make release`, `check-unit`, `image`, `lab-smoke`, `sandbox-check`,
+# `tutorial-check`, `guides-check`) without publishing anything; release.yml
+# publishes on v* tags, website-release.yml the website image on website-v*
+# tags.
 name: ci
 
 on:
@@ -113,6 +114,38 @@ jobs:
           path: dist/linux-${{ matrix.goarch }}/
           if-no-files-found: error
           retention-days: 7
+
+  sim-routing:
+    name: routing simulation (reduced)
+    # The reduced scenario of the routing simulation (ADR 0033): 100 honest
+    # nodes under a cold boot attack by 400 Sybils, one seed per router
+    # variant. It fails if plain GossipSub stops losing verdicts, if the
+    # paper's scoring loses one, or if v0.1 delivers less than 99 % (its
+    # baseline in documentation/validation/routing/ delivers all).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `git describe` names the version in the report.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make sim-routing
+        run: make sim-routing SCENARIO=reduced SEEDS=1 SIMPARALLEL=3
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-routing-reduced
+          path: dist/sim-routing/routing-reduced*
+          if-no-files-found: ignore
+          retention-days: 14
 
   fuzz:
     name: fuzz
