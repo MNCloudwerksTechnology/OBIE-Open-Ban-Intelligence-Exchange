@@ -3,7 +3,10 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { LANDING_CONTENT } from '../content/landing.content';
 import { GithubIcon, ObieMark } from './icons';
 
-/** Site footer: the GitHub button, project and legal links, attribution and licence. */
+/**
+ * Site footer: the GitHub button, project links with the invitation to the
+ * inquiry form, legal links, attribution and licence.
+ */
 @Component({
   selector: 'app-site-footer',
   changeDetection: ChangeDetectionStrategy.OnPush,

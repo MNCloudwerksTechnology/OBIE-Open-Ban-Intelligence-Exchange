@@ -238,13 +238,14 @@ describe('Landing page content', () => {
     });
   });
 
-  it('links the footer to GitHub, introduction, capabilities, spec, security policy, legal pages and licence', () => {
+  it('links the footer to GitHub, introduction, capabilities, spec, security policy, inquiry form, legal pages and licence', () => {
     expect(content.footer.github).toEqual({ label: 'View on GitHub', href: LINKS.repository });
     expect(content.footer.links.map((link) => link.href)).toEqual([
       LINKS.introduction,
       LINKS.capabilities,
       LINKS.spec,
       LINKS.securityPolicy,
+      `#${CONTACT_ID}`,
       LINKS.impressum,
       LINKS.privacy,
       LINKS.licence,
@@ -304,9 +305,10 @@ describe('Landing page content', () => {
     }
   });
 
-  it('opens the inquiry form from the founder section', () => {
+  it('opens the inquiry form from the founder section and the footer', () => {
     expect(content.contact.id).toBe(CONTACT_ID);
     expect(content.founder.invite.href).toBe(`#${CONTACT_ID}`);
+    expect(content.footer.links).toContainEqual(content.founder.invite);
   });
 
   it('offers exactly the inquiry types the back end accepts', () => {

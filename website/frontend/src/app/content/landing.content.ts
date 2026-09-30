@@ -640,6 +640,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
       { label: 'What OBIE can and cannot do', href: LINKS.capabilities },
       { label: 'Specification', href: LINKS.spec },
       { label: 'Security policy', href: LINKS.securityPolicy },
+      { label: 'Invite Markus to speak', href: `#${CONTACT_ID}` },
       { label: 'Impressum', href: LINKS.impressum },
       { label: 'Privacy', href: LINKS.privacy },
       { label: 'MIT licence', href: LINKS.licence },
