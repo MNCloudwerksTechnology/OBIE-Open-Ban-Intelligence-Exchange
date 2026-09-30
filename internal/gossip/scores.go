@@ -13,19 +13,19 @@ import (
 // ScoreInspectInterval is how often the peer scores are read (ADR 0032).
 const ScoreInspectInterval = 10 * time.Second
 
-// Threshold is a GossipSub peer score threshold: below it, GossipSub treats
+// threshold is a GossipSub peer score threshold: below it, GossipSub treats
 // a peer worse.
-type Threshold struct {
+type threshold struct {
 	// Name labels it in obie_gossip_peers_below_threshold: gossip, publish
 	// or graylist.
 	Name  string
 	Value float64
 }
 
-// Thresholds lists the peer score thresholds, highest first: below gossip
+// thresholds lists the peer score thresholds, highest first: below gossip
 // a peer exchanges no gossip with the node, below publish it gets none of
 // the node's own events, below graylist its messages are ignored.
-var Thresholds = [...]Threshold{
+var thresholds = [...]threshold{
 	{"gossip", gossipThreshold},
 	{"publish", publishThreshold},
 	{"graylist", graylistThreshold},
@@ -53,7 +53,7 @@ type PeerScore struct {
 // first; none if it is above them all.
 func (s *PeerScore) Below() []string {
 	var out []string
-	for _, th := range Thresholds {
+	for _, th := range thresholds {
 		if s.Score < th.Value {
 			out = append(out, th.Name)
 		}
@@ -73,7 +73,7 @@ type scoreBoard struct {
 	// and, per threshold, to obie_gossip_peers_below_threshold; closed is
 	// set once they are withdrawn.
 	scored int
-	below  [len(Thresholds)]int
+	below  [len(thresholds)]int
 	closed bool
 }
 
@@ -92,12 +92,12 @@ func (b *scoreBoard) inspect(snapshot map[peer.ID]*pubsub.PeerScoreSnapshot) {
 	}
 	at := b.now()
 	scores := make(map[peer.ID]PeerScore, len(snapshot))
-	var below [len(Thresholds)]int
+	var below [len(thresholds)]int
 	for id, snap := range snapshot {
 		s := peerScoreOf(snap, at)
 		scores[id] = s
 		peerScoreHistogram.Observe(s.Score)
-		for i, th := range Thresholds {
+		for i, th := range thresholds {
 			if s.Score < th.Value {
 				below[i]++
 			}
@@ -106,7 +106,7 @@ func (b *scoreBoard) inspect(snapshot map[peer.ID]*pubsub.PeerScoreSnapshot) {
 	b.scores = scores
 	scoredPeers.Add(float64(len(scores) - b.scored))
 	b.scored = len(scores)
-	for i, th := range Thresholds {
+	for i, th := range thresholds {
 		peersBelowThreshold.WithLabelValues(th.Name).Add(float64(below[i] - b.below[i]))
 	}
 	b.below = below
@@ -142,8 +142,8 @@ func (b *scoreBoard) close() {
 	}
 	b.closed = true
 	scoredPeers.Sub(float64(b.scored))
-	for i, th := range Thresholds {
+	for i, th := range thresholds {
 		peersBelowThreshold.WithLabelValues(th.Name).Sub(float64(b.below[i]))
 	}
-	b.scores, b.scored, b.below = nil, 0, [len(Thresholds)]int{}
+	b.scores, b.scored, b.below = nil, 0, [len(thresholds)]int{}
 }

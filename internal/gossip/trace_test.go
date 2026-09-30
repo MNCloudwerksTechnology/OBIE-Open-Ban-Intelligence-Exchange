@@ -114,22 +114,24 @@ func TestTraceShowsHops(t *testing.T) {
 	if err := a.gossip.Publish(context.Background(), v); err != nil {
 		t.Fatal(err)
 	}
-	waitFor(t, propagationDeadline, "the verdict on C", func() bool { return c.has(v.ID) })
-	for _, n := range []*node{a, b, c} {
-		n.gossip.Close() // no more lines
-	}
-
-	recs, err := eventtrace.ReadFiles(paths...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	spreads := eventtrace.Join(recs)
-	i := slices.IndexFunc(spreads, func(s eventtrace.Spread) bool { return s.Event == v.ID })
-	if i < 0 {
-		t.Fatalf("the traces lack the verdict:\n%+v", recs)
-	}
-	s := spreads[i]
 	idA, idB, idC := a.host.ID().String(), b.host.ID().String(), c.host.ID().String()
+	// The validator traces an event after it stored it, and the writers
+	// flush every second.
+	var s eventtrace.Spread
+	waitFor(t, propagationDeadline, "the verdict's receipt on C in the traces", func() bool {
+		recs, err := eventtrace.ReadFiles(paths...)
+		if err != nil {
+			t.Fatal(err)
+		}
+		spreads := eventtrace.Join(recs)
+		i := slices.IndexFunc(spreads, func(s eventtrace.Spread) bool { return s.Event == v.ID })
+		if i < 0 {
+			return false
+		}
+		s = spreads[i]
+		_, reached := s.Reached[idC]
+		return reached && s.Origin != ""
+	})
 	if s.Origin != idA {
 		t.Errorf("origin = %s, want A", s.Origin)
 	}

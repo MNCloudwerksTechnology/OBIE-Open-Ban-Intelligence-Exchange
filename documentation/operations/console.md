@@ -257,27 +257,28 @@ own — never the node itself. How the view reads its data is recorded in
   valid events, and falls with invalid messages. A badge names the
   lowest score limit it is below: *Below the gossip limit* (-50: no
   gossip with it), *Below the publish limit* (-100: it gets none of this
-  node's events) or *Graylisted* (-200: its messages are ignored). *Not scored* means the peer was never on the topic, or left
-  more than an hour ago. The score is about how the peer behaves on the
-  wire, not whether its verdicts are right; trust stays the weight you
-  configure ([ADR 0032](../adr/0032-gossip-instrumentation-and-attribution.md)).
+  node's events) or *Graylisted* (-200: its messages are ignored). *Not
+  scored* means no score was read for the peer yet — the first reading
+  comes up to 10 seconds after it connects — or it left more than an
+  hour ago. The score is about how the peer behaves on the wire, not
+  whether its verdicts are right; trust stays the weight you configure
+  ([ADR 0032](../adr/0032-gossip-instrumentation-and-attribution.md)).
 
 The filters above the list show *All*, *Connected*, *Disconnected* or
 *Untrusted* peers (weight 0), each with how many peers it lists; a
 column heading sorts by that column (peer name, connection, trust weight
 most first, verdicts most first, rejected events most first, gossip
-score lowest first). The list
-shows 50 peers per page. Filter, order and page are part of the address,
-so a view can be bookmarked. Verdicts from publishers that are neither
-configured nor connected are summed up under the list, with the weight
-they carry.
+score lowest first). The list shows 50 peers per page. Filter, order and
+page are part of the address, so a view can be bookmarked. Verdicts from
+publishers that are neither configured nor connected are summed up under
+the list, with the weight they carry.
 
 **A peer's page** (choose its name) shows the same in full — the peer ID,
 the round-trip time, the error of the last failed dial, the rejection
 reasons, the duplicates, and the gossip score with when it was read, the
-score limits it is below and its components: time in this node's mesh, first deliveries, invalid
-messages, behavior penalty, IP colocation factor and application
-score — and the verdicts the node holds from the
+score limits it is below and its components: time in this node's mesh,
+first deliveries, invalid messages, behavior penalty, IP colocation
+factor and application score — and the verdicts the node holds from the
 peer, 50 at a time and by address: action, confidence, reason and
 protocol, expiry, and whether each counts in decisions. The verdicts are
 read when the page opens; reload it to read them again. An address leads

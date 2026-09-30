@@ -55,8 +55,8 @@ var rejectReasons = map[string]string{
 	pubsub.RejectSelfOrigin:          rejectSelfOrigin,
 }
 
-// RejectReasons lists every reason label of obie_gossip_rejects_total.
-var RejectReasons = [...]string{rejectValidationFailed, rejectQueueFull, rejectThrottled, rejectSignature, rejectAuthor,
+// rejectLabels lists every reason label of obie_gossip_rejects_total.
+var rejectLabels = [...]string{rejectValidationFailed, rejectQueueFull, rejectThrottled, rejectSignature, rejectAuthor,
 	rejectBlacklisted, rejectSelfOrigin, rejectOther}
 
 // rejectReason returns the reason label of GossipSub's reason.
@@ -101,7 +101,6 @@ func (t *tracer) Graft(p peer.ID, topic string) {
 	if topic != obieproto.Topic {
 		return
 	}
-	graftsTotal.Inc()
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if _, ok := t.mesh[p]; ok || t.closed {
@@ -109,30 +108,35 @@ func (t *tracer) Graft(p peer.ID, topic string) {
 	}
 	t.mesh[p] = struct{}{}
 	meshPeers.Inc()
+	graftsTotal.Inc()
 }
 
-// Prune counts a peer removed from the mesh of a topic.
+// Prune counts a peer removed from the mesh of a topic. GossipSub also
+// reports a PRUNE from a peer that is not in the mesh, e.g. when both
+// sides prune each other at once; that removes nothing and is not counted.
 func (t *tracer) Prune(p peer.ID, topic string) {
 	if topic != obieproto.Topic {
 		return
 	}
-	prunesTotal.Inc()
-	t.leaveMesh(p)
+	if t.leaveMesh(p) {
+		prunesTotal.Inc()
+	}
 }
 
 // OnClosedOutboundStream removes peer p from the mesh: GossipSub drops a
 // peer whose stream closed from its mesh without a PRUNE.
 func (t *tracer) OnClosedOutboundStream(p peer.ID) { t.leaveMesh(p) }
 
-// leaveMesh removes peer p from the mesh.
-func (t *tracer) leaveMesh(p peer.ID) {
+// leaveMesh removes peer p from the mesh and reports whether it was in it.
+func (t *tracer) leaveMesh(p peer.ID) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if _, ok := t.mesh[p]; !ok {
-		return
+		return false
 	}
 	delete(t.mesh, p)
 	meshPeers.Dec()
+	return true
 }
 
 // close withdraws this node's mesh from obie_gossip_mesh_peers; the

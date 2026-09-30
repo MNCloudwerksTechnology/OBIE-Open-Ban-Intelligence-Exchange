@@ -21,8 +21,8 @@ func TestTracerMetricsRegistered(t *testing.T) {
 			t.Errorf("collector was not registered")
 		}
 	}
-	if n := testutil.CollectAndCount(rejectsTotal, "obie_gossip_rejects_total"); n != len(RejectReasons) {
-		t.Errorf("obie_gossip_rejects_total has %d series, want one per reason (%d)", n, len(RejectReasons))
+	if n := testutil.CollectAndCount(rejectsTotal, "obie_gossip_rejects_total"); n != len(rejectLabels) {
+		t.Errorf("obie_gossip_rejects_total has %d series, want one per reason (%d)", n, len(rejectLabels))
 	}
 	for name, c := range map[string]prometheus.Collector{"obie_gossip_ihave_total": ihaveTotal, "obie_gossip_iwant_total": iwantTotal} {
 		if n := testutil.CollectAndCount(c, name); n != 2 {
@@ -96,9 +96,10 @@ func TestTracerCountsMessages(t *testing.T) {
 	}
 }
 
-// TestTracerTracksMesh: grafts and prunes of the topic are counted, and
-// the mesh gauge follows its members, also when a peer disconnects
-// without a PRUNE and when the node leaves.
+// TestTracerTracksMesh: peers grafted into and pruned from the mesh of the
+// topic are counted, and the mesh gauge follows its members, also when a
+// peer disconnects without a PRUNE and when the node leaves; a PRUNE of a
+// peer outside the mesh removes nothing and does not count.
 func TestTracerTracksMesh(t *testing.T) {
 	tr := newTracer("self", nil, time.Now)
 	grafts, prunes, mesh := delta(graftsTotal), delta(prunesTotal), delta(meshPeers)
@@ -112,27 +113,28 @@ func TestTracerTracksMesh(t *testing.T) {
 
 	tr.Graft(peerA, obieproto.Topic)
 	tr.Graft(peerA, obieproto.Topic)
-	check("grafting A twice", 2, 0, 1)
+	check("grafting A twice", 1, 0, 1)
 	tr.Graft(peerB, "another/topic")
 	tr.Prune(peerA, "another/topic")
-	check("changes of another topic", 2, 0, 1)
+	check("changes of another topic", 1, 0, 1)
 	tr.Graft(peerB, obieproto.Topic)
-	check("grafting B", 3, 0, 2)
+	check("grafting B", 2, 0, 2)
 	tr.Prune(peerA, obieproto.Topic)
-	check("pruning A", 3, 1, 1)
+	check("pruning A", 2, 1, 1)
 	tr.Prune(peerA, obieproto.Topic)
-	check("pruning A again", 3, 2, 1)
+	check("pruning A again", 2, 1, 1)
 	tr.OnClosedOutboundStream(peerB)
-	check("B disconnecting", 3, 2, 0)
+	check("B disconnecting", 2, 1, 0)
 	tr.Graft(peerA, obieproto.Topic)
 	tr.Graft(peerB, obieproto.Topic)
-	check("grafting A and B again", 5, 2, 2)
+	check("grafting A and B again", 4, 1, 2)
 	tr.close()
-	check("leaving", 5, 2, 0)
+	check("leaving", 4, 1, 0)
 	tr.Graft(peerA, obieproto.Topic)
+	tr.Prune(peerA, obieproto.Topic)
 	tr.OnClosedOutboundStream(peerB)
 	tr.close()
-	check("changes after leaving", 6, 2, 0)
+	check("changes after leaving", 4, 1, 0)
 }
 
 // TestTracerCountsControl: the message IDs of IHAVE and IWANT are counted

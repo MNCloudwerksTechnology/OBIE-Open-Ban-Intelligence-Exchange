@@ -67,7 +67,9 @@ block. A node measures none of them yet:
   removes a peer when its stream closes; `obie_gossip_mesh_peers` is their
   number. `obie_events_received_total` keeps its meaning: the copies that
   reached the validator. All copies received are
-  `deliveries + duplicates + rejects + ignores`.
+  `deliveries + duplicates + rejects + ignores`, except those of a
+  graylisted peer, whose RPCs GossipSub drops whole before looking at a
+  message.
 - **Semantics for several nodes in one process** (tests, the in-process
   simulation): every node adds to the same counters, and the gauges add
   each node's share and withdraw it when the node stops, like the
@@ -91,7 +93,8 @@ block. A node measures none of them yet:
   thresholds it is below, its components and when it was read), and the
   console's peers view gains a *Gossip score* column, sorted lowest first,
   and the peer page the components (extends ADR 0021). The score of a
-  peer that was never on the topic is absent, not zero. `obiectl peers`
+  peer without a reading yet (the first comes up to 10 seconds after it
+  connects) is absent, not zero. `obiectl peers`
   prints it with `--json`; its table stays as it is, because the checked
   walkthroughs compare it.
 
@@ -135,6 +138,10 @@ block. A node measures none of them yet:
   the resource measurement at two contributors each (+2 % of its
   2.5 GiB). A change of contributing verdict IDs is now also a
   `block-updated`, even if score and expiry stay.
+- **Audit log size.** Each contributor adds about 150 bytes to a block
+  record: a block of two publishers grows from about 0.45 KiB to about
+  0.75 KiB of audit log (218 MiB to about 370 MiB for the 495,299 blocks
+  of the resource measurement), which logrotate sizing should allow for.
 
 ### Ended verdicts kept for 30 days
 
@@ -162,7 +169,11 @@ block. A node measures none of them yet:
   for a copy the seen-cache dropped, or a reject reason from above for a
   message GossipSub dropped before validation). The file is opened like
   the audit log (append, mode 0640) and is never rotated or read by the
-  node. It grows by about 230 bytes per copy, so it is meant for
+  node. Lines are buffered and reach the file every second and when the
+  mesh stops, so that GossipSub's event loop, which traces the copies it
+  drops, never waits for the disk. A `published` line is written when
+  the node publishes, also for an event it holds while no peer is on the
+  topic (ADR 0026): the delays the join computes then include the wait. It grows by about 230 bytes per copy, so it is meant for
   simulations and short diagnostics. It holds peer IDs, not addresses.
 - `internal/eventtrace` writes and reads the lines and joins the files of
   several nodes: for every event, its origin, every node's first

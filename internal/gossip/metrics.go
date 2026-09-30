@@ -73,7 +73,7 @@ var (
 	deliveriesTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "obie",
 		Name:      "gossip_deliveries_total",
-		Help:      "Messages from mesh peers that GossipSub accepted and delivered: the first valid copy of each event.",
+		Help:      "Messages from peers that GossipSub accepted and delivered: the first valid copy of each event.",
 	})
 	duplicatesTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "obie",
@@ -83,12 +83,12 @@ var (
 	rejectsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "obie",
 		Name:      "gossip_rejects_total",
-		Help:      "Messages from mesh peers that GossipSub dropped, by reason; ignored ones are in obie_gossip_ignores_total.",
+		Help:      "Messages from peers that GossipSub dropped, by reason; ignored ones are in obie_gossip_ignores_total.",
 	}, []string{"reason"})
 	ignoresTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "obie",
 		Name:      "gossip_ignores_total",
-		Help:      "Messages from mesh peers that the validator ignored: duplicates known to the store, rate-limited or slightly expired events.",
+		Help:      "Messages from peers that the validator ignored: duplicates known to the store, rate-limited or slightly expired events.",
 	})
 	graftsTotal = prometheus.NewCounter(prometheus.CounterOpts{
 		Namespace: "obie",
@@ -142,14 +142,14 @@ func init() {
 	for _, typ := range eventTypes {
 		publishedTotal.WithLabelValues(typ)
 	}
-	for _, r := range RejectReasons {
+	for _, r := range rejectLabels {
 		rejectsTotal.WithLabelValues(r)
 	}
 	for _, d := range []string{directionSent, directionReceived} {
 		ihaveTotal.WithLabelValues(d)
 		iwantTotal.WithLabelValues(d)
 	}
-	for _, th := range Thresholds {
+	for _, th := range thresholds {
 		peersBelowThreshold.WithLabelValues(th.Name)
 	}
 	prometheus.MustRegister(receivedTotal, publishedTotal, propagationDelay,

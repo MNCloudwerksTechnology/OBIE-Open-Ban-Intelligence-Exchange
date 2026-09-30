@@ -249,11 +249,10 @@ func categoryOf(ev *obieproto.Event) string {
 
 // archive keeps the verdict of rec as one that ended in state, with the
 // revocation rev that ended it, until Options.EndedRetention after its
-// expiry, and
-// adds it to kept unless it replaces an earlier verdict of the same
-// publisher and category on the same indicator that ended the same way.
-// Once the store keeps Options.MaxEnded of other publishers' verdicts that
-// ended in state, it keeps no more of them, so a flood of short-lived
+// expiry, and adds it to kept unless it replaces an earlier verdict of the
+// same publisher and category on the same indicator that ended the same
+// way. Once the store keeps Options.MaxEnded of other publishers' verdicts
+// that ended in state, it keeps no more of them, so a flood of short-lived
 // verdicts cannot fill the disk; this node's own are always kept
 // (ADR 0023).
 func (s *DB) archive(txn *badger.Txn, rec *record, state EndedState, rev *Revocation, kept *[]keptEnded) error {

@@ -191,3 +191,34 @@ func TestReadFilesJoinsNodes(t *testing.T) {
 		t.Errorf("joined = %+v", s)
 	}
 }
+
+// TestWriterFlushesWhileOpen: records reach the file within about a
+// second without a Close, and closing twice at once is safe.
+func TestWriterFlushesWhileOpen(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "trace.jsonl")
+	w, err := Open(path, "node-a", slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Write("e1", "node-b", t0, Accepted)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		recs, err := ReadFiles(path)
+		if err == nil && len(recs) == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the record did not reach the file: %v, %v", recs, err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	var wg sync.WaitGroup
+	for range 3 {
+		wg.Go(func() {
+			if err := w.Close(); err != nil {
+				t.Errorf("Close = %v", err)
+			}
+		})
+	}
+	wg.Wait()
+}

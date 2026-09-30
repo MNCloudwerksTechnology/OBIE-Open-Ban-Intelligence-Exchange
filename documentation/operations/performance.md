@@ -185,7 +185,10 @@ state and 22.0 MiB of audit log. How to read them:
   are left out and logged ([configuration](configuration.md#enforce)).
 - **Disk:** the state directory took about 0.65 KiB per verdict (65 MiB at
   100,000, 633 MiB at 995,199), the audit log about 0.45 KiB per blocked
-  address.
+  address. Measured before block records named their contributing
+  verdicts (`obie.contributors`, ADR 0032): each adds about 150 bytes to
+  a block record, so a block of two publishers now takes about 0.75 KiB
+  of audit log, about 370 MiB instead of 218 MiB for the blocks above.
 - **The core is fast.** A small cloud server's core is slower, so expect
   higher CPU shares there, and a node that stops keeping up with fewer
   verdicts; memory and disk do not depend on the processor.

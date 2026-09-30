@@ -131,22 +131,24 @@ func TestMeshTracesEvents(t *testing.T) {
 		_, err := storeA.Get(ev.ID)
 		return err == nil
 	})
+	// Stopping B flushes its trace; A's reaches the file within a second.
 	if err := b.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-
-	recs, err := eventtrace.ReadFiles(traceA, filepath.Join(dir, "b.jsonl"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var published, accepted bool
-	for _, r := range recs {
-		published = published || (r.Event == ev.ID && r.Node == idB.PeerID() && r.From == idB.PeerID() && r.Outcome == eventtrace.Published)
-		accepted = accepted || (r.Event == ev.ID && r.Node == idA.PeerID() && r.From == idB.PeerID() && r.Outcome == eventtrace.Accepted)
-	}
-	if !published || !accepted {
-		t.Errorf("traces = %+v\nwant B's publication and A's acceptance of %s", recs, ev.ID)
-	}
+	waitFor(t, 5*time.Second, "B's publication and A's acceptance in the traces", func() bool {
+		recs, err := eventtrace.ReadFiles(traceA, filepath.Join(dir, "b.jsonl"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var published, accepted bool
+		for _, r := range recs {
+			published = published || (r.Event == ev.ID && r.Node == idB.PeerID() && r.From == idB.PeerID() &&
+				r.Outcome == eventtrace.Published)
+			accepted = accepted || (r.Event == ev.ID && r.Node == idA.PeerID() && r.From == idB.PeerID() &&
+				r.Outcome == eventtrace.Accepted)
+		}
+		return published && accepted
+	})
 
 	m, err := New(newIdentity(t), Options{Store: newStore(t), Listen: []string{"/ip4/127.0.0.1/tcp/0"},
 		TracePath: filepath.Join(dir, "missing", "trace.jsonl")}, discardLogger())

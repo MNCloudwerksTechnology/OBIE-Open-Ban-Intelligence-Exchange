@@ -37,6 +37,14 @@ const (
 // fileMode is the mode of a new trace file, as of the audit log.
 const fileMode = 0o640
 
+// Records are buffered, so that GossipSub's event loop, which traces the
+// copies it drops, does not wait for the disk; they reach the file every
+// flushInterval, when bufferSize is full, and on Close.
+const (
+	flushInterval = time.Second
+	bufferSize    = 64 * 1024
+)
+
 // Record is one line of a trace file.
 type Record struct {
 	// Node is the peer ID of the node that wrote the line.
@@ -58,22 +66,29 @@ type Record struct {
 type Writer struct {
 	node string
 	log  *slog.Logger
+	// stop ends the flushing goroutine, which closes done.
+	stop, done chan struct{}
 
-	mu sync.Mutex
-	f  *os.File
+	mu  sync.Mutex
+	f   *os.File
+	buf *bufio.Writer
 	// failed is set once a write failed, so that the failure is logged
-	// once, not for every record.
-	failed bool
+	// once, not for every record; closing once Close began.
+	failed, closing bool
 }
 
 // Open opens the trace file at path for appending the records of the node
 // with peer ID node, creating it if needed; its directory must exist.
+// Close flushes and closes it.
 func Open(path, node string, log *slog.Logger) (*Writer, error) {
 	f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|os.O_CREATE, fileMode) // #nosec G304 -- the operator chooses mesh.trace_path.
 	if err != nil {
 		return nil, fmt.Errorf("open event trace: %w", err)
 	}
-	return &Writer{node: node, log: log, f: f}, nil
+	w := &Writer{node: node, log: log, stop: make(chan struct{}), done: make(chan struct{}), f: f,
+		buf: bufio.NewWriterSize(f, bufferSize)}
+	go w.flushEvery(flushInterval)
+	return w, nil
 }
 
 // Write appends the record of a copy of the event with ID event that
@@ -93,23 +108,59 @@ func (w *Writer) Write(event, from string, at time.Time, outcome string) {
 	if w.f == nil {
 		return
 	}
-	if _, err := w.f.Write(line); err != nil && !w.failed {
-		w.failed = true
-		w.log.Error("writing the event trace failed; records are lost", "path", w.f.Name(), "error", err)
+	if _, err := w.buf.Write(line); err != nil {
+		w.failedWith(err)
 	}
 }
 
-// Close closes the file; later records are dropped.
+// flushEvery writes the buffered records to the file every interval until
+// Close.
+func (w *Writer) flushEvery(interval time.Duration) {
+	defer close(w.done)
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-w.stop:
+			return
+		case <-tick.C:
+			w.mu.Lock()
+			if err := w.buf.Flush(); err != nil {
+				w.failedWith(err)
+			}
+			w.mu.Unlock()
+		}
+	}
+}
+
+// failedWith logs the first failed write. The caller holds mu.
+func (w *Writer) failedWith(err error) {
+	if w.failed {
+		return
+	}
+	w.failed = true
+	w.log.Error("writing the event trace failed; records are lost", "path", w.f.Name(), "error", err)
+}
+
+// Close writes the buffered records and closes the file; later records
+// are dropped.
 func (w *Writer) Close() error {
 	if w == nil {
 		return nil
 	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
-	if w.f == nil {
+	if w.closing {
+		w.mu.Unlock()
 		return nil
 	}
-	err := w.f.Close()
+	w.closing = true
+	close(w.stop)
+	w.mu.Unlock()
+	<-w.done
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	flushErr := w.buf.Flush()
+	err := errors.Join(flushErr, w.f.Close())
 	w.f = nil
 	if err != nil {
 		return fmt.Errorf("close event trace: %w", err)

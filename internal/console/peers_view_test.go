@@ -240,7 +240,7 @@ func TestPeerPageStates(t *testing.T) {
 		`<li>Time in this node&#39;s mesh: not in this node&#39;s mesh</li>`)
 
 	_, page = b.get("/peers/" + idCharlie)
-	wantAll(t, "charlie's page", page, `<dt>Gossip score</dt>`+"\n  <dd>\n    None: the peer was never on the topic, or left more than an hour ago.\n  </dd>")
+	wantAll(t, "charlie's page", page, `<dt>Gossip score</dt>`+"\n  <dd>\n    None: no score was read for this peer yet, or it left more than an hour ago.\n  </dd>")
 
 	_, page = b.get("/peers/" + idStray)
 	wantAll(t, "the stray peer's page", page,

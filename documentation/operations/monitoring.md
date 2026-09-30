@@ -75,8 +75,9 @@ score's components are in `obiectl peers --json` (`gossip_score`), the admin API
 [`grafana-dashboard.json`](grafana-dashboard.json) is a minimal dashboard
 with the mode, peers, events by outcome, active blocks, enforcer apply
 latency, propagation delay, the gossip mesh and its churn, the copies
-received, the duplicate factor and the peer scores. Import it (Dashboards → New → Import) and
-pick your Prometheus data source; the `instance` variable selects nodes.
+received, the duplicate factor and the peer scores. Import it
+(Dashboards → New → Import) and pick your Prometheus data source; the
+`instance` variable selects nodes.
 
 ## Audit log
 
@@ -118,12 +119,12 @@ Records follow the Elastic Common Schema (nested objects):
   `block-added`, `block-updated` and `block-removed` record: each
   publisher's `peer_id`, the trust `weight` and `confidence` it counted
   with, and the `verdict_id`. A removal names the verdicts of the block
-  that ended; a force-block without verdicts has `[]`. The store keeps a
-  verdict for `store.ended_retention` (30 days by default) after it
-  ended, so `obiectl` and the console's
-  [verdicts view](console.md#the-verdicts-view) still show it that long.
-  A new verdict of a contributing publisher is a `block-updated` even if
-  score and expiry stay the same.
+  that ended; a force-block without verdicts has `[]`. Each contributor
+  adds about 150 bytes to the record. The store keeps a verdict for
+  `store.ended_retention` (30 days by default) after it ended, so
+  `obiectl` and the console's [verdicts view](console.md#the-verdicts-view)
+  still show it that long. A new verdict of a contributing publisher is a
+  `block-updated` even if score and expiry stay the same.
 - `obie.peer_id` and `obie.peer_name` (its `trust.publishers` name, if
   any) name the peer of `peer-connected` and `peer-disconnected`;
   `obie.settings` lists the settings a reload changed and applied,
@@ -272,6 +273,9 @@ validation. The trace files of several nodes, joined, show for every
 event which peer each node first accepted it from, and so the hops and
 the path it took from its publisher; `internal/eventtrace` joins them.
 A copy takes about 230 bytes; the node never rotates or reads the file,
-so empty `mesh.trace_path` again when you are done. The file names peers,
+so empty `mesh.trace_path` again when you are done. Lines reach the file
+every second and when `obied` stops. An event the node published while
+no peer was on the topic is traced when it was published, not when it
+was sent, so its delays include the wait. The file names peers,
 not addresses. The design is in
 [ADR 0032](../adr/0032-gossip-instrumentation-and-attribution.md).

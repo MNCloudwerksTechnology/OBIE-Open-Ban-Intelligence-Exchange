@@ -19,10 +19,10 @@ func TestScoreMetricsRegistered(t *testing.T) {
 			t.Errorf("collector was not registered")
 		}
 	}
-	if n := len(Thresholds); n != 3 {
+	if n := len(thresholds); n != 3 {
 		t.Fatalf("%d thresholds, want gossip, publish and graylist", n)
 	}
-	for _, th := range Thresholds {
+	for _, th := range thresholds {
 		if _, err := peersBelowThreshold.GetMetricWithLabelValues(th.Name); err != nil {
 			t.Errorf("no series for threshold %s: %v", th.Name, err)
 		}
@@ -64,7 +64,7 @@ func TestScoreBoardExportsScores(t *testing.T) {
 	observed := histogramCount(t, peerScoreHistogram)
 	scored := delta(scoredPeers)
 	below := map[string]func() float64{}
-	for _, th := range Thresholds {
+	for _, th := range thresholds {
 		below[th.Name] = delta(peersBelowThreshold.WithLabelValues(th.Name))
 	}
 	check := func(step string, wantObserved uint64, wantScored, wantGossip, wantPublish, wantGraylist float64) {

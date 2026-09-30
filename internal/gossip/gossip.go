@@ -432,8 +432,10 @@ func (g *Gossip) Backlog() (events int, wait time.Duration) {
 // sent to.
 func (g *Gossip) TopicPeers() int { return len(g.topic.ListPeers()) }
 
-// Close stops GossipSub and waits for the subscription reader. Validations
-// already running finish on their own; stop the store after the host.
+// Close stops GossipSub and waits for the subscription reader, withdraws
+// this node's share of the mesh and score gauges and keeps no more peer
+// scores. Validations already running finish on their own; stop the store
+// after the host.
 func (g *Gossip) Close() {
 	g.cancel()
 	g.wg.Wait()
@@ -442,6 +444,7 @@ func (g *Gossip) Close() {
 }
 
 // PeerScore returns the GossipSub score of peer id as it was last read;
-// false if it had none: it was never on the topic, left more than an hour
-// ago, or no reading has been taken yet (ADR 0032).
+// false if it had none: no reading since it opened a GossipSub stream to
+// this node (readings come every ScoreInspectInterval), none at all, or it
+// left more than an hour ago (ADR 0032).
 func (g *Gossip) PeerScore(id peer.ID) (PeerScore, bool) { return g.scores.get(id) }
