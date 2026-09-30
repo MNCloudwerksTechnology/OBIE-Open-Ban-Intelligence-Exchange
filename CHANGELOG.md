@@ -76,9 +76,9 @@ The first release, v0.1.0 "Stable Base".
   decision engine of one node in virtual time. It reports precision,
   recall and F1 of the enforced bans, false bans, the time to neutralize
   a defector, the honest publishers' weight, newcomer convergence, the
-  whitewashing payoff, ECE and Brier score, and the feed metrics of every
-  publisher, per hour and cumulatively with 95 % intervals over 20 seeds;
-  a reduced scenario runs in CI. The
+  whitewashing payoff, ECE and Brier score, per hour and cumulatively
+  with 95 % intervals over 20 seeds, and the feed metrics of every
+  publisher over the whole run; a reduced scenario runs in CI. The
   [v0.1 trust baseline](documentation/validation/trust/README.md) finds
   that at the default confidence of 0.8 a ban on remote verdicts needs
   three fully trusted remotes under the default threshold of 1.8, and

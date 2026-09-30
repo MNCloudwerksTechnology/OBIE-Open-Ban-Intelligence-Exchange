@@ -98,7 +98,9 @@ func TestExecuteAndReport(t *testing.T) {
 		"needs **3** fully\n  trusted remotes at confidence 0.8, which score 3 × 0.8 = 2.4.", "needs **2** fully", "### Adversaries at 40 %",
 		"No defector's weight fell to 0", "Hours: `lab`", "A careful poisoner's benign-set bound", "### Settings `lab`", "## Hour by hour", "### False ban hours per hour", "## Feeds of the publishers", "## Limitations",
 		"[ADR 0034](../adr/0034.md) defines", "by the class of the victim", "| Settings | `cdn` | `crawler` | `customer` | `nat` |",
-		"Every value has 4 significant digits.", "(`neutralized_share`, `neutralization_hours`, `neutralization_events`, `newcomers_converged`, `newcomer_convergence_hours`, `whitewash_payoff`)",
+		"every value has at most 6 significant digits.",
+		"(`neutralized_share`, `neutralization_hours`, `neutralization_events`, `newcomers_converged`, `newcomer_convergence_hours`, `whitewash_payoff`, `keys_burned`)",
+		"None of the remotes reported an attacker of the first row", "\n| 0 | ", "Every newcomer had converged at the first probe",
 	} {
 		if !bytes.Contains(readme, []byte(want)) {
 			t.Errorf("report lacks %q", want)
@@ -214,10 +216,37 @@ func TestCSVFloat(t *testing.T) {
 		x    float64
 		want string
 	}{
-		{0.89531234, "0.8953"}, {12345.6, "12350"}, {536.44, "536.4"}, {1, "1"}, {0, "0"}, {0.000012345, "0.00001234"}, {math.NaN(), ""},
+		{0.89531234, "0.895312"}, {12345.6, "12345.6"}, {1234567.8, "1234570"}, {-2.5, "-2.5"}, {1, "1"}, {0, "0"},
+		{0.000012345, "0.000012345"}, {math.NaN(), ""},
 	} {
 		if got := csvFloat(tt.x); got != tt.want {
 			t.Errorf("csvFloat(%v) = %q, want %q", tt.x, got, tt.want)
+		}
+	}
+	// Rounded up beyond the largest float, a value keeps its exponent.
+	if got := formatSig(math.MaxFloat64, 4); got != "1.798e+308" {
+		t.Errorf("formatSig(MaxFloat64, 4) = %q", got)
+	}
+}
+
+// TestEstimateFields checks that a mean and its bounds are rounded to the
+// second significant digit of the half-width, at most to 6 digits, so
+// that no interval collapses.
+func TestEstimateFields(t *testing.T) {
+	for _, tt := range []struct {
+		e    Estimate
+		want string
+	}{
+		{Estimate{Mean: 0.92991, Low: 0.92804, High: 0.93178, N: 20}, "20,0.9299,0.928,0.9318"},
+		{Estimate{Mean: 5055.3, Low: 4451.2, High: 5659.4, N: 20}, "20,5060,4450,5660"},
+		{Estimate{Mean: 120.0123, Low: 120.0033, High: 120.0213, N: 20}, "20,120.012,120.003,120.021"},
+		{Estimate{Mean: 0.25, Low: -0.0021, High: 0.5021, N: 20}, "20,0.25,-0.002,0.5"},
+		{Estimate{Mean: 1, Low: 1, High: 1, N: 20}, "20,1,1,1"},
+		{Estimate{Mean: 5.123456789, Low: math.NaN(), High: math.NaN(), N: 1}, "1,5.12346,,"},
+		{Estimate{Mean: math.NaN(), Low: math.NaN(), High: math.NaN()}, "0,,,"},
+	} {
+		if got := strings.Join(estimateFields(tt.e), ","); got != tt.want {
+			t.Errorf("estimateFields(%+v) = %s, want %s", tt.e, got, tt.want)
 		}
 	}
 }
@@ -239,7 +268,7 @@ func TestCellFormats(t *testing.T) {
 }
 
 // TestExecuteResumes checks the run cache: a second execution takes every
-// run from it and aggregates the same, and a damaged entry is run again.
+// run from it and reports the same, and a damaged entry is run again.
 func TestExecuteResumes(t *testing.T) {
 	sc := tinyScenario()
 	sc.Configs = sc.Configs[:2]
@@ -262,12 +291,19 @@ func TestExecuteResumes(t *testing.T) {
 	if second.Cached != 3 {
 		t.Errorf("%d runs taken from the cache, want 3: one entry was damaged", second.Cached)
 	}
-	for i := range first.Aggregates {
-		a, b := first.Aggregates[i].End(), second.Aggregates[i].End()
-		for m := range numMetrics {
-			if !near(a[m].Mean, b[m].Mean) || a[m].N != b[m].N {
-				t.Errorf("%s, %s: %+v first, %+v resumed", first.Aggregates[i].Config, Metric(m), a[m], b[m])
-			}
+	// Every metric, feed, false ban by class and corroboration survives the
+	// cache: the data files of both reports are the same.
+	dirs := []string{t.TempDir(), t.TempDir()}
+	for i, rep := range []*Report{first, second} {
+		if err := WriteReport(dirs[i], rep, ReportInfo{Version: "test", Generated: testStart}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{summaryFile, hourlyFile, feedsFile, publishersFile, corroborationFile} {
+		a, errA := os.ReadFile(filepath.Join(dirs[0], name)) // #nosec G304 -- a file the test wrote.
+		b, errB := os.ReadFile(filepath.Join(dirs[1], name)) // #nosec G304 -- a file the test wrote.
+		if errA != nil || errB != nil || !bytes.Equal(a, b) {
+			t.Errorf("%s differs between the first and the resumed execution (%v, %v)", name, errA, errB)
 		}
 	}
 }

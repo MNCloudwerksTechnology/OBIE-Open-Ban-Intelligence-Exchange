@@ -41,7 +41,7 @@ func CheckV01(rep *Report) []string {
 				fail("%s: %v", a.Config, err)
 				continue
 			}
-			for b := 1; b < supportBuckets; b++ {
+			for b := range supportBuckets {
 				c := a.Corroboration[b][0]
 				want := 0
 				if need > 0 && b >= need {

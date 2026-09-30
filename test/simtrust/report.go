@@ -62,24 +62,45 @@ func WriteReport(dir string, rep *Report, info ReportInfo) error {
 	return nil
 }
 
-// csvDigits are the significant digits of a value in a CSV file: more
-// than the intervals over 20 seeds resolve, and few enough to keep the
-// committed baseline small.
-const csvDigits = 4
+// csvDigits are the most significant digits of a value in a CSV file.
+const csvDigits = 6
 
-// csvFloat formats x for a CSV file, rounded to csvDigits significant
-// digits and without an exponent; NaN is empty.
+// csvFloat formats x for a CSV file with csvDigits significant digits.
 func csvFloat(x float64) string {
+	return formatSig(x, csvDigits)
+}
+
+// formatSig formats x rounded to digits significant digits, without an
+// exponent; NaN is empty.
+func formatSig(x float64, digits int) string {
 	if math.IsNaN(x) {
 		return ""
 	}
-	rounded, _ := strconv.ParseFloat(strconv.FormatFloat(x, 'g', csvDigits, 64), 64) // a formatted float always parses
+	rounded, err := strconv.ParseFloat(strconv.FormatFloat(x, 'g', digits, 64), 64)
+	if err != nil {
+		return strconv.FormatFloat(x, 'g', digits, 64) // beyond the largest float
+	}
 	return strconv.FormatFloat(rounded, 'f', -1, 64)
 }
 
-// estimateFields are the CSV fields of an estimate.
+// estimateFields are the CSV fields of an estimate. Its mean and bounds
+// are rounded to the second significant digit of the interval's
+// half-width, beyond which the seeds do not resolve them, and to at most
+// csvDigits significant digits; that keeps the committed baseline small
+// and every interval intact.
 func estimateFields(e Estimate) []string {
-	return []string{strconv.Itoa(e.N), csvFloat(e.Mean), csvFloat(e.Low), csvFloat(e.High)}
+	digits := func(float64) int { return csvDigits }
+	if hw := e.HalfWidth(); hw > 0 {
+		last := int(math.Floor(math.Log10(hw))) - 1 // the place of hw's second significant digit
+		digits = func(x float64) int {
+			if x == 0 {
+				return 1
+			}
+			return min(csvDigits, max(1, int(math.Floor(math.Log10(math.Abs(x))))-last+1))
+		}
+	}
+	format := func(x float64) string { return formatSig(x, digits(x)) }
+	return []string{strconv.Itoa(e.N), format(e.Mean), format(e.Low), format(e.High)}
 }
 
 func configFields(c Config) []string {

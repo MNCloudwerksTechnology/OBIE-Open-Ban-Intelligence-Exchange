@@ -27,6 +27,7 @@ const (
 	MetricNewcomerConvergedShare
 	MetricNewcomerConvergenceHours
 	MetricWhitewashPayoff
+	MetricKeysBurned
 	MetricECE
 	MetricBrier
 	numMetrics
@@ -55,6 +56,7 @@ var metricInfos = [numMetrics]metricInfo{
 	MetricNewcomerConvergedShare:        {"newcomers_converged", "Newcomers converged", false},
 	MetricNewcomerConvergenceHours:      {"newcomer_convergence_hours", "Newcomer convergence (h)", false},
 	MetricWhitewashPayoff:               {"whitewash_payoff", "Whitewashing payoff", false},
+	MetricKeysBurned:                    {"keys_burned", "Keys burned", false},
 	MetricECE:                           {"ece", "ECE", true},
 	MetricBrier:                         {"brier", "Brier", true},
 }
@@ -345,31 +347,48 @@ func (m *measure) causedAt(e Episode, of func(keyRecord) bool) (time.Time, bool)
 	return first, !first.IsZero()
 }
 
+// threatSince returns when the key became a trusted defector: when it
+// defected, or when it was first trusted if that came later; false if it
+// is not both.
+func (k *keyRecord) threatSince() (time.Time, bool) {
+	if k.defected.IsZero() || k.trusted.IsZero() {
+		return time.Time{}, false
+	}
+	if k.trusted.After(k.defected) {
+		return k.trusted, true
+	}
+	return k.defected, true
+}
+
 // defectors computes the neutralization of the defecting keys, the
-// convergence of the newcomers and the whitewashing payoff, as their
-// running values at the end of every hour. A defecting key counts once it
-// has been trusted: one that never was, such as a whitewasher's new key
-// under static weights, has nothing to neutralize, and the harm it does
-// shows in the false bans and the payoff.
+// convergence of the newcomers, the whitewashing payoff and the keys
+// burned, as their running values at the end of every hour. A defecting
+// key counts from when it is a trusted defector (threatSince): one that
+// never was trusted, such as a whitewasher's new key under static
+// weights, has nothing to neutralize, and the harm it does shows in the
+// false bans and the payoff.
 func (m *measure) defectors(out *Metrics) {
 	for h := range m.hours {
 		end := m.endOf(h)
 		v := &out.Hours[h][WindowCumulative]
-		var n, neutralized int
+		var n, neutralized, burned int
 		var hours, events float64
 		var newcomers, converged int
 		var convergence float64
 		for i := range m.r.keys {
 			k := &m.r.keys[i]
-			if k.role.Adversary() && !k.defected.IsZero() && k.defected.Before(end) && !k.trusted.IsZero() && k.trusted.Before(end) {
+			if from, ok := k.threatSince(); ok && k.role.Adversary() && from.Before(end) {
 				until := end
 				if !k.neutralized.IsZero() && k.neutralized.Before(end) {
 					until = k.neutralized
 					neutralized++
 				}
 				n++
-				hours += until.Sub(k.defected).Hours()
-				events += float64(countIn(k.events, k.defected, until))
+				hours += until.Sub(from).Hours()
+				events += float64(countIn(k.events, from, until))
+			}
+			if !k.burned.IsZero() && k.burned.Before(end) {
+				burned++
 			}
 			if k.role == RoleNewcomer && k.joined.Before(end) {
 				until := end
@@ -392,6 +411,7 @@ func (m *measure) defectors(out *Metrics) {
 		}
 		if m.r.Spec.Model == ModelWhitewash {
 			v[MetricWhitewashPayoff] = m.payoff(end)
+			v[MetricKeysBurned] = float64(burned)
 		}
 	}
 }

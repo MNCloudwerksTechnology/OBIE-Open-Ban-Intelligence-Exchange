@@ -334,14 +334,16 @@ defines the world, the behavior models and the metrics. The scenarios:
   `sybil-masn`, `spies`, `suppressor`: one model of the baseline.
 
 A work package that changes how the node weighs its publishers runs the
-scenarios before and after its change and compares its report with the
-[v0.1 trust baseline](documentation/validation/trust/README.md), which
-the first command below wrote (about 40 minutes on 32 cores):
+scenarios after its change and compares its report with the
+[v0.1 trust baseline](documentation/validation/trust/README.md) (the
+baseline scenario takes about 40 minutes on 32 cores):
 
 ```sh
-make sim-trust SCENARIO=baseline OUT=documentation/validation/trust
 make sim-trust SCENARIO=baseline OUT=/tmp/after
 ```
+
+The baseline itself was written with `OUT=documentation/validation/trust`
+at the commit its header names; write it there again only to replace it.
 
 `TRACE=<file>` replays a recorded trace instead of the synthetic world.
 `go run ./test/simtrust/cmd/trace-import` turns operators' Fail2Ban logs

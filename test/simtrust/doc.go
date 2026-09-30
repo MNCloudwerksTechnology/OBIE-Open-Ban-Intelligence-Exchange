@@ -5,5 +5,5 @@
 // scores the bans the engine enforces against the trace's ground truth,
 // hour by hour and cumulatively, and writes the versioned report of a
 // scenario over 20 seeds. `make sim-trust SCENARIO=…` runs it; the v0.1
-// baseline is in documentation/validation/.
+// baseline is in documentation/validation/trust/.
 package simtrust

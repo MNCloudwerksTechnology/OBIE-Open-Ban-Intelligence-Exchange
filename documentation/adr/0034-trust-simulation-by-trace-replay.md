@@ -206,11 +206,13 @@ and cumulatively over [0, h+1), for every hour of the run.
   weight is 0: it no longer contributes to any ban. Hours and events
   (the key's own events) from its defection until then. A key not
   neutralized counts until the window ends (restricted mean), and the
-  share neutralized is reported with it. Only keys that have been
-  trusted (weight above 0 at a probe) count: a key that never was, such
+  share neutralized is reported with it. A key counts from when it is a
+  trusted defector: from its defection, or from when its weight was
+  first above 0 if that came later. A key that was never trusted, such
   as a whitewasher's new key under static weights, has nothing to
   neutralize, and the harm it does shows in the false bans and the
-  payoff.
+  payoff; one whose weight fell to 0 before it defected is neutralized
+  at once.
 - **False bans caused before neutralization.** False episodes to which a
   malicious verdict of a key not yet neutralized contributed, at the
   start or an update, counted when it first did. An adversary's honest
@@ -225,13 +227,13 @@ and cumulatively over [0, h+1), for every hour of the run.
   verdicts caused, over all its keys, divided by the number of
   keys it burned (at least 1). A key is burned when its weight falls to
   0 after it was above 0; a key that was never trusted is not worth
-  abandoning.
+  abandoning. The keys burned per run are reported with it.
 - **Calibration.** Over the ban verdicts the observer receives in the
   window, the outcome is 1 for an attacker and 0 otherwise. The Brier
   score is the mean of (confidence − outcome)². The ECE is computed over
   10 equal-width bins (Guo et al. 2017).
-- Durations per key (neutralization, convergence, payoff) have no
-  meaning within one hour. They are reported for every hour cumulatively
+- Durations per key (neutralization, convergence, payoff, keys burned)
+  have no meaning within one hour. They are reported for every hour cumulatively
   only, as their value at the end of the hour.
 - **Feed metrics** per publisher over the whole run, after Li et al. 2019:
   - volume: the addresses it reported;
@@ -245,7 +247,7 @@ and cumulatively over [0, h+1), for every hour of the run.
   because a careful poisoner keeps the bound at 1.
 - **Corroboration.** For the honest-only runs, the attackers are grouped
   by the most honest remotes with verdicts active on them at the same
-  time, and by whether the observer banned them itself. The share of
+  time, and by whether the observer reported them itself. The share of
   each group that was banned shows how many trusted remotes a ban needs.
 
 ### Statistics, scenarios, report
@@ -280,7 +282,10 @@ and cumulatively over [0, h+1), for every hour of the run.
   metric in every hour, cumulatively and, but for the durations per key,
   within the hour), `feeds.csv` (the feed metrics by role),
   `publishers.csv.gz` (those of every publisher key of every run) and
-  `corroboration.csv`, with 4 significant digits. Its header
+  `corroboration.csv`. A mean and the bounds of its interval are rounded
+  to the second significant digit of the half-width, and no value has
+  more than 6 significant digits, which keeps the baseline small and
+  every interval intact. Its header
   names the report format (1), the OBIE version, the scenario, the seeds
   and the trace; its findings are computed, not written by hand. The
   v0.1 baseline is committed in `documentation/validation/trust/`.

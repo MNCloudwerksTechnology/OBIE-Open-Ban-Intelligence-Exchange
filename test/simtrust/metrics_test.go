@@ -141,15 +141,18 @@ func TestNeverTrustedIsNotNeutralized(t *testing.T) {
 			t.Errorf("%s = %v, want none", metric, got)
 		}
 	}
-	// Trusted only after its defection, it counts from then on, and from
-	// its defection.
+	// Trusted only after its defection, it counts from when it was
+	// trusted: before, it could do no harm.
 	r.keys[2].trusted = at(2, 0)
 	m := Measure(r)
 	if got := m.Hours[1][WindowCumulative][MetricNeutralizationHours]; !math.IsNaN(got) {
 		t.Errorf("hour 1: %v h to neutralization, want none before it was trusted", got)
 	}
-	if got := m.Hours[2][WindowCumulative][MetricNeutralizationHours]; !near(got, 2) {
-		t.Errorf("hour 2: %v h to neutralization, want 2 since its defection", got)
+	if got := m.Hours[2][WindowCumulative][MetricNeutralizationHours]; !near(got, 1) {
+		t.Errorf("hour 2: %v h to neutralization, want 1 since it was trusted", got)
+	}
+	if got := m.Hours[2][WindowCumulative][MetricNeutralizationEvents]; got != 1 {
+		t.Errorf("hour 2: %v events to neutralization, want the 1 since it was trusted", got)
 	}
 }
 
@@ -172,6 +175,8 @@ func TestNeutralizationAndPayoff(t *testing.T) {
 		// The customer's ban came before the neutralization, from one
 		// burned key.
 		{2, MetricWhitewashPayoff, 1},
+		{0, MetricKeysBurned, 0},
+		{1, MetricKeysBurned, 1},
 	} {
 		if got := m.Hours[tt.hour][WindowCumulative][tt.metric]; !near(got, tt.want) {
 			t.Errorf("hour %d, %s = %v, want %v", tt.hour, tt.metric, got, tt.want)

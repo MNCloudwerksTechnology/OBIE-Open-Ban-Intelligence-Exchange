@@ -254,13 +254,15 @@ func (md *markdown) remotesNeeded(honest []*Aggregate) {
 	md.line("The attackers of the honest-only runs, by the most trusted remotes that")
 	md.line("had verdicts on them active at the same time, and the share of them")
 	md.line("banned. The observer bans the attackers it saw itself anyway (last row).")
+	md.line("None of the remotes reported an attacker of the first row, e.g. because")
+	md.line("its only report named a CDN edge instead.")
 	md.line("")
 	header := []string{"Trusted remotes at once", "Attackers per seed"}
 	for _, a := range honest {
 		header = append(header, "Banned: `"+string(a.Profile)+"`")
 	}
 	var rows [][]string
-	for b := 1; b < supportBuckets; b++ {
+	for b := range supportBuckets {
 		row := []string{supportLabel(b), cell(honest[0].Corroboration[b][0].Attackers, md.rep.Seeds)}
 		for _, a := range honest {
 			c := a.Corroboration[b][0]
@@ -383,7 +385,31 @@ func (md *markdown) adversaries(models []Model, profiles []Profile) {
 		md.line("Some defectors were neutralized in %d of the %d configurations with", neutralizing, configs)
 		md.line("adversaries; see the results below.")
 	}
+	if md.allEnd(MetricKeysBurned, 0) {
+		md.line("No whitewasher burned a key, so its payoff is every false ban its")
+		md.line("first key caused.")
+	}
+	if md.allEnd(MetricNewcomerConvergenceHours, 0) {
+		md.line("Every newcomer had converged at the first probe after it joined: it is")
+		md.line("listed in `trust.publishers` with the ceiling weight, and static weights")
+		md.line("never change.")
+	}
 	md.line("")
+}
+
+// allEnd reports whether metric is defined at the end of some
+// configuration and its mean is value wherever it is.
+func (md *markdown) allEnd(metric Metric, value float64) bool {
+	defined := false
+	for _, a := range md.rep.Aggregates {
+		if e := a.End()[metric]; e.N > 0 {
+			if e.Mean != value {
+				return false
+			}
+			defined = true
+		}
+	}
+	return defined
 }
 
 // resultMetrics are the columns of the results tables.
@@ -569,7 +595,9 @@ func (md *markdown) files() {
 			cumulativeOnly = append(cumulativeOnly, "`"+Metric(i).String()+"`")
 		}
 	}
-	md.line("Every value has %d significant digits.", csvDigits)
+	md.line("A mean and the bounds of its interval are rounded to the second")
+	md.line("significant digit of the interval's half-width, beyond which the seeds do")
+	md.line("not resolve them; every value has at most %d significant digits.", csvDigits)
 	md.line("")
 	md.line("- `summary.csv`: every metric of every configuration at the end, cumulatively,")
 	md.line("  and the false bans by the class of their victim (%s):", strings.Join(falseBans, ", "))
