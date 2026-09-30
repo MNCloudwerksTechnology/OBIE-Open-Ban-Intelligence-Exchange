@@ -93,21 +93,25 @@ against ground truth, and publishes the v0.1 baseline.
   treatment under the DSGVO must be settled before any log is used, and
   that is not a decision a harness can take. The baseline therefore runs
   on synthetic traces. A recorded trace replays with `TRACE=<file>`.
-- **The importer** turns an operator's `fail2ban.log` into a trace. It
-  reads the `Ban` lines of `fail2ban.actions` and replaces every address
-  before anything leaves the operator's host:
-  - An IPv4 address `a.b.c.d` becomes
-    `2001:db8:XXXX:YYYY::d`, where `XXXXYYYY` are the first 32 bits of
-    HMAC-SHA-256 over `a.b.c` under a key the contributors share. The
-    /24 becomes a /112, so prefix relations survive and one address maps
-    alike in every operator's log.
-  - An IPv6 address maps its /64 the same way and keeps 16 bits of the
-    HMAC of the whole address as its host part.
-  - Before the replacement, an address inside a CIDR of the benign-ranges
-    file gets that range's class; every other address is presumed an
-    attacker.
+- **The importer** (`go run ./test/simtrust/cmd/trace-import`) turns the
+  operators' `fail2ban.log` files into a trace. It reads the `Ban` lines
+  of `fail2ban.actions` and replaces every address by a pseudonym:
+  - The mapping is prefix-preserving (Xu et al. 2002, with HMAC-SHA-256
+    under a key the contributors share): two addresses that share their
+    first k bits share the first k bits of their pseudonyms, so /24s,
+    published ranges and one address in several logs stay recognizable.
+  - An IPv4 address maps into `3fff::/96`. Of an IPv6 address, the first
+    64 bits map into `2001:db8::/32`, and 32 bits of a keyed hash of the
+    whole address follow. Both are documentation ranges, so a pseudonym
+    is never someone's real address.
+  - Before the replacement, an address inside a range of the
+    benign-ranges file gets that range's class (`cdn`, `crawler`,
+    `customer`, `nat`); every other address is presumed an attacker. The
+    CDN and crawler ranges become the trace's published ranges.
+  - The classes the logs lack are filled with the synthetic population
+    below, the CDN and crawler addresses inside the published ranges.
 
-  Pseudonymised addresses are still personal data under the DSGVO. The
+  Pseudonymized addresses are still personal data under the DSGVO. The
   shared key is what a data processing agreement must cover.
 - **The synthetic world** (per seed, 168 hours):
   - 21 operators: the observer and 20 remote publishers. Their sizes
@@ -117,8 +121,10 @@ against ground truth, and publishes the v0.1 baseline.
   - Attackers arrive at 30 per hour: 60 % hit one operator, 30 % run a
     campaign against 4–6 operators within 30 minutes (Katti et al. 2005),
     10 % scan: each operator with probability 0.7, spread over
-    1–12 hours. 25 % return once, 1–3 days later. Fail2Ban bans an
-    attacker at a hit with probability 0.9, 1–10 minutes after it starts.
+    1–12 hours. 25 % return once, 1–3 days later, to the same
+    operators. Fail2Ban bans an
+    attacker at a hit with probability 0.9, 1–10 minutes after it starts,
+    and not again while its ban lasts.
     55 % of attackers come from hosting ASNs, 35 % from residential ASNs
     and 10 % from behind a shared NAT address.
   - The protected population: 300 CDN edge addresses in 12 published
