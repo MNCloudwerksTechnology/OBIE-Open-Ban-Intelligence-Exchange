@@ -152,6 +152,9 @@ func TestKnownPeersConnected(t *testing.T) {
 	if k := got[idC.PeerID()]; k.Connected || k.Bootstrap || !k.Publisher || k.Name != "charlie" || len(k.Addrs) != 0 {
 		t.Errorf("B's view of the absent publisher C = %+v", k)
 	}
+	// The listener finishes its handshake after the dialer does, so A lists
+	// B a moment after B lists A.
+	waitFor(t, 10*time.Second, "A to list B", func() bool { return knownPeers(t, a)[idB.PeerID()].Connected })
 	if k := knownPeers(t, a)[idB.PeerID()]; !k.Connected || k.Bootstrap || k.Publisher || k.TrustWeight != 0 {
 		t.Errorf("A's view of B = %+v, want connected and not configured", k)
 	}
