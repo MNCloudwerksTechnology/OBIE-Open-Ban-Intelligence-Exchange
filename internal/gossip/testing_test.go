@@ -50,16 +50,6 @@ func (r *recorder) rejections() int {
 	return r.rejected
 }
 
-func (r *recorder) count(o Outcome) int {
-	n := 0
-	for _, ob := range r.outcomes() {
-		if ob.outcome == o {
-			n++
-		}
-	}
-	return n
-}
-
 // testTracer is the pubsub.RawTracer of a recorder.
 type testTracer struct{ r *recorder }
 
