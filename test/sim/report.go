@@ -458,18 +458,20 @@ func writeMarkdown(out io.Writer, h Header, sc *Scenario, byVariant map[string][
 		}
 	}
 
-	p("\n## Runs\n\n| Variant | Seeds | Honest nodes | Adversaries | Links | Verdicts | Wall time per seed (s) |\n|---|---|---|---|---|---|---|\n")
+	p("\n## Runs\n\nA seed draws its own graph and traffic, so links and verdicts are means over the seeds.\n\n" +
+		"| Variant | Seeds | Honest nodes | Adversaries | Links, mean | Verdicts, mean | Wall time per seed (s), mean |\n" +
+		"|---|---|---|---|---|---|---|\n")
 	for _, v := range sc.Variants {
 		rs := byVariant[v]
 		if len(rs) == 0 {
 			continue
 		}
-		wall := make([]float64, len(rs))
+		links, events, wall := make([]float64, len(rs)), make([]float64, len(rs)), make([]float64, len(rs))
 		for i, r := range rs {
-			wall[i] = r.WallSeconds
+			links[i], events[i], wall[i] = float64(r.Links), float64(r.Events), r.WallSeconds
 		}
-		p("| `%s` | %d | %d | %d | %d | %d | %.0f |\n", v, len(rs), rs[0].Honest, rs[0].Adversaries, rs[0].Links,
-			rs[0].Events, summarize(wall).mean)
+		p("| `%s` | %d | %d | %d | %.0f | %.0f | %.0f |\n", v, len(rs), rs[0].Honest, rs[0].Adversaries,
+			summarize(links).mean, summarize(events).mean, summarize(wall).mean)
 	}
 	_, err := io.WriteString(out, b.String())
 	return err

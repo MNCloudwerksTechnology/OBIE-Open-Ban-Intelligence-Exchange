@@ -11,13 +11,13 @@ import (
 )
 
 // fakeResults returns results of two seeds in plain (losing a verdict in
-// seed 2) and v0.1.
+// seed 2) and v0.1; the seeds' graphs and traffic differ.
 func fakeResults() map[string][]*Result {
 	res := func(variant string, seed int64, delivery float64, loss map[string]float64) *Result {
 		return &Result{Scenario: "A-eclipse", Variant: variant, Seed: seed, Version: "v0.1.0-7-gabc",
 			Metrics: map[string]float64{mDelivery: delivery, mP99: 150 + float64(seed), windowPrefix + "during the attack": delivery},
 			Hops:    map[string]float64{"1": 0.5, "2": 0.5}, Loss: loss,
-			Honest: 1000, Adversaries: 4000, Links: 410000, Events: 180, WallSeconds: 100}
+			Honest: 1000, Adversaries: 4000, Links: 410000 + 2*int(seed), Events: 178 + 2*int(seed), WallSeconds: 100}
 	}
 	return map[string][]*Result{
 		Plain: {res(Plain, 1, 1, map[string]float64{}), res(Plain, 2, 0.9, map[string]float64{causeNeverReceived: 0.1})},
@@ -49,7 +49,8 @@ func TestWriteReport(t *testing.T) {
 		"| Hop count predicted, ln N / ln(D−1) | 3.55 (N 1000, D 8) | 3.55 (N 1000, D 8) | 4.29 (N 1000, D 6) |",
 		"| `never_received` | 0.0500 [0.0000, 0.6853] | – | 0.0000 [0.0000, 0.0000] |",
 		"| plain GossipSub loses verdicts (measurable loss) | **fail** |",
-		"| `v0.1` | 2 | 1000 | 4000 | 410000 | 180 | 100 |",
+		"| Variant | Seeds | Honest nodes | Adversaries | Links, mean | Verdicts, mean | Wall time per seed (s), mean |",
+		"| `v0.1` | 2 | 1000 | 4000 | 410003 | 181 | 100 |",
 	} {
 		if !strings.Contains(string(md), want) {
 			t.Errorf("the report lacks %q:\n%s", want, md)
