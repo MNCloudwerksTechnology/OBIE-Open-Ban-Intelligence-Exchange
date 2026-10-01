@@ -21,8 +21,8 @@ The commits between `405e24c` and `e463f47` fixed the C scenarios, the
 report and a deadlock at shutdown, and made T-burst-regular smaller. Every
 run that one of them changed was run again. WP-1764's instruments were
 merged into the node after the runs (`e857173`). They change no routing
-decision, and the reduced scenario gives the same results with them (see
-the harness validation).
+decision, and two runs of the reduced scenario with them fall within the
+range of 20 runs without them (see the harness validation).
 
 Each scenario has three files: a Markdown report, a summary CSV and a CSV
 of every seed. A value is the mean over the seeds, with its 95 %
@@ -78,8 +78,11 @@ from their attacks, C-bootkill, C-junk, C-offline and C-preempt deliver
 
 In all three attacks of scenario A, v0.1 loses no verdict, as the
 paper's scoring does not, with a p99 of 172–227 ms. Its mesh never
-recovers by the harness's measure: the Sybils hold 47–58 % of the honest
-nodes' mesh slots until the end of the run, never 10 % or less. Without
+recovers by the harness's measure: on average over the attack, the
+Sybils hold 47–58 % of the honest nodes' mesh slots, and in no seed is
+their share back to 10 % or less by the end of the run. The paper's
+scoring fares no better here; the
+[harness validation](harness-validation.md) explains why. Without
 scoring, plain GossipSub gives the Sybils 91–100 % of the slots and loses
 15 % of the verdicts in the eclipse.
 
@@ -109,8 +112,10 @@ of the mesh slots.
   genuine revocation.
 - **A node offline for an hour catches up** (C-offline): after rejoining,
   the ten nodes accepted 93 % of the new verdicts. Their mesh was back
-  within 0.9 s in 17 of 20 seeds. They missed everything published while
-  they were away; v0.1 does not resend it.
+  within 2 s (0.9 s on average, sampled once a second) in 17 of 20 seeds;
+  in the other 3 it was not back 2 min later, when the run ended. Of the
+  verdicts published while they were away, they got 0.03 %: v0.1 does not
+  resend them.
 - **Without the bootstrap hubs, nothing is delivered** (C-bootkill). Once
   every hub stops at 10 min, no verdict reaches any other node again: a
   node knows no peer but its hubs.
@@ -128,9 +133,14 @@ are `rate_limited`, and delivery is 0.92 (T-burst-regular, 100 nodes).
 
 The hop count of a verdict at a node is the length of the path its
 accepted copy took from the publisher, joined from the per-event trace.
-ln N / ln(D−1) is the diameter of a random D-regular mesh of N nodes,
-with v0.1's D = 6. On the random regular graph without attack, the mean
-path is close to it. Attacks and the static graph lengthen it.
+ln N / ln(D−1) is the typical length of a path in a random D-regular
+graph of N nodes, with v0.1's D = 6. The mean path is close to it on the
+random regular graph without attack (T-regular, 4.19 against 4.29) and in
+A-eclipse (4.00). It is about half a hop shorter in T-burst-regular,
+T-burst-static, C-junk and C-offline, and longer everywhere else: by
+0.4–0.9 hops in most scenarios, and by 3.9 and 9.4 hops in B-f30 and
+B-f50. The formula assumes a random mesh, and neither the static graph
+with its hubs nor a mesh full of adversaries is one.
 
 | Scenario (`v0.1`) | Honest nodes N | Mean hops | ln N / ln(D−1) |
 |---|---|---|---|

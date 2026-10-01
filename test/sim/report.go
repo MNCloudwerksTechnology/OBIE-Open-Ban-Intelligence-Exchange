@@ -477,7 +477,7 @@ func writeMarkdown(out io.Writer, h Header, sc *Scenario, byVariant map[string][
 	return err
 }
 
-// predictedHops is ln N / ln(D−1), the diameter of a random D-regular
+// predictedHops is ln N / ln(D−1), the typical path length of a random D-regular
 // mesh of N nodes.
 func predictedHops(n, d int) float64 { return math.Log(float64(n)) / math.Log(float64(d-1)) }
 

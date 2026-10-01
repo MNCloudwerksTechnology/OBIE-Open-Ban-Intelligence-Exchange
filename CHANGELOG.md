@@ -88,10 +88,10 @@ The first release, v0.1.0 "Stable Base".
   ([ADR 0034](documentation/adr/0034-trust-simulation-by-trace-replay.md)).
 - **Routing simulation and the v0.1 routing baseline.**
   `make sim-routing SCENARIO=…` runs the real mesh and gossip code of up
-  to 20,000 nodes and their attackers on an in-memory libp2p network in
-  virtual time. The scenarios are the GossipSub v1.1 paper's eclipse, cold
-  boot and covert flash attacks on 1,000 nodes; 10,000 nodes with 10 to
-  50 % adversaries; and OBIE's own attacks: a flood of weight-0 junk, junk
+  to 10,000 nodes, and as many attackers, on an in-memory libp2p network
+  in virtual time. The scenarios are the GossipSub v1.1 paper's eclipse,
+  cold boot and covert flash attacks on 1,000 nodes; 10,000 nodes with 10
+  to 50 % adversaries; and OBIE's own attacks: a flood of weight-0 junk, junk
   through a relay, forged IDs of a chosen revocation, an hour offline and
   the bootstrap hubs stopped. They run on the static-bootstrap graph and
   on a random regular one. A report gives delivery, latency, duplicates,

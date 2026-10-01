@@ -90,7 +90,9 @@ attacker (`badboy.go`), the scenario files and the exact score parameters.
   real sockets, which would stop the virtual clock. The mesh pings its
   peers only once a day: pings only estimate latency for the admin API,
   and every peer pinged every 15 s cost a tenth of an eclipse run's CPU.
-  This is where the simulation's fidelity ends. The daemon's hooks (ADR 0016) do not reach
+  It also reads their GossipSub scores only once a day, as only the
+  metrics and the console use them (ADR 0032). This is where the
+  simulation's fidelity ends. The daemon's hooks (ADR 0016) do not reach
   far enough, so two new hooks follow its rule ("test hooks, never
   configuration"). Production leaves both zero, and neither can be reached
   from the configuration file:
@@ -195,8 +197,11 @@ Every configuration below runs 20 seeds.
   topology and 4,000 Sybils, in the variants `plain`, `paper` and `v0.1`.
   The testbed's honest nodes each dial 20, which the paper's "20
   connections" means; a 20-regular graph halves their honest links, and
-  plain GossipSub then loses 47 % rather than the paper's ~10 % in the
-  eclipse attack (`documentation/validation/routing/harness-validation.md`):
+  plain GossipSub then loses about half of all verdicts rather than the
+  paper's ~10 % in the eclipse attack
+  (`documentation/validation/routing/harness-validation.md`). The Sybils
+  have the links of the paper's scenario files (`network.attack_degree`):
+  100 in the eclipse, 20 in cold boot and covert flash.
   - `A-eclipse`: the network warms up. At 60 s the Sybils connect, 100
     links each, and drop everything. The run ends at 240 s.
   - `A-coldboot`: the Sybils, 20 links each, connect as the honest nodes
@@ -322,8 +327,8 @@ Every configuration below runs 20 seeds.
   once every run of a scenario has a result.
 - **CI.** The baseline of v0.1 lives in `documentation/validation/routing/`.
   A CI job runs the `reduced` scenario with assertions: `paper` loses
-  nothing, `plain` loses something, and `v0.1` delivers at least 99 % (its
-  baseline delivers everything). The job's timeout is 10 min.
+  nothing, `plain` loses something, and `v0.1` delivers at least 99 % (it
+  delivered every verdict in 20 repeats). The job's timeout is 10 min.
 - **Why the scenario runs outside `make test`.** The race detector allows
   8,128 live goroutines, and the reduced scenario needs about 47,000, so
   it runs without `-race` outside `make test`. The harness's unit tests

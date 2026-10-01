@@ -324,8 +324,8 @@ Record the results of a full run in
 
 `make sim-routing` runs `TestRouting` in `test/sim` (build tag `sim`, so
 never part of `make test`; the harness's unit tests are). It runs the real
-`internal/mesh` and `internal/gossip` of up to 20,000 nodes and their
-attackers on an in-memory network in virtual time, and writes a report per
+`internal/mesh` and `internal/gossip` of up to 10,000 nodes, and as many
+attackers, on an in-memory network in virtual time, and writes a report per
 scenario — Markdown, a summary CSV and a CSV of every seed — to `SIMOUT`
 (default `dist/sim-routing`). Every metric carries a 95 % confidence
 interval over the seeds. The scenarios, router variants and metrics are in
