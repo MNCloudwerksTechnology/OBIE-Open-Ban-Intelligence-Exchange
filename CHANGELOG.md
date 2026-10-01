@@ -6,6 +6,8 @@ All notable changes to OBIE are recorded in this file. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-01
+
 The first release, v0.1.0 "Stable Base".
 
 ### Added
@@ -309,4 +311,5 @@ The first release, v0.1.0 "Stable Base".
   and a [threat model](SECURITY.md#threat-model). The
   [whitepaper](documentation/whitepaper.md) moved out of the README.
 
-[Unreleased]: https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange/commits/develop
+[Unreleased]: https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange/compare/v0.1.0...develop
+[0.1.0]: https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange/releases/tag/v0.1.0
