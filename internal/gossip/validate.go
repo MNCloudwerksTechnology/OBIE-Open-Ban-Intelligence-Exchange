@@ -45,9 +45,10 @@ func (v *validator) validate(_ context.Context, from peer.ID, msg *pubsub.Messag
 	outcome, result := v.check(from, msg.GetData(), now)
 	receivedTotal.WithLabelValues(string(outcome)).Inc()
 	v.metrics.Observe(from, outcome)
-	v.trace.Write(idOf(msg), from.String(), now, string(outcome))
+	id := idOf(msg)
+	v.trace.Write(id, from.String(), now, string(outcome))
 	if v.observe != nil {
-		v.observe(idOf(msg), from, outcome)
+		v.observe(id, from, outcome)
 	}
 	return result
 }

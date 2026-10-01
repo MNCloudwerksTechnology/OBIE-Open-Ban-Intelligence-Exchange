@@ -118,11 +118,12 @@ jobs:
 
   sim-routing:
     name: routing simulation (reduced)
-    # The reduced scenario of the routing simulation (ADR 0033): 100 honest
+    # The reduced scenario of the routing simulation (ADR 0035): 100 honest
     # nodes under a cold boot attack by 400 Sybils, one seed per router
     # variant. It fails if plain GossipSub stops losing verdicts, if the
-    # paper's scoring loses one, or if v0.1 delivers less than 99 % (its
-    # baseline in documentation/validation/routing/ delivers all).
+    # paper's scoring loses one, or if v0.1 delivers less than 99 % (it
+    # delivered every verdict in 20 repeats; see
+    # documentation/validation/routing/harness-validation.md).
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

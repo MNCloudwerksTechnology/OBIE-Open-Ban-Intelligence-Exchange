@@ -78,18 +78,47 @@ func TestVariantsDeliverWithoutAttack(t *testing.T) {
 
 // TestHopsMatchTheEventTrace: the trace files the honest nodes write
 // (mesh.trace_path), joined by internal/eventtrace (ADR 0032), give every
-// event at every node the hop count and the copies the harness measures
-// from its own trace (ADR 0035).
+// event at every honest node the hop count and the copies the harness
+// measures from its own trace (ADR 0035), in every router variant. Sybils
+// write no file, so where the harness follows a path through one that
+// relayed, the files cannot trace it.
 func TestHopsMatchTheEventTrace(t *testing.T) {
-	dir := t.TempDir()
-	sc := smallScenario(16, 4, 70*time.Second, func(w *world, _ []int32) error {
-		w.traceDir = dir
-		return nil
-	})
-	w, _ := runSmall(t, sc, V01, 4)
+	for _, tc := range []struct {
+		name, variant string
+		sybils        int
+	}{
+		{name: "v0.1", variant: V01},
+		{name: "plain", variant: Plain},
+		{name: "paper", variant: Paper},
+		{name: "forwarding sybils", variant: Plain, sybils: 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			sc := smallScenario(16, 4, 70*time.Second, func(w *world, honest []int32) error {
+				w.traceDir = dir
+				_, err := addSybils(w, tc.sybils, 8, honest, 0, -1)
+				return err
+			})
+			w, _ := runSmall(t, sc, tc.variant, 4)
+			compared, viaSybil := compareWithTraceFiles(t, w, dir)
+			if compared == 0 {
+				t.Error("no hop count compared")
+			}
+			if tc.sybils > 0 && viaSybil == 0 {
+				t.Error("no path ran through a sybil")
+			}
+		})
+	}
+}
+
+// compareWithTraceFiles checks the trace files in dir against the trace of
+// w and returns how many hop counts it compared and how many paths ran
+// through an adversary.
+func compareWithTraceFiles(t *testing.T, w *world, dir string) (compared, viaSybil int) {
+	t.Helper()
 	paths, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
-	if err != nil || len(paths) != 16 {
-		t.Fatalf("trace files %v (%v), want one per node", paths, err)
+	if want := len(w.honest()); err != nil || len(paths) != want {
+		t.Fatalf("trace files %v (%v), want %d, one per honest node", paths, err, want)
 	}
 	recs, err := eventtrace.ReadFiles(paths...)
 	if err != nil {
@@ -100,7 +129,6 @@ func TestHopsMatchTheEventTrace(t *testing.T) {
 		spreads[s.Event] = s
 	}
 	j := join(w)
-	compared := 0
 	for e, ev := range w.events {
 		s, ok := spreads[ev.ev.ID]
 		if !ok {
@@ -108,8 +136,8 @@ func TestHopsMatchTheEventTrace(t *testing.T) {
 			continue
 		}
 		hops := j.hops(e)
-		for n, nd := range w.nodes {
-			id := nd.pid.String()
+		for _, n := range w.honest() {
+			id := w.nodes[n].pid.String()
 			got, reached := s.Reached[id]
 			switch {
 			case hops[n] == 0:
@@ -119,6 +147,12 @@ func TestHopsMatchTheEventTrace(t *testing.T) {
 			case hops[n] < 0:
 				if reached {
 					t.Errorf("event %d reached node %d in the trace files only", e, n)
+				}
+			case throughAdversary(w, j, e, int(n)):
+				viaSybil++
+				if !reached || got.Hops != -1 {
+					t.Errorf("event %d at node %d came through a sybil, but the trace files give %d hops (reached %v)",
+						e, n, got.Hops, reached)
 				}
 			case !reached || got.Hops != hops[n]:
 				t.Errorf("event %d at node %d: %d hops in the trace files (reached %v), want %d", e, n, got.Hops, reached, hops[n])
@@ -130,9 +164,23 @@ func TestHopsMatchTheEventTrace(t *testing.T) {
 			}
 		}
 	}
-	if compared == 0 {
-		t.Error("no hop count compared")
+	return compared, viaSybil
+}
+
+// throughAdversary reports whether the path of event e to node n, as the
+// harness joined it, runs through an adversary.
+func throughAdversary(w *world, j *joined, e, n int) bool {
+	for range w.nodes {
+		p := int(j.d[e][n].parent)
+		switch {
+		case p < 0 || p == n:
+			return false
+		case !w.nodes[p].honest:
+			return true
+		}
+		n = p
 	}
+	return false
 }
 
 // sybilScenario adds sybils to a small network: each dials 8 honest

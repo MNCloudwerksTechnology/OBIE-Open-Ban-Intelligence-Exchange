@@ -96,9 +96,13 @@ func (w *world) newHost(n *node) (host.Host, error) {
 	return h, nil
 }
 
-// pingInterval is how often an honest node pings its peers: never within
-// a run.
-const pingInterval = 24 * time.Hour
+// pingInterval is how often an honest node pings its peers, and
+// scoreInspectInterval how often it reads its peers' GossipSub scores:
+// never within a run.
+const (
+	pingInterval         = 24 * time.Hour
+	scoreInspectInterval = 24 * time.Hour
+)
 
 // startHonest starts n's mesh on the host h, which the mesh's host hook
 // hands over.
@@ -116,11 +120,13 @@ func (w *world) startHonest(n *node, h host.Host) error {
 		Bootstrap: boot,
 		UserAgent: "obied/sim",
 		Store:     n.store,
-		// Pings only estimate latency for the admin API; routing never
-		// reads it. Every peer pinged every 15 s costs a tenth of an
+		// Pings only estimate latency for the admin API, and the scores
+		// are read only for the metrics and the console; routing reads
+		// neither. Every peer pinged every 15 s costs a tenth of an
 		// eclipse run's CPU (ADR 0035).
-		PingInterval: pingInterval,
-		TracePath:    tracePath,
+		PingInterval:         pingInterval,
+		ScoreInspectInterval: scoreInspectInterval,
+		TracePath:            tracePath,
 
 		AllowDocumentationRanges: true,
 		Testing: mesh.Testing{

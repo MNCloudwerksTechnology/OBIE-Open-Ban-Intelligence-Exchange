@@ -28,6 +28,8 @@ type recorder struct {
 	observed  []observed
 	joined    []string
 	delivered map[string]peer.ID
+	// rejected counts the messages GossipSub rejected after validation.
+	rejected int
 }
 
 func (r *recorder) observe(id string, from peer.ID, outcome Outcome) {
@@ -40,6 +42,12 @@ func (r *recorder) outcomes() []observed {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return slices.Clone(r.observed)
+}
+
+func (r *recorder) rejections() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.rejected
 }
 
 func (r *recorder) count(o Outcome) int {
@@ -70,6 +78,17 @@ func (t testTracer) DeliverMessage(msg *pubsub.Message) {
 	t.r.delivered[msg.ID] = msg.ReceivedFrom
 }
 
+// RejectMessage counts the messages the validator rejected. GossipSub's
+// peer score is an earlier tracer, so it has charged the forwarder by now.
+func (t testTracer) RejectMessage(_ *pubsub.Message, reason string) {
+	if reason != pubsub.RejectValidationFailed {
+		return
+	}
+	t.r.mu.Lock()
+	defer t.r.mu.Unlock()
+	t.r.rejected++
+}
+
 // The remaining methods of pubsub.RawTracer do nothing.
 func (testTracer) OnNewOutboundStream(peer.ID, protocol.ID) {}
 func (testTracer) OnClosedOutboundStream(peer.ID)           {}
@@ -77,7 +96,6 @@ func (testTracer) Leave(string)                             {}
 func (testTracer) Graft(peer.ID, string)                    {}
 func (testTracer) Prune(peer.ID, string)                    {}
 func (testTracer) ValidateMessage(*pubsub.Message)          {}
-func (testTracer) RejectMessage(*pubsub.Message, string)    {}
 func (testTracer) DuplicateMessage(*pubsub.Message)         {}
 func (testTracer) ThrottlePeer(peer.ID)                     {}
 func (testTracer) RecvRPC(*pubsub.RPC)                      {}
@@ -146,6 +164,8 @@ func TestTestingHooksSeeEveryMessage(t *testing.T) {
 // ignored; a Router without scoring accepts it. Five invalid events score
 // 5² × invalidMessageCost = −250, below graylistThreshold, so GossipSub
 // may drop the sixth unseen; four score −160, so the fifth always arrives.
+// The test waits for the tracer's rejections rather than the validator's
+// outcomes, which come before GossipSub charges the score.
 func TestTestingRouterReplacesScoring(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -157,14 +177,14 @@ func TestTestingRouterReplacesScoring(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := &recorder{}
-			b := newTestingNode(t, Testing{Router: tc.router, Observe: rec.observe})
+			b := newTestingNode(t, Testing{Router: tc.router, Tracer: testTracer{r: rec}})
 			raw := newUnsignedRawPublisher(t)
 			connect(t, raw.host, b.host, raw.topic)
 			for range 6 {
 				bad := raw.verdict(t, time.Now(), 3600)
 				raw.publish(t, []byte(strings.Replace(string(marshal(t, bad)), `"events":47`, `"events":48`, 1)))
 			}
-			waitFor(t, propagationDeadline, "five invalid events", func() bool { return rec.count(InvalidSignature) >= 5 })
+			waitFor(t, propagationDeadline, "five invalid events", func() bool { return rec.rejections() >= 5 })
 
 			valid := raw.verdict(t, time.Now(), 3600)
 			raw.publish(t, marshal(t, valid))
