@@ -134,7 +134,7 @@ func repair(rng *rand.Rand, edges [][2]int) error {
 }
 
 // staticBootstrap returns today's static-bootstrap graph on n nodes (ADR
-// 0033): the first k nodes are hubs, every other node dials perNode
+// 0035): the first k nodes are hubs, every other node dials perNode
 // random hubs, and every hub dials perHub random other hubs.
 func staticBootstrap(rng *rand.Rand, n, k, perNode, perHub int) (*graph, error) {
 	if k < 2 || k > n || perNode > k || perHub >= k {

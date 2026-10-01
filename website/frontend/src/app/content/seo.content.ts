@@ -1,11 +1,15 @@
-import { InjectionToken } from '@angular/core';
+import { InjectionToken, inject } from '@angular/core';
+import { TranslocoService } from '@jsverse/transloco';
 
+import { translated } from '../i18n/translated';
+import { Link } from './landing-content.model';
 import { REPOSITORY_URL } from './landing.content';
 
 // Search engine and share-preview data (WP #1678): the share image, the copy
 // of pages without a content file of their own, and the facts behind the
 // structured data (JSON-LD). Every fact about OBIE and its founder was
-// supplied by the operator; nothing here is invented.
+// supplied by the operator; nothing here is invented. The German version is
+// seo.content.de.ts.
 
 /** Shape of the SEO data, so a German version is a second object. */
 export interface SeoContent {
@@ -20,8 +24,14 @@ export interface SeoContent {
     readonly height: number;
     readonly alt: string;
   };
-  /** Title and description of the not-found page. */
-  readonly notFound: { readonly title: string; readonly description: string };
+  /** The not-found page: head tags and its short text with a link home. */
+  readonly notFound: {
+    readonly title: string;
+    readonly description: string;
+    readonly heading: string;
+    readonly text: string;
+    readonly home: Link;
+  };
   /** Facts behind the `SoftwareSourceCode` JSON-LD. */
   readonly software: {
     readonly name: string;
@@ -53,6 +63,9 @@ export const SEO_CONTENT_EN: SeoContent = {
     title: 'Page not found · OBIE',
     description:
       'This page does not exist on the OBIE website. The home page explains OBIE, the Open Ban Intelligence Exchange.',
+    heading: 'Page not found',
+    text: 'The page you are looking for does not exist.',
+    home: { label: 'Go to the home page', href: '/' },
   },
   software: {
     name: 'OBIE (Open Ban Intelligence Exchange)',
@@ -69,8 +82,8 @@ export const SEO_CONTENT_EN: SeoContent = {
   },
 };
 
-/** The SEO data in effect; override it to provide another language. */
+/** The SEO data in the page's language (Transloco translation `seo`). */
 export const SEO_CONTENT = new InjectionToken<SeoContent>('SEO_CONTENT', {
   providedIn: 'root',
-  factory: () => SEO_CONTENT_EN,
+  factory: () => translated<SeoContent>(inject(TranslocoService), 'seo'),
 });

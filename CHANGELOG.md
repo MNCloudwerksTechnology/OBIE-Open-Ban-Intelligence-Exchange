@@ -50,6 +50,42 @@ The first release, v0.1.0 "Stable Base".
 - **Observability.** Prometheus metrics, `/healthz` and `/readyz`, a
   Grafana dashboard, and a JSON-lines decision audit log with Elastic
   Common Schema fields ([monitoring](documentation/operations/monitoring.md)).
+- **Gossip instrumentation and attribution.** A GossipSub tracer feeds
+  `obie_gossip_*` metrics — deliveries, duplicates dropped before
+  validation, rejects by reason, ignores, grafts, prunes, IHAVE and IWANT
+  by direction, and the mesh size — and the peer scores, read every 10
+  seconds, feed a histogram and the counts of peers scored and below the
+  gossip, publish and graylist thresholds; no metric names a peer or an
+  address. Each peer's score and its components are in `GET /v1/peers`
+  (`obiectl peers --json`) and the console's peers view.
+  `obie_propagation_delay_seconds` is measured to the millisecond from the
+  creation time an event's UUIDv7 ID carries, as obie/0.1 gives
+  `issued_at` in whole seconds. Every `block-added`, `block-updated` and
+  `block-removed` audit record names its contributing publishers in
+  `obie.contributors` (peer ID, weight, confidence, verdict ID). Revoked
+  and expired verdicts are kept for `store.ended_retention`, 30 days by
+  default. An opt-in per-event trace (`mesh.trace_path`) writes a JSON
+  line per copy of an event, and `internal/eventtrace` joins the traces of
+  several nodes into hop counts and paths
+  ([ADR 0032](documentation/adr/0032-gossip-instrumentation-and-attribution.md)).
+- **Trust simulation and the v0.1 trust baseline.**
+  `make sim-trust SCENARIO=…` replays Fail2Ban bans and the verdicts of
+  honest and adversarial publishers — naive and careful poisoners, on-off attackers,
+  whitewashers, Sybil coalitions in one or several ASNs, spies and
+  suppressors, at 10 to 40 % — through the real store, allow-list and
+  decision engine of one node in virtual time. It reports precision,
+  recall and F1 of the enforced bans, false bans, the time to neutralize
+  a defector, the honest publishers' weight, newcomer convergence, the
+  whitewashing payoff, ECE and Brier score, per hour and cumulatively
+  with 95 % intervals over 20 seeds, and the feed metrics of every
+  publisher over the whole run; a reduced scenario runs in CI. The
+  [v0.1 trust baseline](documentation/validation/trust/README.md) finds
+  that at the default confidence of 0.8 a ban on remote verdicts needs
+  three fully trusted remotes under the default threshold of 1.8, and
+  that static weights never neutralize a defector.
+  `go run ./test/simtrust/cmd/trace-import` turns operators' Fail2Ban logs
+  into a trace with every address pseudonymized
+  ([ADR 0034](documentation/adr/0034-trust-simulation-by-trace-replay.md)).
 - **Setup assistant and self-check.** `obied setup` asks where the node
   keeps its state and audit log, which peers it connects to and how much
   it trusts them, whether it starts in observe mode and which addresses it
@@ -129,9 +165,10 @@ The first release, v0.1.0 "Stable Base".
   address (the verdicts on one address, as `obiectl show` gives them),
   shows revoked verdicts with why and expired ones on request, and links
   every verdict to its publisher and its decision. The store now keeps
-  revoked and expired verdicts for 24 hours after their expiry, with the
-  revocation's reason — of other publishers at most a tenth of
-  `store.max_indicators` in each state (`obie_store_ended_verdicts`)
+  revoked and expired verdicts for `store.ended_retention` (30 days by
+  default) after their expiry, with the revocation's reason — of other
+  publishers at most a tenth of `store.max_indicators` in each state
+  (`obie_store_ended_verdicts`)
   ([ADR 0023](documentation/adr/0023-console-verdicts.md)).
   Its overrides view lists every always-allow and always-block override
   in effect with its note, when it was set and when it ends, says why an

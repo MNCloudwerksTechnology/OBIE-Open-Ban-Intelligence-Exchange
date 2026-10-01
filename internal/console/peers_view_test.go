@@ -68,6 +68,12 @@ func TestPeersPage(t *testing.T) {
 		`<th scope="col" aria-sort="ascending"><a href="/peers">Peer</a></th>`,
 		`<th scope="col"><a href="/peers?sort=trust">Trust weight</a></th>`,
 		`<th scope="col"><a href="/peers?sort=rejected">Events, last hour</a></th>`,
+		`<th scope="col"><a href="/peers?sort=score">Gossip score</a></th>`,
+		// ADR 0032: the GossipSub score and the lowest threshold it is below.
+		`<span class="cell-label">Gossip score</span>`+"\n        "+`<span class="weight">1.25</span>`+"\n      </td>",
+		`<span class="weight">-250</span>`+"\n        "+`<span class="badge">Graylisted: its messages are ignored</span>`,
+		`<span class="weight">-120</span>`+"\n        "+`<span class="badge">Below the publish limit: gets none of this node&#39;s events</span>`,
+		`<span class="cell-label">Gossip score</span>`+"\n        "+`<span class="cell-note">Not scored</span>`,
 		// AC1, AC2: a connected bootstrap peer that is a trusted publisher.
 		`<a class="peer-name" href="/peers/`+idAlpha+`">alpha</a>`,
 		`<span class="peer-id mono" title="`+idAlpha+`">12D3KooW…rAa1ph</span>`,
@@ -170,6 +176,14 @@ func TestPeerPage(t *testing.T) {
 		`<li>57 accepted</li>`,
 		`<li><span class="rejected">3 rejected</span>: 2 invalid signature, 1 expired or dated in the future</li>`,
 		`<li>4 already known (duplicates are normal in gossip)</li>`,
+		// ADR 0032: the GossipSub score with its components.
+		`<dt>Gossip score</dt>`,
+		`<strong>1.25</strong>, read <time datetime="2026-09-28T11:59:55Z">2026-09-28 11:59:55 UTC</time>. Above every score limit.`,
+		`<li>Time in this node&#39;s mesh: 1m30s</li>`,
+		`<li>First deliveries of valid events: 2.5</li>`,
+		`<li>Invalid messages: 0</li>`,
+		`<li>Application score: 0</li>`,
+		`below -50 no gossip, below -100 none of this node's events, below -200 its messages are ignored.</span>`,
 		// AC4: its verdicts, linking into the verdicts view (ADR 0023).
 		`<h2 id="verdicts-heading">Verdicts held from this peer</h2>`,
 		`<a href="/verdicts?publisher=`+idAlpha+`">All its verdicts in the verdict view</a>`,
@@ -221,7 +235,12 @@ func TestPeerPageStates(t *testing.T) {
 		`<span class="mono dial-error">failed to dial: connection refused</span>`,
 		`<span class="cell-note">from mesh.bootstrap</span>`,
 		`<dd><strong>0</strong>, the default weight (trust.default_weight): the peer is not listed in trust.publishers. <span class="badge">No influence on decisions</span> Its verdicts are held, but never count.</dd>`,
-		`None: the peer sent this node no event in the last hour.`)
+		`None: the peer sent this node no event in the last hour.`,
+		`<strong>-250</strong>, read <time datetime="2026-09-28T11:59:55Z">2026-09-28 11:59:55 UTC</time>. <span class="badge">Graylisted: its messages are ignored</span>`,
+		`<li>Time in this node&#39;s mesh: not in this node&#39;s mesh</li>`)
+
+	_, page = b.get("/peers/" + idCharlie)
+	wantAll(t, "charlie's page", page, `<dt>Gossip score</dt>`+"\n  <dd>\n    None: no score was read for this peer yet, or it left more than an hour ago.\n  </dd>")
 
 	_, page = b.get("/peers/" + idStray)
 	wantAll(t, "the stray peer's page", page,

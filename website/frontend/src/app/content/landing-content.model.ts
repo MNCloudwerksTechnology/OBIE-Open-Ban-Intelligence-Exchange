@@ -24,7 +24,10 @@ export interface LandingContent {
   readonly footer: FooterContent;
 }
 
-/** A link rendered as an anchor; `href` is absolute or an in-page `#id`. */
+/**
+ * A link rendered as an anchor; `href` is absolute, a site path or a section
+ * of the home page (`#id` in English, `/de#id` in German: `sectionHref`).
+ */
 export interface Link {
   readonly label: string;
   readonly href: string;
@@ -52,6 +55,16 @@ export interface A11yContent {
 
 export interface HeaderContent {
   readonly github: Link;
+  /** Link to the same page in the other language (ADR 0033). */
+  readonly language: LanguageSwitchContent;
+}
+
+/** The language switch, written in the language it switches to. */
+export interface LanguageSwitchContent {
+  /** Visible short label, e.g. "DE". */
+  readonly label: string;
+  /** Accessible name: the language's own name, e.g. "Deutsch". */
+  readonly name: string;
 }
 
 export interface HeroContent {

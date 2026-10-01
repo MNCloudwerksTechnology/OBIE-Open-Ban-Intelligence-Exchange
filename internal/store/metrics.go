@@ -55,7 +55,7 @@ var endedGauge = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 	Namespace: "obie",
 	Subsystem: "store",
 	Name:      "ended_verdicts",
-	Help:      "Verdicts the store keeps for a day after they ended, by how they ended; of other publishers at most a tenth of store.max_indicators each.",
+	Help:      "Verdicts the store keeps for store.ended_retention after they ended, by how they ended; of other publishers at most a tenth of store.max_indicators each.",
 }, []string{"state"})
 
 func init() {

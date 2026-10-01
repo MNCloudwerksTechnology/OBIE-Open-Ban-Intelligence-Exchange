@@ -113,7 +113,7 @@ func (w *world) startHonest(n *node, h host.Host) error {
 		Store:     n.store,
 		// Pings only estimate latency for the admin API; routing never
 		// reads it. Every peer pinged every 15 s costs a tenth of an
-		// eclipse run's CPU (ADR 0033).
+		// eclipse run's CPU (ADR 0035).
 		PingInterval: pingInterval,
 
 		AllowDocumentationRanges: true,

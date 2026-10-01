@@ -39,7 +39,7 @@ const (
 // paper's attacker. It subscribes to and GRAFTs every peer that announces
 // the topic, re-GRAFTs after a PRUNE, forwards every new message to its
 // mesh peers until its attack starts and drops everything after (ADR
-// 0033). A preempter also answers a chosen event with a forgery of the
+// 0035). A preempter also answers a chosen event with a forgery of the
 // same ID; a flooder injects junk events.
 type sybil struct {
 	w    *world

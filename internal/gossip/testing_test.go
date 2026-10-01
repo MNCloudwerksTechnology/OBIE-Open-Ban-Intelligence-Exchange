@@ -52,16 +52,16 @@ func (r *recorder) count(o Outcome) int {
 	return n
 }
 
-// tracer is the pubsub.RawTracer of a recorder.
-type tracer struct{ r *recorder }
+// testTracer is the pubsub.RawTracer of a recorder.
+type testTracer struct{ r *recorder }
 
-func (t tracer) Join(topic string) {
+func (t testTracer) Join(topic string) {
 	t.r.mu.Lock()
 	defer t.r.mu.Unlock()
 	t.r.joined = append(t.r.joined, topic)
 }
 
-func (t tracer) DeliverMessage(msg *pubsub.Message) {
+func (t testTracer) DeliverMessage(msg *pubsub.Message) {
 	t.r.mu.Lock()
 	defer t.r.mu.Unlock()
 	if t.r.delivered == nil {
@@ -71,19 +71,19 @@ func (t tracer) DeliverMessage(msg *pubsub.Message) {
 }
 
 // The remaining methods of pubsub.RawTracer do nothing.
-func (tracer) OnNewOutboundStream(peer.ID, protocol.ID) {}
-func (tracer) OnClosedOutboundStream(peer.ID)           {}
-func (tracer) Leave(string)                             {}
-func (tracer) Graft(peer.ID, string)                    {}
-func (tracer) Prune(peer.ID, string)                    {}
-func (tracer) ValidateMessage(*pubsub.Message)          {}
-func (tracer) RejectMessage(*pubsub.Message, string)    {}
-func (tracer) DuplicateMessage(*pubsub.Message)         {}
-func (tracer) ThrottlePeer(peer.ID)                     {}
-func (tracer) RecvRPC(*pubsub.RPC)                      {}
-func (tracer) SendRPC(*pubsub.RPC, peer.ID)             {}
-func (tracer) DropRPC(*pubsub.RPC, peer.ID)             {}
-func (tracer) UndeliverableMessage(*pubsub.Message)     {}
+func (testTracer) OnNewOutboundStream(peer.ID, protocol.ID) {}
+func (testTracer) OnClosedOutboundStream(peer.ID)           {}
+func (testTracer) Leave(string)                             {}
+func (testTracer) Graft(peer.ID, string)                    {}
+func (testTracer) Prune(peer.ID, string)                    {}
+func (testTracer) ValidateMessage(*pubsub.Message)          {}
+func (testTracer) RejectMessage(*pubsub.Message, string)    {}
+func (testTracer) DuplicateMessage(*pubsub.Message)         {}
+func (testTracer) ThrottlePeer(peer.ID)                     {}
+func (testTracer) RecvRPC(*pubsub.RPC)                      {}
+func (testTracer) SendRPC(*pubsub.RPC, peer.ID)             {}
+func (testTracer) DropRPC(*pubsub.RPC, peer.ID)             {}
+func (testTracer) UndeliverableMessage(*pubsub.Message)     {}
 
 // newTestingNode returns a node with the given Testing hooks.
 func newTestingNode(t *testing.T, testing Testing) *node {
@@ -107,7 +107,7 @@ func newTestingNode(t *testing.T, testing Testing) *node {
 // sees the node join the topic and deliver the valid event.
 func TestTestingHooksSeeEveryMessage(t *testing.T) {
 	rec := &recorder{}
-	b := newTestingNode(t, Testing{Tracer: tracer{r: rec}, Observe: rec.observe})
+	b := newTestingNode(t, Testing{Tracer: testTracer{r: rec}, Observe: rec.observe})
 	raw := newUnsignedRawPublisher(t)
 	connect(t, raw.host, b.host, raw.topic)
 

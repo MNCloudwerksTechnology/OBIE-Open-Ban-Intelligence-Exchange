@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { IMPRESSUM_PATH, PRIVACY_PATH } from '../app.routes';
+import { ANALYTICS_HOST, CONSENT_STORAGE_KEY } from '../core/analytics/analytics.config';
+import { ANALYTICS_SECTION_ID, CONSENT_CONTENT_EN } from './consent.content';
+import { ANALYTICS_RAW_DATA_RETENTION_MONTHS, INQUIRY_MAILBOX_RETENTION_YEARS } from './operator';
 import { LegalPageContent } from './legal-content.model';
 import { LINKS } from './landing.content';
 import {
@@ -101,12 +104,47 @@ describe('Legal content', () => {
   describe('Privacy policy', () => {
     const text = textOf(privacy);
 
-    it('says there are no cookies, no tracking, no third-party requests and no cookie banner', () => {
+    it('says there are no cookies, statistics only with consent and no other third-party requests', () => {
       expect(text).toMatch(/sets no cookies/);
-      expect(text).toMatch(/No tracking and no analytics/);
+      expect(text).toMatch(/Visitor statistics only with your consent/);
       expect(text).toMatch(/No third-party requests/);
       expect(text).toMatch(/no connection to Google Fonts/);
-      expect(text).toMatch(/shows no cookie banner/);
+      expect(text).not.toMatch(/no cookie banner|No tracking/);
+    });
+
+    it('names the only thing stored in the browser: the answer, under its real key and values', () => {
+      const cookies = allStrings(privacy.sections.find((section) => section.id === 'cookies'));
+      const stored = cookies.join('\n');
+      expect(stored).toContain(CONSENT_STORAGE_KEY);
+      expect(stored).toContain('“granted” or “denied”');
+      expect(stored).toContain('§ 25(2) no. 2 TDDDG');
+    });
+
+    it('describes the visitor statistics: server, data, consent, withdrawal and no cookies', () => {
+      const section = privacy.sections.find((candidate) => candidate.id === ANALYTICS_SECTION_ID);
+      const analytics = allStrings(section).join('\n');
+      expect(analytics).toContain('Matomo');
+      expect(analytics).toContain(ANALYTICS_HOST);
+      expect(analytics).toContain('Art. 6(1)(a) GDPR');
+      expect(analytics).toContain('§ 25(1) TDDDG');
+      expect(analytics).toContain('Art. 7(3) GDPR');
+      expect(analytics).toMatch(/Matomo sets no cookies/);
+      expect(analytics).toMatch(/never its content/);
+      expect(analytics).toMatch(/our own statistics server/);
+      expect(analytics).toMatch(
+        /No data are passed to the maker of Matomo or to any other third party/,
+      );
+      expect(analytics).toContain(`after ${ANALYTICS_RAW_DATA_RETENTION_MONTHS} months`);
+      // No promise the deployment might not keep: the IP address is not said to be shortened.
+      expect(analytics).not.toMatch(/shorten|anonymi/i);
+      // The labels the visitor sees in the dialog and the footer.
+      for (const label of [
+        CONSENT_CONTENT_EN.accept,
+        CONSENT_CONTENT_EN.decline,
+        CONSENT_CONTENT_EN.settings,
+      ]) {
+        expect(analytics).toContain(`“${label}”`);
+      }
     });
 
     it('describes the server logs and how long they are kept', () => {
@@ -124,6 +162,12 @@ describe('Legal content', () => {
       expect(text).toMatch(/e-mail \(SMTP\) provider/);
       expect(text).toContain('processor, Art. 28 GDPR');
       expect(text).toMatch(/only as a salted hash/);
+    });
+
+    it('states how long the copy of an inquiry stays in the mailbox (cloudwerks.de/datenschutz)', () => {
+      expect(text).toContain(
+        `at most ${INQUIRY_MAILBOX_RETENTION_YEARS} years after our last contact`,
+      );
     });
 
     it('states the retention the back end deletes inquiries after by default', () => {

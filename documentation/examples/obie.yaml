@@ -69,6 +69,11 @@ mesh:
     peer:
       events_per_second: 50
       burst: 250
+  # File the node appends one JSON line to for every copy of an event it
+  # receives and every event it publishes (node, event, from, at, outcome),
+  # for simulations and short diagnostics; about 230 bytes per copy, never
+  # rotated. Empty switches it off.
+  trace_path: ""
 
 store:
   # Most verdicts the event store holds (>= 1): one per publisher and
@@ -79,6 +84,11 @@ store:
   # own verdicts are never evicted. About 0.7 KiB of disk and 3 KiB of
   # memory per verdict (measured in documentation/operations/performance.md).
   max_indicators: 1000000
+  # How long a revoked or expired verdict is kept after its expiry (1h to
+  # 365d), so that the blocks it caused can be traced back to it. About
+  # 1 KiB each: other publishers' stay within a tenth of max_indicators per
+  # state; this node's own are all kept (1,000 a day: about 30 MiB at 30d).
+  ended_retention: 30d
 
 trust:
   # Publishers whose verdicts count towards a decision, each with a weight

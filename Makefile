@@ -147,16 +147,17 @@ soak: ## Run the soak test (3 nodes, SOAKRATE events/s for SOAKTIME, default 50/
 # variant; SIMPARALLEL the runs at once (an A-eclipse run needs about 40 GB);
 # SIMOUT the directory of the reports; SIMCACHE the directory that keeps each
 # finished run, so that an interrupted run resumes (empty it after changing
-# the code); SIMBUDGET how long runs are started for (0 is no limit).
-SCENARIO    ?= reduced
-SEEDS       ?= 20
-SIMPARALLEL ?= 2
-SIMOUT      ?= $(CURDIR)/dist/sim-routing
-SIMCACHE    ?= $(SIMOUT)/cache
-SIMBUDGET   ?= 0
+# the code); SIMBUDGET how long runs are started for (0 is no limit). They
+# are set for this target only, as the trust simulation's are for its own.
+sim-routing: SCENARIO    ?= reduced
+sim-routing: SEEDS       ?= 20
+sim-routing: SIMPARALLEL ?= 2
+sim-routing: SIMOUT      ?= $(CURDIR)/dist/sim-routing
+sim-routing: SIMCACHE    ?= $(SIMOUT)/cache
+sim-routing: SIMBUDGET   ?= 0
 
 .PHONY: sim-routing
-sim-routing: ## Run the routing simulation SCENARIO with SEEDS seeds and write its reports to SIMOUT (ADR 0033); only `reduced` runs in CI
+sim-routing: ## Run the routing simulation SCENARIO with SEEDS seeds and write its reports to SIMOUT (ADR 0035); only `reduced` runs in CI
 	$(GO) test -tags sim -run '^TestRouting$$' -count=1 -v -timeout 0 -parallel $(SIMPARALLEL) ./test/sim \
 		-sim.scenario=$(SCENARIO) -sim.seeds=$(SEEDS) -sim.out=$(SIMOUT) -sim.cache=$(SIMCACHE) \
 		-sim.version=$(VERSION) -sim.budget=$(SIMBUDGET)
@@ -171,6 +172,22 @@ RESOURCESRATE     ?= 100
 resources: build ## Measure one node's memory, CPU and disk in a 3-node mesh: idle, receiving verdicts, at rest; not part of `make ci`
 	$(GO) test -tags resources -run '^TestResources$$' -count=1 -v -timeout 0 ./test/resources \
 		-resources.bin=$(BIN_DIR) -resources.verdicts=$(RESOURCESVERDICTS) -resources.rate=$(RESOURCESRATE)
+
+# The trust simulation (ADR 0034): SCENARIO is baseline, reduced (the one CI
+# runs) or one behavior model; SEEDS the number of seeds; TRACE a trace file
+# to replay instead of the synthetic world; OUT the report's directory.
+# Finished runs are kept in SIMCACHE, so an interrupted scenario resumes.
+sim-trust: SCENARIO ?= reduced
+sim-trust: SEEDS ?= 20
+sim-trust: TRACE ?=
+sim-trust: OUT ?= $(BIN_DIR)/sim-trust/$(SCENARIO)
+sim-trust: SIMCACHE ?= $(BIN_DIR)/sim-trust/cache
+
+.PHONY: sim-trust
+sim-trust: ## Run the trust simulation SCENARIO (default reduced) over SEEDS seeds, report to OUT; not part of `make ci`
+	$(GO) test -tags simtrust -run '^TestSimTrust$$' -count=1 -v -timeout 0 ./test/simtrust \
+		-simtrust.scenario='$(SCENARIO)' -simtrust.seeds='$(SEEDS)' -simtrust.trace='$(abspath $(TRACE))' \
+		-simtrust.out='$(abspath $(OUT))' -simtrust.cache='$(abspath $(SIMCACHE))' -simtrust.version='$(VERSION)'
 
 .PHONY: ci
 ci: fmt-check vet lint lint-workflows lint-md test vuln ## Run every check the CI gate runs

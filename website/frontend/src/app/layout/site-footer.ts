@@ -1,11 +1,14 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, afterNextRender, inject, signal } from '@angular/core';
 
+import { CONSENT_CONTENT } from '../content/consent.content';
 import { LANDING_CONTENT } from '../content/landing.content';
+import { ConsentService } from '../core/analytics/consent.service';
 import { GithubIcon, ObieMark } from './icons';
 
 /**
  * Site footer: the GitHub button, project links with the invitation to the
- * inquiry form, legal links, attribution and licence.
+ * inquiry form, legal links, the privacy settings (which reopen the question
+ * about visitor statistics), attribution and licence.
  */
 @Component({
   selector: 'app-site-footer',
@@ -27,6 +30,14 @@ import { GithubIcon, ObieMark } from './icons';
             @for (link of footer.links; track link.href) {
               <li>
                 <a [href]="link.href" rel="noopener">{{ link.label }}</a>
+              </li>
+            }
+            <!-- A button needs JavaScript; the prerendered page leaves it out. -->
+            @if (interactive()) {
+              <li>
+                <button type="button" class="settings" (click)="openPrivacySettings($event)">
+                  {{ privacySettings }}
+                </button>
               </li>
             }
           </ul>
@@ -70,10 +81,28 @@ import { GithubIcon, ObieMark } from './icons';
       list-style: none;
     }
 
-    nav a {
+    nav a,
+    .settings {
       display: inline-block;
       padding-block: var(--space-2);
       font-weight: 600;
+    }
+
+    .settings {
+      padding-inline: 0;
+      border: 0;
+      background: none;
+      color: var(--color-accent-text);
+      font: inherit;
+      font-weight: 600;
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 0.2em;
+      cursor: pointer;
+    }
+
+    .settings:hover {
+      text-decoration-thickness: 2px;
     }
 
     .small {
@@ -90,4 +119,17 @@ import { GithubIcon, ObieMark } from './icons';
 export class SiteFooter {
   protected readonly content = inject(LANDING_CONTENT);
   protected readonly footer = this.content.footer;
+  protected readonly privacySettings = inject(CONSENT_CONTENT).settings;
+  private readonly consent = inject(ConsentService);
+
+  /** True once the page runs in the browser. */
+  protected readonly interactive = signal(false);
+
+  constructor() {
+    afterNextRender(() => this.interactive.set(true));
+  }
+
+  protected openPrivacySettings(event: Event): void {
+    this.consent.openSettings(event.currentTarget as HTMLElement);
+  }
 }

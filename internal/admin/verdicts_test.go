@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -49,7 +50,26 @@ type verdictFixture struct {
 	db      *store.DB
 	pub     *storePublisher
 	key     *identity.Key
-	logs    *bytes.Buffer
+	logs    *syncBuffer
+}
+
+// syncBuffer is a bytes.Buffer the store's goroutines can log into while
+// the test reads it; badger logs after it has released the writer.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 // newVerdictFixture returns the admin handler backed by a real verdict
@@ -62,7 +82,7 @@ func newVerdictFixture(t *testing.T) *verdictFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var logs bytes.Buffer
+	var logs syncBuffer
 	log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	db := store.New(filepath.Join(dir, "db"), log, store.Options{})
 	if err := db.Start(context.Background()); err != nil {

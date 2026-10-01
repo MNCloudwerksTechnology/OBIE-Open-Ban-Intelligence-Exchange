@@ -32,6 +32,11 @@ per-package metrics (`obie_store_events_total`, `obie_enforce_*`), and
   `obie_admin_requests_total{endpoint,code}`. The pre-release
   `obie_enforce_*` metrics of ADR 0014 are replaced by the `obie_enforcer_*`
   and `obie_node_mode` ones; `obie_store_events_total` stays.
+  *Amended by [ADR 0032](0032-gossip-instrumentation-and-attribution.md):
+  the `obie_gossip_*` metrics count what GossipSub does (deliveries,
+  duplicates, rejects by reason, ignores, grafts, prunes, IHAVE and IWANT
+  by direction, mesh size) and the peer scores (a histogram, the peers
+  below each threshold and the peers scored), with no peer or IP label.*
 - **No high-cardinality labels.** Every label value comes from a closed set
   (outcomes, event types, states, families, results, reasons, modes). The
   admin endpoint label is the `ServeMux` pattern that served the request
@@ -43,8 +48,11 @@ per-package metrics (`obie_store_events_total`, `obie_enforce_*`), and
   calls that apply a change; `enforcer_skipped_total` counts a block when it
   becomes skipped, not on every pass. `propagation_delay_seconds` is receipt
   time minus `issued_at` of accepted events (whole-second precision, clamped
-  at 0 for clocks running ahead). `decisions{state}` counts the decisions
-  the engine keeps: every indicator with active verdicts, plus
+  at 0 for clocks running ahead). *Amended by
+  [ADR 0032](0032-gossip-instrumentation-and-attribution.md): minus the
+  creation time the event's UUIDv7 `id` carries, to the millisecond, when
+  it lies within `issued_at`'s second.* `decisions{state}` counts the
+  decisions the engine keeps: every indicator with active verdicts, plus
   force-blocks.
 - **Audit log** (`internal/audit`, subsystem `audit`, registered after
   `store` and before `decision` when `audit.path` is set): one JSON object
@@ -67,6 +75,11 @@ per-package metrics (`obie_store_events_total`, `obie_enforce_*`), and
   left out of records about no address; the last 10,000 records are also
   kept in memory, with or without `audit.path`, for the console's
   timeline.*
+  *Amended by [ADR 0032](0032-gossip-instrumentation-and-attribution.md):
+  `block-added`, `block-updated` and `block-removed` records list the
+  verdicts that count in the block in `obie.contributors` (`peer_id`,
+  `weight`, `confidence`, `verdict_id`); a removal lists those of the
+  block that ended. `obie.publishers` stays a count.*
 - **Transition stream.** `decision.Engine.SubscribeTransitions` streams every
   change of a decision's state (block/none/allowed) with the previous state;
   the block change stream of ADR 0011 is unchanged.

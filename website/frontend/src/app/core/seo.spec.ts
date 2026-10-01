@@ -100,6 +100,26 @@ describe('SEO head tags', () => {
     expect(head.name('twitter:image')).toBe(`${ORIGIN}/social/obie-share.png`);
   });
 
+  it('links every page to its German counterpart, and English as the default', async () => {
+    const pairs = { '/': '/de', '/impressum': '/de/impressum', '/privacy': '/de/datenschutz' };
+    for (const [url, german] of Object.entries(pairs)) {
+      await visit(url);
+      const links = Array.from(document.head.querySelectorAll('link[rel="alternate"][hreflang]'));
+      expect(
+        links.map((link) => [link.getAttribute('hreflang'), link.getAttribute('href')]),
+        url,
+      ).toEqual([
+        ['en', ORIGIN + url],
+        ['de', ORIGIN + german],
+        ['x-default', ORIGIN + url],
+      ]);
+      expect(readHead().property('og:locale')).toBe('en_GB');
+      expect(readHead().property('og:locale:alternate')).toBe('de_DE');
+    }
+    await visit('/404');
+    expect(document.head.querySelectorAll('link[rel="alternate"][hreflang]').length).toBe(0);
+  });
+
   it('keeps the not-found page out of the index and drops the previous page’s canonical', async () => {
     await visit('/impressum');
     const head = await visit('/404');

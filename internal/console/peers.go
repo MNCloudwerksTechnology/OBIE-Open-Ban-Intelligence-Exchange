@@ -3,6 +3,7 @@ package console
 import (
 	"cmp"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"slices"
@@ -26,11 +27,12 @@ const (
 
 // Orders of the peers view, each in its natural direction.
 const (
-	sortPeer       = "peer"
-	sortConnection = "connection"
-	sortTrust      = "trust"
-	sortVerdicts   = "verdicts"
-	sortRejected   = "rejected"
+	sortPeer        = "peer"
+	sortConnection  = "connection"
+	sortTrust       = "trust"
+	sortVerdicts    = "verdicts"
+	sortRejected    = "rejected"
+	sortGossipScore = "score"
 )
 
 // States of a peer's connection, for the stylesheet.
@@ -55,6 +57,7 @@ var (
 		{sortTrust, "Trust weight", "descending"},
 		{sortVerdicts, "Verdicts held", "descending"},
 		{sortRejected, "Events, last hour", "descending"},
+		{sortGossipScore, "Gossip score", "ascending"},
 	}
 	// rejectionReasons name the reasons for rejecting an event, by the
 	// outcome of the gossip validation.
@@ -256,12 +259,33 @@ func sortPeers(entries []peerEntry, by string) {
 			c = cmp.Compare(b.verdicts.Held, a.verdicts.Held)
 		case sortRejected:
 			c = cmp.Compare(b.rejected(), a.rejected())
+		case sortGossipScore:
+			c = compareScores(a.GossipScore, b.GossipScore)
 		}
 		if c != 0 {
 			return c
 		}
 		return comparePeers(&a, &b)
 	})
+}
+
+// compareScores orders the lowest GossipSub score first and peers
+// without one last.
+func compareScores(a, b *GossipScore) int {
+	switch {
+	case a == nil || b == nil:
+		return cmp.Compare(boolRank(a == nil), boolRank(b == nil))
+	default:
+		return cmp.Compare(a.Score, b.Score)
+	}
+}
+
+// boolRank orders false before true.
+func boolRank(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }
 
 // connectionRank orders the connected peers first, then those seen since
@@ -376,6 +400,64 @@ type peerView struct {
 	Reasons                        []rejection
 	// Window names how far back the events count, e.g. "last hour".
 	Window string
+	// Score describes the peer's GossipSub score; its Value is empty if
+	// the peer has none.
+	Score scoreView
+}
+
+// scoreView is a peer's GossipSub score as the views show it (ADR 0032).
+type scoreView struct {
+	Value string
+	// Badge names the lowest score limit (GossipSub threshold) the score is
+	// below; empty if none.
+	Badge string
+	// ReadAt is when the score was read.
+	ReadAt timestamp
+	// Components explain the score on the peer's page.
+	Components []scoreComponent
+}
+
+// scoreComponent is one component of a GossipSub score.
+type scoreComponent struct{ Label, Value string }
+
+// thresholdBadges say what a score below each GossipSub threshold means,
+// lowest threshold last. The views call them score limits: a threshold is
+// what a decision's score must reach.
+var thresholdBadges = []struct{ threshold, badge string }{
+	{"gossip", "Below the gossip limit: no gossip with it"},
+	{"publish", "Below the publish limit: gets none of this node's events"},
+	{"graylist", "Graylisted: its messages are ignored"},
+}
+
+// newScoreView describes the GossipSub score s; the zero view if s is nil.
+func newScoreView(s *GossipScore) scoreView {
+	if s == nil {
+		return scoreView{}
+	}
+	v := scoreView{Value: scoreNumber(s.Score), ReadAt: stamp(s.ReadAt)}
+	for _, b := range thresholdBadges {
+		if slices.Contains(s.Below, b.threshold) {
+			v.Badge = b.badge
+		}
+	}
+	inMesh := "not in this node's mesh"
+	if s.TimeInMesh > 0 {
+		inMesh = s.TimeInMesh.Round(time.Second).String()
+	}
+	v.Components = []scoreComponent{
+		{"Time in this node's mesh", inMesh},
+		{"First deliveries of valid events", scoreNumber(s.FirstMessageDeliveries)},
+		{"Invalid messages", scoreNumber(s.InvalidMessageDeliveries)},
+		{"Behavior penalty", scoreNumber(s.BehaviourPenalty)},
+		{"IP colocation factor", scoreNumber(s.IPColocationFactor)},
+		{"Application score", scoreNumber(s.AppSpecificScore)},
+	}
+	return v
+}
+
+// scoreNumber formats a score or a component rounded to two decimals.
+func scoreNumber(f float64) string {
+	return strconv.FormatFloat(math.Round(f*100)/100+0, 'f', -1, 64)
 }
 
 // rejection is why a number of events were rejected.
@@ -413,6 +495,7 @@ func newPeerView(e *peerEntry, window time.Duration) peerView {
 	v.AddrsFrom = addrsFrom(&e.Peer)
 	v.Default, v.NoInfluence = !e.Publisher, e.untrusted()
 	v.Held, v.HeldNote = heldText(e.verdicts)
+	v.Score = newScoreView(e.GossipScore)
 	return v
 }
 

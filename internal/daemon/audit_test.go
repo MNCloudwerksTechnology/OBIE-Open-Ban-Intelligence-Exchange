@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -99,6 +100,34 @@ func TestAuditDecisionChanges(t *testing.T) {
 	}
 	if got := auditEntries(t, rotated); len(got) != 1 {
 		t.Errorf("rotated file: %q", got)
+	}
+	// Both the block and its removal name this node's verdict (ADR 0032).
+	checked := 0
+	for _, file := range []string{rotated, path} {
+		data, _ := os.ReadFile(file) // #nosec G304 -- test file.
+		for line := range strings.Lines(string(data)) {
+			var doc struct {
+				Event struct{ Action string }
+				Obie  struct {
+					Indicator    string
+					Contributors []audit.Contributor
+				}
+			}
+			if err := json.Unmarshal([]byte(line), &doc); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.HasPrefix(doc.Event.Action, "block-") || doc.Obie.Indicator != "ipv4:198.18.0.12" {
+				continue
+			}
+			want := []audit.Contributor{{PeerID: self, Weight: 1, Confidence: 1, VerdictID: "01900000-0000-7000-8000-000000000012"}}
+			if !reflect.DeepEqual(doc.Obie.Contributors, want) {
+				t.Errorf("%s of 198.18.0.12: contributors %+v, want %+v", doc.Event.Action, doc.Obie.Contributors, want)
+			}
+			checked++
+		}
+	}
+	if checked != 2 {
+		t.Errorf("%d block records of 198.18.0.12, want its addition and its removal", checked)
 	}
 }
 

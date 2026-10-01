@@ -1,4 +1,4 @@
-# ADR 0033: A routing simulation of thousands of nodes in virtual time
+# ADR 0035: A routing simulation of thousands of nodes in virtual time
 
 - **Status:** Accepted
 - **Date:** 2026-09-30

@@ -20,6 +20,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/internal/decision"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce"
 	"github.com/MNCloudwerksTechnology/obie/internal/enforce/nft"
+	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
 	"github.com/MNCloudwerksTechnology/obie/internal/identity"
 	"github.com/MNCloudwerksTechnology/obie/internal/lifecycle"
 	"github.com/MNCloudwerksTechnology/obie/internal/logging"
@@ -146,8 +147,9 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 	log.Info("allow-list loaded", "entries", len(allow.Entries()))
 
 	db := store.New(filepath.Join(cfg.Node.StateDir, "db"), logs.Logger(store.Name), store.Options{
-		MaxIndicators: cfg.Store.MaxIndicators,
-		Self:          id.PeerID(),
+		MaxIndicators:  cfg.Store.MaxIndicators,
+		EndedRetention: cfg.Store.EndedRetention.Std(),
+		Self:           id.PeerID(),
 	})
 	if opts.Testing.Store != nil {
 		opts.Testing.Store(db)
@@ -167,6 +169,7 @@ func Run(ctx context.Context, cfg *config.Config, logs *logging.Factory, opts Op
 		UserAgent:   "obied/" + version.Version,
 		Store:       db,
 		RateLimit:   cfg.Mesh.RateLimit,
+		TracePath:   cfg.Mesh.TracePath,
 		Connections: auditConnections(auditLog),
 
 		AllowDocumentationRanges: opts.Testing.AllowDocumentationRanges,
@@ -415,9 +418,28 @@ func peerResponses(peers []mesh.Peer) []admin.PeerResponse {
 			LatencySeconds: p.Latency.Seconds(),
 			TrustWeight:    p.TrustWeight,
 			Bootstrap:      p.Bootstrap,
+			GossipScore:    gossipScoreResponse(p.GossipScore),
 		}
 	}
 	return out
+}
+
+// gossipScoreResponse converts a peer's GossipSub score; nil for none.
+func gossipScoreResponse(s *gossip.PeerScore) *admin.GossipScoreResponse {
+	if s == nil {
+		return nil
+	}
+	return &admin.GossipScoreResponse{
+		Score:                    s.Score,
+		Below:                    append([]string{}, s.Below()...),
+		TimeInMeshSeconds:        s.TimeInMesh.Seconds(),
+		FirstMessageDeliveries:   s.FirstMessageDeliveries,
+		InvalidMessageDeliveries: s.InvalidMessageDeliveries,
+		IPColocationFactor:       s.IPColocationFactor,
+		BehaviourPenalty:         s.BehaviourPenalty,
+		AppSpecificScore:         s.AppSpecificScore,
+		ReadAt:                   s.ReadAt.UTC(),
+	}
 }
 
 // decisionResponse converts a decision into its admin API summary.

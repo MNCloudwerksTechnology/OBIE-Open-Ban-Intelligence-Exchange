@@ -45,7 +45,8 @@ func newHost(t *testing.T, key crypto.PrivKey) host.Host {
 	return h
 }
 
-func newNode(t *testing.T) *node {
+// newNode returns a node with the default options, changed by tune.
+func newNode(t *testing.T, tune ...func(*node, *Options)) *node {
 	t.Helper()
 	p := newPublisher(t)
 	key, err := crypto.UnmarshalEd25519PrivateKey(p.key)
@@ -53,12 +54,16 @@ func newNode(t *testing.T) *node {
 		t.Fatal(err)
 	}
 	n := &node{publisher: p, host: newHost(t, key), store: newStore(t), metrics: &countingMetrics{}}
-	n.gossip, err = New(n.host, Options{
+	opts := Options{
 		Store:          n.store,
 		PublisherLimit: defaultLimit.Publisher,
 		PeerLimit:      defaultLimit.Peer,
 		Metrics:        n.metrics,
-	}, discardLogger())
+	}
+	for _, f := range tune {
+		f(n, &opts)
+	}
+	n.gossip, err = New(n.host, opts, discardLogger())
 	if err != nil {
 		t.Fatal(err)
 	}

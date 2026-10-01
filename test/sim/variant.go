@@ -10,7 +10,7 @@ import (
 	"github.com/MNCloudwerksTechnology/obie/pkg/obieproto"
 )
 
-// Variant is a router configuration of the honest nodes (ADR 0033).
+// Variant is a router configuration of the honest nodes (ADR 0035).
 type Variant struct {
 	Name    string
 	Summary string

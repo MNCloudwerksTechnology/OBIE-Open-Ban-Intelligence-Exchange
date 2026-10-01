@@ -1,4 +1,4 @@
-// Package sim is the routing simulation of ADR 0033: thousands of honest
+// Package sim is the routing simulation of ADR 0035: thousands of honest
 // OBIE nodes — the real internal/mesh and internal/gossip — and hostile
 // peers on an in-memory libp2p network, in the virtual time of a
 // testing/synctest bubble. A scenario builds the network, its adversaries

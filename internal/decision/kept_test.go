@@ -12,10 +12,10 @@ func TestKeptSet(t *testing.T) {
 		t.Fatal("zero keptSet is not empty")
 	}
 	a, b, c := indicator("203.0.113.7"), indicator("198.51.100.0/24"), indicator("2001:db8::1")
-	s.put(a.Key(), Decision{Indicator: a, State: StateBlock}, nil)
-	s.put(b.Key(), Decision{Indicator: b, State: StateNone}, nil)
-	s.put(c.Key(), Decision{Indicator: c, State: StateAllowed}, nil)
-	s.put(b.Key(), Decision{Indicator: b, State: StateBlock}, []heldVerdict{{counts: true}})
+	s.put(a.Key(), Decision{Indicator: a, State: StateBlock}, nil, nil)
+	s.put(b.Key(), Decision{Indicator: b, State: StateNone}, nil, nil)
+	s.put(c.Key(), Decision{Indicator: c, State: StateAllowed}, nil, nil)
+	s.put(b.Key(), Decision{Indicator: b, State: StateBlock}, []heldVerdict{{counts: true}}, nil)
 	if k, ok := s.get(b.Key()); !ok || k.d.State != StateBlock || len(k.held) != 1 ||
 		k.prefix != netip.MustParsePrefix("198.51.100.0/24") || s.len() != 3 {
 		t.Fatalf("replaced = %+v, %d kept", k, s.len())
@@ -38,7 +38,7 @@ func TestKeptSetShrinks(t *testing.T) {
 	var s keptSet
 	for i := range 4096 {
 		ind := indicator(fmt.Sprintf("10.0.%d.%d", i>>8, i&0xff))
-		s.put(ind.Key(), Decision{Indicator: ind}, nil)
+		s.put(ind.Key(), Decision{Indicator: ind}, nil, nil)
 	}
 	grown := cap(s.items)
 	for i := range 4000 {

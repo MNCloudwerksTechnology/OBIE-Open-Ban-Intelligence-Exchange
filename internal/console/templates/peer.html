@@ -90,6 +90,22 @@
     None: the peer sent this node no event in the {{.Window}}. A publisher's verdicts that other peers relay count for those peers.
     {{- end}}
   </dd>
+  <dt>Gossip score</dt>
+  <dd>
+    {{- with .Score}}
+    {{- if .Value}}
+    <strong>{{.Value}}</strong>, read <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time>.{{with .Badge}} <span class="badge">{{.}}</span>{{else}} Above every score limit.{{end}}
+    <ul class="events">
+      {{- range .Components}}
+      <li>{{.Label}}: {{.Value}}</li>
+      {{- end}}
+    </ul>
+    <span class="cell-note">GossipSub's score rises with time in the mesh and first deliveries, and falls with invalid messages: below -50 no gossip, below -100 none of this node's events, below -200 its messages are ignored.</span>
+    {{- else}}
+    None: no score was read for this peer yet, or it left more than an hour ago.
+    {{- end}}
+    {{- end}}
+  </dd>
 </dl>
 {{- end}}
 {{- end}}

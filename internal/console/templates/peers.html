@@ -78,6 +78,17 @@
         <span class="cell-note">None</span>
         {{- end}}
       </td>
+      <td>
+        <span class="cell-label">Gossip score</span>
+        {{- with .Score.Value}}
+        <span class="weight">{{.}}</span>
+        {{- else}}
+        <span class="cell-note">Not scored</span>
+        {{- end}}
+        {{- with .Score.Badge}}
+        <span class="badge">{{.}}</span>
+        {{- end}}
+      </td>
     </tr>
     {{- end}}
   </tbody>

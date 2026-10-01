@@ -628,7 +628,7 @@
           "sort": "none"
         }
       },
-      "description": "Time from an accepted event's issued_at to its receipt (whole-second precision; includes clock skew)."
+      "description": "Time from an accepted event's creation to its receipt: to the millisecond from its UUIDv7 id, else from its whole-second issued_at; includes clock skew."
     },
     {
       "id": 12,
@@ -672,6 +672,230 @@
           "sort": "none"
         }
       }
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Gossip mesh",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(obie_gossip_mesh_peers{instance=~\"$instance\"})",
+          "legendFormat": "mesh peers"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(obie_gossip_grafts_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "grafts/s"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(obie_gossip_prunes_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "prunes/s"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "Peers in the topic mesh, to which the node relays every event in full, and how often peers join (GRAFT) and leave (PRUNE) it: the mesh's size and churn."
+    },
+    {
+      "id": 14,
+      "type": "timeseries",
+      "title": "Gossip copies received",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 36,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(obie_gossip_deliveries_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "delivered"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(obie_gossip_duplicates_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "duplicates"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(rate(obie_gossip_ignores_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "ignored"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (reason) (rate(obie_gossip_rejects_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "rejected: {{reason}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "Copies of events received from peers per second: the first valid copy of each (delivered), copies of events already seen, those the validator ignored, and those dropped by reason."
+    },
+    {
+      "id": 15,
+      "type": "timeseries",
+      "title": "Duplicate factor",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 44,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "(sum(rate(obie_gossip_deliveries_total{instance=~\"$instance\"}[$__rate_interval])) + sum(rate(obie_gossip_duplicates_total{instance=~\"$instance\"}[$__rate_interval]))) / sum(rate(obie_gossip_deliveries_total{instance=~\"$instance\"}[$__rate_interval]))",
+          "legendFormat": "copies per event"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "Copies received per event delivered: 1 means every event arrived once; gossip normally sends a few."
+    },
+    {
+      "id": 16,
+      "type": "timeseries",
+      "title": "Peer scores",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 44,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum(obie_gossip_scored_peers{instance=~\"$instance\"})",
+          "legendFormat": "scored peers"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${datasource}"
+          },
+          "expr": "sum by (threshold) (obie_gossip_peers_below_threshold{instance=~\"$instance\"})",
+          "legendFormat": "below {{threshold}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "description": "Peers with a GossipSub score and those below the gossip (-50), publish (-100) and graylist (-200) thresholds at the last reading."
     }
   ]
 }

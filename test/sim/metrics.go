@@ -23,7 +23,7 @@ const (
 	windowPrefix = "delivery_ratio:"
 )
 
-// Loss causes besides the outcomes of a first copy (ADR 0033).
+// Loss causes besides the outcomes of a first copy (ADR 0035).
 const (
 	causeNeverReceived = "never_received"
 	causeOffline       = "offline"

@@ -47,6 +47,26 @@ type Peer struct {
 	// Events counts the events the peer sent over the last
 	// PeerSet.EventWindow.
 	Events EventCounts
+	// GossipScore is the peer's GossipSub score at the last reading; nil
+	// if it has none (ADR 0032).
+	GossipScore *GossipScore
+}
+
+// GossipScore is a peer's GossipSub score and its components (ADR 0032).
+type GossipScore struct {
+	Score float64
+	// Below names the thresholds the score is below, highest first:
+	// "gossip", "publish", "graylist".
+	Below []string
+	// TimeInMesh is how long the peer has been in this node's mesh of the
+	// topic; zero if it is not in it.
+	TimeInMesh time.Duration
+	// FirstMessageDeliveries and InvalidMessageDeliveries are the decayed
+	// counters of the first valid copies and the invalid messages it sent.
+	FirstMessageDeliveries, InvalidMessageDeliveries       float64
+	IPColocationFactor, BehaviourPenalty, AppSpecificScore float64
+	// ReadAt is when the score was read.
+	ReadAt time.Time
 }
 
 // EventCounts count the events a peer sent to this node, by what became of

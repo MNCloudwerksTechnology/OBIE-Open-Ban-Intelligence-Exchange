@@ -12,7 +12,7 @@ import (
 // memStore is the store of a simulated node where eviction is not
 // measured: it remembers the IDs of the events it accepted until they
 // expire, which is all that routing asks of a store (Seen and Put). It
-// keeps no event and no indicator state (ADR 0033).
+// keeps no event and no indicator state (ADR 0035).
 type memStore struct {
 	mu   sync.Mutex
 	seen map[string]time.Time

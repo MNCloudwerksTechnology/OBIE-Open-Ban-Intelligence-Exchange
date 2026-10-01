@@ -31,6 +31,8 @@ func TestRunTestingHooks(t *testing.T) {
 	cfg.Admin.Socket = filepath.Join(dir, "obie.sock")
 	cfg.Admin.SocketGroup = "obie-test-no-such-group"
 	cfg.Mesh.Listen = []string{"/ip4/127.0.0.1/tcp/0"}
+	cfg.Store.EndedRetention = config.Duration(3 * 24 * time.Hour)
+	cfg.Mesh.TracePath = filepath.Join(dir, "trace.jsonl")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	started := make(chan Endpoints, 1)
@@ -54,6 +56,11 @@ func TestRunTestingHooks(t *testing.T) {
 		}
 		if db == nil || db.Ready() != nil {
 			t.Errorf("Store hook gave %v, want the node's open store", db)
+		} else if got := db.EndedRetention(); got != 3*24*time.Hour {
+			t.Errorf("store keeps ended verdicts %v, want store.ended_retention (3 days)", got)
+		}
+		if _, err := os.Stat(cfg.Mesh.TracePath); err != nil {
+			t.Errorf("mesh.trace_path was not opened: %v", err)
 		}
 	case err := <-done:
 		t.Fatalf("Run returned before starting: %v", err)

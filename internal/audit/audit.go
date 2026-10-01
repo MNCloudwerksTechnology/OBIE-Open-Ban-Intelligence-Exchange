@@ -77,6 +77,15 @@ type Scores struct {
 	Publishers int
 }
 
+// Contributor is a verdict that counts in a block: one entry of
+// obie.contributors (ADR 0032).
+type Contributor struct {
+	PeerID     string  `json:"peer_id"`
+	Weight     float64 `json:"weight"`
+	Confidence float64 `json:"confidence"`
+	VerdictID  string  `json:"verdict_id"`
+}
+
 // Record is one change: of a decision, an override, a verdict this node
 // issued, a peer's connection, the configuration or the mode (ADR 0025).
 type Record struct {
@@ -94,6 +103,9 @@ type Record struct {
 	State string
 	// Scores are set for decisions.
 	Scores *Scores
+	// Contributors are the verdicts that count in a block, set (if empty,
+	// not nil) for block records only.
+	Contributors []Contributor
 	// Cause is what triggered a decision change, e.g. "verdict" or "reload".
 	Cause string
 	// ExpiresAt is when a block, override or verdict ends; zero for never.
@@ -345,22 +357,25 @@ type UserFields struct {
 
 // ObieFields are OBIE's own fields.
 type ObieFields struct {
-	Indicator       string   `json:"indicator,omitempty"`
-	Mode            string   `json:"mode"`
-	State           string   `json:"state,omitempty"`
-	Score           *float64 `json:"score,omitempty"`
-	Threshold       *float64 `json:"threshold,omitempty"`
-	Publishers      *int     `json:"publishers,omitempty"`
-	Cause           string   `json:"cause,omitempty"`
-	ExpiresAt       string   `json:"expires_at,omitempty"`
-	EventID         string   `json:"event_id,omitempty"`
-	Revokes         string   `json:"revokes,omitempty"`
-	Note            string   `json:"note,omitempty"`
-	PreviousMode    string   `json:"previous_mode,omitempty"`
-	PeerID          string   `json:"peer_id,omitempty"`
-	PeerName        string   `json:"peer_name,omitempty"`
-	Settings        []string `json:"settings,omitempty"`
-	RestartSettings []string `json:"restart_settings,omitempty"`
+	Indicator  string   `json:"indicator,omitempty"`
+	Mode       string   `json:"mode"`
+	State      string   `json:"state,omitempty"`
+	Score      *float64 `json:"score,omitempty"`
+	Threshold  *float64 `json:"threshold,omitempty"`
+	Publishers *int     `json:"publishers,omitempty"`
+	// Contributors is written for block records, as [] if none counts,
+	// and left out of the others.
+	Contributors    []Contributor `json:"contributors,omitzero"`
+	Cause           string        `json:"cause,omitempty"`
+	ExpiresAt       string        `json:"expires_at,omitempty"`
+	EventID         string        `json:"event_id,omitempty"`
+	Revokes         string        `json:"revokes,omitempty"`
+	Note            string        `json:"note,omitempty"`
+	PreviousMode    string        `json:"previous_mode,omitempty"`
+	PeerID          string        `json:"peer_id,omitempty"`
+	PeerName        string        `json:"peer_name,omitempty"`
+	Settings        []string      `json:"settings,omitempty"`
+	RestartSettings []string      `json:"restart_settings,omitempty"`
 	// Origin is the door of an operator action: console or admin-api.
 	Origin string `json:"origin,omitempty"`
 }
@@ -381,7 +396,8 @@ func (l *Log) entry(r Record) Entry {
 			Reason: r.Reason},
 		Obie: ObieFields{Indicator: indicatorKey(r.Indicator), Mode: l.mode(), State: r.State, Cause: r.Cause,
 			EventID: r.EventID, Revokes: r.Revokes, Note: r.Note, PreviousMode: r.PreviousMode, PeerID: r.PeerID,
-			PeerName: r.PeerName, Settings: r.Settings, RestartSettings: r.RestartSettings, Origin: r.Origin.Via},
+			PeerName: r.PeerName, Settings: r.Settings, RestartSettings: r.RestartSettings, Origin: r.Origin.Via,
+			Contributors: r.Contributors},
 	}
 	if r.Origin.UserID != "" {
 		e.User = &UserFields{ID: r.Origin.UserID, Name: r.Origin.UserName}

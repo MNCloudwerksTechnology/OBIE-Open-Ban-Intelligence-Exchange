@@ -13,7 +13,7 @@ import (
 )
 
 // Scenario is a simulated network with its adversaries and traffic (ADR
-// 0033).
+// 0035).
 type Scenario struct {
 	Name    string
 	Group   string
@@ -49,7 +49,7 @@ func Scenarios() map[string]*Scenario {
 		// A burst on a healthy mesh costs about 17 s of real time per
 		// virtual second on 300 nodes: every copy arrives at an instant of
 		// its own, so the run advances on about one core. The regular
-		// graph's burst therefore runs on 100 nodes (ADR 0033).
+		// graph's burst therefore runs on 100 nodes (ADR 0035).
 		scenarioTraffic("T-burst-static", "static", 300, 1, true), scenarioTraffic("T-burst-regular", "regular", 100, 1, true),
 		scenarioReduced(),
 	} {
@@ -58,7 +58,7 @@ func Scenarios() map[string]*Scenario {
 	return out
 }
 
-// Common parameters of the scenarios (ADR 0033).
+// Common parameters of the scenarios (ADR 0035).
 const (
 	publisherShare = 0.10
 	regularDegree  = 20
@@ -160,7 +160,7 @@ func delayHonestLinks(w *world) {
 	}
 }
 
-// scenarioA reproduces an attack of Vyzovitis et al. 2020 (ADR 0033).
+// scenarioA reproduces an attack of Vyzovitis et al. 2020 (ADR 0035).
 func scenarioA(attack string) *Scenario {
 	const honest, sybils = 1000, 4000
 	perSybil, connectAt, attackAt, end := 20, time.Duration(0), time.Duration(0), 240*time.Second

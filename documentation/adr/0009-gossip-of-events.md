@@ -103,6 +103,10 @@ is throttled without starving the others.
   outcome of every message from a peer; `gossip.Outcomes` lists the
   outcomes. The metrics work package (#1663) wires it to Prometheus; until
   then the daemon passes none.
+  *Extended by [ADR 0032](0032-gossip-instrumentation-and-attribution.md):
+  a GossipSub `RawTracer` counts what happens before and around the
+  validator (`obie_gossip_*`), the peer scores are read every 10 seconds
+  and exported, and `mesh.trace_path` writes a line per copy of an event.*
 
 ## Consequences
 

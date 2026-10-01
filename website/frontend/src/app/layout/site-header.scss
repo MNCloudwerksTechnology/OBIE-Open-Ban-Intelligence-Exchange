@@ -4,7 +4,10 @@ header {
   backdrop-filter: blur(8px);
 }
 
-// Phones: brand and actions on the first row, the navigation wraps below.
+// Phones: brand and actions on the first row, the navigation wraps below
+// across the whole width. Its rows must not depend on the web font: the
+// links are painted in a fallback font first, and a row that appears or
+// disappears when Inter arrives shifts the whole page (CLS).
 .bar {
   display: grid;
   grid-template-areas:
@@ -76,11 +79,29 @@ nav li a {
   white-space: nowrap;
 }
 
-// The narrowest phones: the mark alone names the brand (the link keeps its
-// accessible name), so "View on GitHub" stays on one line.
-@media (max-width: 22rem) {
+// Phones: the mark alone names the brand (the link keeps its accessible
+// name), so the language switch, the theme toggle and "View on GitHub" fit
+// beside it on one line.
+@media (max-width: 26.99rem) {
   .brand span {
     display: none;
+  }
+}
+
+// The narrowest phones: "View on GitHub" becomes its icon, the label stays
+// the link's accessible name.
+@media (max-width: 22rem) {
+  .github {
+    padding-inline: var(--space-3);
+  }
+
+  .github .label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 

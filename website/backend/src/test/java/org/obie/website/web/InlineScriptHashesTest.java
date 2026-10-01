@@ -41,13 +41,14 @@ class InlineScriptHashesTest {
     String policy = SecurityHeadersFilter.contentSecurityPolicy(Set.of(ALERT_HASH));
 
     assertThat(policy)
-        .contains("script-src 'self' " + ALERT_HASH + ";")
+        .contains(
+            "script-src 'self' " + SecurityHeadersFilter.ANALYTICS_ORIGIN + " " + ALERT_HASH + ";")
         .doesNotContain("script-src 'self' 'unsafe-inline'");
   }
 
   @Test
   void contentSecurityPolicyWithoutInlineScripts() {
     assertThat(SecurityHeadersFilter.contentSecurityPolicy(Set.of()))
-        .contains("script-src 'self';");
+        .contains("script-src 'self' " + SecurityHeadersFilter.ANALYTICS_ORIGIN + ";");
   }
 }

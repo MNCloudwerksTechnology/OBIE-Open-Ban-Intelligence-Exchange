@@ -11,7 +11,7 @@ type region struct {
 	share float64
 }
 
-// regions are the eight regions nodes are placed in (ADR 0033), weighted
+// regions are the eight regions nodes are placed in (ADR 0035), weighted
 // towards Europe, where OBIE's first operators run.
 var regions = []region{
 	{"Frankfurt", 0.30},

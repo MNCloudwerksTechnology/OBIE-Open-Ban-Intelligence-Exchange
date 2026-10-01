@@ -1,28 +1,35 @@
-import { InjectionToken } from '@angular/core';
-
+import { ANALYTICS_HOST, CONSENT_STORAGE_KEY } from '../core/analytics/analytics.config';
 import { LegalContent } from './legal-content.model';
 import { LINKS } from './landing.content';
+import {
+  ANALYTICS_RAW_DATA_RETENTION_MONTHS,
+  INQUIRY_MAILBOX_RETENTION_YEARS,
+  INQUIRY_RETENTION_MONTHS,
+  OPERATOR_ADDRESS as OPERATOR_STREET_AND_TOWN,
+  OPERATOR_EMAIL,
+  OPERATOR_PHONE,
+  OPERATOR_PHONE_HREF,
+  SERVER_LOG_RETENTION_DAYS,
+} from './operator';
 
 // Copy of the Impressum (§ 5 DDG, § 18 MStV) and the privacy policy
 // (Art. 13 GDPR). The company data was supplied by the operator (WP #1677);
-// nothing here is invented. What is still unknown is marked TODO(operator)
+// the privacy policy follows https://cloudwerks.de/datenschutz, which the
+// operator declared applicable, and the operator's answers where that page
+// is silent (own server, Matomo retention); nothing here is invented. What is still unknown is marked TODO(operator)
 // and listed in website/README.md ("Legal pages"). The privacy policy
-// describes what the code does: change it together with the code.
+// describes what the code does: change it together with the code, and keep
+// the German version (legal.content.de.ts) in step.
 
-/** Operator's contact address for the Impressum and for privacy requests. */
-export const OPERATOR_EMAIL = 'markus.niewerth@cloudwerks.de';
+export { OPERATOR_EMAIL };
 
-const OPERATOR_PHONE = '+49 176 70526593';
-const OPERATOR_ADDRESS = ['Pottenort 15', '45891 Gelsenkirchen', 'Germany'];
+const OPERATOR_ADDRESS = [...OPERATOR_STREET_AND_TOWN, 'Germany'];
 
-/**
- * How long inquiries are kept: the default of `OBIE_INQUIRY_RETENTION`
- * (`P12M`). Change it here when the deployment sets another value.
- */
-export const INQUIRY_RETENTION = '12 months';
+/** How long inquiries are kept (`INQUIRY_RETENTION_MONTHS`), as the policy says it. */
+export const INQUIRY_RETENTION = `${INQUIRY_RETENTION_MONTHS} months`;
 
-/** How long the web server keeps its access logs (operator's setting). */
-export const SERVER_LOG_RETENTION = '7 days';
+/** How long the web server keeps its access logs, as the policy says it. */
+export const SERVER_LOG_RETENTION = `${SERVER_LOG_RETENTION_DAYS} days`;
 
 /** English legal pages. */
 export const LEGAL_CONTENT_EN: LegalContent = {
@@ -63,7 +70,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
           {
             kind: 'facts',
             items: [
-              { term: 'Phone', lines: [OPERATOR_PHONE], href: 'tel:+4917670526593' },
+              { term: 'Phone', lines: [OPERATOR_PHONE], href: OPERATOR_PHONE_HREF },
               { term: 'E-mail', lines: [OPERATOR_EMAIL], href: `mailto:${OPERATOR_EMAIL}` },
             ],
           },
@@ -169,11 +176,11 @@ export const LEGAL_CONTENT_EN: LegalContent = {
     meta: {
       title: 'Privacy policy (Datenschutzerklärung) · OBIE',
       description:
-        'How the OBIE website handles personal data: no cookies, no tracking, no third-party requests; what the inquiry form stores and for how long.',
+        'How the OBIE website handles personal data: no cookies, visitor statistics only with your consent, what the inquiry form stores and for how long.',
     },
     heading: 'Privacy policy',
     legalTerm: 'Datenschutzerklärung',
-    updated: 'Last updated: 28 September 2026',
+    updated: 'Last updated: 30 September 2026',
     intro:
       'This policy explains which personal data Cloudwerks Technology GmbH (“we”) processes when you visit this website or send an inquiry, for what purpose, on which legal basis and for how long (Art. 13 of the General Data Protection Regulation, GDPR). Terms such as “personal data” and “processing” have the meaning given in Art. 4 GDPR.',
     sections: [
@@ -185,11 +192,11 @@ export const LEGAL_CONTENT_EN: LegalContent = {
           {
             kind: 'list',
             items: [
-              'No cookies. This website sets no cookies and stores nothing else in your browser (no local storage, no session storage).',
-              'No tracking and no analytics. We do not measure your visit, build profiles or use advertising services.',
-              'No third-party requests. Fonts, images and scripts come from this website’s own server; your browser does not contact Google Fonts, content delivery networks or any other third party.',
-              'Because there are no cookies and no tracking, this website shows no cookie banner: there is nothing to consent to.',
-              'Apart from the server logs and the protection against abuse described below, we only receive what you type into the inquiry form, and we use it only to answer you.',
+              'No cookies. This website sets no cookies. The only thing it keeps in your browser is your answer to the question about visitor statistics, once you give one.',
+              `Visitor statistics only with your consent. If you allow them, we measure visits with Matomo on our own statistics server ${ANALYTICS_HOST}, without cookies and without passing data to third parties. You can withdraw your consent at any time under “Privacy settings” at the bottom of every page.`,
+              'No third-party requests. Fonts, images and scripts come from this website’s own server; your browser does not contact Google Fonts, content delivery networks or any other third party. Only if you allow statistics does it also contact our statistics server.',
+              'No advertising and no profiles. We use no advertising services and do not combine your visit with other data.',
+              'Apart from the server logs, the statistics you may allow and the protection against abuse described below, we only receive what you type into the inquiry form, and we use it only to answer you.',
             ],
           },
         ],
@@ -205,7 +212,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
               { term: 'Controller', lines: ['Cloudwerks Technology GmbH', ...OPERATOR_ADDRESS] },
               { term: 'Represented by', lines: ['Markus Niewerth, managing director'] },
               { term: 'E-mail', lines: [OPERATOR_EMAIL], href: `mailto:${OPERATOR_EMAIL}` },
-              { term: 'Phone', lines: [OPERATOR_PHONE], href: 'tel:+4917670526593' },
+              { term: 'Phone', lines: [OPERATOR_PHONE], href: OPERATOR_PHONE_HREF },
             ],
           },
           {
@@ -220,7 +227,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
         blocks: [
           {
             kind: 'paragraph',
-            text: 'This website, including its database, runs on servers of TODO(operator): name and address of the hosting provider. The provider processes data only on our behalf and under our instructions (processor, Art. 28 GDPR).',
+            text: 'This website, including its database, runs on our own server. No hosting provider processes these data on our behalf.',
           },
         ],
       },
@@ -251,16 +258,54 @@ export const LEGAL_CONTENT_EN: LegalContent = {
       },
       {
         id: 'cookies',
-        heading: 'Cookies, tracking and third-party content',
-        legalTerm: 'Cookies und Tracking',
+        heading: 'Cookies, browser storage and third-party content',
+        legalTerm: 'Cookies und Speicherung im Browser',
         blocks: [
           {
             kind: 'paragraph',
-            text: 'This website sets no cookies and reads or stores no information on your device beyond what is technically required to deliver the page you asked for (§ 25 TDDDG). If you switch between the light and the dark theme, the choice lasts for your current visit only and is not stored. We use no analytics or tracking tools and no advertising services. That is why this website shows no cookie banner.',
+            text: `This website sets no cookies. It stores one piece of information on your device: once you answer the question about visitor statistics, your answer (“granted” or “denied”) is kept in your browser’s local storage under the name ${CONSENT_STORAGE_KEY}, so that we do not ask again on every page. Storing it is strictly necessary to respect your choice (§ 25(2) no. 2 TDDDG). It contains nothing but the answer, is never sent to us and stays until you change your choice or delete your browser’s data for this website. Apart from that, and from the statistics you may allow (see below), this website reads or stores no information on your device beyond what is technically required to deliver the page you asked for (§ 25 TDDDG). If you switch between the light and the dark theme, the choice lasts for your current visit only and is not stored.`,
           },
           {
             kind: 'paragraph',
             text: 'The fonts (Inter and Source Code Pro) are served from this website’s own server; there is no connection to Google Fonts or any other font service. We embed no content from other providers, such as videos, maps or social media buttons.',
+          },
+        ],
+      },
+      {
+        id: 'analytics',
+        heading: 'Visitor statistics with Matomo',
+        legalTerm: 'Webanalyse mit Matomo',
+        blocks: [
+          {
+            kind: 'paragraph',
+            text: `With your consent, we measure how this website is used: which pages and sections are read, where visitors come from and which links they follow, so that we can improve the site. For this we use Matomo, an open-source web analytics software, which we run on our own statistics server ${ANALYTICS_HOST}. No data are passed to the maker of Matomo or to any other third party.`,
+          },
+          {
+            kind: 'paragraph',
+            text: `Nothing is measured until you choose “Accept”. Only then does your browser load the Matomo script from ${ANALYTICS_HOST} and send it the following for every page you open:`,
+          },
+          {
+            kind: 'list',
+            items: [
+              'the page, its title and the page you came from (referrer)',
+              'date and time, and how long the page stays open',
+              'links you follow to other websites',
+              'whether you sent an inquiry (its kind, never its content) and whether you started and finished the three-server demo',
+              'browser, operating system, device type, screen resolution and preferred language',
+              'your IP address, from which Matomo determines the approximate region you are in',
+            ],
+          },
+          {
+            kind: 'paragraph',
+            text: 'Matomo sets no cookies on this website. To tell the page views of one visit from those of other visits, it derives an identifier from the data above that changes every day; it does not tell us who you are. We do not pass the statistics on to anyone, do not combine them with other data and look at them only in summarised form.',
+          },
+          {
+            kind: 'paragraph',
+            text: 'Legal basis: your consent (Art. 6(1)(a) GDPR; for reading and storing information on your device, § 25(1) TDDDG). Consent is voluntary: without it the website works the same, and nothing is measured. You can withdraw it at any time with effect for the future (Art. 7(3) GDPR): choose “Privacy settings” at the bottom of any page, then “Decline”.',
+          },
+          {
+            kind: 'paragraph',
+            text: `Storage: Matomo deletes the raw visit data after ${ANALYTICS_RAW_DATA_RETENTION_MONTHS} months. Summarised reports contain no personal data.`,
           },
         ],
       },
@@ -293,7 +338,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
           },
           {
             kind: 'paragraph',
-            text: 'Forwarding by e-mail: after storing it, the server e-mails the inquiry to us and sends you a short confirmation that repeats nothing you typed. The server connects to TODO(operator): name and address of the e-mail (SMTP) provider over an encrypted connection (TLS) and hands the e-mails to it for delivery; the provider processes them only on our behalf (processor, Art. 28 GDPR). The copy in our mailbox is kept TODO(operator): how long answered inquiries stay in the mailbox.',
+            text: `Forwarding by e-mail: after storing it, the server e-mails the inquiry to us and sends you a short confirmation that repeats nothing you typed. The server connects to TODO(operator): name and address of the e-mail (SMTP) provider over an encrypted connection (TLS) and hands the e-mails to it for delivery; the provider processes them only on our behalf (processor, Art. 28 GDPR). We keep the copy in our mailbox until your inquiry has been dealt with, and after that as long as we need it to document the business contact, at most ${INQUIRY_MAILBOX_RETENTION_YEARS} years after our last contact, unless an agreement results. Contract and invoice data are kept for the periods commercial and tax law require (6 or 10 years).`,
           },
           {
             kind: 'paragraph',
@@ -323,7 +368,7 @@ export const LEGAL_CONTENT_EN: LegalContent = {
         blocks: [
           {
             kind: 'paragraph',
-            text: 'We do not transfer personal data collected on this website to countries outside the European Union or the European Economic Area. TODO(operator): confirm that the hosting and the e-mail provider process data only within the EU/EEA; otherwise name the transfer and its safeguard (Art. 44 ff. GDPR).',
+            text: 'We do not transfer personal data collected on this website to countries outside the European Union or the European Economic Area.',
           },
         ],
       },
@@ -339,6 +384,10 @@ export const LEGAL_CONTENT_EN: LegalContent = {
           {
             kind: 'paragraph',
             text: 'Right to object: where we process data on the basis of our legitimate interest (Art. 6(1)(f) GDPR), you may object at any time on grounds relating to your particular situation (Art. 21 GDPR).',
+          },
+          {
+            kind: 'paragraph',
+            text: 'Where we process data on the basis of your consent, you can withdraw it at any time with effect for the future (Art. 7(3) GDPR); processing before the withdrawal remains lawful.',
           },
           {
             kind: 'paragraph',
@@ -374,8 +423,4 @@ export const LEGAL_CONTENT_EN: LegalContent = {
   },
 };
 
-/** Copy of the legal pages; provide another `LegalContent` for a new language. */
-export const LEGAL_CONTENT = new InjectionToken<LegalContent>('LEGAL_CONTENT', {
-  providedIn: 'root',
-  factory: () => LEGAL_CONTENT_EN,
-});
+export { LEGAL_CONTENT } from './legal-content.token';

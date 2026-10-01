@@ -30,7 +30,7 @@ linters:
     - unused
   exclusions:
     paths:
-      # A copy of go-libp2p's mocknet for the routing simulation (ADR 0033),
+      # A copy of go-libp2p's mocknet for the routing simulation (ADR 0035),
       # kept close to upstream; formatting still applies.
       - test/sim/internal/mocknet
   settings:

@@ -1,7 +1,7 @@
 // Package mocknet provides a mock net.Network to test with.
 //
 // It is go-libp2p v0.50.0's p2p/net/mock, copied under its MIT license
-// (LICENSE in this directory) for the routing simulation (ADR 0033), with
+// (LICENSE in this directory) for the routing simulation (ADR 0035), with
 // three changes:
 //
 //   - mock_stream.go: a write is queued and delivered after the link's

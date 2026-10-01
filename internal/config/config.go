@@ -91,6 +91,10 @@ type Mesh struct {
 	Bootstrap []string `yaml:"bootstrap"`
 	// RateLimit bounds the events the node accepts from the mesh.
 	RateLimit RateLimit `yaml:"rate_limit"`
+	// TracePath is the file the node appends a line to for every copy of
+	// an event it receives and every event it publishes; empty for none
+	// (ADR 0032).
+	TracePath string `yaml:"trace_path"`
 }
 
 // RateLimit configures the token buckets that bound the events accepted
@@ -118,7 +122,17 @@ type Store struct {
 	// indicator. Beyond it the verdict expiring first is evicted; this
 	// node's own verdicts never are.
 	MaxIndicators int `yaml:"max_indicators"`
+	// EndedRetention is how long a revoked or expired verdict is kept
+	// after its expiry, so that the blocks it caused can be traced back
+	// to it (ADR 0032).
+	EndedRetention Duration `yaml:"ended_retention"`
 }
+
+// Bounds of store.ended_retention.
+const (
+	MinEndedRetention = Duration(time.Hour)
+	MaxEndedRetention = Duration(365 * day)
+)
 
 // Trust assigns trust weights to verdict publishers.
 type Trust struct {
@@ -222,7 +236,7 @@ func Default() Config {
 				Peer: TokenBucket{EventsPerSecond: 50, Burst: 250},
 			},
 		},
-		Store:     Store{MaxIndicators: 1_000_000},
+		Store:     Store{MaxIndicators: 1_000_000, EndedRetention: Duration(30 * day)},
 		Trust:     Trust{Publishers: []Publisher{}, DefaultWeight: 0, LocalWeight: 1.0},
 		Decision:  Decision{Threshold: 1.8, Quorum: 2, MaxTTL: Duration(30 * day), DefaultTTL: Duration(7 * day), LocalAutoblock: true},
 		Allowlist: Allowlist{CIDRs: []string{}, Files: []string{}},

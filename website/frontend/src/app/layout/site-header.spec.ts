@@ -77,9 +77,19 @@ describe('SiteHeader', () => {
       'Status',
       'Get started',
       'FAQ',
+      'Deutsch',
       'Switch to dark theme',
       'View on GitHub',
     ]);
+  });
+
+  it('links to this page in German, labelled in German', () => {
+    const link = header.querySelector<HTMLAnchorElement>('app-language-switch a');
+    expect(link?.getAttribute('href')).toBe('/de');
+    expect(link?.getAttribute('hreflang')).toBe('de');
+    expect(link?.getAttribute('lang')).toBe('de');
+    expect(link?.textContent?.trim()).toBe('DE');
+    expect(link?.getAttribute('aria-label')).toBe('Deutsch');
   });
 
   it('contains the theme toggle', () => {

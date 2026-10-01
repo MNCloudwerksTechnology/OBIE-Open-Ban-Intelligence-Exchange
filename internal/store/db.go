@@ -49,6 +49,10 @@ type Options struct {
 	// revoked, and those kept once they expired (ADR 0023); 0 means a tenth
 	// of MaxIndicators, at least 1,000.
 	MaxEnded int
+	// EndedRetention is how long a verdict is kept after its expiry, and
+	// once it ended (store.ended_retention); 0 means DefaultEndedRetention
+	// (ADR 0032).
+	EndedRetention time.Duration
 }
 
 func (o Options) withDefaults() Options {
@@ -66,6 +70,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.MaxEnded <= 0 {
 		o.MaxEnded = max(o.MaxIndicators/10, minMaxEnded)
+	}
+	if o.EndedRetention <= 0 {
+		o.EndedRetention = DefaultEndedRetention
 	}
 	return o
 }

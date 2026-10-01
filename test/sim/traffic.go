@@ -35,7 +35,7 @@ const (
 var asn = uint32(64512)
 
 // mitre are the techniques a verdict names; with them a verdict is about
-// 1 KB, the size of the traffic model (ADR 0033).
+// 1 KB, the size of the traffic model (ADR 0035).
 var mitre = []string{"T1110", "T1110.001", "T1110.002", "T1110.003", "T1110.004", "T1021.001", "T1021.002",
 	"T1021.004", "T1078", "T1078.001", "T1078.003", "T1133", "T1595", "T1595.001", "T1595.002", "T1592.002",
 	"T1590.005", "T1046", "T1190", "T1071.001", "T1105", "T1059.004", "T1543.002", "T1136.001", "T1098.004",

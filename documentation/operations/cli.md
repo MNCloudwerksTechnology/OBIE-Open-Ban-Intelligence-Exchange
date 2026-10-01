@@ -349,7 +349,8 @@ obiectl peers [--json]
 Lists every peer the node is connected to right now: its peer ID, the name
 and trust weight you gave it in trust.publishers, whether it is a bootstrap
 peer, since when it is connected, the round-trip time and its addresses.
-A peer you configured that is not listed is not connected; obied
+With --json, each peer also has its GossipSub score (gossip_score), once
+read. A peer you configured that is not listed is not connected; obied
 self-check tests whether it answers.
 
 | Flag | What it does |

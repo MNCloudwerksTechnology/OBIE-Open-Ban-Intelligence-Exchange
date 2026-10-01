@@ -377,7 +377,7 @@ func writeMarkdown(out io.Writer, h Header, sc *Scenario, byVariant map[string][
 	for _, mod := range []string{"github.com/libp2p/go-libp2p-pubsub", "github.com/libp2p/go-libp2p"} {
 		p("| %s | `%s` |\n", strings.TrimPrefix(mod, "github.com/libp2p/"), moduleVersion(mod))
 	}
-	p("| Go | `%s` |\n| Seeds | %s per variant |\n| Generated | %s |\n| Harness | `make sim-routing SCENARIO=%s` (test/sim, ADR 0033) |\n\n",
+	p("| Go | `%s` |\n| Seeds | %s per variant |\n| Generated | %s |\n| Harness | `make sim-routing SCENARIO=%s` (test/sim, ADR 0035) |\n\n",
 		runtime.Version(), seedList(byVariant), h.Generated.UTC().Format("2006-01-02"), sc.Name)
 
 	p("## Scenario\n\n| Parameter | Value |\n|---|---|\n")

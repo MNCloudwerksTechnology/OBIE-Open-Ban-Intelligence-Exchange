@@ -38,19 +38,29 @@ IMAGE=registry.example/obie-website:1.0.0`) and set `OBIE_IMAGE` to it.
 Search the repository for `TODO(operator)` to find every open placeholder;
 the [website README](../README.md) describes each field.
 
+Every text exists in English and German (`*.content.ts` and
+`*.content.de.ts`); fill in each placeholder in both.
+
 - [ ] **Founder photo**: `founder.photo` in
-      `website/frontend/src/app/content/landing.content.ts` (photo into
-      `website/frontend/public/founder/`, a non-empty `alt`).
-- [ ] **Talk topics** confirmed or replaced: `founder.topics` in the same file.
-- [ ] **Bio, name, role, links** checked: `founder.*` in the same file.
-- [ ] **Privacy policy placeholders** in
-      `website/frontend/src/app/content/legal.content.ts`: hosting provider
-      (`privacy.hosting`), e-mail (SMTP) provider and mailbox retention
-      (`privacy.inquiries`), transfers outside the EU/EEA
-      (`privacy.third-countries`).
-- [ ] **Impressum** checked against the company data in the same file.
-- [ ] **Legal review done**: `reviewPending: false` in `legal.content.ts`
-      removes the review notice from `/impressum` and `/privacy`.
+      `website/frontend/src/app/content/landing.content.ts` and
+      `landing.content.de.ts` (photo into `website/frontend/public/founder/`,
+      a non-empty `alt` in each language).
+- [ ] **Talk topics** confirmed or replaced: `founder.topics` in the same files.
+- [ ] **Bio, name, role, links** checked: `founder.*` in the same files.
+- [ ] **Privacy policy placeholder** in
+      `website/frontend/src/app/content/legal.content.ts` and
+      `legal.content.de.ts`: the e-mail (SMTP) provider (`privacy.inquiries`),
+      which must process the e-mails within the EU/EEA. The other facts come
+      from [cloudwerks.de/datenschutz](https://cloudwerks.de/datenschutz).
+- [ ] **Matomo** (site 5 on `metrics.cloudwerks.de`): old raw data deleted
+      after 14 months, as the policy states; tracking accepted only for the
+      site's own URL (see the
+      [website README](../README.md#visitor-statistics-matomo)).
+- [ ] **Impressum** checked against the company data in the same files.
+- [ ] **Legal review done**, including the German texts: `reviewPending:
+      false` in `legal.content.ts` and `legal.content.de.ts` removes the
+      review notice from `/impressum`, `/privacy`, `/de/impressum` and
+      `/de/datenschutz`.
 - [ ] **Inquiry retention** in the policy matches `OBIE_INQUIRY_RETENTION`
       (default 12 months).
 - [ ] **Log retention**: the reverse proxy's access log and the container
