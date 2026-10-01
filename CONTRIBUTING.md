@@ -31,6 +31,7 @@ first — it is the binding technical baseline.
 | `make test-privileged` | Tests including the `privileged` build tag (needs root)          |
 | `make fuzz`            | Every fuzz target for `FUZZTIME` each (default `30s`)            |
 | `make soak`            | The soak test: 3 nodes, 50 events/s for 30 min (not in CI)       |
+| `make sim-routing`     | The routing simulation of `SCENARIO` (default `reduced`); see [Routing simulation](#routing-simulation) |
 | `make sim-trust`       | The trust simulation's `SCENARIO` (default `reduced`, as in CI)  |
 | `make ci`              | fmt-check + vet + lint + lint-workflows + lint-md + test + vuln  |
 | `make clean`           | Removes `./bin/` including installed tools                       |
@@ -54,6 +55,10 @@ is a byte-identical copy for the public GitHub mirror — change both together;
   uploaded as build artifacts.
 - **fuzz** — `make fuzz FUZZTIME=30s`: every fuzz target mutates inputs
   for 30 s (see [Fuzz testing](#fuzz-testing)).
+- **routing simulation (reduced)** — `make sim-routing SCENARIO=reduced
+  SEEDS=1`: 100 nodes under a cold boot attack, one seed per router variant
+  (see [Routing simulation](#routing-simulation)); the report is uploaded as
+  a build artifact.
 - **release build, image and lab** — `make release` twice (the
   `SHA256SUMS` must match: the build is reproducible), `make check-unit`
   (`systemd-analyze verify` and an exposure of at most 3.0 for the systemd
@@ -314,6 +319,35 @@ make soak SOAKTIME=15m SOAKRATE=100
 
 Record the results of a full run in
 [`documentation/operations/performance.md`](documentation/operations/performance.md).
+
+## Routing simulation
+
+`make sim-routing` runs `TestRouting` in `test/sim` (build tag `sim`, so
+never part of `make test`; the harness's unit tests are). It runs the real
+`internal/mesh` and `internal/gossip` of up to 10,000 nodes, and as many
+attackers, on an in-memory network in virtual time, and writes a report per
+scenario — Markdown, a summary CSV and a CSV of every seed — to `SIMOUT`
+(default `dist/sim-routing`). Every metric carries a 95 % confidence
+interval over the seeds. The scenarios, router variants and metrics are in
+[ADR 0035](documentation/adr/0035-routing-simulation-in-virtual-time.md).
+
+```sh
+make sim-routing                                  # reduced: CI's regression guard, 20 seeds
+make sim-routing SCENARIO=C-preempt SEEDS=5       # one scenario
+make sim-routing SCENARIO=all SIMPARALLEL=1 SIMBUDGET=3m   # the baseline, in steps
+```
+
+`SCENARIO` is a scenario, a group (`A`, `B`, `C`, `T`, `reduced`) or `all`.
+Each finished run is kept in `SIMCACHE` (default `$SIMOUT/cache`), so an
+interrupted run resumes where it stopped; empty it after changing code, or
+the report mixes results of two versions (it lists the versions it used).
+`SIMBUDGET` stops starting runs after a while: run the same command again
+until every scenario has its report. An `A-eclipse` run needs about 40 GB,
+a `B` run up to 25 GB; the whole baseline takes about ten hours.
+
+A change to routing — mesh parameters, peer scoring, rate limits, the
+store's eviction, connection admission — re-runs the scenarios it affects
+and compares them with the baseline in the same pull request.
 
 ## Trust simulation
 

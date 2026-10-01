@@ -142,6 +142,26 @@ soak: ## Run the soak test (3 nodes, SOAKRATE events/s for SOAKTIME, default 50/
 	$(GO) test -tags soak -run '^TestSoak$$' -count=1 -v -timeout 0 ./test/e2e \
 		-soak.duration=$(SOAKTIME) -soak.rate=$(SOAKRATE)
 
+# SCENARIO is what `make sim-routing` runs: a scenario (e.g. A-eclipse), a
+# group (A, B, C, T, reduced) or all; SEEDS the seeds of each router
+# variant; SIMPARALLEL the runs at once (an A-eclipse run needs about 40 GB);
+# SIMOUT the directory of the reports; SIMCACHE the directory that keeps each
+# finished run, so that an interrupted run resumes (empty it after changing
+# the code); SIMBUDGET how long runs are started for (0 is no limit). They
+# are set for this target only, as the trust simulation's are for its own.
+sim-routing: SCENARIO    ?= reduced
+sim-routing: SEEDS       ?= 20
+sim-routing: SIMPARALLEL ?= 2
+sim-routing: SIMOUT      ?= $(CURDIR)/dist/sim-routing
+sim-routing: SIMCACHE    ?= $(SIMOUT)/cache
+sim-routing: SIMBUDGET   ?= 0
+
+.PHONY: sim-routing
+sim-routing: ## Run the routing simulation SCENARIO with SEEDS seeds and write its reports to SIMOUT (ADR 0035); only `reduced` runs in CI
+	$(GO) test -tags sim -run '^TestRouting$$' -count=1 -v -timeout 0 -parallel $(SIMPARALLEL) ./test/sim \
+		-sim.scenario=$(SCENARIO) -sim.seeds=$(SEEDS) -sim.out=$(SIMOUT) -sim.cache=$(SIMCACHE) \
+		-sim.version=$(VERSION) -sim.budget=$(SIMBUDGET)
+
 # RESOURCESVERDICTS are the verdicts the measured node holds at each
 # measurement of `make resources`; RESOURCESRATE how many reports per second
 # each of the two publishing nodes sends.

@@ -87,6 +87,41 @@ type Options struct {
 	// ranges (obieproto.ReceiveDocumentationRanges). Only for multi-node
 	// tests; production nodes never set it.
 	AllowDocumentationRanges bool
+	// Testing holds the hooks of the routing simulation (ADR 0035);
+	// production leaves it zero.
+	Testing Testing
+}
+
+// Testing holds the hooks of the routing simulation (test/sim, ADR 0035).
+// None of them is reachable from the configuration file.
+type Testing struct {
+	// Router, if set, replaces the GossipSub mesh parameters, peer scoring
+	// and flood publishing of v0.1.
+	Router *Router
+	// Tracer, if set, receives every GossipSub event of the node.
+	Tracer pubsub.RawTracer
+	// Observe, if set, is called with the message ID, the forwarding peer
+	// and the outcome of every message from a peer that the validator
+	// checked, before the validator returns.
+	Observe func(id string, from peer.ID, outcome Outcome)
+}
+
+// Router holds GossipSub settings that differ from v0.1's, for the
+// simulation's validation variants (ADR 0035).
+type Router struct {
+	// Params are the mesh parameters; v0.1 uses
+	// pubsub.DefaultGossipSubParams.
+	Params pubsub.GossipSubParams
+	// Score and Thresholds are the peer scoring; a nil Score switches peer
+	// scoring off.
+	Score      *pubsub.PeerScoreParams
+	Thresholds *pubsub.PeerScoreThresholds
+	// FloodPublish sends the node's own events to every topic peer, as v0.1
+	// does.
+	FloodPublish bool
+	// OutboundQueueSize bounds the RPCs queued for a peer; 0 keeps
+	// GossipSub's default of 32.
+	OutboundQueueSize int
 }
 
 // Gossip is the node's participation in the GossipSub topic.
@@ -165,13 +200,13 @@ func New(h host.Host, opts Options, log *slog.Logger) (*Gossip, error) {
 		receive:    receive,
 		publishers: newLimiter(opts.PublisherLimit.EventsPerSecond, opts.PublisherLimit.Burst),
 		peers:      newLimiter(opts.PeerLimit.EventsPerSecond, opts.PeerLimit.Burst),
+		observe:    opts.Testing.Observe,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	tr, scores := newTracer(h.ID(), opts.Trace, opts.Now), newScoreBoard(opts.Now)
 	topic, sub, err := join(ctx, h, v, validateQueueBursts*opts.PeerLimit.Burst,
-		pubsub.WithRawTracer(tr),
-		pubsub.WithPeerScoreInspect(pubsub.ExtendedPeerScoreInspectFn(scores.inspect), opts.ScoreInspectInterval))
+		append(routerOptions(opts.Testing.Router), instruments(tr, scores, opts)...)...)
 	if err != nil {
 		cancel()
 		tr.close()
@@ -224,10 +259,10 @@ func bucketOrDefault(b, def config.TokenBucket) config.TokenBucket {
 	return b
 }
 
-// join starts GossipSub on h with the options instruments, which trace
-// it, and subscribes to the topic with v as its validator, which up to
-// queueSize received messages wait for.
-func join(ctx context.Context, h host.Host, v *validator, queueSize int, instruments ...pubsub.Option) (*pubsub.Topic,
+// join starts GossipSub on h with the options of its router and the
+// instruments that trace it, and subscribes to the topic with v as its
+// validator, which up to queueSize received messages wait for.
+func join(ctx context.Context, h host.Host, v *validator, queueSize int, options ...pubsub.Option) (*pubsub.Topic,
 	*pubsub.Subscription, error) {
 	ps, err := pubsub.NewGossipSub(ctx, h, append([]pubsub.Option{
 		// Events carry their own signature: messages have no author,
@@ -235,15 +270,10 @@ func join(ctx context.Context, h host.Host, v *validator, queueSize int, instrum
 		pubsub.WithMessageSignaturePolicy(pubsub.StrictNoSign),
 		pubsub.WithNoAuthor(),
 		pubsub.WithMessageIdFn(messageID),
-		pubsub.WithPeerScore(peerScoreParams(), peerScoreThresholds()),
 		pubsub.WithValidateQueueSize(queueSize),
 		pubsub.WithMaxMessageSize(MaxRPCSize),
 		pubsub.WithMaxControlMessageSize(MaxRPCSize),
-		// The node's own events go to every topic peer above the publish
-		// threshold, not only to its mesh peers (GossipSub v1.1 flood
-		// publishing): one peer dropping them does not lose them.
-		pubsub.WithFloodPublish(true),
-	}, instruments...)...)
+	}, options...)...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("start gossipsub: %w", err)
 	}
@@ -259,6 +289,44 @@ func join(ctx context.Context, h host.Host, v *validator, queueSize int, instrum
 		return nil, nil, fmt.Errorf("subscribe to %s: %w", obieproto.Topic, err)
 	}
 	return topic, sub, nil
+}
+
+// routerOptions returns the GossipSub options of v0.1's router, or of r
+// if set.
+func routerOptions(r *Router) []pubsub.Option {
+	if r == nil {
+		return []pubsub.Option{
+			pubsub.WithPeerScore(peerScoreParams(), peerScoreThresholds()),
+			// The node's own events go to every topic peer above the
+			// publish threshold, not only to its mesh peers (GossipSub v1.1
+			// flood publishing): one peer dropping them does not lose them.
+			pubsub.WithFloodPublish(true),
+		}
+	}
+	opts := []pubsub.Option{pubsub.WithGossipSubParams(r.Params), pubsub.WithFloodPublish(r.FloodPublish)}
+	if r.Score != nil {
+		opts = append(opts, pubsub.WithPeerScore(r.Score, r.Thresholds))
+	}
+	if r.OutboundQueueSize > 0 {
+		opts = append(opts, pubsub.WithPeerOutboundQueueSize(r.OutboundQueueSize))
+	}
+	return opts
+}
+
+// instruments returns the GossipSub options that trace the node's router:
+// tr, scores, which reads the peer scores every opts.ScoreInspectInterval
+// unless opts.Testing.Router switches scoring off, and
+// opts.Testing.Tracer if set.
+func instruments(tr *tracer, scores *scoreBoard, opts Options) []pubsub.Option {
+	out := []pubsub.Option{pubsub.WithRawTracer(tr)}
+	if r := opts.Testing.Router; r == nil || r.Score != nil {
+		out = append(out, pubsub.WithPeerScoreInspect(pubsub.ExtendedPeerScoreInspectFn(scores.inspect),
+			opts.ScoreInspectInterval))
+	}
+	if opts.Testing.Tracer != nil {
+		out = append(out, pubsub.WithRawTracer(opts.Testing.Tracer))
+	}
+	return out
 }
 
 // messageID is the GossipSub message ID: the event ID ([TRN-3]). Data

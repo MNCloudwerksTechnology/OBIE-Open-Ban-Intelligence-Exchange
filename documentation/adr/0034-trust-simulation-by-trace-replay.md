@@ -37,7 +37,7 @@ against ground truth, and publishes the v0.1 baseline.
 
 - **Trust is a local decision.** A run models one *observer* node, which
   trusts N remote publishers and runs Fail2Ban itself. Routing is the
-  concern of #1765 (ADR 0033); here every verdict reaches the observer at
+  concern of #1765 (ADR 0035); here every verdict reaches the observer at
   the second its publisher issues it. The metrics are hourly, so the
   sub-second delays that #1765 measures do not matter.
 - **The replay adapter runs the node's real code.** From a validated
@@ -296,7 +296,7 @@ and cumulatively over [0, h+1), for every hour of the run.
 
 ## Alternatives considered
 
-- **Running the mesh as well** (the mocknet of ADR 0033): a trust decision
+- **Running the mesh as well** (the mocknet of ADR 0035): a trust decision
   does not depend on the path a verdict took, and about 2,000 runs of a
   week each would cost hours of CPU for nothing. Rejected; routing
   delays are #1765's.

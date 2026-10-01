@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p/core/connmgr"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -24,7 +26,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peerstore"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/libp2p/go-libp2p/p2p/muxer/yamux"
-	"github.com/libp2p/go-libp2p/p2p/net/connmgr"
+	basicconnmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -100,6 +102,22 @@ type Options struct {
 	// TracePath is the file of the per-event trace (mesh.trace_path),
 	// opened by Start and closed by Stop; empty for none (ADR 0032).
 	TracePath string
+
+	// Testing holds the hooks of the routing simulation (ADR 0035);
+	// production leaves it zero.
+	Testing Testing
+}
+
+// Testing holds the hooks of the routing simulation (test/sim, ADR 0035).
+// None of them is reachable from the configuration file.
+type Testing struct {
+	// NewHost, if set, creates the libp2p host instead of listening on
+	// Listen with TCP and QUIC, e.g. on an in-memory mocknet. It gets the
+	// node's key and the connection manager of v0.1, which the host may
+	// use or replace; the host does not need to listen.
+	NewHost func(key crypto.PrivKey, cm connmgr.ConnManager) (host.Host, error)
+	// Gossip holds the hooks of the node's gossip.
+	Gossip gossip.Testing
 }
 
 // Mesh is the libp2p host as a lifecycle subsystem. It implements
@@ -280,6 +298,7 @@ func (m *Mesh) Start(context.Context) error {
 
 		ScoreInspectInterval:     m.opts.ScoreInspectInterval,
 		AllowDocumentationRanges: m.opts.AllowDocumentationRanges,
+		Testing:                  m.opts.Testing.Gossip,
 	}, m.log)
 	if err != nil {
 		_ = trace.Close()
@@ -324,9 +343,17 @@ func (m *Mesh) newHost() (host.Host, error) {
 	if err != nil {
 		return nil, err
 	}
-	cm, err := connmgr.NewConnManager(ConnsLow, ConnsHigh, connmgr.WithGracePeriod(connGracePeriod))
+	cm, err := basicconnmgr.NewConnManager(ConnsLow, ConnsHigh, basicconnmgr.WithGracePeriod(connGracePeriod))
 	if err != nil {
 		return nil, fmt.Errorf("connection manager: %w", err)
+	}
+	if m.opts.Testing.NewHost != nil {
+		h, err := m.opts.Testing.NewHost(key, cm)
+		if err != nil {
+			_ = cm.Close()
+			return nil, fmt.Errorf("start libp2p host: %w", err)
+		}
+		return h, nil
 	}
 	limits := rcmgr.DefaultLimits
 	libp2p.SetDefaultServiceLimits(&limits)

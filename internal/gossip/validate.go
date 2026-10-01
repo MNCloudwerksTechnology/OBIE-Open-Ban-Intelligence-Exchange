@@ -29,6 +29,9 @@ type validator struct {
 	receive    []obieproto.Option
 	publishers *limiter
 	peers      *limiter
+	// observe, if set, sees the message ID and outcome of every checked
+	// message (Testing.Observe).
+	observe func(id string, from peer.ID, outcome Outcome)
 }
 
 // validate is the pubsub.ValidatorEx of the topic; from is the peer that
@@ -42,7 +45,11 @@ func (v *validator) validate(_ context.Context, from peer.ID, msg *pubsub.Messag
 	outcome, result := v.check(from, msg.GetData(), now)
 	receivedTotal.WithLabelValues(string(outcome)).Inc()
 	v.metrics.Observe(from, outcome)
-	v.trace.Write(idOf(msg), from.String(), now, string(outcome))
+	id := idOf(msg)
+	v.trace.Write(id, from.String(), now, string(outcome))
+	if v.observe != nil {
+		v.observe(id, from, outcome)
+	}
 	return result
 }
 
