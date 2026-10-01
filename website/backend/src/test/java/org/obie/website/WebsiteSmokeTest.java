@@ -79,10 +79,12 @@ class WebsiteSmokeTest extends IntegrationTest {
 
   @Test
   void prerenderedRouteIsServedFromItsDirectory() {
-    ResponseEntity<String> response = getHtml("/404");
+    ResponseEntity<String> response = getHtml("/de/impressum");
 
     assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
-    assertThat(response.getBody()).containsPattern(heading("Page not found")).contains(PRERENDERED);
+    assertThat(response.getBody())
+        .contains("<html lang=\"de\"", "<title>Impressum · OBIE</title>")
+        .contains(PRERENDERED);
   }
 
   @Test

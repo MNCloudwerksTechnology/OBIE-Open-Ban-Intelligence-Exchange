@@ -365,17 +365,24 @@ the stats strip out. Failures are logged as warnings.
 
 ## Search engines, performance and accessibility
 
-Design decisions: [ADR 0015](../documentation/adr/0015-website-seo-and-delivery.md).
+Design decisions: [ADR 0015](../documentation/adr/0015-website-seo-and-delivery.md),
+[ADR 0036](../documentation/adr/0036-website-canonical-urls-and-site-structured-data.md).
 
-- **Head tags.** `core/seo.ts` sets title, description, canonical link,
-  Open Graph and Twitter card tags per page; the not-found page is
-  `noindex`. The home page carries JSON-LD (`SoftwareSourceCode`,
-  `Organization`, `Person`) built from `content/seo.content.ts`; the founder's
-  `image` appears only once `founder.photo` is a real photo.
+- **Head tags.** `core/seo.ts` sets title (at most 60 characters),
+  description (70 to 160), canonical link, Open Graph and Twitter card tags
+  per page, in every language; the not-found page is `noindex`. The home page
+  carries JSON-LD (`WebSite`, `SoftwareSourceCode`, `Organization`, `Person`,
+  and the FAQ section as `FAQPage` in the page's language) built from
+  `content/seo.content.ts` and the landing content; the founder's `image`
+  appears only once `founder.photo` is a real photo.
+- **One URL per page.** A page requested with a trailing slash or by its
+  `index.html` is redirected (301) to its canonical path, query string kept;
+  `/404` and `/de/404` answer 404 like any unknown URL (`CanonicalPathFilter`).
 - **Origin.** Pages are prerendered with the placeholder
   `https://site-origin.invalid`; the back end replaces it with
   `OBIE_SITE_ORIGIN` when serving. `GET /robots.txt` and `GET /sitemap.xml`
-  are generated from the same origin and the prerendered pages.
+  are generated from the same origin and the prerendered pages, and are
+  served whatever the client's `Accept` header says.
 - **Share image.** `frontend/public/social/obie-share.png`, 1200 × 630.
   After a design change, regenerate it with `npm run share-image` in
   `frontend/` (headless Chrome; `CHROME=/path/to/chrome` picks another one)

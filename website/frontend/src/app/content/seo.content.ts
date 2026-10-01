@@ -13,8 +13,10 @@ import { REPOSITORY_URL } from './landing.content';
 
 /** Shape of the SEO data, so a German version is a second object. */
 export interface SeoContent {
-  /** `og:site_name`. */
+  /** `og:site_name`, and the site's name in the JSON-LD. */
   readonly siteName: string;
+  /** The site's full name in the JSON-LD; search engines may show it in place of `siteName`. */
+  readonly siteAlternateName: string;
   /** Open Graph locale, e.g. `en_GB`. */
   readonly locale: string;
   /** The share image, a static asset in `public/` (1200 × 630 px). */
@@ -52,6 +54,7 @@ export const SHARE_IMAGE_PATH = '/social/obie-share.png';
 
 export const SEO_CONTENT_EN: SeoContent = {
   siteName: 'OBIE',
+  siteAlternateName: 'Open Ban Intelligence Exchange',
   locale: 'en_GB',
   shareImage: {
     path: SHARE_IMAGE_PATH,

@@ -6,7 +6,9 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../app.routes';
 import { FounderContent } from '../content/landing-content.model';
 import { LANDING_CONTENT_EN } from '../content/landing.content';
+import { LANDING_CONTENT_DE } from '../content/landing.content.de';
 import { SEO_CONTENT_EN } from '../content/seo.content';
+import { SEO_CONTENT_DE } from '../content/seo.content.de';
 import { SITE_ORIGIN, SITE_ORIGIN_PLACEHOLDER, jsonForScript } from './seo';
 import { homeStructuredData } from './structured-data';
 
@@ -131,9 +133,11 @@ describe('SEO head tags', () => {
 
   it('adds structured data to the home page only', async () => {
     expect((await visit('/')).jsonLd?.['@graph'].map((node) => node['@type'])).toEqual([
+      'WebSite',
       'SoftwareSourceCode',
       'Organization',
       'Person',
+      'FAQPage',
     ]);
     expect((await visit('/privacy')).jsonLd).toBeNull();
     expect(document.head.querySelectorAll('link[rel="canonical"]').length).toBe(1);
@@ -169,7 +173,7 @@ describe('Home page structured data', () => {
 
   it('describes OBIE as source code with the operator-supplied facts', () => {
     const software = byType(
-      homeStructuredData(SEO_CONTENT_EN, LANDING_CONTENT_EN.founder, absolute),
+      homeStructuredData(SEO_CONTENT_EN, LANDING_CONTENT_EN, 'en', absolute),
       'SoftwareSourceCode',
     );
     expect(software).toMatchObject({
@@ -185,7 +189,7 @@ describe('Home page structured data', () => {
   });
 
   it('describes the founder without a picture while the photo is the placeholder', () => {
-    const graph = homeStructuredData(SEO_CONTENT_EN, LANDING_CONTENT_EN.founder, absolute);
+    const graph = homeStructuredData(SEO_CONTENT_EN, LANDING_CONTENT_EN, 'en', absolute);
     const person = byType(graph, 'Person');
     expect(person).toMatchObject({
       name: 'Markus Niewerth',
@@ -208,8 +212,47 @@ describe('Home page structured data', () => {
       ...LANDING_CONTENT_EN.founder,
       photo: { src: '/founder/markus-niewerth.webp', alt: 'Markus Niewerth' },
     };
-    const person = byType(homeStructuredData(SEO_CONTENT_EN, founder, absolute), 'Person');
+    const person = byType(
+      homeStructuredData(SEO_CONTENT_EN, { ...LANDING_CONTENT_EN, founder }, 'en', absolute),
+      'Person',
+    );
     expect(person['image']).toBe(`${ORIGIN}/founder/markus-niewerth.webp`);
+  });
+
+  it('names the site for search results, the same site in every language', () => {
+    for (const graph of [
+      homeStructuredData(SEO_CONTENT_EN, LANDING_CONTENT_EN, 'en', absolute),
+      homeStructuredData(SEO_CONTENT_DE, LANDING_CONTENT_DE, 'de', absolute),
+    ]) {
+      expect(byType(graph, 'WebSite')).toEqual({
+        '@type': 'WebSite',
+        '@id': `${ORIGIN}/#website`,
+        url: `${ORIGIN}/`,
+        name: 'OBIE',
+        alternateName: 'Open Ban Intelligence Exchange',
+        publisher: { '@id': `${ORIGIN}/#organization` },
+        about: { '@id': `${ORIGIN}/#software` },
+      });
+    }
+  });
+
+  it.each([
+    ['en', SEO_CONTENT_EN, LANDING_CONTENT_EN, `${ORIGIN}/#faq`],
+    ['de', SEO_CONTENT_DE, LANDING_CONTENT_DE, `${ORIGIN}/de#faq`],
+  ] as const)('marks up the FAQ the %s page shows, in its language', (lang, seo, landing, id) => {
+    const faq = byType(homeStructuredData(seo, landing, lang, absolute), 'FAQPage');
+    expect(faq).toMatchObject({
+      '@id': id,
+      inLanguage: landing.meta.locale,
+      isPartOf: { '@id': `${ORIGIN}/#website` },
+    });
+    expect(faq['mainEntity']).toEqual(
+      landing.faq.items.map((item) => ({
+        '@type': 'Question',
+        name: item.question,
+        acceptedAnswer: { '@type': 'Answer', text: item.answer },
+      })),
+    );
   });
 });
 

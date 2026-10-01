@@ -24,13 +24,14 @@ import { Status } from '../../sections/status';
 })
 export class Home {
   constructor() {
-    const { meta, founder } = inject(LANDING_CONTENT);
+    const landing = inject(LANDING_CONTENT);
+    const lang = inject(LANG);
     const seo = inject(SeoService);
     seo.apply({
-      title: meta.title,
-      description: meta.description,
-      path: PAGE_PATHS.home[inject(LANG)],
-      structuredData: homeStructuredData(inject(SEO_CONTENT), founder, (path) =>
+      title: landing.meta.title,
+      description: landing.meta.description,
+      path: PAGE_PATHS.home[lang],
+      structuredData: homeStructuredData(inject(SEO_CONTENT), landing, lang, (path) =>
         seo.absolute(path),
       ),
     });
