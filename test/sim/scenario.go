@@ -615,8 +615,8 @@ func topologyName(t string) string {
 }
 
 // reducedFloor is the delivery ratio v0.1 keeps at least in the reduced
-// scenario, where its baseline delivers every verdict; the CI job fails
-// below it.
+// scenario, where it delivered every verdict in 20 repeats; the CI job
+// fails below it.
 const reducedFloor = 0.99
 
 // scenarioReduced is the CI regression guard: a small cold boot attack.

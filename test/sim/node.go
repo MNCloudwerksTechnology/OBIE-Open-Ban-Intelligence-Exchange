@@ -121,8 +121,8 @@ func (w *world) startHonest(n *node, h host.Host) error {
 		UserAgent: "obied/sim",
 		Store:     n.store,
 		// Pings only estimate latency for the admin API, and the scores
-		// are read only for the metrics and the console; routing reads
-		// neither. Every peer pinged every 15 s costs a tenth of an
+		// are read only for the metrics, the admin API and the console;
+		// routing reads neither. Every peer pinged every 15 s costs a tenth of an
 		// eclipse run's CPU (ADR 0035).
 		PingInterval:         pingInterval,
 		ScoreInspectInterval: scoreInspectInterval,

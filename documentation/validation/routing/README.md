@@ -7,7 +7,9 @@ work packages #1767, #1768, #1770, #1771 and #1772.
 [ADR 0035](../../adr/0035-routing-simulation-in-virtual-time.md) defines
 the harness, the scenarios and every metric. The
 [harness validation](harness-validation.md) shows that the harness
-reproduces the GossipSub v1.1 paper.
+reproduces the GossipSub v1.1 paper's result, that plain GossipSub loses
+verdicts and scored GossipSub loses none, and where its numbers differ
+from the paper's.
 
 | Baseline | |
 |---|---|
@@ -81,8 +83,10 @@ paper's scoring does not, with a p99 of 172–227 ms. Its mesh never
 recovers by the harness's measure: on average over the attack, the
 Sybils hold 47–58 % of the honest nodes' mesh slots, and in no seed is
 their share back to 10 % or less by the end of the run. The paper's
-scoring fares no better here; the
-[harness validation](harness-validation.md) explains why. Without
+scoring fares no better here, and the
+[harness validation](harness-validation.md) gives a likely reason for
+it. That reason does not apply to v0.1, which has no P3; why v0.1's mesh
+does not recover was not investigated. Without
 scoring, plain GossipSub gives the Sybils 91–100 % of the slots and loses
 15 % of the verdicts in the eclipse.
 

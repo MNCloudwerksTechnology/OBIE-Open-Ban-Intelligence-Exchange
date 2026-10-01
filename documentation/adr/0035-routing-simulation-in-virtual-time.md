@@ -91,7 +91,7 @@ attacker (`badboy.go`), the scenario files and the exact score parameters.
   peers only once a day: pings only estimate latency for the admin API,
   and every peer pinged every 15 s cost a tenth of an eclipse run's CPU.
   It also reads their GossipSub scores only once a day, as only the
-  metrics and the console use them (ADR 0032). This is where the
+  metrics, the admin API and the console use them (ADR 0032). This is where the
   simulation's fidelity ends. The daemon's hooks (ADR 0016) do not reach
   far enough, so two new hooks follow its rule ("test hooks, never
   configuration"). Production leaves both zero, and neither can be reached
@@ -195,8 +195,8 @@ Every configuration below runs 20 seeds.
 
 - **A: reproduces the paper.** 1,000 honest nodes on the paper's testbed
   topology and 4,000 Sybils, in the variants `plain`, `paper` and `v0.1`.
-  The testbed's honest nodes each dial 20, which the paper's "20
-  connections" means; a 20-regular graph halves their honest links, and
+  The testbed's honest nodes each dial 20, which the paper's "honest
+  nodes only up to 20" connections means; a 20-regular graph halves their honest links, and
   plain GossipSub then loses about half of all verdicts rather than the
   paper's ~10 % in the eclipse attack
   (`documentation/validation/routing/harness-validation.md`). The Sybils

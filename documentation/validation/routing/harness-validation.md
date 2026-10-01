@@ -39,15 +39,22 @@ accepted the verdict.
 | Covert flash | losses and delays over 15 s once the attack starts, no figure (§8.3) | 0.013 % lost, 20–44 pairs per seed; p99 7.5 s, max 11.2 s | p99 197 ms, max about 1 s | none lost; p99 188 ms, max 1.3 s | none lost; p99 218 ms |
 
 The paper observed no loss for GossipSub v1.1 in any of its tests (§7).
-The harness's maximum latencies for `paper` are higher than the paper's,
-probably because its links take up to about 180 ms one way, drawn from a
-geographic matrix, while the paper's testbed used 25 ms ± 10 %.
+The harness's p99 latencies for `paper` are close to the paper's. Its
+maximum in the eclipse is not: 1.3 s against 178 ms. Link latency is not
+the reason. The harness's links take up to about 180 ms one way, drawn
+from a geographic matrix, where the paper's testbed used 25 ms ± 10 %; but
+without an attack, on a regular graph, v0.1's maximum is 233 ms
+(T-regular). The long tail comes with the attack, probably from verdicts
+that reach a node only by gossip while Sybils hold its mesh slots. The
+paper found its scored eclipse latencies identical to those without an
+attack (§8.1).
 
 ## What differs, and why
 
-Three results differ from the paper:
+Four results differ from the paper:
 
-- **Eclipse.** `plain` loses about 1.5 times the paper's share.
+- **Eclipse.** `plain` loses about 1.5 times the paper's share, and the
+  slowest verdict of `paper` takes 1.3 s rather than 178 ms (see above).
 - **Cold boot and covert flash.** `plain` loses a few dozen pairs per run:
   in cold boot 0.022 %, about 180 times less than the paper's 4 %. Its
   latencies are of the same order as the paper's: a p99 of 7.8 s against
@@ -55,17 +62,22 @@ Three results differ from the paper:
 - **Mesh recovery.** The paper's scored GossipSub recovers the mesh
   within about 1.5 min in cold boot (§8.2) and returns it "to a healthy
   state" in covert flash (§8.3). The harness's `paper` variant never
-  does: on average over the attack, the Sybils hold 46 % of the honest
-  nodes' mesh slots in the eclipse, 59 % in cold boot and 62 % in covert
-  flash, and in none of the 60 runs does their share fall to 10 % or less
-  and stay there. It loses no verdict all the same.
+  does: on average over the attack, the Sybils hold 59 % of the honest
+  nodes' mesh slots in cold boot and 62 % in covert flash, and in none of
+  these 40 runs does their share fall to 10 % or less and stay there. It
+  loses no verdict all the same.
+- **Sybils in the eclipse mesh.** In the paper's eclipse, Sybils hold 2–4
+  slots of an honest node's mesh on average (§8.1). Here they hold 46 % of
+  the slots on average, about 4 of the 9.25 a node has at the end of the
+  run.
 
 The harness was investigated before the baseline runs, on 2026-09-30, and
 changed as a result (commit `405e24c`).
 
 ### The paper leaves the honest degree open
 
-The paper gives honest nodes "20 connections". Its test plan
+The paper lets Sybils have 100 connections each, "while honest nodes
+only up to 20" (§7.3). Its test plan
 (`RandomHonestTopology`) has every honest node dial 20 random honest
 nodes. Each node then also accepts about 20 dials, so it has about 40
 honest links, not 20. The first version of the harness built a random
@@ -104,10 +116,12 @@ paper's own test plan, and D_lazy 8, because the paper's plain nodes
 (`honest_vanilla.go`) set only D, D_lo and D_hi. The 2020 library gossiped
 to D peers, which is 8 there (go-libp2p-pubsub v0.2.7).
 
-### OBIE's traffic is too slow for the paper's P3
+### OBIE's traffic is probably too slow for the paper's P3
 
-A trace of one node's GRAFTs and PRUNEs in a cold boot run of `paper`
-shows why the Sybils keep their slots. Its honest mesh peers were pruned
+A trace of one node's GRAFTs and PRUNEs suggests why the Sybils keep their
+slots. It was taken on 2026-09-30, before the topology changed: a cold
+boot run of `paper` on the 20-regular honest graph, with the harness's
+code before `66d6d6e`. The node's honest mesh peers were pruned
 when the score's P3 became active, 60 s after their GRAFT. P3 expects at
 least 10 deliveries from a mesh peer, and at 1 verdict/s across the whole
 network, a peer delivers fewer first copies in that minute. The prune then
@@ -116,8 +130,10 @@ for oversubscription before their P3 became active, so they were never
 charged. They grafted again 60–75 s later with a clean score. In 180 s,
 72 of the 80 Sybils linked to that node held one of its mesh slots at
 some time. The paper sent 120 messages/s, at which every honest mesh peer
-meets P3's threshold easily. This was not measured on other nodes or
-seeds.
+meets P3's threshold easily. This was not measured on other nodes, seeds
+or the testbed graph. It is at most part of the reason: v0.1 has no P3,
+because verdicts are sparse (ADR 0009), and its mesh does not recover
+either.
 
 ### What else differs from the paper's testbed
 
@@ -139,8 +155,8 @@ None of these was measured on its own:
 
 In every seed, the harness shows the paper's qualitative result. Without
 scoring, the Sybils take the mesh, and verdicts are lost or arrive seconds
-late. With the paper's scoring, no verdict is lost, and the latencies are
-close to the paper's. How much plain GossipSub loses depends on the
+late. With the paper's scoring, no verdict is lost, and the p99
+latencies are close to the paper's. How much plain GossipSub loses depends on the
 honest degree and the gossip fan-out, which the paper's text leaves open:
 the two readings above differ by an order of magnitude. With the paper's
 own topology, the eclipse loss is near the paper's, but cold boot loses
