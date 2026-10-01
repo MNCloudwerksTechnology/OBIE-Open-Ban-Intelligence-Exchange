@@ -143,7 +143,9 @@ func TestTestingHooksSeeEveryMessage(t *testing.T) {
 
 // TestTestingRouterReplacesScoring: with v0.1's peer scoring, a peer that
 // forwarded six invalid events is graylisted and its next valid event is
-// ignored; a Router without scoring accepts it.
+// ignored; a Router without scoring accepts it. Five invalid events score
+// 5² × invalidMessageCost = −250, below graylistThreshold, so GossipSub
+// may drop the sixth unseen; four score −160, so the fifth always arrives.
 func TestTestingRouterReplacesScoring(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -162,7 +164,7 @@ func TestTestingRouterReplacesScoring(t *testing.T) {
 				bad := raw.verdict(t, time.Now(), 3600)
 				raw.publish(t, []byte(strings.Replace(string(marshal(t, bad)), `"events":47`, `"events":48`, 1)))
 			}
-			waitFor(t, propagationDeadline, "six invalid events", func() bool { return rec.count(InvalidSignature) == 6 })
+			waitFor(t, propagationDeadline, "five invalid events", func() bool { return rec.count(InvalidSignature) >= 5 })
 
 			valid := raw.verdict(t, time.Now(), 3600)
 			raw.publish(t, marshal(t, valid))
