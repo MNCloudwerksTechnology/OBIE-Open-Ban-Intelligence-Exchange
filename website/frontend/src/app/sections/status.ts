@@ -14,7 +14,7 @@ import { LANDING_CONTENT } from '../content/landing.content';
         <p class="lead">{{ status.intro }}</p>
         <div class="groups">
           @for (group of status.groups; track group.state) {
-            <div class="group">
+            <div class="group group--{{ group.state }}">
               <h3>
                 <span class="badge badge--{{ group.state }}">{{ group.label }}</span>
                 <span class="summary">{{ group.summary }}</span>
@@ -96,6 +96,7 @@ import { LANDING_CONTENT } from '../content/landing.content';
 
     li {
       display: grid;
+      align-content: start;
       gap: var(--space-1);
     }
 
@@ -108,9 +109,19 @@ import { LANDING_CONTENT } from '../content/landing.content';
       margin-top: var(--space-6);
     }
 
+    /* Most of v0.1 is available: that group spans the row, its items in two columns. */
     @media (min-width: 64rem) {
       .groups {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .group--available {
+        grid-column: 1 / -1;
+      }
+
+      .group--available ul {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        column-gap: var(--space-6);
       }
     }
   `,

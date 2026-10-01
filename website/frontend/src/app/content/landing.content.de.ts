@@ -83,11 +83,11 @@ export const LANDING_CONTENT_DE: LandingContent = {
     label: 'Funktionsweise',
     heading: 'Sechs Schritte von einem Angriff zum gemeinsamen Schutz.',
     intro:
-      'OBIE läuft als kleines Programm neben den Werkzeugen, die Sie schon nutzen. Hier sehen Sie, was passiert, wenn ein Server einen Angriff bemerkt, so wie es für Version 0.1 vorgesehen ist.',
+      'OBIE läuft als kleines Programm neben den Werkzeugen, die Sie schon nutzen. Hier sehen Sie, was in Version 0.1 passiert, wenn ein Server einen Angriff bemerkt.',
     steps: [
       {
         title: 'Erkennen',
-        text: 'Ein Werkzeug, das Ihre Logdateien bereits überwacht, bemerkt einen Angriff. Das erste, für das OBIE gebaut wird, ist Fail2Ban, ein weit verbreitetes Programm, das wiederholte fehlgeschlagene Anmeldungen erkennt.',
+        text: 'Ein Werkzeug, das Ihre Logdateien bereits überwacht, bemerkt einen Angriff. Das erste, mit dem OBIE zusammenarbeitet, ist Fail2Ban, ein weit verbreitetes Programm, das wiederholte fehlgeschlagene Anmeldungen erkennt.',
       },
       {
         title: 'Meldung signieren',
@@ -110,7 +110,7 @@ export const LANDING_CONTENT_DE: LandingContent = {
         text: 'Sind die Regeln erfüllt, sperrt der Server die Adresse in seiner Firewall für eine begrenzte Zeit. Die Sperre endet von selbst, damit ein Fehler nicht ewig bestehen bleibt.',
       },
     ],
-    note: 'So ist Version 0.1 entworfen. Welche Schritte der Code schon ausführt, steht unter „Status“.',
+    note: 'Alle sechs Schritte laufen heute im Code von Version 0.1. Was sie noch nicht kann, steht unter „Status“.',
     diagram: {
       title: 'Wie eine Sperre zustande kommt',
       description:
@@ -334,7 +334,7 @@ export const LANDING_CONTENT_DE: LandingContent = {
     label: 'Status',
     heading: 'Wo OBIE heute steht.',
     intro:
-      'Version 0.1 wird öffentlich entwickelt. Es gibt noch kein laufendes öffentliches Mesh, und OBIE ist noch nicht bereit, Produktivserver zu schützen. Hier steht, was der Code heute kann und was als Nächstes kommt.',
+      'Version 0.1 funktioniert im Code von Anfang bis Ende: Ein Server macht aus den Sperren von Fail2Ban signierte Meldungen, teilt sie mit den Peers, die Sie auswählen, entscheidet selbst und sperrt in seiner Firewall, sobald Sie das Sperren einschalten. Das erste Release ist noch nicht veröffentlicht, es gibt noch kein öffentliches Mesh zum Mitmachen, und eine unabhängige Sicherheitsprüfung hat noch nicht stattgefunden. Hier steht, was der Code heute kann und was als Nächstes kommt.',
     groups: [
       {
         state: 'available',
@@ -342,47 +342,55 @@ export const LANDING_CONTENT_DE: LandingContent = {
         summary: 'Heute im Code',
         items: [
           {
-            title: 'Format der signierten Meldung',
-            text: 'Eine öffentliche Spezifikation, was eine Meldung enthält und wie sie signiert wird, mit Testdaten für alle, die eine eigene Implementierung bauen wollen.',
+            title: 'Signierte Meldungen',
+            text: 'Jede Meldung trägt die Signatur ihres Servers. Das Format hat eine öffentliche Spezifikation, mit Testdaten für andere Implementierungen.',
           },
           {
-            title: 'Knotenidentität',
-            text: 'Beim ersten Start erzeugt jeder Server seinen eigenen Schlüssel. Daraus wird seine öffentliche ID abgeleitet.',
+            title: 'Meldungen aus Fail2Ban',
+            text: 'Eine zusätzliche Zeile in einem Fail2Ban-Jail macht aus seinen Sperren signierte Meldungen. Die Logzeilen bleiben auf Ihrem Server.',
           },
           {
-            title: 'Verbindung zu den Peers auf Ihrer Liste',
-            text: 'Der Knoten verbindet sich mit den Peers aus seiner Konfigurationsdatei und baut eine Verbindung neu auf, wenn sie abbricht.',
+            title: 'Teilen mit Peers Ihrer Wahl',
+            text: 'Server verbinden sich direkt mit den Peers auf Ihrer Liste. Ungültige Meldungen werden verworfen, und jeder Absender darf nur begrenzt viele Meldungen schicken.',
           },
           {
-            title: 'Lokaler Meldungsspeicher',
-            text: 'Meldungen werden auf dem Knoten gespeichert, Duplikate werden verworfen und abgelaufene Meldungen entfernt.',
+            title: 'Entscheidungen auf jedem Server',
+            text: 'Vertrauensgewichte pro Peer, eine Mindestzahl übereinstimmender Peers und ein Schwellenwert. Der Knoten erklärt, warum er eine Adresse sperrt oder nicht.',
           },
           {
-            title: 'Werkzeuge für Betreiber',
-            text: 'Ein Kommandozeilenwerkzeug zeigt Status, Identität und Peers des Knotens. Health-Checks und Metriken lassen sich in ein bestehendes Monitoring einbinden.',
+            title: 'Schutzliste und eigene Vorgaben',
+            text: 'Ihre eigenen Adressen, interne Netze und Ihre Peers werden nie gesperrt. Ergänzen Sie die Netze, auf die Sie angewiesen sind, und erlauben oder sperren Sie jede andere Adresse selbst.',
+          },
+          {
+            title: 'Erst beobachten, dann sperren',
+            text: 'Ein neuer Server zeigt nur, was er sperren würde. Im Sperrmodus (enforce mode) sperrt er in seiner eigenen nftables-Tabelle, und jede Sperre läuft ab.',
+          },
+          {
+            title: 'Einrichtung, Selbsttest und Webkonsole',
+            text: 'Ein Einrichtungsassistent, ein Selbsttest, der warnt, bevor Sie sich aussperren könnten, eine optionale Webkonsole, Metriken und ein Audit-Log.',
+          },
+          {
+            title: 'Eine Sandbox zum Ausprobieren',
+            text: 'Vier Knoten in Docker auf Ihrem eigenen Rechner, mit einer Anleitung Schritt für Schritt. Dabei wird nie etwas gesperrt.',
           },
         ],
       },
       {
         state: 'in-progress',
         label: 'In Arbeit',
-        summary: 'Entsteht für Version 0.1',
+        summary: 'Wird jetzt vorbereitet und entworfen',
         items: [
           {
-            title: 'Erkennung mit Fail2Ban',
-            text: 'Erkennungen von Fail2Ban in signierte Meldungen umwandeln.',
+            title: 'Das erste Release',
+            text: 'Release-Pakete, ein Installationsprogramm, ein abgesicherter Dienst und ein Container-Image sind fertig und werden bei jeder Änderung getestet. Veröffentlicht ist das Release noch nicht.',
           },
           {
-            title: 'Meldungen teilen',
-            text: 'Meldungen an Peers senden und deren Meldungen empfangen.',
+            title: 'Zuverlässige Zustellung',
+            text: 'Simulationen mit 1.000 bis 10.000 Servern zeigen: In einem großen Mesh um wenige Knotenpunkte kommt etwa jede sechste Meldung nie an, und ein Server, der offline war, verpasst, was in der Zwischenzeit verschickt wurde. Abhilfe wird entworfen.',
           },
           {
-            title: 'Lokale Entscheidungen',
-            text: 'Vertrauensgewichte pro Peer, das Minimum von zwei Quellen, die Schutzliste und der Beobachtungsmodus.',
-          },
-          {
-            title: 'Sperren, die ablaufen',
-            text: 'Adressen mit nftables, der Linux-Firewall, für eine begrenzte Zeit sperren.',
+            title: 'Schutz vor Fluten und Fälschungen',
+            text: 'In denselben Simulationen verdrängte eine Flut von Absendern, denen niemand vertraut, die vertrauenswürdigen Meldungen aus einem vollen Speicher, und gefälschte Nachrichten hielten einen Widerruf von den meisten Servern fern. Gegenmaßnahmen werden entworfen.',
           },
         ],
       },
@@ -425,31 +433,31 @@ export const LANDING_CONTENT_DE: LandingContent = {
     label: 'Loslegen',
     heading: 'In drei Schritten ausprobieren.',
     intro:
-      'OBIE ist für Fachleute gebaut, die ihre eigenen Linux-Server betreiben. Zum Bauen brauchen Sie Go 1.26 oder neuer.',
+      'OBIE ist für Fachleute gebaut, die ihre eigenen Linux-Server betreiben. Probieren Sie es zuerst auf Ihrem eigenen Rechner aus, dann auf einem Server.',
     steps: [
       {
-        title: 'Installieren',
-        text: 'Bauen Sie den Knoten aus dem Quellcode. Ein Befehl erzeugt zwei Programme in ./bin: obied, den Knoten, und obiectl, das Werkzeug, mit dem Sie ihn steuern.',
-        code: 'make build',
+        title: 'In der Sandbox ausprobieren',
+        text: 'Starten Sie in einer Kopie des Quellcodes vier OBIE-Knoten in Docker auf Ihrem eigenen Rechner. Melden Sie einen Angriff, sehen Sie zu, wie die anderen entscheiden, und fragen Sie sie nach dem Warum. Dabei wird nie etwas gesperrt, und Root-Rechte brauchen Sie nicht.',
+        code: 'cd packaging/sandbox && ./sandbox up',
       },
       {
-        title: 'Nur beobachten',
-        text: 'Starten Sie im Beobachtungsmodus, der Voreinstellung. Sobald die Entscheidungen fertig sind, wird der Knoten festhalten, was er sperren würde, aber nichts sperren. So können Sie sein Urteil zuerst prüfen.',
-        code: './bin/obied --config /etc/obie/obie.yaml',
+        title: 'Installieren und beobachten',
+        text: 'Installieren Sie OBIE auf einem Linux-Server mit systemd und beantworten Sie die fünf Fragen des Einrichtungsassistenten. Der Knoten startet im Beobachtungsmodus: Er zeigt, was er sperren würde, und sperrt nichts.',
+        code: 'sudo obied setup',
       },
       {
-        title: 'Peers verbinden',
-        text: 'Tragen Sie die Peers, denen Sie vertrauen, und wie sehr, in die Konfigurationsdatei ein. Sobald das Sperren fertig ist, wechseln Sie in den Sperrmodus (enforce mode), wenn Sie sich sicher sind.',
-        code: './bin/obiectl --socket /run/obie/obie.sock peers',
+        title: 'Prüfen, verbinden, dann sperren',
+        text: 'Der Selbsttest sagt, was stimmt und was als Nächstes zu beheben ist. Verbinden Sie Fail2Ban und einen Peer, dem Sie vertrauen. Schalten Sie das Sperren erst ein, wenn Sie sicher sind, dass Sie sich nicht selbst aussperren können.',
+        code: 'sudo obied self-check',
       },
     ],
-    note: 'Version 0.1 ist noch in Entwicklung. Bis Entscheidungen und Sperren fertig sind (siehe „Status“), verbindet sich ein Knoten mit seinen Peers und speichert Meldungen, entscheidet und sperrt aber nichts.',
-    quickStart: { label: 'Beispielkonfiguration mit allen Optionen', href: LINKS.exampleConfig },
+    note: 'Die Release-Pakete mit dem Installationsprogramm kommen mit dem ersten Release, das noch nicht veröffentlicht ist. Bis dahin wird OBIE aus dem Quellcode gebaut, mit Go 1.26 oder neuer; die Sandbox erledigt das für Sie.',
+    quickStart: { label: 'Die Sandbox Schritt für Schritt', href: LINKS.sandbox },
     project: {
       linksLabel: 'OBIE auf GitHub',
       links: [
         { label: 'Repository', href: LINKS.repository },
-        { label: 'Schnellstart', href: LINKS.quickStart },
+        { label: 'Erste Schritte', href: LINKS.quickStart },
         { label: 'Protokollspezifikation', href: LINKS.spec },
         { label: 'Issues für den Einstieg', href: LINKS.goodFirstIssues },
       ],
@@ -459,7 +467,10 @@ export const LANDING_CONTENT_DE: LandingContent = {
       noRelease: 'Noch keines',
       lastActivity: 'Letzter Commit',
     },
-    nextStep: { label: 'Den Schnellstart auf GitHub öffnen', href: LINKS.quickStart },
+    nextStep: {
+      label: 'Die Schritt-für-Schritt-Anleitung auf GitHub öffnen',
+      href: LINKS.quickStart,
+    },
   },
   founder: {
     id: 'founder',
@@ -576,22 +587,22 @@ export const LANDING_CONTENT_DE: LandingContent = {
         question:
           'Kann ein böswilliger Peer erreichen, dass eine Adresse auf meinem Server gesperrt wird?',
         answer:
-          'Nicht allein. So wie Version 0.1 entworfen ist, reagiert Ihr Server nur auf Meldungen von Quellen, die Sie selbst als vertrauenswürdig ausgewählt haben: standardmäßig erst, wenn mindestens zwei davon dieselbe Adresse melden (Ihr eigener Server zählt als eine) und ihre gemeinsame Konfidenz ausreicht, und niemals gegen Ihre Schutzliste. Meldungen über private und interne Netzwerkadressen werden von vornherein abgelehnt. Peers, denen Sie vertrauen, könnten sich trotzdem bei einer falschen Meldung einig sein. Deshalb wählen Sie sie sorgfältig aus und können im Beobachtungsmodus beginnen. Automatisch erarbeitetes Vertrauen ist geplant.',
+          'Nicht allein. In Version 0.1 reagiert Ihr Server nur auf Meldungen von Quellen, die Sie selbst als vertrauenswürdig ausgewählt haben: standardmäßig erst, wenn mindestens zwei davon dieselbe Adresse melden (Ihr eigener Server zählt als eine) und ihre gemeinsame Konfidenz ausreicht, und niemals gegen Ihre Schutzliste. Meldungen über private und interne Netzwerkadressen werden von vornherein abgelehnt. Peers, denen Sie vertrauen, könnten sich trotzdem bei einer falschen Meldung einig sein. Deshalb wählen Sie sie sorgfältig aus und können im Beobachtungsmodus beginnen. Automatisch erarbeitetes Vertrauen ist geplant.',
       },
       {
         question: 'Welche Daten verlassen meinen Server?',
         answer:
-          'Sobald das Teilen fertig ist (für Version 0.1 in Arbeit), nur signierte Meldungen in dem Format, das die Spezifikation festlegt: die angreifende Adresse, der angegriffene Dienst, wie viele Ereignisse gesehen wurden, ein Begründungscode, ob ein Honeypot den Angriff gesehen hat, die vorgeschlagene Maßnahme, ein Konfidenzwert und wie lange die Maßnahme gelten soll. Optional sind ein Fingerabdruck der Logzeilen, der belegt, was Sie gesehen haben, ohne es offenzulegen, Codes für die Angriffstechnik (MITRE-ATT&CK-IDs) und die Nummer Ihres Netzes (seine ASN). Ein Server kann seine eigene Meldung auch mit einem signierten Widerruf zurückziehen, der einen Begründungscode trägt. Das Format hat keinen Platz für Logs, Benutzernamen, Passwörter oder Freitext. Wie bei jeder Netzwerkverbindung sehen Ihre Peers die Adresse Ihres Servers und seine öffentliche OBIE-ID.',
+          'Nur signierte Meldungen in dem Format, das die Spezifikation festlegt: die angreifende Adresse, der angegriffene Dienst, wie viele Ereignisse gesehen wurden, ein Begründungscode, ob ein Honeypot den Angriff gesehen hat, die vorgeschlagene Maßnahme, ein Konfidenzwert und wie lange die Maßnahme gelten soll. Optional sind ein Fingerabdruck der Logzeilen, der belegt, was Sie gesehen haben, ohne es offenzulegen, Codes für die Angriffstechnik (MITRE-ATT&CK-IDs) und die Nummer Ihres Netzes (seine ASN). Ein Server kann seine eigene Meldung auch mit einem signierten Widerruf zurückziehen, der einen Begründungscode trägt. Das Format hat keinen Platz für Logs, Benutzernamen, Passwörter oder Freitext. Jeder Knoten, der mit Ihrem Mesh verbunden ist, erhält Ihre Meldungen, ob Sie ihm vertrauen oder nicht, und sieht die Adresse Ihres Servers und seine öffentliche OBIE-ID.',
       },
       {
         question: 'Brauche ich Fail2Ban?',
         answer:
-          'Fail2Ban ist das erste Erkennungswerkzeug, für das OBIE gebaut wird. Ein Server braucht kein eigenes Erkennungswerkzeug, um auf Meldungen von Peers zu reagieren, denen er vertraut. Unterstützung für weitere Quellen, etwa Honeypots (Köderserver, die Angreifer anlocken), ist geplant.',
+          'Fail2Ban ist das erste Erkennungswerkzeug, mit dem OBIE zusammenarbeitet: Eine zusätzliche Zeile in einem Jail macht aus seinen Sperren signierte Meldungen. Ein Server braucht kein eigenes Erkennungswerkzeug, um auf Meldungen von Peers zu reagieren, denen er vertraut, und jedes Werkzeug, das einen Befehl ausführen kann, kann eine Adresse melden. Fertige Unterstützung für Honeypots (Köderserver, die Angreifer anlocken) ist geplant.',
       },
       {
         question: 'Ist OBIE bereit für den Produktivbetrieb?',
         answer:
-          'Nein. Version 0.1 wird öffentlich entwickelt. Heute läuft ein Knoten, hat seine eigene Identität, verbindet sich mit den Peers auf Ihrer Liste und speichert Meldungen. Erkennung, Entscheidungen und Sperren sind noch in Arbeit. Bitte verlassen Sie sich noch nicht darauf, um Produktivserver zu schützen.',
+          'Noch nicht. Version 0.1 funktioniert von Anfang bis Ende: Sie meldet, teilt, entscheidet und sperrt, sobald Sie das Sperren einschalten. Aber das erste Release ist noch nicht veröffentlicht, eine unabhängige Sicherheitsprüfung hat noch nicht stattgefunden, und Simulationen haben Schwächen gefunden, die noch zu beheben sind (siehe „Status“). Wenn Sie OBIE auf einem Server ausprobieren, beginnen Sie im Beobachtungsmodus, der nichts sperrt, und lesen Sie, was OBIE noch nicht kann.',
       },
       {
         question: 'Gibt es einen zentralen Server, der OBIE abschalten kann?',
