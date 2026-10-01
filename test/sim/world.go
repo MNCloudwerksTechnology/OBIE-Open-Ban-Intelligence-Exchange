@@ -62,6 +62,10 @@ type world struct {
 	// up; 0 is at the start.
 	delayedLink func(a, b int32) time.Duration
 
+	// traceDir, if set, is where every honest node writes its trace file
+	// (mesh.trace_path, ADR 0032), named after its peer ID.
+	traceDir string
+
 	samples []sample
 }
 

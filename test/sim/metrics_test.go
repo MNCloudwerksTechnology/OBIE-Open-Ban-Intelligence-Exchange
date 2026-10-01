@@ -1,16 +1,15 @@
 package sim
 
 import (
-	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"math"
 	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/eventtrace"
 	"github.com/MNCloudwerksTechnology/obie/internal/store"
 )
 
@@ -306,14 +305,9 @@ func TestWriteTrace(t *testing.T) {
 	if err := writeTrace(&buf, w); err != nil {
 		t.Fatal(err)
 	}
-	var recs []Record
-	sc := bufio.NewScanner(&buf)
-	for sc.Scan() {
-		var r Record
-		if err := json.Unmarshal(sc.Bytes(), &r); err != nil {
-			t.Fatalf("line %q: %v", sc.Text(), err)
-		}
-		recs = append(recs, r)
+	recs, err := eventtrace.Read(&buf)
+	if err != nil {
+		t.Fatal(err)
 	}
 	if len(recs) != 12 {
 		t.Fatalf("%d records, want 12", len(recs))

@@ -257,6 +257,14 @@ Every configuration below runs 20 seeds.
 - **Joining the trace.** An event's path to a node follows the peer of each
   node's accepted copy back to the publisher. Its hop count is the length
   of that path, compared with ln N / ln(D−1) for the variant's D.
+- **The node's own trace files agree.** The validator writes each record
+  to the node's trace file (`mesh.trace_path`) and to the harness's hook
+  in the same call, and both tracers see the same GossipSub events. A unit
+  test lets every node of a small network write its trace file. It joins
+  the files with `internal/eventtrace` and requires, for every event at
+  every node, the hop count and the number of copies the harness
+  measures. The files leave out the adversaries, so the harness keeps its
+  own records: only they follow a path through a Sybil that relayed.
 - **Per seed**, over the pairs of an honest verdict and an honest node
   that runs at the end of the run (a window's delivery ratio counts the
   same nodes):
@@ -354,6 +362,8 @@ Every configuration below runs 20 seeds.
   about eight hours.
 - **Hooks.** The hooks widen `gossip.Options` and `mesh.Options` by one
   `Testing` field each. Both default to production behaviour.
-- **Once #1764 is merged,** its per-event trace files have the harness's
-  record shape. The harness can then read `mesh.trace_path` files instead
-  of the tracer hook.
+- **The trace stays in memory.** The trace files of #1764 (ADR 0032)
+  record what the harness records, but only for honest nodes, and a B run
+  would write 10,000 of them. The scenarios therefore keep the tracer hook,
+  and the unit test under *Joining the trace* holds both to the same hop
+  counts.

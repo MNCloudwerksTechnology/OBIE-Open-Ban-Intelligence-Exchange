@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -107,6 +108,10 @@ func (w *world) startHonest(n *node, h host.Host) error {
 		boot[i] = w.nodes[d].bootstrapAddr()
 	}
 	tr := tracer{w: w, log: &n.trace}
+	var tracePath string
+	if w.traceDir != "" {
+		tracePath = filepath.Join(w.traceDir, n.pid.String()+".jsonl")
+	}
 	m, err := mesh.New(n.id, mesh.Options{
 		Bootstrap: boot,
 		UserAgent: "obied/sim",
@@ -115,6 +120,7 @@ func (w *world) startHonest(n *node, h host.Host) error {
 		// reads it. Every peer pinged every 15 s costs a tenth of an
 		// eclipse run's CPU (ADR 0035).
 		PingInterval: pingInterval,
+		TracePath:    tracePath,
 
 		AllowDocumentationRanges: true,
 		Testing: mesh.Testing{

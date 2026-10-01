@@ -1,9 +1,12 @@
 package sim
 
 import (
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
+
+	"github.com/MNCloudwerksTechnology/obie/internal/eventtrace"
 )
 
 // smallScenario is n honest nodes on a random regular graph of the degree,
@@ -70,6 +73,65 @@ func TestVariantsDeliverWithoutAttack(t *testing.T) {
 					res.Honest, res.Adversaries, res.Links, res.Events)
 			}
 		})
+	}
+}
+
+// TestHopsMatchTheEventTrace: the trace files the honest nodes write
+// (mesh.trace_path), joined by internal/eventtrace (ADR 0032), give every
+// event at every node the hop count and the copies the harness measures
+// from its own trace (ADR 0035).
+func TestHopsMatchTheEventTrace(t *testing.T) {
+	dir := t.TempDir()
+	sc := smallScenario(16, 4, 70*time.Second, func(w *world, _ []int32) error {
+		w.traceDir = dir
+		return nil
+	})
+	w, _ := runSmall(t, sc, V01, 4)
+	paths, err := filepath.Glob(filepath.Join(dir, "*.jsonl"))
+	if err != nil || len(paths) != 16 {
+		t.Fatalf("trace files %v (%v), want one per node", paths, err)
+	}
+	recs, err := eventtrace.ReadFiles(paths...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	spreads := map[string]eventtrace.Spread{}
+	for _, s := range eventtrace.Join(recs) {
+		spreads[s.Event] = s
+	}
+	j := join(w)
+	compared := 0
+	for e, ev := range w.events {
+		s, ok := spreads[ev.ev.ID]
+		if !ok {
+			t.Errorf("event %d is not in the trace files", e)
+			continue
+		}
+		hops := j.hops(e)
+		for n, nd := range w.nodes {
+			id := nd.pid.String()
+			got, reached := s.Reached[id]
+			switch {
+			case hops[n] == 0:
+				if s.Origin != id {
+					t.Errorf("event %d: the trace files name %s as its origin, want node %d", e, s.Origin, n)
+				}
+			case hops[n] < 0:
+				if reached {
+					t.Errorf("event %d reached node %d in the trace files only", e, n)
+				}
+			case !reached || got.Hops != hops[n]:
+				t.Errorf("event %d at node %d: %d hops in the trace files (reached %v), want %d", e, n, got.Hops, reached, hops[n])
+			default:
+				compared++
+			}
+			if want := int(j.d[e][n].copies); s.Copies[id] != want {
+				t.Errorf("event %d at node %d: %d copies in the trace files, want %d", e, n, s.Copies[id], want)
+			}
+		}
+	}
+	if compared == 0 {
+		t.Error("no hop count compared")
 	}
 }
 

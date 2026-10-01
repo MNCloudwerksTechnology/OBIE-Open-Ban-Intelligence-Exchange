@@ -13,6 +13,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
 
+	"github.com/MNCloudwerksTechnology/obie/internal/eventtrace"
 	"github.com/MNCloudwerksTechnology/obie/internal/gossip"
 )
 
@@ -87,17 +88,6 @@ type record struct {
 	event   int32
 	from    int32
 	outcome outcome
-}
-
-// Record is a line of the per-event trace in the shape of ADR 0032's
-// trace files (internal/eventtrace of #1764): node, event, from, at,
-// outcome.
-type Record struct {
-	Node    string    `json:"node"`
-	Event   string    `json:"event"`
-	From    string    `json:"from"`
-	At      time.Time `json:"at"`
-	Outcome string    `json:"outcome"`
 }
 
 // traceLog holds a node's records and its current mesh, which its tracer
@@ -298,8 +288,9 @@ func (j *joined) hops(e int) []int {
 	return h
 }
 
-// writeTrace writes every record of w as JSON lines in the shape of ADR
-// 0032's trace files, ordered by node and time.
+// writeTrace writes every record of w as the lines of ADR 0032's trace
+// files (eventtrace.Record), ordered by node and time; unlike those files,
+// it also holds the adversaries' records.
 func writeTrace(out io.Writer, w *world) error {
 	enc := json.NewEncoder(out)
 	for _, nd := range w.nodes {
@@ -312,7 +303,7 @@ func writeTrace(out io.Writer, w *world) error {
 			if r.from >= 0 {
 				from = w.nodes[r.from].pid.String()
 			}
-			rec := Record{Node: nd.pid.String(), Event: w.events[r.event].ev.ID, From: from,
+			rec := eventtrace.Record{Node: nd.pid.String(), Event: w.events[r.event].ev.ID, From: from,
 				At: w.start.Add(r.at).UTC(), Outcome: r.outcome.String()}
 			if err := enc.Encode(rec); err != nil {
 				return err
