@@ -1,0 +1,13 @@
+# Only go.mod, go.sum, cmd/, internal/, pkg/ and packaging/ are needed to
+# build the image.
+*
+!go.mod
+!go.sum
+!cmd/
+!internal/
+!pkg/
+!packaging/docker/
+!packaging/compose/lab-init.sh
+!packaging/sandbox/sandbox-init.sh
+**/*_test.go
+**/testdata/

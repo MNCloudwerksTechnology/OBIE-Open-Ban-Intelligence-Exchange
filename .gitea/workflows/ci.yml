@@ -1,0 +1,411 @@
+# OBIE CI gate. This file lives in .gitea/workflows/ (Gitea Actions) and, byte
+# for byte, in .github/workflows/ (public GitHub mirror); `make lint-workflows`
+# fails if the two copies differ. The local `make ci` is the source of truth —
+# this pipeline only runs it (and `make -C website ci` for the website), plus
+# the reduced routing simulation (`make sim-routing`) and the packaging checks
+# (`make release`, `check-unit`, `image`, `lab-smoke`, `sandbox-check`,
+# `tutorial-check`, `guides-check`) without publishing anything, and the
+# reduced trust simulation (`make sim-trust`); release.yml
+# publishes on v* tags, website-release.yml the website image on website-v*
+# tags.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+    inputs:
+      privileged:
+        description: Also run the tests behind the `privileged` build tag (as root)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# A new push to a pull request supersedes its running pipeline; runs on
+# develop/main are never cancelled so every commit there gets a result.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # go.mod sets the minimum Go version; the pinned tools (golangci-lint,
+  # govulncheck) need a newer one, which `auto` downloads on demand.
+  GOTOOLCHAIN: auto
+
+jobs:
+  check:
+    name: make ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          # Caches the Go module and build caches. There is no go.sum while
+          # the module has no dependencies, so key on go.mod instead.
+          cache: true
+          cache-dependency-path: go.mod
+
+      # make lint-md installs the pinned markdownlint-cli2 with npm.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Cache pinned tools
+        uses: actions/cache@v4
+        with:
+          path: bin/tools
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      # TestFail2BanAcceptsAction checks the Fail2Ban action with
+      # `fail2ban-client -t` (a command of the getting-started tutorial); it
+      # is skipped without Fail2Ban.
+      - name: Install Fail2Ban
+        run: |
+          if ! command -v fail2ban-client >/dev/null; then
+            sudo=; [ "$(id -u)" -eq 0 ] || sudo=sudo
+            $sudo apt-get update && $sudo apt-get install -y --no-install-recommends fail2ban
+          fi
+
+      - name: make ci
+        run: make ci
+
+  build:
+    name: build linux/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `git describe` can embed the version.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make build
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.goarch }}
+        run: make build BIN_DIR="$PWD/dist/linux-$GOARCH"
+
+      - name: Verify static binaries
+        run: |
+          for bin in dist/linux-${{ matrix.goarch }}/*; do
+            info="$(go version -m "$bin")"
+            grep -E 'GOARCH=|CGO_ENABLED=' <<<"$info"
+            grep -q 'CGO_ENABLED=0' <<<"$info" || { echo "$bin is not static"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: obie-linux-${{ matrix.goarch }}
+          path: dist/linux-${{ matrix.goarch }}/
+          if-no-files-found: error
+          retention-days: 7
+
+  sim-routing:
+    name: routing simulation (reduced)
+    # The reduced scenario of the routing simulation (ADR 0035): 100 honest
+    # nodes under a cold boot attack by 400 Sybils, one seed per router
+    # variant. It fails if plain GossipSub stops losing verdicts, if the
+    # paper's scoring loses one, or if v0.1 delivers less than 99 % (it
+    # delivered every verdict in 20 repeats; see
+    # documentation/validation/routing/harness-validation.md).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so `git describe` names the version in the report.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make sim-routing
+        run: make sim-routing SCENARIO=reduced SEEDS=1 SIMPARALLEL=3
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-routing-reduced
+          path: dist/sim-routing/routing-reduced*
+          if-no-files-found: ignore
+          retention-days: 14
+
+  fuzz:
+    name: fuzz
+    # Every fuzz target mutates inputs for 30 s; `make ci` only replays the
+    # seed corpus. Crashes land in testdata/fuzz/ (see CONTRIBUTING.md).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make fuzz
+        run: make fuzz FUZZTIME=30s
+
+  sim-trust:
+    name: trust simulation (reduced)
+    # The reduced scenario of the trust simulation (ADR 0034): 20 seeds of a
+    # small world replayed through the real store, allow-list and decision
+    # engine, checked against what v0.1's static weights guarantee. The
+    # report is kept as an artifact.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make sim-trust SCENARIO=reduced
+        run: make sim-trust SCENARIO=reduced
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sim-trust-reduced
+          path: bin/sim-trust/reduced/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  package:
+    name: release build, image and lab
+    # Everything the release workflow publishes, built and checked but never
+    # pushed: reproducible `make release`, the systemd unit, the container
+    # image and the compose lab's smoke test; and the sandbox walkthrough, the
+    # getting-started tutorial and the how-to guides.
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # SOURCE_DATE_EPOCH is the commit time.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: Cache pinned tools
+        uses: actions/cache@v4
+        with:
+          path: bin/tools
+          key: tools-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: make release (twice, must be byte-identical)
+        run: |
+          make release VERSION=0.0.0-ci
+          cp dist/release/SHA256SUMS "$RUNNER_TEMP/SHA256SUMS"
+          # The second build starts from an empty build cache.
+          GOCACHE="$(mktemp -d)" make release VERSION=0.0.0-ci
+          diff "$RUNNER_TEMP/SHA256SUMS" dist/release/SHA256SUMS
+
+      # The install commands of documentation/getting-started.md, on the
+      # tarball just built: verify, extract, install (staged below DESTDIR,
+      # without root and systemd) and check the installed config.
+      - name: install steps on the release tarball
+        run: |
+          cp dist/release/obie-0.0.0-ci-linux-amd64.tar.gz dist/release/SHA256SUMS "$RUNNER_TEMP/"
+          cd "$RUNNER_TEMP"
+          sha256sum -c --ignore-missing SHA256SUMS
+          tar -xzf obie-0.0.0-ci-linux-amd64.tar.gz
+          DESTDIR="$RUNNER_TEMP/root" ./obie-0.0.0-ci-linux-amd64/install.sh
+          "$RUNNER_TEMP/root/usr/local/bin/obied" --config "$RUNNER_TEMP/root/etc/obie/obie.yaml" --check-config
+          "$RUNNER_TEMP/root/usr/local/bin/obied" setup --non-interactive --force --config "$RUNNER_TEMP/root/etc/obie/obie.yaml"
+          "$RUNNER_TEMP/root/usr/local/bin/obied" --config "$RUNNER_TEMP/root/etc/obie/obie.yaml" --check-config
+          # The manual pages and completions are installed and load.
+          grep -q '^\.TH OBIECTL 1' "$RUNNER_TEMP/root/usr/local/share/man/man1/obiectl.1"
+          bash -c '. "$1" && complete -p obiectl' _ "$RUNNER_TEMP/root/usr/local/share/bash-completion/completions/obiectl"
+
+      - name: make check-unit
+        run: |
+          if ! command -v systemd-analyze >/dev/null; then
+            sudo=; [ "$(id -u)" -eq 0 ] || sudo=sudo
+            $sudo apt-get update && $sudo apt-get install -y --no-install-recommends systemd
+          fi
+          make check-unit
+
+      - name: make image
+        run: make image
+
+      - name: make lab-smoke
+        run: make lab-smoke
+
+      # Every step of documentation/sandbox.md against a sandbox of its own,
+      # each output compared with the page (ADR 0029).
+      - name: make sandbox-check
+        run: make sandbox-check
+
+      # Every command of documentation/getting-started.md on a systemd host
+      # in a privileged container, against the release built from this
+      # commit, each output compared with the page (ADR 0030).
+      - name: make tutorial-check
+        run: make tutorial-check
+
+      # Every command of the how-to guides in documentation/guides, each on a
+      # server of its own after the tutorial's steps it builds on, each output
+      # compared with the page (ADR 0031).
+      - name: make guides-check
+        run: make guides-check
+
+  website:
+    name: website
+    # The website (website/) is independent of the node and has its own gate,
+    # `make -C website ci`. The job always runs so it can be a required check,
+    # but its steps are skipped unless something under website/ changed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # History is needed to diff against the base of the change.
+          fetch-depth: 0
+
+      - name: Detect changes under website/
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          case "$EVENT" in
+            pull_request) base="$PR_BASE" ;;
+            push) base="$PUSH_BEFORE" ;;
+            *) base="" ;;
+          esac
+          # Manual runs, new branches and unknown bases check everything.
+          if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+            changed=true
+          elif git diff --quiet "$base" HEAD -- website/; then
+            changed=false
+          else
+            changed=true
+          fi
+          echo "website changed: $changed"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      - if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: website/backend/pom.xml
+
+      # Go is only needed to install the pinned osv-scanner.
+      - if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - if: steps.changes.outputs.changed == 'true'
+        name: Cache pinned website tools
+        uses: actions/cache@v4
+        with:
+          path: website/bin/tools
+          key: website-tools-${{ runner.os }}-${{ hashFiles('website/Makefile') }}
+
+      - if: steps.changes.outputs.changed == 'true'
+        name: make -C website ci
+        run: make -C website ci
+
+      # The container image and the production compose stack, checked but
+      # never pushed; website-release.yml publishes on website-v* tags.
+      - if: steps.changes.outputs.changed == 'true'
+        name: make -C website smoke
+        run: make -C website smoke
+
+  lighthouse:
+    name: website lighthouse (non-blocking)
+    # Lighthouse CI (mobile) against the jar started on the runner; fails below
+    # 95 in any category. Scores depend on the runner's load, so a failure is
+    # reported but never blocks a change: the job is not a required check.
+    needs: website
+    if: needs.website.outputs.changed == 'true'
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: website/backend/pom.xml
+
+      # The runner image ships Google Chrome, which Lighthouse CI finds on its own.
+      - name: make -C website lighthouse
+        run: make -C website lighthouse
+
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: website/.lighthouseci/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  privileged:
+    name: privileged tests
+    # Never part of the default gate; only on a manual run with the input set.
+    if: github.event_name == 'workflow_dispatch' && inputs.privileged
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.mod
+
+      - name: make test-privileged
+        run: sudo env "PATH=$PATH" "GOTOOLCHAIN=$GOTOOLCHAIN" make test-privileged

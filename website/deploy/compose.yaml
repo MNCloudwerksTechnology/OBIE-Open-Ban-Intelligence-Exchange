@@ -1,0 +1,83 @@
+# OBIE website in production: the website container and its PostgreSQL
+# database. Every setting comes from the environment file (.env next to this
+# file, a copy of .env.example); README.md in this directory describes the
+# deployment.
+#
+#   cp .env.example .env && $EDITOR .env
+#   docker compose up -d --wait
+#
+# The website listens on OBIE_HTTP_BIND (default 127.0.0.1:8080) for the
+# TLS-terminating reverse proxy in front of it. The database publishes no
+# port. The `test` profile adds Mailpit, an SMTP server that only captures
+# mails, for the smoke test (smoke-test.sh).
+
+name: obie-website
+
+services:
+  website:
+    image: ${OBIE_IMAGE:-ghcr.io/mncloudwerkstechnology/obie-website:latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    # The application's settings (OBIE_*, SERVER_*) as they are in the file:
+    # a variable that is not set there keeps the application's default.
+    env_file: ${OBIE_ENV_FILE:-.env}
+    environment:
+      # Required settings are checked here, before anything starts.
+      OBIE_SITE_ORIGIN: ${OBIE_SITE_ORIGIN:?set OBIE_SITE_ORIGIN in the environment file}
+      OBIE_SMTP_HOST: ${OBIE_SMTP_HOST:?set OBIE_SMTP_HOST in the environment file}
+      OBIE_MAIL_FROM: ${OBIE_MAIL_FROM:?set OBIE_MAIL_FROM in the environment file}
+      OBIE_INQUIRY_RECIPIENT: ${OBIE_INQUIRY_RECIPIENT:?set OBIE_INQUIRY_RECIPIENT in the environment file}
+      OBIE_INQUIRY_SECRET: ${OBIE_INQUIRY_SECRET:?set OBIE_INQUIRY_SECRET in the environment file}
+      OBIE_DB_URL: jdbc:postgresql://db:5432/${OBIE_DB_NAME:-obie}
+      OBIE_DB_USERNAME: ${OBIE_DB_USERNAME:-obie}
+      OBIE_DB_PASSWORD: ${OBIE_DB_PASSWORD:?set OBIE_DB_PASSWORD in the environment file}
+      # Take the visitor's address and scheme from X-Forwarded-For and
+      # X-Forwarded-Proto. Tomcat accepts them only from private and loopback
+      # addresses (the proxy), never from a visitor on the internet.
+      SERVER_FORWARD_HEADERS_STRATEGY: ${SERVER_FORWARD_HEADERS_STRATEGY:-native}
+    ports:
+      - ${OBIE_HTTP_BIND:-127.0.0.1:8080}:8080
+    # Hardening: nothing is writable but a small /tmp, no capabilities, no
+    # privilege escalation, and the memory the JVM flags are sized for.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 512m
+    pids_limit: 256
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${OBIE_DB_NAME:-obie}
+      POSTGRES_USER: ${OBIE_DB_USERNAME:-obie}
+      POSTGRES_PASSWORD: ${OBIE_DB_PASSWORD:?set OBIE_DB_PASSWORD in the environment file}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -q -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    security_opt: [no-new-privileges:true]
+    mem_limit: 256m
+
+  # Test profile only: catches every mail; web UI and API on MAILPIT_BIND.
+  mailpit:
+    profiles: [test]
+    image: axllent/mailpit:v1.29
+    ports:
+      - ${MAILPIT_BIND:-127.0.0.1:8025}:8025
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+volumes:
+  db-data:

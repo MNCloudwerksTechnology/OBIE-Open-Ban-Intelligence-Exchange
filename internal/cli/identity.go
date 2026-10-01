@@ -1,0 +1,134 @@
+package cli
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"io"
+	"text/tabwriter"
+
+	"github.com/MNCloudwerksTechnology/obie/internal/admin"
+	"github.com/MNCloudwerksTechnology/obie/internal/config"
+	"github.com/MNCloudwerksTechnology/obie/internal/identity"
+	"github.com/MNCloudwerksTechnology/obie/internal/statedir"
+	"github.com/MNCloudwerksTechnology/obie/internal/version"
+)
+
+// stateDirFlags registers the flags that locate the state directory.
+func stateDirFlags(fs *flag.FlagSet) (configPath, stateDir *string) {
+	configPath = fs.String("config", config.DefaultPath, "path to the YAML configuration `file` naming node.state_dir")
+	stateDir = fs.String("state-dir", "", "state `directory` holding "+identity.FileName+" (default: node.state_dir of --config)")
+	return configPath, stateDir
+}
+
+// stateDirWhere returns the flags that locate the state directory, as the
+// user gave them, for the commands a message suggests: "" for the
+// defaults.
+func stateDirWhere(configPath, stateDir string) string {
+	if stateDir != "" {
+		return " --state-dir " + config.QuotePath(stateDir)
+	}
+	return config.PathFlag(configPath)
+}
+
+// resolveStateDir returns stateDir if set, else node.state_dir of the
+// configuration file.
+func resolveStateDir(configPath, stateDir string) (string, error) {
+	if stateDir != "" {
+		return stateDir, nil
+	}
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return "", err
+	}
+	return cfg.Node.StateDir, nil
+}
+
+func runKeygen(args []string, stdout, stderr io.Writer) int {
+	const program = "obied keygen"
+	fs := newFlagSet(program)
+	configPath, stateDirFlag := stateDirFlags(fs)
+	force := fs.Bool("force", false, "replace an existing key; this changes the node's peer ID")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
+		return code
+	}
+	stateDir, err := resolveStateDir(*configPath, *stateDirFlag)
+	if err != nil {
+		configProblem(*configPath, err).write(stderr, program)
+		return ExitInvalidConfig
+	}
+
+	if err := statedir.Check(stateDir, version.Version); err != nil {
+		stateDirProblem(err).write(stderr, program)
+		return ExitFailure
+	}
+	key, err := identity.Create(stateDir, *force)
+	if err != nil {
+		keygenProblem(stateDir, stateDirWhere(*configPath, *stateDirFlag), err).write(stderr, program)
+		return ExitFailure
+	}
+	_, _ = fmt.Fprintf(stderr, "%s: wrote a new node key to %s\n", program, identity.Path(stateDir))
+	if *force {
+		_, _ = fmt.Fprintf(stderr, "%s: a running obied keeps its old key until it is restarted\n", program)
+	}
+	return printIdentity(stdout, stderr, program, admin.NewIdentityResponse(key), false)
+}
+
+func runIdentity(args []string, stdout, stderr io.Writer) int {
+	const program = "obied identity"
+	fs := newFlagSet(program)
+	configPath, stateDirFlag := stateDirFlags(fs)
+	asJSON := fs.Bool("json", false, "print the identity as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
+		return code
+	}
+	stateDir, err := resolveStateDir(*configPath, *stateDirFlag)
+	if err != nil {
+		configProblem(*configPath, err).write(stderr, program)
+		return ExitInvalidConfig
+	}
+
+	key, err := identity.Load(stateDir)
+	if err != nil {
+		identityProblem(stateDir, stateDirWhere(*configPath, *stateDirFlag), err).write(stderr, program)
+		return ExitFailure
+	}
+	return printIdentity(stdout, stderr, program, admin.NewIdentityResponse(key), *asJSON)
+}
+
+func runCtlIdentity(ctx context.Context, client *admin.Client, args []string, stdout, stderr io.Writer) int {
+	const program = "obiectl identity"
+	fs := newFlagSet(program)
+	asJSON := fs.Bool("json", false, "print the identity as JSON, for scripts")
+	if code, done := parseNoArgs(fs, args, stdout, stderr); done {
+		return code
+	}
+	id, err := client.Identity(ctx)
+	if err != nil {
+		reportClientError(ctx, stderr, program, client, err)
+		return ExitFailure
+	}
+	return printIdentity(stdout, stderr, "obiectl", *id, *asJSON)
+}
+
+// printIdentity prints the peer ID and fingerprint — never the private key.
+func printIdentity(stdout, stderr io.Writer, program string, id admin.IdentityResponse, asJSON bool) int {
+	var err error
+	if asJSON {
+		err = writeJSON(stdout, id)
+	} else {
+		err = writeIdentityTable(stdout, id)
+	}
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "%s: writing identity: %v\n", program, err)
+		return ExitIOError
+	}
+	return ExitOK
+}
+
+func writeIdentityTable(w io.Writer, id admin.IdentityResponse) error {
+	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintf(tw, "Peer ID:\t%s\n", id.PeerID)
+	_, _ = fmt.Fprintf(tw, "Fingerprint:\t%s\n", id.Fingerprint)
+	return tw.Flush()
+}

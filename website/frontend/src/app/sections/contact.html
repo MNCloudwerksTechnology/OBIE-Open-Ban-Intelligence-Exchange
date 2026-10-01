@@ -1,0 +1,227 @@
+<section class="section section--alt" [id]="contact.id" aria-labelledby="contact-heading">
+  <div class="container">
+    <p class="eyebrow"><span>07</span>{{ contact.label }}</p>
+    <h2 class="section-heading" id="contact-heading">{{ contact.heading }}</h2>
+    <p class="lead">{{ contact.intro }}</p>
+
+    <p class="visually-hidden" role="status">{{ announcement() }}</p>
+
+    @if (state() === 'success') {
+      <div class="panel panel--success">
+        <h3 id="inquiry-success" tabindex="-1">{{ copy.success.heading }}</h3>
+        <p>{{ copy.success.text }}</p>
+      </div>
+    } @else {
+      <form
+        class="form"
+        [formGroup]="form"
+        (ngSubmit)="submit()"
+        novalidate
+        [attr.aria-busy]="state() === 'sending'"
+        aria-labelledby="contact-heading"
+      >
+        <fieldset class="types" [attr.aria-describedby]="describedBy('type')">
+          <legend>{{ copy.typeLegend }}</legend>
+          <div class="choices">
+            @for (option of copy.types; track option.value) {
+              <label class="choice">
+                <input type="radio" formControlName="type" [value]="option.value" />
+                <span>{{ option.label }}</span>
+              </label>
+            }
+          </div>
+          <ng-container *ngTemplateOutlet="fieldError; context: { $implicit: 'type' }" />
+        </fieldset>
+
+        <div class="grid">
+          <ng-container
+            *ngTemplateOutlet="
+              textField;
+              context: { $implicit: 'name', copy: copy.fields.name, autocomplete: 'name' }
+            "
+          />
+          <ng-container
+            *ngTemplateOutlet="
+              textField;
+              context: {
+                $implicit: 'email',
+                copy: copy.fields.email,
+                type: 'email',
+                autocomplete: 'email',
+              }
+            "
+          />
+          <ng-container
+            *ngTemplateOutlet="
+              textField;
+              context: {
+                $implicit: 'organisation',
+                copy: copy.fields.organisation,
+                optional: true,
+                autocomplete: 'organization',
+              }
+            "
+          />
+        </div>
+
+        @if (isEventType(type())) {
+          <fieldset class="event">
+            <legend>{{ copy.eventLegend }}</legend>
+            <div class="grid grid--3">
+              <ng-container
+                *ngTemplateOutlet="
+                  textField;
+                  context: {
+                    $implicit: 'eventDate',
+                    copy: copy.fields.eventDate,
+                    type: 'date',
+                    optional: true,
+                  }
+                "
+              />
+              <ng-container
+                *ngTemplateOutlet="
+                  textField;
+                  context: {
+                    $implicit: 'eventLocation',
+                    copy: copy.fields.eventLocation,
+                    optional: true,
+                  }
+                "
+              />
+              <ng-container
+                *ngTemplateOutlet="
+                  textField;
+                  context: {
+                    $implicit: 'audienceSize',
+                    copy: copy.fields.audienceSize,
+                    type: 'number',
+                    optional: true,
+                  }
+                "
+              />
+            </div>
+          </fieldset>
+        }
+
+        <div class="field">
+          <label for="inquiry-message">{{ copy.fields.message.label }}</label>
+          <p class="hint" id="inquiry-message-hint">{{ copy.fields.message.hint }}</p>
+          <textarea
+            id="inquiry-message"
+            formControlName="message"
+            rows="6"
+            [attr.aria-invalid]="error('message') ? 'true' : null"
+            [attr.aria-describedby]="describedBy('message', copy.fields.message.hint)"
+          ></textarea>
+          <ng-container *ngTemplateOutlet="fieldError; context: { $implicit: 'message' }" />
+        </div>
+
+        <div class="field">
+          <div class="consent">
+            <input
+              id="inquiry-consent"
+              type="checkbox"
+              formControlName="consent"
+              [attr.aria-invalid]="error('consent') ? 'true' : null"
+              [attr.aria-describedby]="describedBy('consent')"
+            />
+            <label for="inquiry-consent">
+              {{ copy.consent.before
+              }}<a [href]="copy.consent.link.href" target="_blank" rel="noopener">{{
+                copy.consent.link.label
+              }}</a
+              >{{ copy.consent.after }}
+            </label>
+          </div>
+          <ng-container *ngTemplateOutlet="fieldError; context: { $implicit: 'consent' }" />
+        </div>
+
+        <div class="honeypot" aria-hidden="true">
+          <label for="inquiry-website">{{ copy.honeypot }}</label>
+          <input
+            id="inquiry-website"
+            type="text"
+            formControlName="website"
+            tabindex="-1"
+            autocomplete="off"
+          />
+        </div>
+
+        @if (state() === 'error') {
+          <div class="panel panel--error" role="alert">
+            <h3>{{ copy.error.heading }}</h3>
+            <p>
+              @switch (errorKind()) {
+                @case ('expired') {
+                  {{ copy.error.expired }}
+                }
+                @case ('rate-limited') {
+                  {{ copy.error.rateLimited }}
+                }
+                @default {
+                  {{ copy.error.text }}
+                }
+              }
+            </p>
+          </div>
+        }
+
+        <button
+          class="button button--primary submit"
+          type="submit"
+          [disabled]="state() === 'sending'"
+        >
+          @if (state() === 'sending') {
+            {{ copy.sending }}
+          } @else if (state() === 'error') {
+            {{ copy.error.retry }}
+          } @else {
+            {{ copy.submit }}
+          }
+        </button>
+      </form>
+    }
+
+    <a class="next-step" [href]="contact.nextStep.href" rel="noopener">{{
+      contact.nextStep.label
+    }}</a>
+  </div>
+</section>
+
+<ng-template
+  #textField
+  let-name
+  let-field="copy"
+  let-type="type"
+  let-optional="optional"
+  let-autocomplete="autocomplete"
+>
+  <div class="field">
+    <label [for]="'inquiry-' + name">
+      {{ field.label }}
+      @if (optional) {
+        <span class="optional">{{ copy.optional }}</span>
+      }
+    </label>
+    @if (field.hint) {
+      <p class="hint" [id]="'inquiry-' + name + '-hint'">{{ field.hint }}</p>
+    }
+    <input
+      [id]="'inquiry-' + name"
+      [type]="type ?? 'text'"
+      [formControl]="control(name)"
+      [attr.autocomplete]="autocomplete ?? null"
+      [attr.inputmode]="type === 'number' ? 'numeric' : null"
+      [attr.aria-invalid]="error(name) ? 'true' : null"
+      [attr.aria-describedby]="describedBy(name, field.hint)"
+    />
+    <ng-container *ngTemplateOutlet="fieldError; context: { $implicit: name }" />
+  </div>
+</ng-template>
+
+<ng-template #fieldError let-name>
+  @if (error(name); as message) {
+    <p class="error" [id]="'inquiry-' + name + '-error'">{{ message }}</p>
+  }
+</ng-template>

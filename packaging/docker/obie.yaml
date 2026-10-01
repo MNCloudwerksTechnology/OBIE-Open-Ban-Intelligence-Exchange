@@ -1,0 +1,29 @@
+# OBIE node configuration of the container image — /etc/obie/obie.yaml
+#
+# Only the keys that differ from the defaults for a container are set here;
+# documentation/examples/obie.yaml documents every key. Mount your own file
+# over this one to join a mesh (mesh.bootstrap, trust.publishers).
+
+node:
+  # A volume: the node key and the event store must survive the container.
+  state_dir: /var/lib/obie
+
+admin:
+  socket: /run/obie/obie.sock
+  # The image has no obie group; obiectl runs as the image user nonroot.
+  socket_group: nonroot
+
+mesh:
+  # IPv4 only: container networks rarely have IPv6.
+  listen:
+    - /ip4/0.0.0.0/tcp/4001
+    - /ip4/0.0.0.0/udp/4001/quic-v1
+
+metrics:
+  # Reachable through a published port; publish it only where Prometheus
+  # can reach it.
+  listen: 0.0.0.0:9464
+
+enforce:
+  # A container cannot program the host firewall; dryrun only logs.
+  backend: dryrun

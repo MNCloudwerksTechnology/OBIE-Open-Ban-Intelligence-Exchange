@@ -1,0 +1,5 @@
+{{define "content" -}}
+<h1>Page not found</h1>
+<p>The console has no page at <code>{{.Path}}</code>.{{with .Message}} {{.}}{{end}}</p>
+<p><a href="/">Go to the console's home page</a></p>
+{{- end}}

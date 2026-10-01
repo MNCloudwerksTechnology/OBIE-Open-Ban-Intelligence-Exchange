@@ -1,0 +1,22 @@
+<svg width="600" height="200" viewBox="0 0 600 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- OBIE Node Mesh Logo (Horizontal) -->
+  <g transform="translate(20, 0) scale(0.8)">
+    <circle cx="100" cy="100" r="20" stroke="#FE8A07" stroke-width="4" fill="none"/>
+    <circle cx="100" cy="40" r="10" fill="#FE8A07"/>
+    <circle cx="160" cy="70" r="10" fill="#FE8A07"/>
+    <circle cx="160" cy="130" r="10" fill="#FE8A07"/>
+    <circle cx="100" cy="160" r="10" fill="#FE8A07"/>
+    <circle cx="40" cy="130" r="10" fill="#FE8A07"/>
+    <circle cx="40" cy="70" r="10" fill="#FE8A07"/>
+    <line x1="100" y1="50" x2="100" y2="80" stroke="#8A8A8A" stroke-width="2"/>
+    <line x1="151" y1="75" x2="117" y2="90" stroke="#8A8A8A" stroke-width="2"/>
+    <line x1="151" y1="125" x2="117" y2="110" stroke="#8A8A8A" stroke-width="2"/>
+    <line x1="100" y1="150" x2="100" y2="120" stroke="#8A8A8A" stroke-width="2"/>
+    <line x1="49" y1="125" x2="83" y2="110" stroke="#8A8A8A" stroke-width="2"/>
+    <line x1="49" y1="75" x2="83" y2="90" stroke="#8A8A8A" stroke-width="2"/>
+    <path d="M100 40 L160 70 L160 130 L100 160 L40 130 L40 70 Z" stroke="#333333" stroke-width="2" fill="none"/>
+  </g>
+  
+  <text x="200" y="115" fill="#FE8A07" style="font-family: 'Inter', sans-serif; font-weight: 700; font-size: 80px; letter-spacing: 0.05em;">OBIE</text>
+  <text x="200" y="155" fill="#8A8A8A" style="font-family: 'Inter', sans-serif; font-weight: 400; font-size: 18px; letter-spacing: 0.1em; text-transform: uppercase;">Open Ban Intelligence Exchange</text>
+</svg>

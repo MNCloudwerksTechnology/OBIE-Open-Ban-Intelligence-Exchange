@@ -1,0 +1,146 @@
+{{define "content" -}}
+<p class="back"><a href="/decisions">All decisions</a></p>
+<div class="item-head"><h1><span class="mono" data-copy>{{.Address}}</span></h1></div>
+{{- with .Actions}}
+{{- if .Links}}
+<ul class="actions" aria-label="Act on this {{if $.Network}}network{{else}}address{{end}}">
+  {{- range .Links}}
+  <li><a class="button button-secondary" href="{{.Href}}">{{.Text}}</a></li>
+  {{- end}}
+</ul>
+{{- else}}
+<p class="note">{{.Off}}</p>
+{{- end}}
+{{- end}}
+<p class="lead">Why this node decides as it does on this {{if .Network}}network{{else}}address{{end}}: the same facts as <code>obiectl explain {{.Address}}</code>. <span data-live hidden>It is evaluated again every 5 seconds, so a change shows here.</span></p>
+<div class="refresh" data-refresh="{{.Fragment}}">
+{{template "region" .}}
+</div>
+{{- end}}
+
+{{define "region" -}}
+{{- with .Notice}}
+<p class="callout">{{.}}</p>
+{{- end}}
+{{- if .Err}}
+<p class="callout" data-level="warning">{{.Err}}</p>
+{{- else}}
+<div class="summary" data-state="{{.Summary.State}}">
+  <p><strong class="summary-title">{{.Summary.Title}}</strong> {{.Summary.Text}}</p>
+  <p class="updated" data-tick>Evaluated <time datetime="{{.Evaluated.ISO}}">{{.Evaluated.Text}}</time></p>
+</div>
+{{- with .Kept}}
+<p class="note">{{.}}</p>
+{{- end}}
+
+<section class="section" aria-labelledby="verdicts-heading">
+  <h2 id="verdicts-heading">Verdicts and score</h2>
+  {{- if .Verdicts}}
+  <p>Every active verdict on it, one per publisher. A ban verdict of a publisher with a trust weight above 0 counts: it adds its weight × its confidence to the score.{{with .AllVerdicts}} <a href="{{.}}">Every verdict on it, with its evidence hash, and the revoked and expired ones</a>{{end}}</p>
+  <div class="table-scroll">
+  <table class="list verdicts">
+    <thead>
+      <tr><th scope="col">Publisher</th><th scope="col">Action</th><th scope="col">Trust weight</th><th scope="col">Confidence</th><th scope="col">Adds to the score</th><th scope="col">Counts</th><th scope="col">Reason</th><th scope="col">Expires</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Verdicts}}
+      <tr>
+        <th scope="row">{{if .Href}}<a href="{{.Href}}">{{.Publisher}}</a>{{else}}{{.Publisher}}{{end}}<span class="peer-id mono" title="{{.PeerID}}">{{.ShortID}}</span></th>
+        <td><span class="cell-label">Action</span> {{.Action}}</td>
+        <td><span class="cell-label">Trust weight</span> <span class="weight">{{.Weight}}</span><span class="cell-note">{{.WeightFrom}}</span></td>
+        <td><span class="cell-label">Confidence</span> {{.Confidence}}</td>
+        <td><span class="cell-label">Adds to the score</span> <span class="weight">{{.Score}}</span></td>
+        <td><span class="cell-label">Counts</span> <span{{if not .Counting}} class="cell-note"{{end}}>{{.Counts}}</span></td>
+        <td><span class="cell-label">Reason</span> {{.Reason}}</td>
+        <td><span class="cell-label">Expires</span> <time datetime="{{.Expires.ISO}}">{{.Expires.Text}}</time><span class="cell-note">issued <time datetime="{{.Issued.ISO}}">{{.Issued.Text}}</time></span></td>
+      </tr>
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  {{- else}}
+  <p class="empty">No verdicts: no publisher, this node included, holds an active verdict on it.{{with .AllVerdicts}} <a href="{{.}}">Revoked and expired verdicts on it</a>{{end}}</p>
+  {{- end}}
+  <dl class="facts">
+    <dt>Score</dt>
+    <dd><strong>{{.Sum.Score}}</strong> of threshold {{.Sum.Threshold}}: <span class="check" data-met="{{if .Sum.ScoreMet}}yes{{else}}no{{end}}">{{if .Sum.ScoreMet}}reached{{else}}not reached{{end}}</span></dd>
+    <dt>Publishers</dt>
+    <dd><strong>{{.Sum.Contributors}}</strong> counting, of quorum {{.Sum.Quorum}}: <span class="check" data-met="{{if .Sum.QuorumMet}}yes{{else}}no{{end}}">{{if .Sum.QuorumMet}}reached{{else}}not reached{{end}}</span></dd>
+    <dt>Local autoblock</dt>
+    <dd>{{.Sum.Autoblock}}</dd>
+    <dt>Decision engine</dt>
+    <dd>{{.Reason}}</dd>
+  </dl>
+</section>
+
+<section class="section" aria-labelledby="rules-heading">
+  <h2 id="rules-heading">Allow-list and overrides</h2>
+  <dl class="facts">
+    <dt>Deciding rule</dt>
+    <dd>{{if .Ruling.Rule}}<strong>{{.Ruling.Rule}}</strong>: {{end}}{{.Ruling.Text}}</dd>
+    {{- with .Ruling.Match}}
+    <dt>Matching</dt>
+    <dd><code>{{.}}</code></dd>
+    {{- end}}
+    {{- with .Ruling.Label}}
+    <dt>Entry</dt>
+    <dd>{{.}}</dd>
+    {{- end}}
+    {{- with .Ruling.Note}}
+    <dt>Override note</dt>
+    <dd>{{.}}</dd>
+    {{- end}}
+    {{- if .Ruling.Expires.Text}}
+    <dt>Override ends</dt>
+    <dd><time datetime="{{.Ruling.Expires.ISO}}">{{.Ruling.Expires.Text}}</time></dd>
+    {{- end}}
+    <dt>Protection</dt>
+    <dd>{{.Protection}}</dd>
+  </dl>
+</section>
+
+<section class="section" aria-labelledby="firewall-heading">
+  <h2 id="firewall-heading">Firewall</h2>
+  <dl class="facts">
+    <dt>Status</dt>
+    <dd><span class="peer-state" data-state="{{.Firewall.State}}">{{.Firewall.Label}}</span> {{.Firewall.Text}}</dd>
+    {{- with .Firewall.Entry}}
+    <dt>Entry</dt>
+    <dd>{{if $.Firewall.Href}}<a class="mono" href="{{$.Firewall.Href}}">{{.}}</a>{{else}}<span class="mono">{{.}}</span>{{end}}{{with $.Firewall.Expires.Text}}, until <time datetime="{{$.Firewall.Expires.ISO}}">{{.}}</time>{{end}}</dd>
+    {{- end}}
+    {{- with .Firewall.Pass}}
+    <dt>Last pass</dt>
+    <dd>{{.}} <a href="/enforcement">What the firewall applies</a></dd>
+    {{- end}}
+  </dl>
+</section>
+
+<section class="section" aria-labelledby="around-heading">
+  <h2 id="around-heading">Networks around it</h2>
+  {{- if .Around}}
+  <p>The node also holds decisions on networks that contain it. A block on a wider network blocks it too: the firewall entry marked below wins.</p>
+  <div class="table-scroll">
+  <table class="list around">
+    <thead>
+      <tr><th scope="col">Network</th><th scope="col">State</th><th scope="col">Firewall</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Around}}
+      <tr>
+        <th scope="row"><a class="mono address" href="{{.Href}}" data-copy>{{.Address}}</a>{{if .Wins}} <span class="badge">Its entry wins</span>{{end}}</th>
+        <td><span class="cell-label">State</span> <span class="decision-state" data-state="{{.State}}">{{.StateLabel}}</span><span class="cell-note">{{.StateNote}}</span></td>
+        <td><span class="cell-label">Firewall</span> <span class="peer-state" data-state="{{.FirewallState}}">{{.FirewallLabel}}</span><span class="cell-note">{{.FirewallNote}}</span></td>
+      </tr>
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  {{- else}}
+  <p>The node holds no decision on a network that contains it.</p>
+  {{- end}}
+  {{- with .Inside}}
+  <p><a href="{{.}}">Decisions inside this network</a></p>
+  {{- end}}
+</section>
+{{- end}}
+{{- end}}

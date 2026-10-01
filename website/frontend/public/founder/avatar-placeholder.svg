@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
+  <!-- Neutral placeholder avatar until the operator supplies a headshot. -->
+  <rect width="240" height="240" fill="#d8d1c6"/>
+  <circle cx="120" cy="96" r="44" fill="#8a8a8a"/>
+  <path d="M36 240c0-50 38-84 84-84s84 34 84 84z" fill="#8a8a8a"/>
+</svg>

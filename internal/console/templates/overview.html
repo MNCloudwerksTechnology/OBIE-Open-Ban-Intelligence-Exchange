@@ -1,0 +1,108 @@
+{{define "content" -}}
+<h1>Overview</h1>
+<p class="lead">Is this node healthy, and what is it doing? <span data-live hidden>This page updates itself every 5 seconds.</span></p>
+<div class="refresh" data-refresh="/api/overview">
+{{template "region" .}}
+</div>
+{{- end}}
+
+{{define "region" -}}
+<div class="summary" data-state="{{.Summary.State}}">
+  <p><strong class="summary-title">{{.Summary.Title}}</strong> {{.Summary.Text}}</p>
+  <p class="updated" data-tick>Updated <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time></p>
+</div>
+{{- if .Conditions}}
+<section class="section" aria-labelledby="attention-heading">
+  <h2 id="attention-heading">Needs attention</h2>
+  <ul class="conditions">
+    {{- range .Conditions}}
+    <li class="condition" data-level="{{if .Warning}}warning{{else}}note{{end}}">
+      <p class="condition-title"><span class="condition-level">{{if .Warning}}Warning{{else}}Note{{end}}:</span> {{.Title}}</p>
+      <p class="condition-next"><strong>Next step:</strong> {{.Next}}{{with .Command}} <code>{{.}}</code>{{end}}</p>
+    </li>
+    {{- end}}
+  </ul>
+</section>
+{{- end}}
+{{- with .Starting}}
+<section class="section starting" aria-labelledby="starting-heading">
+  <h2 id="starting-heading">This node has just started</h2>
+  <p>obied started <span data-tick>{{.Uptime}}</span> ago. Here is what will appear, and when:</p>
+  <dl class="starting-items">
+    {{- range .Items}}
+    <dt>{{.What}}</dt>
+    <dd>{{.When}}</dd>
+    {{- end}}
+  </dl>
+</section>
+{{- end}}
+<section class="section" aria-labelledby="numbers-heading">
+  <h2 id="numbers-heading">Key numbers</h2>
+  <ul class="numbers">
+    {{- range .Numbers}}
+    <li class="number"{{with .State}} data-state="{{.}}"{{end}}>
+      {{- if .Href}}
+      <a class="number-main" href="{{.Href}}"><span class="number-label">{{.Label}}</span> <span class="number-value">{{.Value}}</span></a>
+      {{- else}}
+      <p class="number-main"><span class="number-label">{{.Label}}</span> <span class="number-value">{{.Value}}</span></p>
+      {{- end}}
+      {{- with .Note}}
+      <p class="number-note">{{.}}</p>
+      {{- end}}
+      {{- with .Command}}
+      <p class="number-detail">Details: <code>{{.}}</code></p>
+      {{- end}}
+    </li>
+    {{- end}}
+  </ul>
+</section>
+{{- with .Activity}}
+<section class="section" aria-labelledby="activity-heading">
+  <h2 id="activity-heading">Recent activity</h2>
+  {{- with .Note}}
+  <p class="note">{{.}}</p>
+  {{- end}}
+  {{- if .Rows}}
+  <div class="table-scroll">
+  <table class="list activity">
+    {{template "activity-head"}}
+    <tbody>
+      {{- range .Rows}}
+      {{template "activity-row" .}}
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  {{- end}}
+  <p class="section-link"><a href="{{.Href}}">All activity, live</a></p>
+</section>
+{{- end}}
+<section class="section" aria-labelledby="parts-heading">
+  <h2 id="parts-heading">Parts of the node</h2>
+  <table class="parts">
+    <thead><tr><th scope="col">Part</th><th scope="col">State</th><th scope="col">Detail</th></tr></thead>
+    <tbody>
+      {{- range .Parts}}
+      <tr><th scope="row">{{.Title}}</th><td><span class="part-state" data-state="{{.State}}">{{.Label}}</span></td><td>{{.Detail}}</td></tr>
+      {{- end}}
+    </tbody>
+  </table>
+</section>
+<section class="section" aria-labelledby="node-heading">
+  <h2 id="node-heading">This node</h2>
+  <dl class="facts">
+    <dt>Mode</dt>
+    <dd><strong>{{.Node.ModeLabel}}</strong>{{with .Node.ModeText}}: {{.}}{{end}}</dd>
+    <dt>Peer ID</dt>
+    <dd><code class="id">{{.Node.PeerID}}</code></dd>
+    <dt>Fingerprint</dt>
+    <dd><code class="id">{{.Node.Fingerprint}}</code></dd>
+    <dt>Version</dt>
+    <dd>{{.Node.Version}}</dd>
+    <dt>Uptime</dt>
+    <dd><span data-tick>{{.Node.Uptime}}</span>{{with .Node.StartedAt.Text}}, since <time datetime="{{$.Node.StartedAt.ISO}}">{{.}}</time>{{end}}</dd>
+    <dt>Configuration loaded</dt>
+    <dd>{{with .Node.ConfigLoadedAt.Text}}<time datetime="{{$.Node.ConfigLoadedAt.ISO}}">{{.}}</time>, {{end}}{{.Node.ConfigLoadedBy}}{{with .Node.ConfigHref}}. <a href="{{.}}">The configuration it runs with</a>{{end}}</dd>
+  </dl>
+</section>
+{{- end}}

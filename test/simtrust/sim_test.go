@@ -1,0 +1,91 @@
+//go:build simtrust
+
+package simtrust
+
+import (
+	"context"
+	"flag"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+var (
+	flagScenario = flag.String("simtrust.scenario", "reduced", "scenario to run (ADR 0034)")
+	flagSeeds    = flag.Int("simtrust.seeds", 20, "number of seeds")
+	flagTrace    = flag.String("simtrust.trace", "", "trace file to replay instead of the synthetic world")
+	flagOut      = flag.String("simtrust.out", "", "directory to write the report to; a temporary one if empty")
+	flagVersion  = flag.String("simtrust.version", "dev", "OBIE version the report names")
+	flagWorkers  = flag.Int("simtrust.workers", 0, "runs at once; GOMAXPROCS if 0")
+	flagCache    = flag.String("simtrust.cache", "", "directory that keeps finished runs, so that an interrupted scenario resumes")
+)
+
+// TestSimTrust runs a scenario of the trust simulation and writes its
+// report: `make sim-trust SCENARIO=…`. Without a trace, it checks what
+// v0.1's static weights guarantee.
+func TestSimTrust(t *testing.T) {
+	sc, err := ScenarioNamed(*flagScenario)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tr *Trace
+	if *flagTrace != "" {
+		if tr, err = readFileWith(*flagTrace, ReadTrace); err != nil {
+			t.Fatalf("trace %s: %v", *flagTrace, err)
+		}
+	}
+	out := *flagOut
+	if out == "" {
+		out = t.TempDir()
+	}
+	shown := -1
+	rep, err := Execute(context.Background(), sc, ExecOptions{
+		Seeds:   *flagSeeds,
+		Trace:   tr,
+		Workers: *flagWorkers,
+		Cache:   *flagCache,
+		Progress: func(done, total int, spec RunSpec, took time.Duration) {
+			if step := done * 50 / total; step != shown {
+				shown = step
+				t.Logf("%d of %d runs; last: %s in %s", done, total, spec, took.Round(time.Millisecond))
+			}
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteReport(out, rep, ReportInfo{Version: *flagVersion, Generated: time.Now(), ADR: adrFrom(out)}); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("%d runs in %s; report: %s", rep.Runs, rep.Wall.Round(time.Second), filepath.Join(out, reportFile))
+	if tr == nil {
+		for _, problem := range CheckV01(rep) {
+			t.Error(problem)
+		}
+	}
+}
+
+// adrPath is ADR 0034 from the package's directory, in which a test runs.
+var adrPath = filepath.Join("..", "..", "documentation", "adr", "0034-trust-simulation-by-trace-replay.md")
+
+// adrFrom returns the path of ADR 0034 relative to the report directory
+// dir, for the report's link; empty if either is not found.
+func adrFrom(dir string) string {
+	adr, err := filepath.Abs(adrPath)
+	if err != nil {
+		return ""
+	}
+	if _, err := os.Stat(adr); err != nil {
+		return ""
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return ""
+	}
+	rel, err := filepath.Rel(abs, adr)
+	if err != nil {
+		return ""
+	}
+	return filepath.ToSlash(rel)
+}

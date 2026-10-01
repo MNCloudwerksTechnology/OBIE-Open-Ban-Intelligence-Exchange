@@ -1,0 +1,105 @@
+{{define "content" -}}
+<h1>Firewall</h1>
+<p class="lead">What the firewall backend applies right now, and every difference from the blocks the node decided. <span data-live hidden>The summary updates itself every 5 seconds; the entries are read when the page opens.</span></p>
+<div class="refresh" data-refresh="{{.Fragment}}">
+{{template "region" .Summary}}
+</div>
+
+<section class="section" aria-labelledby="differences-heading">
+  <h2 id="differences-heading">Differences</h2>
+  <p class="updated">Read at <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time>; reload the page to compare again.</p>
+  {{- if .EntriesErr}}
+  <p class="callout" data-level="warning">The firewall's entries could not be read: {{.EntriesErr}}</p>
+  {{- end}}
+  {{- if .Observe}}
+  <p class="callout">{{.Observe}} <a href="{{.Blocks}}">The decided blocks</a></p>
+  {{- else}}
+  {{- if .Same}}
+  <p class="difference" data-level="ok">No difference: the firewall applies every decided block, and nothing else.</p>
+  {{- end}}
+  {{- with .Missing}}{{if .Count}}
+  <div class="difference">
+    <h3>{{count .Count}} decided {{if eq .Count 1}}block is{{else}}blocks are{{end}} not applied</h3>
+    <ul class="differences">
+      {{- range .Rows}}
+      <li><a class="mono" href="{{.Href}}" data-copy>{{.Address}}</a>: {{.Label}}, {{.Note}}</li>
+      {{- end}}
+    </ul>
+    {{- with .More}}
+    <p><a href="{{.}}">All decided blocks that are not applied</a></p>
+    {{- end}}
+  </div>
+  {{- end}}{{end}}
+  {{- with .Stray}}{{if .Count}}
+  <div class="difference">
+    <h3>{{count .Count}} {{if eq .Count 1}}entry has{{else}}entries have{{end}} no decided block</h3>
+    <ul class="differences">
+      {{- range .Rows}}
+      <li><a class="mono" href="{{.Href}}" data-copy>{{.Address}}</a>: {{.Label}}; {{.Note}}</li>
+      {{- end}}
+    </ul>
+  </div>
+  {{- end}}{{end}}
+  {{- with .Expiry}}{{if .Count}}
+  <div class="difference">
+    <h3>{{count .Count}} {{if eq .Count 1}}entry expires{{else}}entries expire{{end}} at another time than decided</h3>
+    <ul class="differences">
+      {{- range .Rows}}
+      <li><a class="mono" href="{{.Href}}" data-copy>{{.Address}}</a>: {{.Label}}, {{.Note}}</li>
+      {{- end}}
+    </ul>
+    <p>The next pass replaces them with the decided expiry.</p>
+  </div>
+  {{- end}}{{end}}
+  {{- end}}
+</section>
+
+<section class="section" id="entries" aria-labelledby="entries-heading">
+  <h2 id="entries-heading">Applied entries</h2>
+  {{- if .Entries}}
+  <p>Exactly what the backend lists right now: every address in an entry is dropped until the entry expires.</p>
+  <div class="table-scroll">
+  <table class="list entries">
+    <thead>
+      <tr><th scope="col">Entry</th><th scope="col">Expires</th><th scope="col">Decision on this range</th></tr>
+    </thead>
+    <tbody>
+      {{- range .Entries}}
+      <tr>
+        <th scope="row"><a class="mono address" href="{{.Href}}" data-copy>{{.Address}}</a></th>
+        <td><span class="cell-label">Expires</span> <time datetime="{{.Expires.ISO}}">{{.Expires.Text}}</time></td>
+        <td><span class="cell-label">Decision on this range</span> {{.Decision}}{{if .Differs}} <span class="badge">Differs</span>{{end}}<span class="cell-note">{{.Note}}</span></td>
+      </tr>
+      {{- end}}
+    </tbody>
+  </table>
+  </div>
+  <p class="pager-text">{{.Pager.Text}}</p>
+  {{- if or .Pager.Prev .Pager.Next}}
+  <nav class="pager" aria-label="Pages of entries">
+    {{- with .Pager.Prev}}
+    <a href="{{.}}" rel="prev">Previous page</a>
+    {{- end}}
+    {{- with .Pager.Next}}
+    <a href="{{.}}" rel="next">Next page</a>
+    {{- end}}
+  </nav>
+  {{- end}}
+  {{- else if not .EntriesErr}}
+  <p class="empty">The backend applies no entry{{if .Observe}}: observe mode, by design{{end}}.</p>
+  {{- end}}
+</section>
+{{- end}}
+
+{{define "region" -}}
+<div class="summary" data-state="{{.Summary.State}}">
+  <p><strong class="summary-title">{{.Summary.Title}}</strong> {{.Summary.Text}}</p>
+  <p class="updated" data-tick>Updated <time datetime="{{.ReadAt.ISO}}">{{.ReadAt.Text}}</time></p>
+</div>
+<dl class="facts firewall-facts">
+  {{- range .Facts}}
+  <dt>{{.Label}}</dt>
+  <dd>{{if .Href}}<a href="{{.Href}}">{{.Value}}</a>{{else}}{{.Value}}{{end}}{{with .Note}} <span class="cell-note">{{.}}</span>{{end}}</dd>
+  {{- end}}
+</dl>
+{{- end}}

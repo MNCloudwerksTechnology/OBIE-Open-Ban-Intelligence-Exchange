@@ -1,0 +1,315 @@
+# Changelog
+
+All notable changes to OBIE are recorded in this file. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and OBIE uses
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-10-01
+
+The first release, v0.1.0 "Stable Base".
+
+### Added
+
+- **Protocol.** The [obie/0.1 specification](documentation/spec/obie-0.1.md)
+  with a JSON Schema and test vectors: signed verdicts and revocations on
+  IPv4/IPv6 addresses and CIDR ranges (at most /16 and /32), Ed25519
+  signatures over RFC 8785 canonical JSON, and a reference implementation
+  in `pkg/obieproto`.
+- **Node identity.** An Ed25519 key per node, created on first start, whose
+  peer ID names the node on the mesh (`obied keygen`, `obied identity`,
+  `obiectl identity`); `obied` refuses key files others can read.
+- **Mesh.** A libp2p host (TCP and QUIC) with static bootstrap peers that
+  are redialled with backoff, GossipSub on the topic `obie/0.1/verdicts`,
+  validation of every received event, peer scoring, and rate limits per
+  publisher and per forwarding peer (`mesh.rate_limit`).
+- **Event store.** A local store of verdicts, revocations and operator
+  overrides that drops duplicates, stale and expired events and keeps
+  revocations for as long as the verdicts they revoke.
+- **Reporting.** `obiectl report` turns a local detection into a signed
+  verdict, hashing the evidence log lines on the node;
+  `obiectl revoke` withdraws it. A repeated report on the same address
+  refreshes the verdict instead of publishing another.
+- **Fail2Ban action.** `contrib/fail2ban/action.d/obie.conf` reports every
+  ban of a jail with one extra line in the jail
+  ([guide](documentation/guides/fail2ban.md)).
+- **Trust-weighted decisions.** Each node weights every publisher
+  (`trust.publishers`) and blocks an address when the score reaches
+  `decision.threshold` and `decision.quorum` publishers agree; the node's
+  own verdicts can block at once (`decision.local_autoblock`).
+  `obiectl explain` (with every verdict's reason), `decisions`,
+  `indicators` and `show` show why.
+- **Local sovereignty.** A built-in allow-list (loopback, private,
+  special-purpose ranges, own and bootstrap addresses) plus
+  `allowlist.cidrs` and `allowlist.files`; operator overrides
+  `obiectl allow`, `block` and `unoverride`; `observe` and `enforce`
+  modes; configuration reload on SIGHUP.
+- **Enforcement.** A reconciler that keeps the nftables table `inet obie`
+  exactly in line with the decisions, with per-element timeouts and a cap
+  of `enforce.max_entries`; a `dryrun` backend; `obiectl enforced` and
+  `obied teardown-firewall` ([nftables guide](documentation/guides/nftables.md)).
+- **Observability.** Prometheus metrics, `/healthz` and `/readyz`, a
+  Grafana dashboard, and a JSON-lines decision audit log with Elastic
+  Common Schema fields ([monitoring](documentation/operations/monitoring.md)).
+- **Gossip instrumentation and attribution.** A GossipSub tracer feeds
+  `obie_gossip_*` metrics — deliveries, duplicates dropped before
+  validation, rejects by reason, ignores, grafts, prunes, IHAVE and IWANT
+  by direction, and the mesh size — and the peer scores, read every 10
+  seconds, feed a histogram and the counts of peers scored and below the
+  gossip, publish and graylist thresholds; no metric names a peer or an
+  address. Each peer's score and its components are in `GET /v1/peers`
+  (`obiectl peers --json`) and the console's peers view.
+  `obie_propagation_delay_seconds` is measured to the millisecond from the
+  creation time an event's UUIDv7 ID carries, as obie/0.1 gives
+  `issued_at` in whole seconds. Every `block-added`, `block-updated` and
+  `block-removed` audit record names its contributing publishers in
+  `obie.contributors` (peer ID, weight, confidence, verdict ID). Revoked
+  and expired verdicts are kept for `store.ended_retention`, 30 days by
+  default. An opt-in per-event trace (`mesh.trace_path`) writes a JSON
+  line per copy of an event, and `internal/eventtrace` joins the traces of
+  several nodes into hop counts and paths
+  ([ADR 0032](documentation/adr/0032-gossip-instrumentation-and-attribution.md)).
+- **Trust simulation and the v0.1 trust baseline.**
+  `make sim-trust SCENARIO=…` replays Fail2Ban bans and the verdicts of
+  honest and adversarial publishers — naive and careful poisoners, on-off attackers,
+  whitewashers, Sybil coalitions in one or several ASNs, spies and
+  suppressors, at 10 to 40 % — through the real store, allow-list and
+  decision engine of one node in virtual time. It reports precision,
+  recall and F1 of the enforced bans, false bans, the time to neutralize
+  a defector, the honest publishers' weight, newcomer convergence, the
+  whitewashing payoff, ECE and Brier score, per hour and cumulatively
+  with 95 % intervals over 20 seeds, and the feed metrics of every
+  publisher over the whole run; a reduced scenario runs in CI. The
+  [v0.1 trust baseline](documentation/validation/trust/README.md) finds
+  that at the default confidence of 0.8 a ban on remote verdicts needs
+  three fully trusted remotes under the default threshold of 1.8, and
+  that static weights never neutralize a defector.
+  `go run ./test/simtrust/cmd/trace-import` turns operators' Fail2Ban logs
+  into a trace with every address pseudonymized
+  ([ADR 0034](documentation/adr/0034-trust-simulation-by-trace-replay.md)).
+- **Routing simulation and the v0.1 routing baseline.**
+  `make sim-routing SCENARIO=…` runs the real mesh and gossip code of up
+  to 10,000 nodes, and as many attackers, on an in-memory libp2p network
+  in virtual time. The scenarios are the GossipSub v1.1 paper's eclipse,
+  cold boot and covert flash attacks on 1,000 nodes; 10,000 nodes with 10
+  to 50 % adversaries; and OBIE's own attacks: a flood of weight-0 junk, junk
+  through a relay, forged IDs of a chosen revocation, an hour offline and
+  the bootstrap hubs stopped. They run on the static-bootstrap graph and
+  on a random regular one. A report gives delivery, latency, duplicates,
+  hop counts against ln N / ln(D−1), the Sybils' share of mesh slots, mesh
+  recovery, the trusted verdicts kept under a flood and the loss by
+  cause, each with a 95 % interval over 20 seeds. A reduced scenario runs
+  in CI. The harness reproduces the paper: plain GossipSub loses verdicts,
+  scored GossipSub loses none. The
+  [v0.1 routing baseline](documentation/validation/routing/README.md)
+  finds that the static-bootstrap graph loses about a sixth of all
+  verdicts without any attack, that a weight-0 flood evicts every trusted
+  verdict from a full store, and that forged IDs keep a chosen revocation
+  from 80 % of the nodes
+  ([ADR 0035](documentation/adr/0035-routing-simulation-in-virtual-time.md)).
+- **Setup assistant and self-check.** `obied setup` asks where the node
+  keeps its state and audit log, which peers it connects to and how much
+  it trusts them, whether it starts in observe mode and which addresses it
+  must never block, and writes a short, commented configuration; it never
+  replaces an existing one without asking and keeps a backup.
+  `--non-interactive` takes the same answers as flags. `obied self-check`
+  checks the configuration, identity, admin access, node, peers, clock,
+  Fail2Ban, firewall and the operator's SSH session address, reports each
+  as OK, warning or problem with the next step, as text or JSON, and exits
+  1 on a problem ([guide](documentation/operations/setup.md),
+  [ADR 0027](documentation/adr/0027-setup-assistant-and-self-check.md)).
+- **Admin API and CLI.** A local Unix-socket API restricted to root, the
+  service user and the `obie` group, and `obiectl` on top of it
+  (`status`, `peers` and the commands above).
+- **Self-explanatory command line.** Every command of `obied` and
+  `obiectl` has help with its purpose, every flag with its default and
+  realistic examples (`--help`, `help <command>`); without a command, or
+  with an unknown one, both list their commands grouped by task (look,
+  decide, report, manage) with where to start and the closest match.
+  `obied` without arguments now shows this list instead of starting a
+  node with the default configuration; `obied run` and
+  `obied --config <file>`, as the systemd unit and the image call it, run
+  the node. Errors say what went wrong, why and what to do next — node
+  not running, permission denied on the admin socket, invalid address,
+  protected address, invalid configuration with file, line and setting,
+  missing identity — and the node's log names the next step for an
+  unreachable peer, a failed start or reload and other problems an
+  operator must act on. Output uses RFC 3339 UTC times, days for long
+  spans and no colour; every listing has `--json`; `decisions` and
+  `enforced` show a summary and at most `--limit` rows; `obied setup`
+  never asks questions into a pipe. Shell completion for bash, zsh and
+  fish (`completion <shell>`) and the manual pages `obied(1)` and
+  `obiectl(1)` ship in the release tarballs and are installed by
+  `install.sh`. The [command-line reference](documentation/operations/cli.md)
+  is generated from the same help, and the
+  [message inventory](documentation/operations/messages.md) lists every
+  error and log warning with what to do; tests keep both current
+  ([ADR 0028](documentation/adr/0028-command-line-help-and-messages.md)).
+- **Web console.** An opt-in browser view of the node
+  (`console.enabled`, switched on and off by a reload), listening on a
+  loopback address only, for the users of `obiectl` only and behind a
+  token kept in `obied`'s memory (`obiectl console`, `--rotate`); it shows
+  the node's health on every page and never stops the node
+  ([web console](documentation/operations/console.md),
+  [ADR 0019](documentation/adr/0019-local-web-console.md)). Its overview
+  shows the node's identity, mode, uptime and configuration load, the
+  readiness of every part, the key numbers (peers, indicators, decisions
+  by state, applied firewall entries, overrides) and the conditions that
+  need attention with a next step, explains what will appear on a node
+  that has just started, and refreshes itself every 5 seconds
+  ([ADR 0020](documentation/adr/0020-console-overview.md)). Its peers view
+  lists every configured and connected peer — bootstrap peers, trusted
+  publishers, peers that connected on their own — with its connection
+  (since when, last seen, the last failed dial), its trust weight (and
+  whether it has any influence on decisions), the verdicts the node holds
+  and counts from it, and the events it sent in the last hour, accepted
+  or rejected and why; it filters, sorts and pages on the node, and a
+  peer's page lists the verdicts the node holds from it
+  ([ADR 0021](documentation/adr/0021-console-peers.md)). Its decisions
+  view lists every address and network the node decided on — state, score
+  against threshold, publishers against quorum, reason, when decided and
+  until when, and whether the firewall applies it and if not why — filters
+  by state, reason, publisher and firewall, searches by address (an
+  address finds the networks around it), sorts and pages on the node, fast
+  with 1,000,000 decisions; an address's page explains it like
+  `obiectl explain`, also one the node knows nothing about, and refreshes
+  itself. Its firewall view lists what the backend applies and every
+  difference from the decided blocks, and says in observe mode that
+  nothing is applied by design. Addresses can be copied, and every view
+  shared as a link on the same host
+  ([ADR 0022](documentation/adr/0022-console-decisions-and-firewall.md)).
+  Its verdicts view lists the verdicts this node published and those it
+  holds from every other publisher — address, publisher and its trust
+  weight (marked *No weight* at 0), action, confidence, reason, event
+  count and the evidence's log hash, issue and expiry, and whether it
+  counts — with totals per publisher; it filters by publisher, reason and
+  address (the verdicts on one address, as `obiectl show` gives them),
+  shows revoked verdicts with why and expired ones on request, and links
+  every verdict to its publisher and its decision. The store now keeps
+  revoked and expired verdicts for `store.ended_retention` (30 days by
+  default) after their expiry, with the revocation's reason — of other
+  publishers at most a tenth of `store.max_indicators` in each state
+  (`obie_store_ended_verdicts`)
+  ([ADR 0023](documentation/adr/0023-console-verdicts.md)).
+  Its overrides view lists every always-allow and always-block override
+  in effect with its note, when it was set and when it ends, says why an
+  always-block has no effect when a force-allow or a protected address
+  beats it, and shows the overrides that expired in the last 7 days on
+  request; the store now keeps them that long. Its allow-list view lists
+  every entry the node never blocks, grouped by origin — built-in ranges
+  by class, the node's own addresses, the bootstrap peers,
+  `allowlist.cidrs` and each allow-list file — warns about addresses it
+  could not determine and about files that are missing, unreadable or now
+  hold rejected lines (listed), and answers *Is this address protected?*
+  with the rule that decides. Its configuration view shows every setting
+  the node runs with, defaults marked, with a one-line explanation and
+  whether a reload or a restart applies it; when the configuration was
+  loaded and whether the last reload succeeded (or was rejected, and the
+  previous configuration kept); and which changes in the file on disk are
+  not active yet or wait for a restart. Secrets are never shown
+  ([ADR 0024](documentation/adr/0024-console-overrides-allowlist-configuration.md)).
+  Its activity timeline shows what the node did, newest first — blocks
+  added, updated or removed, addresses spared by the allow-list,
+  overrides, its own reports and revocations, peers connecting and
+  disconnecting, configuration reloads and mode changes — filtered by kind
+  and address, each linking to its decision, verdicts, peer or setting,
+  and follows the node live within about a second, with a pause; bursts
+  are summed up instead of listed one by one. It reads the audit log, so
+  it tells the same story as the SIEM, also across restarts; without
+  `audit.path` it shows the last 10,000 entries since the start and says
+  what is missing. The overview shows the last 5 entries. The audit log
+  now also records `peer-connected`, `peer-disconnected`,
+  `config-reloaded` and `mode-changed`
+  ([ADR 0025](documentation/adr/0025-console-activity-timeline.md)).
+  From the decision, verdicts and overrides views the operator can always
+  allow, always block (with expiry and note), remove an override, report
+  an address and revoke this node's own verdicts: each action asks to
+  confirm after saying in plain words what it will do — the decision now
+  and after, whether only this node is affected or a signed event goes to
+  how many peers — obeys the admin API's rules with its words, refuses a
+  confirmation that another tab or `obiectl` made stale, and returns to
+  the view with the new state. `console.actions: false` keeps the console
+  read-only. Audit records of operator actions now carry `obie.origin`
+  (`console` or `admin-api`), `user.id` and `user.name`. A verdict or
+  revocation published while no peer is connected is now held in memory
+  and sent as soon as a peer joins, instead of being lost
+  ([ADR 0026](documentation/adr/0026-console-operator-actions.md)).
+- **Packaging.** Reproducible static release tarballs for linux/amd64 and
+  linux/arm64 with CycloneDX SBOMs and `SHA256SUMS`, `install.sh`, a
+  hardened systemd unit, a distroless container image, and a three-node
+  compose lab with a smoke test ([install](documentation/operations/install.md)).
+  `make release` refuses a final version that the capability overview
+  does not describe.
+- **Sandbox.** `./sandbox up` in `packaging/sandbox` starts four nodes in
+  Docker on a workstation, three that trust each other and a stranger
+  nobody trusts, without root and without touching any firewall;
+  `./sandbox down` removes them completely. It says what to do when
+  Docker is missing or a console port is taken.
+  [Try OBIE in a sandbox](documentation/sandbox.md) walks a newcomer
+  through the core story step by step, in the terminal and in each node's
+  web console, with the output of every step. `make sandbox-check` runs
+  the walkthrough in CI and compares every output with the page
+  ([ADR 0029](documentation/adr/0029-sandbox-and-checked-walkthrough.md)).
+- **Getting-started tutorial.** [Get started with OBIE](documentation/getting-started.md)
+  takes a first-time installer from nothing to a working node on a real
+  server in ten steps, with no choice to make on the way: requirements,
+  installation, the setup assistant, observe mode, the self-check,
+  Fail2Ban, the first verdict, a peer, what would be blocked and,
+  optionally, enforcement, after protecting the reader's own access and
+  practising the way back. Each step says what it is for, shows the
+  expected output and where to turn when it differs. Separate sections
+  cover the container image and a server without Fail2Ban. It replaces
+  the quick start, and `obied setup` and the self-check point to it.
+  `make tutorial-check` runs every command of the page in CI, on Ubuntu
+  24.04 with systemd, Fail2Ban, OpenSSH and nftables in a container,
+  against the release built from the change, and compares every output
+  with the page
+  ([ADR 0030](documentation/adr/0030-getting-started-tutorial-checked-on-a-systemd-host.md)).
+  Connecting Fail2Ban restarts it, since `fail2ban-client reload` does not
+  add the action to a running jail; the self-check now says so when the
+  running Fail2Ban does not use the action its configuration adds.
+- **How-to guides.** [Twelve short guides](documentation/guides/README.md)
+  for the routine jobs of a running node, grouped by goal: connect a
+  friend's node and choose a trust level, stop trusting a peer, review
+  what the node would block, find out why an address is blocked, unblock
+  an address you trust now and for good, block an address, withdraw a
+  verdict, switch between observe and enforce mode, recover after a
+  lockout, back up and restore the node's identity, upgrade and
+  uninstall. Each is titled as the task and says what you need, the
+  steps, how to check that they worked and how to undo them; a guide that
+  changes the firewall warns first and shows the way back before the
+  steps, and the console's way stands next to the command line's where it
+  is easier. The introduction, the tutorial and the README link the
+  index. `make guides-check` runs every guide in CI on a server of its
+  own, after the tutorial's steps it starts from, and compares every
+  output with the page
+  ([ADR 0031](documentation/adr/0031-how-to-guides-checked-on-a-systemd-host.md)).
+- **Testing.** An end-to-end test of report → block under quorum → revoke
+  across several nodes, with an nftables variant in network namespaces.
+  `make resources` measures one node's memory, CPU and disk in a mesh of
+  three `obied` processes; `make fail2ban-versions` sends a real ban and
+  unban through the Fail2Ban action with the Fail2Ban of current
+  distributions ([performance](documentation/operations/performance.md)).
+- **Documentation.** A plain-language introduction,
+  [What is OBIE?](documentation/introduction.md), with a diagram of one
+  attack from detection to firewall; an [FAQ](documentation/faq.md) on
+  the fears that stop adoption; a [glossary](documentation/glossary.md)
+  that every guide links on first use. For evaluators,
+  [What OBIE can and cannot do yet](documentation/capabilities.md): what
+  this release does (off-by-default features labelled as such), what it
+  does not do yet and whether that is planned, what it needs to run,
+  including measured memory, processor and disk use, the remaining risks,
+  and eight situations answered with yes, no or not yet; tests keep it in
+  line with the default configuration, the threat model and the release.
+  The [Fail2Ban guide](documentation/guides/fail2ban.md) now requires
+  Fail2Ban 0.11: 0.10 does not pass the ban time to the action. A
+  [configuration reference](documentation/operations/configuration.md)
+  tested against the code, [federation](documentation/operations/federation.md),
+  [operations](documentation/operations/operations.md) and
+  [troubleshooting](documentation/operations/troubleshooting.md) guides,
+  and a [threat model](SECURITY.md#threat-model). The
+  [whitepaper](documentation/whitepaper.md) moved out of the README.
+
+[Unreleased]: https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange/compare/v0.1.0...develop
+[0.1.0]: https://github.com/MNCloudwerksTechnology/OBIE-Open-Ban-Intelligence-Exchange/releases/tag/v0.1.0
