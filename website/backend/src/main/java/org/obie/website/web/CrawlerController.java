@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * {@code /robots.txt} and {@code /sitemap.xml} for search engines, built from the configured origin
  * ({@link SiteOrigin}) and the prerendered pages ({@link PrerenderedPages}). Both are generated
- * once at startup.
+ * once at startup. They are sent whatever the client's {@code Accept} header says: crawlers and
+ * validators ask for them in different ways ({@code text/xml}, {@code text/html}, none), and a 406
+ * would hide them.
  */
 @RestController
 public class CrawlerController {
@@ -27,14 +29,20 @@ public class CrawlerController {
         sitemap(siteOrigin, PrerenderedPages.publicPaths(StaticSiteConfig.STATIC_LOCATION));
   }
 
-  @GetMapping(value = "/robots.txt", produces = MediaType.TEXT_PLAIN_VALUE)
+  @GetMapping("/robots.txt")
   public ResponseEntity<String> robots() {
-    return ResponseEntity.ok().cacheControl(ONE_HOUR).body(robots);
+    return ResponseEntity.ok()
+        .contentType(MediaType.TEXT_PLAIN)
+        .cacheControl(ONE_HOUR)
+        .body(robots);
   }
 
-  @GetMapping(value = "/sitemap.xml", produces = MediaType.APPLICATION_XML_VALUE)
+  @GetMapping("/sitemap.xml")
   public ResponseEntity<String> sitemap() {
-    return ResponseEntity.ok().cacheControl(ONE_HOUR).body(sitemap);
+    return ResponseEntity.ok()
+        .contentType(MediaType.APPLICATION_XML)
+        .cacheControl(ONE_HOUR)
+        .body(sitemap);
   }
 
   /** Everything may be crawled except the API. */

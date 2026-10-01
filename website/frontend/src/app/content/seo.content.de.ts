@@ -4,6 +4,7 @@ import { SEO_CONTENT_EN, SeoContent } from './seo.content';
 /** German SEO data: SEO_CONTENT_EN (seo.content.ts) in German, the same facts. */
 export const SEO_CONTENT_DE: SeoContent = {
   siteName: 'OBIE',
+  siteAlternateName: SEO_CONTENT_EN.siteAlternateName,
   locale: 'de_DE',
   shareImage: {
     ...SEO_CONTENT_EN.shareImage,

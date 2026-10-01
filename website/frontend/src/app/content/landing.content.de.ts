@@ -8,9 +8,9 @@ import { CONTACT_ID, FOUNDER_AVATAR_PLACEHOLDER, LINKS } from './landing.content
 /** German landing page copy. */
 export const LANDING_CONTENT_DE: LandingContent = {
   meta: {
-    title: 'OBIE: Open-Source-Austausch von Bedrohungsinformationen für Server',
+    title: 'OBIE: Open-Source-Austausch von Bedrohungsdaten für Server',
     description:
-      'OBIE ist ein offenes Protokoll ohne zentrale Leitung, über das Server signierte Hinweise auf Angreifer austauschen. Jeder Knoten behält das letzte Wort darüber, was er sperrt.',
+      'OBIE ist ein offenes Protokoll ohne zentrale Instanz, über das Server signierte Hinweise auf Angreifer teilen. Jeder Knoten entscheidet selbst, was er sperrt.',
     locale: 'de-DE',
   },
   a11y: {

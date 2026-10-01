@@ -91,6 +91,25 @@ describe('German pages', () => {
     expect(document.title).toBe(LEGAL_CONTENT_DE.privacy.meta.title);
   });
 
+  it('give every page a unique title and description of search-result length', async () => {
+    const heads: { title: string; description: string }[] = [];
+    for (const url of ['/de', '/de/impressum', '/de/datenschutz', '/de/404']) {
+      await open(url);
+      const description = document.head.querySelector('meta[name="description"]');
+      heads.push({
+        title: document.title,
+        description: description?.getAttribute('content') ?? '',
+      });
+    }
+    expect(new Set(heads.map((head) => head.title)).size).toBe(heads.length);
+    expect(new Set(heads.map((head) => head.description)).size).toBe(heads.length);
+    for (const { title, description } of heads) {
+      expect(title.length, title).toBeLessThanOrEqual(60);
+      expect(description.length, description).toBeGreaterThanOrEqual(70);
+      expect(description.length, description).toBeLessThanOrEqual(160);
+    }
+  });
+
   it('link each page to its English counterpart for search engines', async () => {
     await open('/de/datenschutz');
     expect(document.head.querySelector('link[rel="canonical"]')?.getAttribute('href')).toBe(
