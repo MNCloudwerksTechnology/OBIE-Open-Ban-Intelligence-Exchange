@@ -23,10 +23,10 @@ export const LINKS = {
   introduction: `${DOCS_URL}/documentation/introduction.md`,
   capabilities: `${DOCS_URL}/documentation/capabilities.md`,
   quickStart: `${DOCS_URL}/documentation/getting-started.md`,
+  sandbox: `${DOCS_URL}/documentation/sandbox.md`,
   spec: `${DOCS_URL}/documentation/spec/obie-0.1.md`,
   whitepaper: `${DOCS_URL}/documentation/whitepaper.md#1-introduction-the-centralization-trap`,
   manifesto: `${DOCS_URL}/documentation/whitepaper.md#2-the-obie-manifesto-principles-and-philosophy`,
-  exampleConfig: `${DOCS_URL}/documentation/examples/obie.yaml`,
   licence: `${DOCS_URL}/LICENSE.md`,
   issues: `${REPOSITORY_URL}/issues`,
   goodFirstIssues: `${REPOSITORY_URL}/issues?q=is%3Aissue%20is%3Aopen%20label%3A%22good%20first%20issue%22`,
@@ -116,11 +116,11 @@ export const LANDING_CONTENT_EN: LandingContent = {
     label: 'How it works',
     heading: 'Six steps from one attack to shared protection.',
     intro:
-      'OBIE runs as a small program next to the tools you already use. Here is what happens when one server sees an attack, as designed for version 0.1.',
+      'OBIE runs as a small program next to the tools you already use. Here is what happens in version 0.1 when one server sees an attack.',
     steps: [
       {
         title: 'Detect',
-        text: 'A tool that already watches your logs spots an attack. The first one OBIE is being built for is Fail2Ban, a widely used program that notices repeated failed logins.',
+        text: 'A tool that already watches your logs spots an attack. The first one OBIE works with is Fail2Ban, a widely used program that notices repeated failed logins.',
       },
       {
         title: 'Sign a report',
@@ -143,7 +143,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
         text: 'When the rules are met, the server blocks the address in its firewall for a limited time. The block ends on its own, so a mistake does not last forever.',
       },
     ],
-    note: 'This is the version 0.1 design. Which steps already run in the code is listed under Status.',
+    note: 'All six steps run in the code of version 0.1 today. What it cannot do yet is listed under Status.',
     diagram: {
       title: 'How a block comes about',
       description:
@@ -367,7 +367,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
     label: 'Status',
     heading: 'Where OBIE stands today.',
     intro:
-      'Version 0.1 is being built in the open. There is no running public mesh yet, and OBIE is not ready to protect production servers. Here is what the code does today and what comes next.',
+      'Version 0.1 works end to end in the code: a server turns Fail2Ban bans into signed reports, shares them with the peers you choose, decides for itself and, once you switch blocking on, blocks in its firewall. The first release is not published yet, there is no public mesh to join, and no independent security audit has been done. Here is what the code does today and what comes next.',
     groups: [
       {
         state: 'available',
@@ -375,47 +375,55 @@ export const LANDING_CONTENT_EN: LandingContent = {
         summary: 'In the code today',
         items: [
           {
-            title: 'Signed report format',
-            text: 'A public specification of what a report contains and how it is signed, with test data for anyone who wants to build their own implementation.',
+            title: 'Signed reports',
+            text: 'Each report carries its server’s signature. The format has a public specification, with test data for other implementations.',
           },
           {
-            title: 'Node identity',
-            text: 'On its first start, each server creates its own key. Its public ID is derived from it.',
+            title: 'Reports from Fail2Ban',
+            text: 'One extra line in a Fail2Ban jail turns its bans into signed reports. The log lines stay on your server.',
           },
           {
-            title: 'Connecting to peers you list',
-            text: 'The node connects to the peers in its configuration file and reconnects when a connection drops.',
+            title: 'Sharing with peers you choose',
+            text: 'Servers connect directly to the peers you list. Invalid reports are dropped, and each sender is limited in how many it can send.',
           },
           {
-            title: 'Local report store',
-            text: 'Reports are stored on the node, duplicates are dropped and expired reports are removed.',
+            title: 'Decisions on each server',
+            text: 'Trust weights per peer, a minimum number of agreeing peers and a score to reach. The node explains why it blocks an address, or why not.',
           },
           {
-            title: 'Operator tools',
-            text: 'A command-line tool shows the node’s status, identity and peers. Health checks and metrics plug into existing monitoring.',
+            title: 'Safety list and overrides',
+            text: 'Your own addresses, internal networks and your peers are never blocked. Add the networks you depend on, and allow or block any other address yourself.',
+          },
+          {
+            title: 'Observe first, then block',
+            text: 'A new server only shows what it would block. In enforce mode, it blocks in its own nftables table, and every block expires.',
+          },
+          {
+            title: 'Setup, self-check and web console',
+            text: 'A setup assistant, a self-check that warns before you could lock yourself out, an optional web console, metrics and an audit log.',
+          },
+          {
+            title: 'A sandbox to try it',
+            text: 'Four nodes in Docker on your own computer, with a step-by-step walkthrough. Nothing is ever blocked.',
           },
         ],
       },
       {
         state: 'in-progress',
         label: 'In progress',
-        summary: 'Being built for version 0.1',
+        summary: 'Being prepared and designed now',
         items: [
           {
-            title: 'Detection with Fail2Ban',
-            text: 'Turning Fail2Ban detections into signed reports.',
+            title: 'The first release',
+            text: 'Release packages, an installer, a hardened service and a container image are ready and tested on every change. The release itself is not published yet.',
           },
           {
-            title: 'Sharing reports',
-            text: 'Sending reports to peers and receiving theirs.',
+            title: 'Reliable delivery',
+            text: 'Simulations of 1,000 to 10,000 servers found that in a large mesh built around a few hubs, about one report in six never arrives, and a server that was offline misses what was sent meanwhile. Fixes are being designed.',
           },
           {
-            title: 'Local decisions',
-            text: 'Trust weights per peer, the two-source minimum, the safety list and observe-only mode.',
-          },
-          {
-            title: 'Blocking that expires',
-            text: 'Blocking addresses with nftables, the Linux firewall, for a limited time.',
+            title: 'Resisting floods and forgeries',
+            text: 'In the same simulations, a flood from untrusted senders pushed trusted reports out of a full store, and forged messages kept a withdrawal from most servers. Defences are being designed.',
           },
         ],
       },
@@ -458,31 +466,31 @@ export const LANDING_CONTENT_EN: LandingContent = {
     label: 'Get started',
     heading: 'Try it in three steps.',
     intro:
-      'OBIE is built for engineers who run their own Linux servers. You need Go 1.26 or newer to build it.',
+      'OBIE is built for engineers who run their own Linux servers. Watch it work on your own computer first, then run it on a server.',
     steps: [
       {
-        title: 'Install',
-        text: 'Build the node from source. One command produces two programs in ./bin: obied, the node, and obiectl, the tool to control it.',
-        code: 'make build',
+        title: 'Try it in a sandbox',
+        text: 'In a copy of the source code, start four OBIE nodes in Docker on your own computer. Report an attack, watch the others decide and ask them why. Nothing is ever blocked, and you need no root access.',
+        code: 'cd packaging/sandbox && ./sandbox up',
       },
       {
-        title: 'Observe only',
-        text: 'Start in observe-only mode, the default. Once decisions land, the node will record what it would block but block nothing, so you can check its judgement first.',
-        code: './bin/obied --config /etc/obie/obie.yaml',
+        title: 'Install and observe',
+        text: 'Install OBIE on a Linux server with systemd and answer the setup assistant’s five questions. The node starts in observe mode: it shows what it would block, and blocks nothing.',
+        code: 'sudo obied setup',
       },
       {
-        title: 'Connect peers',
-        text: 'List the peers you trust, and how much, in the configuration file. Once blocking lands, switch to enforce mode when you are confident.',
-        code: './bin/obiectl --socket /run/obie/obie.sock peers',
+        title: 'Check, connect, then block',
+        text: 'The self-check says what is right and what to fix next. Connect Fail2Ban and a peer you trust. Switch blocking on only once you are sure you cannot lock yourself out.',
+        code: 'sudo obied self-check',
       },
     ],
-    note: 'Version 0.1 is still in development. Until decisions and blocking land (see Status), a node connects to its peers and stores reports, but decides and blocks nothing.',
-    quickStart: { label: 'Example configuration with every option', href: LINKS.exampleConfig },
+    note: 'The release packages with the installer come with the first release, which is not published yet. Until then, OBIE is built from source with Go 1.26 or newer; the sandbox does that for you.',
+    quickStart: { label: 'The sandbox walkthrough, step by step', href: LINKS.sandbox },
     project: {
       linksLabel: 'OBIE on GitHub',
       links: [
         { label: 'Repository', href: LINKS.repository },
-        { label: 'Quick start', href: LINKS.quickStart },
+        { label: 'Getting started', href: LINKS.quickStart },
         { label: 'Protocol specification', href: LINKS.spec },
         { label: 'Good first issues', href: LINKS.goodFirstIssues },
       ],
@@ -492,7 +500,7 @@ export const LANDING_CONTENT_EN: LandingContent = {
       noRelease: 'None yet',
       lastActivity: 'Last commit',
     },
-    nextStep: { label: 'Open the quick start on GitHub', href: LINKS.quickStart },
+    nextStep: { label: 'Open the step-by-step guide on GitHub', href: LINKS.quickStart },
   },
   // Founder facts come from the operator (work package #1675). Do not add
   // claims, quotes, testimonials or speaking history. website/README.md lists
@@ -607,22 +615,22 @@ export const LANDING_CONTENT_EN: LandingContent = {
       {
         question: 'Can a malicious peer get an address blocked on my server?',
         answer:
-          'Not on its own. As designed for version 0.1, your server only acts on reports from sources you chose to trust, by default only when at least two of them report the same address (your own server counts as one) with enough combined confidence, and never against your safety list. Reports about private and internal network addresses are rejected outright. Peers you trust could still agree on a wrong report, which is why you choose them carefully and can start in observe-only mode. Trust that is earned automatically is planned.',
+          'Not on its own. In version 0.1, your server only acts on reports from sources you chose to trust, by default only when at least two of them report the same address (your own server counts as one) with enough combined confidence, and never against your safety list. Reports about private and internal network addresses are rejected outright. Peers you trust could still agree on a wrong report, which is why you choose them carefully and can start in observe-only mode. Trust that is earned automatically is planned.',
       },
       {
         question: 'What data leaves my server?',
         answer:
-          'Once sharing is built (in progress for version 0.1), only signed reports in the format the specification defines: the attacking address, the attacked service, how many events were seen, a reason code, whether a honeypot saw it, the suggested action, a confidence value and how long the action should last. Optional are a fingerprint of the log lines, which proves what you saw without revealing it, codes for the attack technique (MITRE ATT&CK IDs) and the number of your network (its ASN). A server can also withdraw its own report with a signed revocation that carries a reason code. The format has no room for logs, user names, passwords or free text. Like any network connection, your peers see your server’s address and its public OBIE ID.',
+          'Only signed reports, in the format the specification defines: the attacking address, the attacked service, how many events were seen, a reason code, whether a honeypot saw it, the suggested action, a confidence value and how long the action should last. Optional are a fingerprint of the log lines, which proves what you saw without revealing it, codes for the attack technique (MITRE ATT&CK IDs) and the number of your network (its ASN). A server can also withdraw its own report with a signed revocation that carries a reason code. The format has no room for logs, user names, passwords or free text. Every node connected to your mesh receives your reports, whether you trust it or not, and sees your server’s address and its public OBIE ID.',
       },
       {
         question: 'Do I need Fail2Ban?',
         answer:
-          'Fail2Ban is the first detector OBIE is being built to work with. A server does not need its own detector to act on reports from peers it trusts. Support for other sources, such as honeypots (decoy servers that attract attackers), is planned.',
+          'Fail2Ban is the first detector OBIE works with: one extra line in a jail turns its bans into signed reports. A server does not need its own detector to act on reports from peers it trusts, and any tool that can run a command can report an address. Ready-made support for honeypots (decoy servers that attract attackers) is planned.',
       },
       {
         question: 'Is it production-ready?',
         answer:
-          'No. Version 0.1 is in development in the open. Today a node runs, has its own identity, connects to the peers you list and stores reports. Detection, decisions and blocking are still being built. Please do not rely on it to protect production servers yet.',
+          'Not yet. Version 0.1 works end to end: it reports, shares, decides and, once you switch blocking on, blocks. But the first release is not published yet, no independent security audit has been done, and simulations have found weaknesses that are still to be fixed (see Status). If you try it on a server, start in observe mode, which blocks nothing, and read what OBIE cannot do yet.',
       },
       {
         question: 'Is there a central server that can switch it off?',

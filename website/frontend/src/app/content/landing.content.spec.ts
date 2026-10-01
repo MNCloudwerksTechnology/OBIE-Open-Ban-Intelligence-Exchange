@@ -200,12 +200,14 @@ describe('Landing page content', () => {
     ]);
   });
 
-  it('teases getting started in three steps', () => {
+  it('teases getting started in three steps: sandbox, observe mode, then blocking', () => {
     expect(content.getStarted.steps.map((step) => step.title)).toEqual([
-      'Install',
-      'Observe only',
-      'Connect peers',
+      'Try it in a sandbox',
+      'Install and observe',
+      'Check, connect, then block',
     ]);
+    expect(content.getStarted.quickStart.href).toBe(LINKS.sandbox);
+    expect(content.getStarted.nextStep.href).toBe(LINKS.quickStart);
   });
 
   it('asks five to seven FAQ questions, including the required ones', () => {

@@ -30,7 +30,7 @@ describe('GithubStrip', () => {
   beforeEach(() => vi.useFakeTimers({ now: NOW, toFake: ['Date'] }));
   afterEach(() => vi.useRealTimers());
 
-  it('links to the repository, the quick start, the spec and good first issues', async () => {
+  it('links to the repository, the getting-started guide, the spec and good first issues', async () => {
     await render(undefined);
 
     const list = host.querySelector('ul.links');
@@ -38,7 +38,7 @@ describe('GithubStrip', () => {
     const links = Array.from(list?.querySelectorAll('a') ?? []);
     expect(links.map((a) => [a.textContent?.trim(), a.getAttribute('href')])).toEqual([
       ['Repository', LINKS.repository],
-      ['Quick start', LINKS.quickStart],
+      ['Getting started', LINKS.quickStart],
       ['Protocol specification', LINKS.spec],
       ['Good first issues', LINKS.goodFirstIssues],
     ]);

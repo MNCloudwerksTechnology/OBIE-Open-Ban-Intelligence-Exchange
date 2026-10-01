@@ -3,7 +3,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { LANDING_CONTENT } from '../content/landing.content';
 import { GithubStrip } from './github-strip';
 
-/** Three-step teaser (install, observe only, connect peers), contributor links and live stats. */
+/** Three-step teaser (sandbox, install in observe mode, check and connect), contributor links and live stats. */
 @Component({
   selector: 'app-get-started',
   changeDetection: ChangeDetectionStrategy.OnPush,
